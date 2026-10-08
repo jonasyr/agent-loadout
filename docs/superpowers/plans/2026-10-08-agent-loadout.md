@@ -1138,7 +1138,7 @@ def test_init_dry_run_changes_nothing(tmp_path, fake_runner):
 def test_init_offers_git_init(tmp_path, fake_runner):
     proj = tmp_path / "p"
     proj.mkdir()
-    project.init(proj, [], yes=False, install=False, dry_run=False, ask=lambda q: "y")
+    project.init(proj, [], yes=False, install=False, dry_run=False, ask=lambda q: "y" if "git init" in q else "-")
     assert ["git", "init"] in fake_runner.calls
 ```
 
@@ -1560,13 +1560,13 @@ def test_link_all_creates_symlinks_and_is_idempotent(fake_home):
 
 def test_link_all_backs_up_existing_real_dir(fake_home):
     _personal(fake_home)
-    existing = fake_home / ".claude/rules/kit"
+    existing = fake_home / ".claude/rules/loadout"
     existing.mkdir(parents=True)
     (existing / "old.md").write_text("old")
     bk = backup.Backup()
     link.link_all(bk)
     assert not bk.empty
-    assert (fake_home / ".claude/rules/kit").is_symlink()
+    assert (fake_home / ".claude/rules/loadout").is_symlink()
 
 
 def test_copy_fallback_when_symlinks_unavailable(fake_home, monkeypatch):
@@ -1579,7 +1579,7 @@ def test_copy_fallback_when_symlinks_unavailable(fake_home, monkeypatch):
     link.link_all(backup.Backup())
     assert link.is_copy_mode()
     assert (fake_home / ".claude/rules/loadout/tooling.md").exists()
-    assert not (fake_home / ".claude/rules/kit").is_symlink()
+    assert not (fake_home / ".claude/rules/loadout").is_symlink()
     # re-running in copy mode refreshes without creating backups
     bk = backup.Backup()
     link.link_all(bk)
@@ -3149,6 +3149,7 @@ def maintain(now: float) -> None:
 
 
 def update(yes: bool, ask: Callable[[str], str]) -> int:
+    runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
     settings_path = paths.claude_home() / "settings.json"
     before = load_json(settings_path)
     outdated = find_outdated()
@@ -3171,7 +3172,6 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
     if after != before:
         print("an installer modified ~/.claude/settings.json; reverting to the kit-merged version")
         save_json(settings_path, before)
-    runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
     return 0
 ```
 
