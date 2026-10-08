@@ -108,3 +108,18 @@ def argparse_hidden():
 
 
 EXTRA_COMMANDS.append(_register_maintenance)
+
+
+def _register_bootstrap(sub):
+    from . import bootstrap
+    from .__main__ import _ask
+
+    p = sub.add_parser("bootstrap", help="set up (or repair) this machine")
+    p.add_argument("--install", action="store_true", help="install missing tool binaries")
+    p.add_argument("--yes", action="store_true", help="accept defaults (adopt applies remove/migrate/scope-down/update)")
+    p.add_argument("--no-plugins", action="store_true")
+    p.add_argument("--no-adopt", action="store_true")
+    p.set_defaults(func=lambda a: bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask))
+
+
+EXTRA_COMMANDS.append(_register_bootstrap)
