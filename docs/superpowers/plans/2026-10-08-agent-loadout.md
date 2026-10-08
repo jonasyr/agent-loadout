@@ -1,12 +1,12 @@
-# claude-kit Implementation Plan
+# agent-loadout Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `claude-kit`: a shareable, self-updating Claude Code setup (plugin marketplace + CLI + rules + profiles + skills), the author's personal layer, and cut the author's machine over to it.
+**Goal:** Build `agent-loadout`: a shareable, self-updating Claude Code setup (plugin marketplace + CLI + rules + profiles + skills), the author's personal layer, and cut the author's machine over to it.
 
 **Architecture:**
-- The kit repo is a Claude Code plugin marketplace that delivers `kit-core` (hooks, MCP config, skills). Plugins update through marketplace auto-update.
-- A stdlib-only Python CLI (`claude-kit`) does everything plugins can't do:
+- The kit repo is a Claude Code plugin marketplace that delivers `loadout` (hooks, MCP config, skills). Plugins update through marketplace auto-update.
+- A stdlib-only Python CLI (`loadout`) does everything plugins can't do:
   - three-way merge of kit-managed keys into `~/.claude/settings.json`;
   - linking rule directories;
   - adopting existing configs against a catalog, with backup/restore;
@@ -16,20 +16,20 @@
 
 **Tech Stack:** Python ≥3.10 (stdlib only), pytest (via `uv run --with pytest`), bash + PowerShell shims, Claude Code plugin/marketplace JSON, GitHub Actions.
 
-**Spec:** `docs/superpowers/specs/2026-10-08-claude-kit-design.md`
+**Spec:** `docs/superpowers/specs/2026-10-08-agent-loadout-design.md`
 
 ## Global Constraints
 
-- Repo root: `/home/jonas/Documents/Code/claude-kit`. All paths below are relative to it unless absolute.
-- Always invoke the CLI via `bin/claude-kit` (it imports `claude_kit.__main__` as a module; `python -m claude_kit` would load `__main__` twice and lose subcommand registrations).
-- Python ≥3.10, **stdlib only** in `cli/claude_kit/`. Tests: `uv run --python 3.12 --with pytest pytest -q`.
-- **Every subprocess goes through `claude_kit.runner.run` / `runner.have`**, called as `runner.run(...)` after `from . import runner`. Never use `from .runner import run`: tests monkeypatch the module attribute.
-- Every path comes from `claude_kit.paths` functions, which read `HOME`/`USERPROFILE` at call time. No module-level path constants derived from home.
-- Never delete user data: anything removed is moved into a `Backup` (`cli/claude_kit/backup.py`) with an undo step.
+- Repo root: `/home/jonas/Documents/Code/agent-loadout`. All paths below are relative to it unless absolute.
+- Always invoke the CLI via `bin/loadout` (it imports `loadout.__main__` as a module; `python -m loadout` would load `__main__` twice and lose subcommand registrations).
+- Python ≥3.10, **stdlib only** in `cli/loadout/`. Tests: `uv run --python 3.12 --with pytest pytest -q`.
+- **Every subprocess goes through `loadout.runner.run` / `runner.have`**, called as `runner.run(...)` after `from . import runner`. Never use `from .runner import run`: tests monkeypatch the module attribute.
+- Every path comes from `loadout.paths` functions, which read `HOME`/`USERPROFILE` at call time. No module-level path constants derived from home.
+- Never delete user data: anything removed is moved into a `Backup` (`cli/loadout/backup.py`) with an undo step.
 - JSON written by the kit: 2-space indent, trailing newline, `ensure_ascii=False`.
-- Marketplace name `claude-kit`, plugin `kit-core`, GitHub repo `jonasyr/claude-kit`. Plugin MCP tool prefix `mcp__plugin_kit-core_serena__`.
+- Marketplace name `agent-loadout`, plugin `loadout`, GitHub repo `jonasyr/agent-loadout`. Plugin MCP tool prefix `mcp__plugin_loadout_serena__`.
 - Pinned versions: `@bytebase/dbhub@1.4.0`, `chrome-devtools-mcp@1.10.1`.
-- `kit-core/.claude-plugin/plugin.json` has **no** `version` field.
+- `loadout/.claude-plugin/plugin.json` has **no** `version` field.
 - Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Hooks must exit 0 silently when their binary is missing.
 
@@ -46,7 +46,7 @@
 ### Task 1: Repo skeleton, paths, JSON helpers, runner, test harness
 
 **Files:**
-- Create: `cli/claude_kit/__init__.py`, `cli/claude_kit/paths.py`, `cli/claude_kit/jsonio.py`, `cli/claude_kit/runner.py`, `tests/conftest.py`, `tests/test_jsonio.py`, `pyproject.toml`, `.gitignore`
+- Create: `cli/loadout/__init__.py`, `cli/loadout/paths.py`, `cli/loadout/jsonio.py`, `cli/loadout/runner.py`, `tests/conftest.py`, `tests/test_jsonio.py`, `pyproject.toml`, `.gitignore`
 
 **Interfaces:**
 - Produces:
@@ -60,7 +60,7 @@
 `pyproject.toml`:
 ```toml
 [project]
-name = "claude-kit"
+name = "agent-loadout"
 version = "0.0.0"
 requires-python = ">=3.10"
 
@@ -74,12 +74,12 @@ pythonpath = ["cli"]
 __pycache__/
 .pytest_cache/
 secrets.env
-.claude-kit/
+.loadout/
 ```
 
-`cli/claude_kit/__init__.py`:
+`cli/loadout/__init__.py`:
 ```python
-"""claude-kit: shareable Claude Code setup manager."""
+"""loadout: shareable Claude Code setup manager."""
 ```
 
 - [ ] **Step 2: Write the failing tests**
@@ -88,7 +88,7 @@ secrets.env
 ```python
 import pytest
 
-from claude_kit import runner
+from loadout import runner
 
 
 class FakeRunner:
@@ -116,7 +116,7 @@ def fake_home(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
-    monkeypatch.delenv("CLAUDE_KIT_PERSONAL", raising=False)
+    monkeypatch.delenv("LOADOUT_PERSONAL", raising=False)
     return home
 
 
@@ -130,7 +130,7 @@ def fake_runner(monkeypatch):
 
 @pytest.fixture
 def kit_root():
-    from claude_kit import paths
+    from loadout import paths
     return paths.kit_root()
 ```
 
@@ -138,7 +138,7 @@ def kit_root():
 ```python
 import pytest
 
-from claude_kit import jsonio, paths
+from loadout import jsonio, paths
 
 
 def test_deep_merge_nested_dicts_overlay_wins():
@@ -179,23 +179,23 @@ def test_save_json_format(tmp_path):
 
 def test_paths_follow_home(fake_home):
     assert paths.claude_home() == fake_home / ".claude"
-    assert paths.personal_root() == fake_home / ".config" / "claude-kit" / "personal"
-    assert paths.secrets_file() == fake_home / ".config" / "claude" / "secrets.env"
+    assert paths.personal_root() == fake_home / ".config" / "loadout" / "personal"
+    assert paths.secrets_file() == fake_home / ".config" / "loadout" / "secrets.env"
 
 
 def test_personal_root_env_override(fake_home, monkeypatch, tmp_path):
-    monkeypatch.setenv("CLAUDE_KIT_PERSONAL", str(tmp_path / "p"))
+    monkeypatch.setenv("LOADOUT_PERSONAL", str(tmp_path / "p"))
     assert paths.personal_root() == tmp_path / "p"
 ```
 
 - [ ] **Step 3: Run tests to verify they fail**
 
 Run: `uv run --python 3.12 --with pytest pytest -q`
-Expected: FAIL / errors with `ModuleNotFoundError: claude_kit.jsonio` (or `runner`).
+Expected: FAIL / errors with `ModuleNotFoundError: loadout.jsonio` (or `runner`).
 
 - [ ] **Step 4: Implement**
 
-`cli/claude_kit/paths.py`:
+`cli/loadout/paths.py`:
 ```python
 """Filesystem locations. Everything derives from HOME at call time so tests can redirect it."""
 from __future__ import annotations
@@ -207,7 +207,7 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 
 
 def kit_root() -> Path:
-    env = os.environ.get("CLAUDE_KIT_ROOT")
+    env = os.environ.get("LOADOUT_ROOT")
     return Path(env).expanduser().resolve() if env else PACKAGE_DIR.parent.parent
 
 
@@ -224,7 +224,7 @@ def claude_json() -> Path:
 
 
 def state_dir() -> Path:
-    return claude_home() / ".claude-kit"
+    return claude_home() / ".loadout"
 
 
 def backups_root() -> Path:
@@ -232,12 +232,12 @@ def backups_root() -> Path:
 
 
 def personal_root() -> Path:
-    env = os.environ.get("CLAUDE_KIT_PERSONAL")
-    return Path(env).expanduser() if env else home() / ".config" / "claude-kit" / "personal"
+    env = os.environ.get("LOADOUT_PERSONAL")
+    return Path(env).expanduser() if env else home() / ".config" / "loadout" / "personal"
 
 
 def secrets_file() -> Path:
-    return home() / ".config" / "claude" / "secrets.env"
+    return home() / ".config" / "loadout" / "secrets.env"
 
 
 def bin_dir() -> Path:
@@ -248,7 +248,7 @@ def platform_key() -> str:
     return "windows" if os.name == "nt" else "posix"
 ```
 
-`cli/claude_kit/jsonio.py`:
+`cli/loadout/jsonio.py`:
 ```python
 """JSON load/save and deep merge."""
 from __future__ import annotations
@@ -292,9 +292,9 @@ def deep_merge(base: Any, overlay: Any) -> Any:
     return copy.deepcopy(overlay)
 ```
 
-`cli/claude_kit/runner.py`:
+`cli/loadout/runner.py`:
 ```python
-"""The single place where claude-kit runs external commands (tests replace run/have)."""
+"""The single place where loadout runs external commands (tests replace run/have)."""
 from __future__ import annotations
 
 import shutil
@@ -347,7 +347,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: Three-way settings merge
 
 **Files:**
-- Create: `cli/claude_kit/settings_merge.py`, `tests/test_settings_merge.py`
+- Create: `cli/loadout/settings_merge.py`, `tests/test_settings_merge.py`
 
 **Interfaces:**
 - Consumes: `jsonio.load_json/save_json/deep_merge/InvalidJSON`, `paths.kit_root/personal_root/claude_home/state_dir`
@@ -366,14 +366,14 @@ import json
 
 import pytest
 
-from claude_kit import jsonio, settings_merge as sm
+from loadout import jsonio, settings_merge as sm
 
 
 def test_adds_desired_keys_and_keeps_user_keys():
     current = {"model": "opus", "enabledPlugins": {"mine@x": True}}
-    desired = {"enabledPlugins": {"kit-core@claude-kit": True}}
+    desired = {"enabledPlugins": {"loadout@agent-loadout": True}}
     out = sm.merge_settings(current, desired, {})
-    assert out == {"model": "opus", "enabledPlugins": {"mine@x": True, "kit-core@claude-kit": True}}
+    assert out == {"model": "opus", "enabledPlugins": {"mine@x": True, "loadout@agent-loadout": True}}
 
 
 def test_removes_value_the_kit_dropped_when_unchanged_by_user():
@@ -409,46 +409,46 @@ def _write(path, data):
 
 def test_apply_settings_writes_result_and_snapshot(fake_home, monkeypatch, tmp_path):
     kit = tmp_path / "kit"
-    _write(kit / "settings.base.json", {"enabledPlugins": {"kit-core@claude-kit": True}})
-    _write(fake_home / ".config/claude-kit/personal/settings.json", {"effortLevel": "medium"})
+    _write(kit / "settings.base.json", {"enabledPlugins": {"loadout@agent-loadout": True}})
+    _write(fake_home / ".config/loadout/personal/settings.json", {"effortLevel": "medium"})
     _write(fake_home / ".claude/settings.json", {"model": "opus"})
-    monkeypatch.setenv("CLAUDE_KIT_ROOT", str(kit))
+    monkeypatch.setenv("LOADOUT_ROOT", str(kit))
     before, after = sm.apply_settings()
     assert before == {"model": "opus"}
-    assert after == {"model": "opus", "enabledPlugins": {"kit-core@claude-kit": True}, "effortLevel": "medium"}
-    snap = jsonio.load_json(fake_home / ".claude/.claude-kit/managed-settings.json")
-    assert snap == {"enabledPlugins": {"kit-core@claude-kit": True}, "effortLevel": "medium"}
+    assert after == {"model": "opus", "enabledPlugins": {"loadout@agent-loadout": True}, "effortLevel": "medium"}
+    snap = jsonio.load_json(fake_home / ".claude/.loadout/managed-settings.json")
+    assert snap == {"enabledPlugins": {"loadout@agent-loadout": True}, "effortLevel": "medium"}
 
 
 def test_apply_settings_refuses_invalid_json_and_writes_nothing(fake_home, monkeypatch, tmp_path):
     kit = tmp_path / "kit"
     _write(kit / "settings.base.json", {"a": 1})
-    monkeypatch.setenv("CLAUDE_KIT_ROOT", str(kit))
+    monkeypatch.setenv("LOADOUT_ROOT", str(kit))
     target = fake_home / ".claude/settings.json"
     target.parent.mkdir(parents=True)
     target.write_text("{ broken")
     with pytest.raises(jsonio.InvalidJSON):
         sm.apply_settings()
     assert target.read_text() == "{ broken"
-    assert not (fake_home / ".claude/.claude-kit/managed-settings.json").exists()
+    assert not (fake_home / ".claude/.loadout/managed-settings.json").exists()
 
 
 def test_drift_lists_paths_differing_from_desired(fake_home, monkeypatch, tmp_path):
     kit = tmp_path / "kit"
     _write(kit / "settings.base.json", {"enabledPlugins": {"a@m": True, "b@m": True}, "permissions": {"allow": ["X"]}})
     _write(fake_home / ".claude/settings.json", {"enabledPlugins": {"a@m": True, "b@m": False}, "permissions": {"allow": ["X", "Y"]}})
-    monkeypatch.setenv("CLAUDE_KIT_ROOT", str(kit))
+    monkeypatch.setenv("LOADOUT_ROOT", str(kit))
     assert sm.drift() == ["enabledPlugins/b@m"]
 ```
 
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_settings_merge.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.settings_merge`.
+Expected: FAIL with `ModuleNotFoundError: loadout.settings_merge`.
 
 - [ ] **Step 3: Implement**
 
-`cli/claude_kit/settings_merge.py`:
+`cli/loadout/settings_merge.py`:
 ```python
 """Three-way merge of kit-managed keys into ~/.claude/settings.json (spec §6.3).
 
@@ -598,7 +598,7 @@ import json
 import re
 import subprocess
 
-from claude_kit import paths
+from loadout import paths
 
 ROOT = paths.kit_root()
 STATUSES = {"core", "profile", "superseded", "deprecated", "recommended", "alternative", "system", "review"}
@@ -692,12 +692,12 @@ Expected: FAIL (`FileNotFoundError: settings.base.json` etc.).
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "extraKnownMarketplaces": {
-    "claude-kit": { "source": { "source": "github", "repo": "jonasyr/claude-kit" }, "autoUpdate": true },
+    "agent-loadout": { "source": { "source": "github", "repo": "jonasyr/agent-loadout" }, "autoUpdate": true },
     "impeccable": { "source": { "source": "github", "repo": "pbakaus/impeccable" }, "autoUpdate": true },
     "academic-research-skills": { "source": { "source": "github", "repo": "Imbad0202/academic-research-skills" }, "autoUpdate": true }
   },
   "enabledPlugins": {
-    "kit-core@claude-kit": true,
+    "loadout@agent-loadout": true,
     "superpowers@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
     "impeccable@impeccable": true,
@@ -715,7 +715,7 @@ Expected: FAIL (`FileNotFoundError: settings.base.json` etc.).
 
 `rules/tooling.md`:
 ```markdown
-# Tool routing (claude-kit)
+# Tool routing (loadout)
 
 Pick the tool by the question, not by habit:
 
@@ -734,7 +734,7 @@ Before ending a task that touched UI, verify it in a browser with playwright-cli
 
 `rules/docs-policy.md`:
 ```markdown
-# Documentation layers (claude-kit)
+# Documentation layers (loadout)
 
 Every fact has exactly one home. Other layers link to it instead of copying it.
 
@@ -745,12 +745,12 @@ Every fact has exactly one home. Other layers link to it instead of copying it.
 | `.serena/memories/` | Agent working notes: per topic a 1–3 line summary plus a link into `docs/`; gotchas; debugging lessons; "to do X, touch these files"; current status | Never the only home of a fact a human would need |
 | `README.md` | What the project is, how to install and run it | Human entry point; links into `docs/` |
 
-When you change behaviour, update the layer that owns the fact (usually `docs/`), then fix links. At the end of a feature, run `/kit-core:docs-sync`. For a full verification and cleanup, run `/kit-core:docs-audit`.
+When you change behaviour, update the layer that owns the fact (usually `docs/`), then fix links. At the end of a feature, run `/loadout:docs-sync`. For a full verification and cleanup, run `/loadout:docs-audit`.
 ```
 
 `rules/memory-policy.md`:
 ```markdown
-# Memory policy (claude-kit)
+# Memory policy (loadout)
 
 | Store | Use for | Never use for |
 |---|---|---|
@@ -764,19 +764,19 @@ When Serena onboarding writes memories, keep each one a short summary plus links
 
 `rules/workflow.md`:
 ```markdown
-# Workflow (claude-kit)
+# Workflow (loadout)
 
 - Use the superpowers process skills: brainstorming before building, writing-plans for multi-step work, systematic-debugging for bugs, verification-before-completion before claiming success.
 - One review pass per change: either `/code-review` or superpowers requesting-code-review, not both. Run `/security-review` before merging security-relevant changes (auth, input handling, secrets, network exposure).
 - UI loop: frontend-design for direction → build → playwright-cli (render at 320, 768 and 1280 px wide, exercise the main flows, read the console) → `/impeccable audit` then `/impeccable polish`. UI is not done until it was checked in a browser.
-- At the end of a feature run `/kit-core:docs-sync`.
-- Domain tools (academic research, SonarQube, databases, Android) are enabled per project with `claude-kit profile <name>`; do not install them globally.
-- New repo or repo without AGENTS.md: suggest `claude-kit init` and `/kit-core:onboard`.
+- At the end of a feature run `/loadout:docs-sync`.
+- Domain tools (academic research, SonarQube, databases, Android) are enabled per project with `loadout profile <name>`; do not install them globally.
+- New repo or repo without AGENTS.md: suggest `loadout init` and `/loadout:onboard`.
 ```
 
 `rules/rtk.md` (content of the current `~/.claude/RTK.md`, generalized):
 ```markdown
-# rtk (claude-kit)
+# rtk (loadout)
 
 Applies only when the `rtk` command exists. rtk is a token-optimizing CLI proxy; a hook rewrites shell commands through it automatically.
 
@@ -829,7 +829,7 @@ Applies only when the `rtk` command exists. rtk is a token-optimizing CLI proxy;
       }
     }
   },
-  "notes": "Set DATABASE_URL in your shell or ~/.config/claude/secrets.env. Use a read-only database user."
+  "notes": "Set DATABASE_URL in your shell or ~/.config/loadout/secrets.env. Use a read-only database user."
 }
 ```
 
@@ -862,7 +862,7 @@ Applies only when the `rtk` command exists. rtk is a token-optimizing CLI proxy;
 ```markdown
 # {{PROJECT_NAME}}
 
-> Agent entry point. Keep it short: facts live in `docs/`; this file maps them. Run `/kit-core:onboard` to fill it in.
+> Agent entry point. Keep it short: facts live in `docs/`; this file maps them. Run `/loadout:onboard` to fill it in.
 
 ## Purpose
 
@@ -926,7 +926,7 @@ One file per decision: `NNNN-short-title.md` with the sections Context, Decision
 
 `secrets.env.example`:
 ```
-# Copied to ~/.config/claude/secrets.env (mode 600) by claude-kit bootstrap.
+# Copied to ~/.config/loadout/secrets.env (mode 600) by loadout bootstrap.
 # Loaded by your shell; reference values in MCP configs as ${NAME}.
 # DATABASE_URL=postgres://readonly:password@localhost:5432/app
 # SONAR_TOKEN=
@@ -943,10 +943,10 @@ One file per decision: `NNNN-short-title.md` with the sections Context, Decision
       "update": { "posix": [["uv", "self", "update"]], "windows": [["uv", "self", "update"]] } },
     { "id": "node", "kind": "binary", "status": "core", "required": true, "match": { "names": ["node"] }, "reason": "Runs npx-based MCP servers, LSP servers and playwright-cli.", "version": { "cmd": ["node", "--version"] }, "manual": "Install Node.js LTS (e.g. via mise, nvm or your package manager)." },
     { "id": "gh", "kind": "binary", "status": "core", "required": true, "match": { "names": ["gh"] }, "reason": "GitHub access; credentials for private marketplace updates. Preferred over a GitHub MCP server.", "version": { "cmd": ["gh", "--version"], "github": "cli/cli" }, "manual": "Install GitHub CLI, then `gh auth login` and `gh auth setup-git`." },
-    { "id": "serena", "kind": "binary", "status": "core", "required": true, "match": { "names": ["serena"] }, "reason": "LSP-backed symbolic code navigation and editing (MCP server provided by kit-core).", "version": { "cmd": ["serena", "--version"], "github": "oraios/serena" },
+    { "id": "serena", "kind": "binary", "status": "core", "required": true, "match": { "names": ["serena"] }, "reason": "LSP-backed symbolic code navigation and editing (MCP server provided by loadout).", "version": { "cmd": ["serena", "--version"], "github": "oraios/serena" },
       "install": { "posix": [["uv", "tool", "install", "-p", "3.12", "serena-agent"]], "windows": [["uv", "tool", "install", "-p", "3.12", "serena-agent"]] },
       "update": { "posix": [["uv", "tool", "upgrade", "serena-agent"]], "windows": [["uv", "tool", "upgrade", "serena-agent"]] } },
-    { "id": "codebase-memory-mcp", "kind": "binary", "status": "core", "required": true, "match": { "names": ["codebase-memory-mcp"] }, "reason": "Code knowledge graph for structure and call-chain questions (MCP server provided by kit-core).", "version": { "cmd": ["codebase-memory-mcp", "--version"], "github": "DeusData/codebase-memory-mcp" },
+    { "id": "codebase-memory-mcp", "kind": "binary", "status": "core", "required": true, "match": { "names": ["codebase-memory-mcp"] }, "reason": "Code knowledge graph for structure and call-chain questions (MCP server provided by loadout).", "version": { "cmd": ["codebase-memory-mcp", "--version"], "github": "DeusData/codebase-memory-mcp" },
       "install": { "posix": [["sh", "-c", "curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash"]] },
       "update": { "posix": [["codebase-memory-mcp", "update", "-y"]], "windows": [["codebase-memory-mcp", "update", "-y"]] },
       "manual": "Windows: download the release archive from https://github.com/DeusData/codebase-memory-mcp/releases and run its install.ps1." },
@@ -965,8 +965,8 @@ One file per decision: `NNNN-short-title.md` with the sections Context, Decision
       "update": { "posix": [["npm", "install", "-g", "typescript-language-server@latest", "typescript@latest"]], "windows": [["npm", "install", "-g", "typescript-language-server@latest", "typescript@latest"]] } },
     { "id": "rust-analyzer", "kind": "binary", "status": "recommended", "match": { "names": ["rust-analyzer"] }, "reason": "Language server for the rust-analyzer-lsp plugin.", "version": { "cmd": ["rust-analyzer", "--version"] }, "manual": "Install with `rustup component add rust-analyzer` or your package manager." },
 
-    { "id": "mcp-serena", "kind": "mcp", "status": "core", "match": { "names": ["serena"], "contains": ["start-mcp-server"] }, "reason": "kit-core provides the Serena MCP server; a user-level copy duplicates it." },
-    { "id": "mcp-codebase-memory", "kind": "mcp", "status": "core", "match": { "names": ["codebase-memory-mcp", "codebase-memory"] }, "reason": "kit-core provides the codebase-memory MCP server; a user-level copy duplicates it." },
+    { "id": "mcp-serena", "kind": "mcp", "status": "core", "match": { "names": ["serena"], "contains": ["start-mcp-server"] }, "reason": "loadout provides the Serena MCP server; a user-level copy duplicates it." },
+    { "id": "mcp-codebase-memory", "kind": "mcp", "status": "core", "match": { "names": ["codebase-memory-mcp", "codebase-memory"] }, "reason": "loadout provides the codebase-memory MCP server; a user-level copy duplicates it." },
     { "id": "mcp-context7", "kind": "mcp", "status": "core", "match": { "names": ["context7"], "contains": ["mcp.context7.com", "@upstash/context7-mcp"] }, "reason": "The official context7 plugin (enabled by the kit) provides it." },
     { "id": "mcp-github-reference", "kind": "mcp", "status": "superseded", "by": "gh CLI", "match": { "names": ["github-server"], "contains": ["@modelcontextprotocol/server-github"] }, "reason": "Archived reference server; the gh CLI is cheaper in context and well known to the model." },
     { "id": "mcp-sequential-thinking", "kind": "mcp", "status": "superseded", "by": "native extended thinking", "match": { "names": ["sequential-thinking"], "contains": ["server-sequential-thinking"] }, "reason": "Current models think natively; the server only adds tool overhead." },
@@ -982,7 +982,7 @@ One file per decision: `NNNN-short-title.md` with the sections Context, Decision
     { "id": "plugin-auto-memory", "kind": "plugin", "status": "superseded", "by": "native auto memory + docs model", "match": { "names": ["auto-memory@severity1-marketplace"] }, "reason": "Runs a memory-updater agent after most turns and rewrites CLAUDE.md; duplicates native memory." },
     { "id": "plugin-claude-mem", "kind": "plugin", "status": "superseded", "by": "native auto memory + docs model", "match": { "contains": ["claude-mem"] }, "reason": "AI-compresses every tool observation (ongoing cost, data may leave the machine)." },
     { "id": "plugin-cct-testing-suite", "kind": "plugin", "status": "superseded", "by": "superpowers TDD + built-in review", "match": { "names": ["testing-suite@claude-code-templates"] }, "reason": "Unversioned snapshot from 2025, never updated." },
-    { "id": "plugin-cct-documentation-generator", "kind": "plugin", "status": "superseded", "by": "kit-core docs-sync/docs-audit", "match": { "names": ["documentation-generator@claude-code-templates"] }, "reason": "Unversioned snapshot of a whole repo; generic agents." },
+    { "id": "plugin-cct-documentation-generator", "kind": "plugin", "status": "superseded", "by": "loadout docs-sync/docs-audit", "match": { "names": ["documentation-generator@claude-code-templates"] }, "reason": "Unversioned snapshot of a whole repo; generic agents." },
     { "id": "plugin-code-review", "kind": "plugin", "status": "superseded", "by": "built-in /code-review", "match": { "names": ["code-review@claude-plugins-official", "pr-review-toolkit@claude-plugins-official"] }, "reason": "Built-in /code-review covers it." },
     { "id": "plugin-sonarqube", "kind": "plugin", "status": "profile", "profile": "sonar", "match": { "names": ["sonarqube@claude-plugins-official"] }, "reason": "Adds a 30s SessionStart hook and ~10 skills to every session; enable per project." },
     { "id": "plugin-ars", "kind": "plugin", "status": "profile", "profile": "thesis", "match": { "names": ["academic-research-skills@academic-research-skills"] }, "reason": "About 25 skill/command descriptions in every session; enable in research repos." },
@@ -996,9 +996,9 @@ One file per decision: `NNNN-short-title.md` with the sections Context, Decision
     { "id": "skill-codebase-memory", "kind": "skill", "status": "core", "match": { "names": ["codebase-memory"] }, "reason": "Installed by codebase-memory-mcp; kit rules cover tool routing." },
 
     { "id": "hook-serena-remind", "kind": "hook", "status": "deprecated", "match": { "contains": ["serena-hooks remind"] }, "reason": "Fires on every tool call; kit rules route tools instead." },
-    { "id": "hook-serena", "kind": "hook", "status": "core", "match": { "contains": ["serena-hooks activate", "serena-hooks cleanup", "serena-hooks auto-approve"] }, "reason": "kit-core provides these hooks." },
-    { "id": "hook-rtk", "kind": "hook", "status": "core", "match": { "contains": ["rtk hook"] }, "reason": "kit-core provides the rtk hook." },
-    { "id": "hook-codebase-memory", "kind": "hook", "status": "core", "match": { "contains": ["cbm-code-discovery-gate", "cbm-session-reminder", "cbm-subagent-reminder", "codebase-memory-mcp hook"] }, "reason": "kit-core provides the codebase-memory hooks (with rule-aligned wording)." },
+    { "id": "hook-serena", "kind": "hook", "status": "core", "match": { "contains": ["serena-hooks activate", "serena-hooks cleanup", "serena-hooks auto-approve"] }, "reason": "loadout provides these hooks." },
+    { "id": "hook-rtk", "kind": "hook", "status": "core", "match": { "contains": ["rtk hook"] }, "reason": "loadout provides the rtk hook." },
+    { "id": "hook-codebase-memory", "kind": "hook", "status": "core", "match": { "contains": ["cbm-code-discovery-gate", "cbm-session-reminder", "cbm-subagent-reminder", "codebase-memory-mcp hook"] }, "reason": "loadout provides the codebase-memory hooks (with rule-aligned wording)." },
     { "id": "hook-auto-memory", "kind": "hook", "status": "superseded", "by": "native auto memory + docs model", "match": { "contains": ["auto-memory/"] }, "reason": "Belongs to the superseded auto-memory plugin." },
     { "id": "hook-sonar-secrets", "kind": "hook", "status": "profile", "profile": "sonar", "match": { "contains": ["sonar-secrets"] }, "reason": "Global 60s secret-scan hooks on every Read and prompt; install per repo with `sonar integrate`." }
   ]
@@ -1024,7 +1024,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 4: Profiles, detection, scaffolding, `init`/`profile` commands, CLI entry point
 
 **Files:**
-- Create: `cli/claude_kit/profiles.py`, `cli/claude_kit/detect.py`, `cli/claude_kit/scaffold.py`, `cli/claude_kit/project.py`, `cli/claude_kit/__main__.py`, `bin/claude-kit`, `bin/claude-kit.cmd`, `tests/test_project.py`
+- Create: `cli/loadout/profiles.py`, `cli/loadout/detect.py`, `cli/loadout/scaffold.py`, `cli/loadout/project.py`, `cli/loadout/__main__.py`, `bin/loadout`, `bin/loadout.cmd`, `tests/test_project.py`
 
 **Interfaces:**
 - Consumes: `jsonio`, `paths`, `runner`
@@ -1041,7 +1041,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```python
 import json
 
-from claude_kit import detect, profiles, project, scaffold
+from loadout import detect, profiles, project, scaffold
 
 
 def test_detect_profiles(tmp_path):
@@ -1075,7 +1075,7 @@ def test_apply_profile_merges_and_is_idempotent(tmp_path):
 
 
 def test_personal_profile_overrides_kit(fake_home, tmp_path):
-    pdir = fake_home / ".config/claude-kit/personal/profiles"
+    pdir = fake_home / ".config/loadout/personal/profiles"
     pdir.mkdir(parents=True)
     (pdir / "web.json").write_text(json.dumps({"description": "mine"}))
     assert profiles.load_profile("web").description == "mine"
@@ -1145,11 +1145,11 @@ def test_init_offers_git_init(tmp_path, fake_runner):
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_project.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.detect`.
+Expected: FAIL with `ModuleNotFoundError: loadout.detect`.
 
 - [ ] **Step 3: Implement**
 
-`cli/claude_kit/profiles.py`:
+`cli/loadout/profiles.py`:
 ```python
 """Per-project profiles: settings/.mcp.json fragments plus plugins to install."""
 from __future__ import annotations
@@ -1214,7 +1214,7 @@ def apply_profile(profile: Profile, project: Path) -> list[Path]:
     return changed
 ```
 
-`cli/claude_kit/detect.py`:
+`cli/loadout/detect.py`:
 ```python
 """Suggest profiles from files in a project."""
 from __future__ import annotations
@@ -1260,7 +1260,7 @@ def detect_profiles(project: Path) -> list[str]:
     return found
 ```
 
-`cli/claude_kit/scaffold.py`:
+`cli/loadout/scaffold.py`:
 ```python
 """Create missing project files from templates/project; never overwrite."""
 from __future__ import annotations
@@ -1284,7 +1284,7 @@ def scaffold(project: Path, dry_run: bool = False) -> tuple[list[Path], list[str
     notes = []
     if (project / "CLAUDE.md").exists() and not (project / "AGENTS.md").exists():
         skip = {"AGENTS.md", "CLAUDE.md"}
-        notes.append("CLAUDE.md exists without AGENTS.md: /kit-core:onboard will offer to migrate it.")
+        notes.append("CLAUDE.md exists without AGENTS.md: /loadout:onboard will offer to migrate it.")
     created = []
     for src in sorted(templates.rglob("*")):
         if src.is_dir():
@@ -1308,14 +1308,14 @@ def ensure_gitignore(project: Path, dry_run: bool = False) -> list[str]:
     if missing and not dry_run:
         if text and not text.endswith("\n"):
             text += "\n"
-        text += "# claude-kit\n" + "\n".join(missing) + "\n"
+        text += "# loadout\n" + "\n".join(missing) + "\n"
         path.write_text(text, encoding="utf-8")
     return missing
 ```
 
-`cli/claude_kit/project.py`:
+`cli/loadout/project.py`:
 ```python
-"""`claude-kit init` and `claude-kit profile`."""
+"""`loadout init` and `loadout profile`."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -1381,13 +1381,13 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         print(("would add to .gitignore: " if dry_run else "added to .gitignore: ") + line)
     for note in notes:
         print(f"note: {note}")
-    print("next: start Claude Code here and run /kit-core:onboard")
+    print("next: start Claude Code here and run /loadout:onboard")
     return 0
 ```
 
-`cli/claude_kit/__main__.py`:
+`cli/loadout/__main__.py`:
 ```python
-"""claude-kit command line."""
+"""loadout command line."""
 from __future__ import annotations
 
 import argparse
@@ -1406,7 +1406,7 @@ def _ask(question: str) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="claude-kit")
+    parser = argparse.ArgumentParser(prog="loadout")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("init", help="set up the current project")
@@ -1436,7 +1436,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args) or 0)
     except (InvalidJSON, ValueError) as exc:
-        print(f"claude-kit: {exc}", file=sys.stderr)
+        print(f"loadout: {exc}", file=sys.stderr)
         return 1
 
 
@@ -1444,35 +1444,35 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-Create `cli/claude_kit/commands.py`. Later tasks add their subcommands here:
+Create `cli/loadout/commands.py`. Later tasks add their subcommands here:
 ```python
 """Registers subcommands implemented in other modules (kept separate to avoid import cycles)."""
 from .__main__ import EXTRA_COMMANDS  # noqa: F401
 ```
 
-`bin/claude-kit`:
+`bin/loadout`:
 ```python
 #!/usr/bin/env python3
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "cli"))
-from claude_kit.__main__ import main  # noqa: E402
+from loadout.__main__ import main  # noqa: E402
 
 sys.exit(main())
 ```
 
-`bin/claude-kit.cmd`:
+`bin/loadout.cmd`:
 ```
 @echo off
-python "%~dp0claude-kit" %*
+python "%~dp0loadout" %*
 ```
 
-Then: `chmod +x bin/claude-kit`.
+Then: `chmod +x bin/loadout`.
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `uv run --python 3.12 --with pytest pytest -q tests/test_project.py && ./bin/claude-kit init --help`
+Run: `uv run --python 3.12 --with pytest pytest -q tests/test_project.py && ./bin/loadout init --help`
 Expected: tests PASS; help lists `profiles`, `--yes`, `--no-install`, `--dry-run`.
 
 - [ ] **Step 5: Commit**
@@ -1489,8 +1489,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 5: Backups/restore and linking (rules dirs, bin shims, copy fallback)
 
 **Files:**
-- Create: `cli/claude_kit/backup.py`, `cli/claude_kit/link.py`, `tests/test_link_backup.py`
-- Modify: `cli/claude_kit/commands.py`
+- Create: `cli/loadout/backup.py`, `cli/loadout/link.py`, `tests/test_link_backup.py`
+- Modify: `cli/loadout/commands.py`
 
 **Interfaces:**
 - Consumes: `paths`, `jsonio`, `runner`
@@ -1499,7 +1499,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `backup.restore(root: Path) -> list[str]`
   - `link.LINKS() -> list[tuple[Path, Path]]` (dest, src)
   - `link.link_all(bk: Backup) -> list[str]`, `link.link_bin(bk: Backup) -> list[str]`, `link.is_copy_mode() -> bool`
-  - CLI `claude-kit restore <dir>`
+  - CLI `loadout restore <dir>`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1509,7 +1509,7 @@ import os
 
 import pytest
 
-from claude_kit import backup, link, paths
+from loadout import backup, link, paths
 
 
 def test_backup_move_and_restore_roundtrip(fake_home):
@@ -1551,7 +1551,7 @@ def test_link_all_creates_symlinks_and_is_idempotent(fake_home):
     _personal(fake_home)
     bk = backup.Backup()
     actions = link.link_all(bk)
-    assert (fake_home / ".claude/rules/kit/tooling.md").exists()
+    assert (fake_home / ".claude/rules/loadout/tooling.md").exists()
     assert (fake_home / ".claude/rules/personal/me.md").read_text() == "me"
     assert any("linked" in a for a in actions)
     assert link.link_all(backup.Backup()) == []
@@ -1578,7 +1578,7 @@ def test_copy_fallback_when_symlinks_unavailable(fake_home, monkeypatch):
     monkeypatch.setattr(os, "symlink", no_symlink)
     link.link_all(backup.Backup())
     assert link.is_copy_mode()
-    assert (fake_home / ".claude/rules/kit/tooling.md").exists()
+    assert (fake_home / ".claude/rules/loadout/tooling.md").exists()
     assert not (fake_home / ".claude/rules/kit").is_symlink()
     # re-running in copy mode refreshes without creating backups
     bk = backup.Backup()
@@ -1590,31 +1590,31 @@ def test_link_bin_posix_symlink(fake_home):
     if os.name == "nt":
         pytest.skip("posix only")
     link.link_bin(backup.Backup())
-    target = fake_home / ".local/bin/claude-kit"
+    target = fake_home / ".local/bin/loadout"
     assert target.is_symlink()
-    assert target.resolve() == (paths.kit_root() / "bin/claude-kit").resolve()
+    assert target.resolve() == (paths.kit_root() / "bin/loadout").resolve()
 
 
 def test_windows_shims_quote_paths_with_spaces(fake_home, monkeypatch, tmp_path):
-    kit = tmp_path / "Max Mustermann" / "claude-kit"
+    kit = tmp_path / "Max Mustermann" / "loadout"
     (kit / "bin").mkdir(parents=True)
-    (kit / "bin/claude-kit").write_text("")
-    monkeypatch.setenv("CLAUDE_KIT_ROOT", str(kit))
+    (kit / "bin/loadout").write_text("")
+    monkeypatch.setenv("LOADOUT_ROOT", str(kit))
     link.write_windows_shims(fake_home / ".local/bin")
-    cmd = (fake_home / ".local/bin/claude-kit.cmd").read_text()
-    sh = (fake_home / ".local/bin/claude-kit").read_text()
-    assert f'"{kit / "bin" / "claude-kit"}"' in cmd
-    assert f'"{(kit / "bin" / "claude-kit").as_posix()}"' in sh
+    cmd = (fake_home / ".local/bin/loadout.cmd").read_text()
+    sh = (fake_home / ".local/bin/loadout").read_text()
+    assert f'"{kit / "bin" / "loadout"}"' in cmd
+    assert f'"{(kit / "bin" / "loadout").as_posix()}"' in sh
 ```
 
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_link_backup.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.backup`.
+Expected: FAIL with `ModuleNotFoundError: loadout.backup`.
 
 - [ ] **Step 3: Implement**
 
-`cli/claude_kit/backup.py`:
+`cli/loadout/backup.py`:
 ```python
 """Timestamped backups with an undo manifest; nothing the kit removes is ever deleted."""
 from __future__ import annotations
@@ -1629,7 +1629,7 @@ from .jsonio import load_json, save_json
 
 class Backup:
     def __init__(self, root: Path | None = None):
-        self.root = root or paths.backups_root() / time.strftime("claude-kit-%Y%m%d-%H%M%S")
+        self.root = root or paths.backups_root() / time.strftime("loadout-%Y%m%d-%H%M%S")
         self.steps: list[dict] = []
 
     @property
@@ -1684,9 +1684,9 @@ def restore(root: Path) -> list[str]:
     return done
 ```
 
-`cli/claude_kit/link.py`:
+`cli/loadout/link.py`:
 ```python
-"""Link kit/personal rules into ~/.claude/rules and put claude-kit on PATH."""
+"""Link kit/personal rules into ~/.claude/rules and put loadout on PATH."""
 from __future__ import annotations
 
 import os
@@ -1700,7 +1700,7 @@ from .backup import Backup
 def LINKS() -> list[tuple[Path, Path]]:
     rules = paths.claude_home() / "rules"
     return [
-        (rules / "kit", paths.kit_root() / "rules"),
+        (rules / "loadout", paths.kit_root() / "rules"),
         (rules / "personal", paths.personal_root() / "rules"),
     ]
 
@@ -1752,11 +1752,11 @@ def link_all(bk: Backup) -> list[str]:
 
 
 def write_windows_shims(target_dir: Path) -> None:
-    script = paths.kit_root() / "bin" / "claude-kit"
+    script = paths.kit_root() / "bin" / "loadout"
     target_dir.mkdir(parents=True, exist_ok=True)
-    (target_dir / "claude-kit.cmd").write_text(f'@echo off\r\npython "{script}" %*\r\n', encoding="utf-8")
+    (target_dir / "loadout.cmd").write_text(f'@echo off\r\npython "{script}" %*\r\n', encoding="utf-8")
     # Git Bash (used for hooks on Windows) runs extensionless scripts
-    (target_dir / "claude-kit").write_text(f'#!/bin/sh\nexec python "{script.as_posix()}" "$@"\n', encoding="utf-8")
+    (target_dir / "loadout").write_text(f'#!/bin/sh\nexec python "{script.as_posix()}" "$@"\n', encoding="utf-8")
 
 
 def link_bin(bk: Backup) -> list[str]:
@@ -1764,11 +1764,11 @@ def link_bin(bk: Backup) -> list[str]:
     if os.name == "nt":
         write_windows_shims(target_dir)
         return [f"wrote shims to {target_dir} (make sure it is on PATH)"]
-    action = _link_one(target_dir / "claude-kit", paths.kit_root() / "bin" / "claude-kit", bk)
+    action = _link_one(target_dir / "loadout", paths.kit_root() / "bin" / "loadout", bk)
     return [action] if action else []
 ```
 
-Append to `cli/claude_kit/commands.py`:
+Append to `cli/loadout/commands.py`:
 ```python
 from pathlib import Path
 
@@ -1776,7 +1776,7 @@ from . import backup
 
 
 def _register_restore(sub):
-    p = sub.add_parser("restore", help="undo a claude-kit backup")
+    p = sub.add_parser("restore", help="undo a loadout backup")
     p.add_argument("backup_dir")
 
     def run(args):
@@ -1809,7 +1809,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 6: Catalog matching, inventory, classification, secret scan
 
 **Files:**
-- Create: `cli/claude_kit/catalog.py`, `cli/claude_kit/inventory.py`, `cli/claude_kit/secrets.py`, `cli/claude_kit/versions.py`, `tests/fixtures.py`, `tests/test_inventory.py`
+- Create: `cli/loadout/catalog.py`, `cli/loadout/inventory.py`, `cli/loadout/secrets.py`, `cli/loadout/versions.py`, `tests/fixtures.py`, `tests/test_inventory.py`
 
 **Interfaces:**
 - Consumes: `paths`, `jsonio`, `runner`, `settings_merge.desired_settings`
@@ -1887,7 +1887,7 @@ def author_machine(home: Path) -> None:
 ```python
 import pytest
 
-from claude_kit import catalog, inventory, secrets, versions
+from loadout import catalog, inventory, secrets, versions
 from fixtures import FAKE_DEVIN, FAKE_PAT, author_machine
 
 
@@ -1963,7 +1963,7 @@ def test_versions_parse_and_offline(monkeypatch):
 
 
 def test_binary_outdated_and_missing(fake_home, fake_runner, monkeypatch):
-    from claude_kit import runner
+    from loadout import runner
     fake_runner.responses[("serena", "--version")] = runner.Result(0, "Serena 1.7.0", "")
     fake_runner.missing.add("codebase-memory-mcp")
     monkeypatch.setattr(versions, "latest_version", lambda e: (1, 8, 0) if e["id"] == "serena" else None)
@@ -1990,11 +1990,11 @@ def test_secret_scan_finds_env_and_args():
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_inventory.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.catalog`.
+Expected: FAIL with `ModuleNotFoundError: loadout.catalog`.
 
 - [ ] **Step 3: Implement**
 
-`cli/claude_kit/catalog.py`:
+`cli/loadout/catalog.py`:
 ```python
 """Tool knowledge from catalog.json."""
 from __future__ import annotations
@@ -2032,7 +2032,7 @@ def platform_cmds(entry: dict, key: str) -> list[list[str]]:
     return entry.get(key, {}).get(paths.platform_key(), [])
 ```
 
-`cli/claude_kit/versions.py`:
+`cli/loadout/versions.py`:
 ```python
 """Installed vs latest versions of catalog binaries. Every network failure means 'unknown'."""
 from __future__ import annotations
@@ -2055,7 +2055,7 @@ def local_version(entry: dict) -> tuple | None:
 
 
 def _fetch_json(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "claude-kit"})
+    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "loadout"})
     with urllib.request.urlopen(req, timeout=5) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
@@ -2078,7 +2078,7 @@ def fmt(v: tuple | None) -> str:
     return ".".join(map(str, v)) if v else "?"
 ```
 
-`cli/claude_kit/secrets.py`:
+`cli/loadout/secrets.py`:
 ```python
 """Detect plaintext secrets in MCP server configs."""
 from __future__ import annotations
@@ -2130,7 +2130,7 @@ def scan(claude_json: dict, location: str = "~/.claude.json") -> list[Finding]:
     return found
 ```
 
-`cli/claude_kit/inventory.py`:
+`cli/loadout/inventory.py`:
 ```python
 """Inventory of a machine's Claude Code setup and its classification against the catalog."""
 from __future__ import annotations
@@ -2276,9 +2276,9 @@ def classify(items: list[Item]) -> list[Verdict]:
         status = entry["status"]
         if status == "core":
             action = "keep" if item.kind in ("plugin", "marketplace") else "migrate"
-            reason = entry["reason"] if action == "keep" else f"Provided by kit-core; this copy duplicates it. {entry['reason']}"
+            reason = entry["reason"] if action == "keep" else f"Provided by loadout; this copy duplicates it. {entry['reason']}"
         elif status == "profile":
-            action, reason = "scope-down", f"{entry['reason']} (`claude-kit profile {entry['profile']}` in the repos that need it)"
+            action, reason = "scope-down", f"{entry['reason']} (`loadout profile {entry['profile']}` in the repos that need it)"
         elif status in ("superseded", "deprecated"):
             action, reason = "remove", _why(entry)
         elif status == "review":
@@ -2308,8 +2308,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 7: `adopt`: plan rendering, selection, apply, CLAUDE.md migration, secret fixes
 
 **Files:**
-- Create: `cli/claude_kit/adopt.py`, `tests/test_adopt.py`
-- Modify: `cli/claude_kit/commands.py`
+- Create: `cli/loadout/adopt.py`, `tests/test_adopt.py`
+- Modify: `cli/loadout/commands.py`
 
 **Interfaces:**
 - Consumes: `inventory.collect/classify/Item/Verdict`, `secrets.scan/var_name`, `backup.Backup`, `catalog.platform_cmds`, `runner`, `paths`, `jsonio`
@@ -2321,7 +2321,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `adopt.fix_secrets(findings, bk) -> list[str]`
   - `adopt.migrate_claude_md(bk) -> list[str]`
   - `adopt.run(apply_changes: bool, groups: set|None, skip: set, yes: bool, ask, with_versions: bool = True) -> int`
-  - CLI `claude-kit adopt [--apply] [--groups g1,g2] [--skip name,...] [--yes] [--no-versions]`
+  - CLI `loadout adopt [--apply] [--groups g1,g2] [--skip name,...] [--yes] [--no-versions]`
 
 Behaviour of `select`:
 - `groups=None` with `yes=False`: interactive. Per group in `GROUP_ORDER` excluding `keep`, ask `"[a]ll / [n]one / [p]ick"`. Defaults:
@@ -2351,7 +2351,7 @@ import json
 
 import pytest
 
-from claude_kit import adopt, backup, inventory, paths
+from loadout import adopt, backup, inventory, paths
 from fixtures import FAKE_DEVIN, author_machine
 
 
@@ -2425,7 +2425,7 @@ def test_migrate_claude_md(machine):
 
 
 def test_fix_secrets_moves_env_value_to_secrets_file(machine, fake_runner):
-    from claude_kit import secrets
+    from loadout import secrets
     found = secrets.scan(json.loads((machine / ".claude.json").read_text()))
     adopt.fix_secrets(found, backup.Backup())
     text = paths.secrets_file().read_text()
@@ -2445,13 +2445,13 @@ def test_run_dry_run_changes_nothing(machine, fake_runner, capsys):
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_adopt.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.adopt`.
+Expected: FAIL with `ModuleNotFoundError: loadout.adopt`.
 
 - [ ] **Step 3: Implement**
 
-`cli/claude_kit/adopt.py`:
+`cli/loadout/adopt.py`:
 ```python
-"""`claude-kit adopt`: migrate an existing machine onto the kit (spec §6.2)."""
+"""`loadout adopt`: migrate an existing machine onto the kit (spec §6.2)."""
 from __future__ import annotations
 
 import json
@@ -2598,7 +2598,7 @@ def migrate_claude_md(bk: Backup) -> list[str]:
     existing = me.read_text(encoding="utf-8") if me.exists() else "# About me\n"
     me.write_text(existing.rstrip() + "\n\n## Migrated from ~/.claude/CLAUDE.md\n\n" + content + "\n", encoding="utf-8")
     bk.save_copy(src, "global CLAUDE.md")
-    src.write_text("<!-- Global instructions live in ~/.claude/rules/ (claude-kit). -->\n", encoding="utf-8")
+    src.write_text("<!-- Global instructions live in ~/.claude/rules/ (loadout). -->\n", encoding="utf-8")
     return [f"moved ~/.claude/CLAUDE.md content into {me}"]
 
 
@@ -2663,11 +2663,11 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         for line in fix_secrets(remaining, bk):
             print(line)
     if not bk.empty:
-        print(f"\nbackup: {bk.root}  (undo: claude-kit restore {bk.root})")
+        print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root})")
     return 0
 ```
 
-Append to `cli/claude_kit/commands.py`:
+Append to `cli/loadout/commands.py`:
 ```python
 def _register_adopt(sub):
     from . import adopt
@@ -2710,8 +2710,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 8: `check` and `apply-settings` commands
 
 **Files:**
-- Create: `cli/claude_kit/check.py`, `tests/test_check.py`
-- Modify: `cli/claude_kit/commands.py`
+- Create: `cli/loadout/check.py`, `tests/test_check.py`
+- Modify: `cli/loadout/commands.py`
 
 **Interfaces:**
 - Consumes: `link.LINKS/is_copy_mode`, `settings_merge.drift/desired_settings/apply_settings`, `catalog.binaries`, `runner`, `paths`, `jsonio`
@@ -2719,7 +2719,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `check.CheckResult(name, ok, detail, fix, severity)` where severity ∈ `error|warn`
   - `check.run_checks() -> list[CheckResult]`
   - `check.format_results(results) -> tuple[str, int]`
-  - CLI `claude-kit check`, `claude-kit apply-settings`
+  - CLI `loadout check`, `loadout apply-settings`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2727,7 +2727,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```python
 import json
 
-from claude_kit import backup, check, link, paths, settings_merge
+from loadout import backup, check, link, paths, settings_merge
 
 
 def _setup_ok(fake_home):
@@ -2765,12 +2765,12 @@ def test_check_reports_drift_with_personal_hint(fake_home, fake_runner):
 def test_check_missing_link_and_binary(fake_home, fake_runner):
     fake_runner.missing.add("serena")
     results = _by(check.run_checks())
-    assert not results["link rules/kit"].ok
+    assert not results["link rules/loadout"].ok
     assert not results["binary serena"].ok
     assert results["binary serena"].severity == "error"
     text, code = check.format_results(list(results.values()))
     assert code == 1
-    assert "claude-kit bootstrap" in text
+    assert "loadout bootstrap" in text
 
 
 def test_check_invalid_settings_json(fake_home, fake_runner):
@@ -2784,13 +2784,13 @@ def test_check_invalid_settings_json(fake_home, fake_runner):
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_check.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.check`.
+Expected: FAIL with `ModuleNotFoundError: loadout.check`.
 
 - [ ] **Step 3: Implement**
 
-`cli/claude_kit/check.py`:
+`cli/loadout/check.py`:
 ```python
-"""`claude-kit check`: report problems, never fix them; every failure names its fix."""
+"""`loadout check`: report problems, never fix them; every failure names its fix."""
 from __future__ import annotations
 
 import os
@@ -2818,7 +2818,7 @@ def _links() -> list[CheckResult]:
             ok = dest.exists()
         else:
             ok = dest.is_symlink() and dest.resolve() == src.resolve()
-        out.append(CheckResult(name, ok, "" if ok else f"{dest} does not point to {src}", "claude-kit bootstrap"))
+        out.append(CheckResult(name, ok, "" if ok else f"{dest} does not point to {src}", "loadout bootstrap"))
     return out
 
 
@@ -2827,12 +2827,12 @@ def _settings() -> list[CheckResult]:
         load_json(paths.claude_home() / "settings.json")
         drift = settings_merge.drift()
     except InvalidJSON as exc:
-        return [CheckResult("settings.json", False, str(exc), "fix the JSON syntax, then run claude-kit apply-settings")]
+        return [CheckResult("settings.json", False, str(exc), "fix the JSON syntax, then run loadout apply-settings")]
     personal = paths.personal_root() / "settings.json"
     return [
         CheckResult("settings.json", True),
         CheckResult("settings drift", not drift, ", ".join(drift),
-                    f"claude-kit apply-settings (to keep your own value instead, put the override in {personal})", "warn"),
+                    f"loadout apply-settings (to keep your own value instead, put the override in {personal})", "warn"),
     ]
 
 
@@ -2843,7 +2843,7 @@ def _plugins() -> list[CheckResult]:
         return [CheckResult("plugins", False, str(exc), "fix the JSON syntax")]
     installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
     missing = [p for p in wanted if p not in installed]
-    return [CheckResult("plugins installed", not missing, ", ".join(missing), "claude-kit bootstrap (or restart Claude Code to auto-install)")]
+    return [CheckResult("plugins installed", not missing, ", ".join(missing), "loadout bootstrap (or restart Claude Code to auto-install)")]
 
 
 def _binaries() -> list[CheckResult]:
@@ -2852,7 +2852,7 @@ def _binaries() -> list[CheckResult]:
         name = entry["id"]
         ok = runner.have(name)
         severity = "error" if entry.get("required") else "warn"
-        fix = "claude-kit bootstrap --install" if catalog.platform_cmds(entry, "install") else entry.get("manual", "")
+        fix = "loadout bootstrap --install" if catalog.platform_cmds(entry, "install") else entry.get("manual", "")
         out.append(CheckResult(f"binary {name}", ok, "" if ok else "not on PATH", fix, severity))
     return out
 
@@ -2867,7 +2867,7 @@ def _gh() -> list[CheckResult]:
 def _secrets() -> list[CheckResult]:
     path = paths.secrets_file()
     if not path.exists():
-        return [CheckResult("secrets.env", False, f"{path} missing", "claude-kit bootstrap", "warn")]
+        return [CheckResult("secrets.env", False, f"{path} missing", "loadout bootstrap", "warn")]
     if os.name != "nt" and stat.S_IMODE(path.stat().st_mode) & 0o077:
         return [CheckResult("secrets.env", False, "permissions too open", f"chmod 600 {path}", "warn")]
     return [CheckResult("secrets.env", True)]
@@ -2903,12 +2903,12 @@ def format_results(results: list[CheckResult]) -> tuple[str, int]:
     return "\n".join(lines), code
 ```
 
-Append to `cli/claude_kit/commands.py`:
+Append to `cli/loadout/commands.py`:
 ```python
 def _register_check(sub):
     from . import check, settings_merge
 
-    p = sub.add_parser("check", help="verify this machine's claude-kit setup")
+    p = sub.add_parser("check", help="verify this machine's loadout setup")
 
     def run_check(a):
         text, code = check.format_results(check.run_checks())
@@ -2949,8 +2949,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 9: Session hook, background maintenance, `update`
 
 **Files:**
-- Create: `cli/claude_kit/maintenance.py`, `tests/test_maintenance.py`
-- Modify: `cli/claude_kit/commands.py`
+- Create: `cli/loadout/maintenance.py`, `tests/test_maintenance.py`
+- Modify: `cli/loadout/commands.py`
 
 **Interfaces:**
 - Consumes: `paths`, `runner`, `versions`, `catalog`, `link.link_all/is_copy_mode`, `backup.Backup`, `settings_merge.apply_settings`, `jsonio`
@@ -2970,7 +2970,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```python
 import json
 
-from claude_kit import maintenance as m, paths, runner, versions
+from loadout import maintenance as m, paths, runner, versions
 
 
 def test_is_due_and_touch(fake_home):
@@ -3012,7 +3012,7 @@ def test_maintain_writes_notice_for_outdated(fake_home, fake_runner, monkeypatch
     monkeypatch.setattr(m, "find_outdated", lambda: [({"id": "serena"}, (1, 7, 0), (1, 8, 0))])
     m.maintain(100.0)
     text = (paths.state_dir() / "pending-notice").read_text()
-    assert "serena 1.7.0 -> 1.8.0" in text and "claude-kit update" in text
+    assert "serena 1.7.0 -> 1.8.0" in text and "loadout update" in text
 
 
 def test_maintain_survives_offline(fake_home, fake_runner, monkeypatch):
@@ -3046,13 +3046,13 @@ def test_update_reverts_settings_modified_by_installer(fake_home, fake_runner, m
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_maintenance.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.maintenance`.
+Expected: FAIL with `ModuleNotFoundError: loadout.maintenance`.
 
 - [ ] **Step 3: Implement**
 
-`cli/claude_kit/maintenance.py`:
+`cli/loadout/maintenance.py`:
 ```python
-"""SessionStart hook, detached daily/weekly maintenance, and `claude-kit update` (spec §6.4)."""
+"""SessionStart hook, detached daily/weekly maintenance, and `loadout update` (spec §6.4)."""
 from __future__ import annotations
 
 import json
@@ -3093,7 +3093,7 @@ def _spawn_background() -> None:
         kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
-    subprocess.Popen([sys.executable, str(paths.kit_root() / "bin" / "claude-kit"), "maintenance"], **kwargs)
+    subprocess.Popen([sys.executable, str(paths.kit_root() / "bin" / "loadout"), "maintenance"], **kwargs)
 
 
 def session_start(now: float) -> str | None:
@@ -3137,7 +3137,7 @@ def maintain(now: float) -> None:
             try:
                 apply_settings()
             except Exception as exc:  # never crash in the background; surface next session
-                _stamp(NOTICE).write_text(f"claude-kit: could not apply settings after sync: {exc}")
+                _stamp(NOTICE).write_text(f"loadout: could not apply settings after sync: {exc}")
             if link.is_copy_mode():
                 link.link_all(Backup())
     if is_due("last-update-check", WEEK, now):
@@ -3145,7 +3145,7 @@ def maintain(now: float) -> None:
         outdated = find_outdated()
         if outdated:
             items = ", ".join(f"{e['id']} {versions.fmt(a)} -> {versions.fmt(b)}" for e, a, b in outdated)
-            _stamp(NOTICE).write_text(f"claude-kit: updates available for {items} → run `claude-kit update`")
+            _stamp(NOTICE).write_text(f"loadout: updates available for {items} → run `loadout update`")
 
 
 def update(yes: bool, ask: Callable[[str], str]) -> int:
@@ -3175,7 +3175,7 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
     return 0
 ```
 
-Append to `cli/claude_kit/commands.py`:
+Append to `cli/loadout/commands.py`:
 ```python
 def _register_maintenance(sub):
     import time
@@ -3239,8 +3239,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 10: `bootstrap` (prereqs, personal wizard, plugins, secrets) + shims + fresh-HOME test
 
 **Files:**
-- Create: `cli/claude_kit/bootstrap.py`, `bootstrap.sh`, `bootstrap.ps1`, `tests/test_bootstrap.py`
-- Modify: `cli/claude_kit/commands.py`
+- Create: `cli/loadout/bootstrap.py`, `bootstrap.sh`, `bootstrap.ps1`, `tests/test_bootstrap.py`
+- Modify: `cli/loadout/commands.py`
 
 **Interfaces:**
 - Consumes: everything above
@@ -3262,7 +3262,7 @@ import os
 import subprocess
 import sys
 
-from claude_kit import bootstrap as b, paths
+from loadout import bootstrap as b, paths
 
 
 def test_personal_wizard_renders_template(fake_home, fake_runner):
@@ -3274,9 +3274,9 @@ def test_personal_wizard_renders_template(fake_home, fake_runner):
 
 
 def test_personal_clone(fake_home, fake_runner):
-    answers = iter(["git@github.com:me/claude-personal.git"])
+    answers = iter(["git@github.com:me/loadout-personal.git"])
     b.ensure_personal(lambda q: next(answers))
-    assert ["git", "clone", "git@github.com:me/claude-personal.git", str(paths.personal_root())] in fake_runner.calls
+    assert ["git", "clone", "git@github.com:me/loadout-personal.git", str(paths.personal_root())] in fake_runner.calls
 
 
 def test_secrets_setup_idempotent(fake_home, fake_runner):
@@ -3291,38 +3291,38 @@ def test_secrets_setup_idempotent(fake_home, fake_runner):
 
 def test_setup_plugins_adds_marketplaces_and_installs_missing(fake_home, fake_runner):
     (paths.personal_root()).mkdir(parents=True)
-    from claude_kit import runner
+    from loadout import runner
     fake_runner.responses[("claude", "plugin", "marketplace", "list")] = runner.Result(0, "claude-plugins-official\nimpeccable\n", "")
     b.setup_plugins()
-    assert ["claude", "plugin", "marketplace", "add", "jonasyr/claude-kit"] in fake_runner.calls
+    assert ["claude", "plugin", "marketplace", "add", "jonasyr/agent-loadout"] in fake_runner.calls
     assert ["claude", "plugin", "marketplace", "add", "pbakaus/impeccable"] not in fake_runner.calls
-    assert ["claude", "plugin", "install", "kit-core@claude-kit", "--scope", "user"] in fake_runner.calls
+    assert ["claude", "plugin", "install", "loadout@agent-loadout", "--scope", "user"] in fake_runner.calls
 
 
 def test_fresh_home_bootstrap_end_to_end(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home)}
-    script = paths.kit_root() / "bin" / "claude-kit"
+    script = paths.kit_root() / "bin" / "loadout"
     proc = subprocess.run([sys.executable, str(script), "bootstrap", "--yes", "--no-plugins", "--no-adopt"],
                           input="\nTester\nDev\nPython\nnone\n", env=env, capture_output=True, text=True, timeout=120)
-    assert (home / ".claude/rules/kit/tooling.md").exists(), proc.stdout + proc.stderr
+    assert (home / ".claude/rules/loadout/tooling.md").exists(), proc.stdout + proc.stderr
     assert (home / ".claude/rules/personal/me.md").exists()
     settings = json.loads((home / ".claude/settings.json").read_text())
-    assert settings["enabledPlugins"]["kit-core@claude-kit"] is True
-    assert (home / ".config/claude/secrets.env").exists()
+    assert settings["enabledPlugins"]["loadout@agent-loadout"] is True
+    assert (home / ".config/loadout/secrets.env").exists()
 ```
 
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_bootstrap.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.bootstrap`.
+Expected: FAIL with `ModuleNotFoundError: loadout.bootstrap`.
 
 - [ ] **Step 3: Implement**
 
-`cli/claude_kit/bootstrap.py`:
+`cli/loadout/bootstrap.py`:
 ```python
-"""`claude-kit bootstrap` (spec §6.1). Safe to re-run."""
+"""`loadout bootstrap` (spec §6.1). Safe to re-run."""
 from __future__ import annotations
 
 import os
@@ -3333,10 +3333,10 @@ from .backup import Backup
 from .jsonio import load_json
 
 Ask = Callable[[str], str]
-RC_MARKER = "# claude-kit secrets"
-RC_LINE = (f'{RC_MARKER}\n[ -f "$HOME/.config/claude/secrets.env" ] && '
-           'set -a && . "$HOME/.config/claude/secrets.env" && set +a\n')
-PS_BLOCK = (f"{RC_MARKER}\n$f = Join-Path $HOME '.config/claude/secrets.env'\n"
+RC_MARKER = "# loadout secrets"
+RC_LINE = (f'{RC_MARKER}\n[ -f "$HOME/.config/loadout/secrets.env" ] && '
+           'set -a && . "$HOME/.config/loadout/secrets.env" && set +a\n')
+PS_BLOCK = (f"{RC_MARKER}\n$f = Join-Path $HOME '.config/loadout/secrets.env'\n"
             "if (Test-Path $f) { Get-Content $f | ForEach-Object { if ($_ -match '^\\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') "
             "{ [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2].Trim('\"'), 'Process') } } }\n")
 
@@ -3466,7 +3466,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     for line in setup_secrets():
         print(line)
     if not bk.empty:
-        print(f"\nbackup: {bk.root}  (undo: claude-kit restore {bk.root})")
+        print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
     text, code = check.format_results(check.run_checks())
     print(text)
@@ -3474,7 +3474,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     return code
 ```
 
-Append to `cli/claude_kit/commands.py`:
+Append to `cli/loadout/commands.py`:
 ```python
 def _register_bootstrap(sub):
     from . import bootstrap
@@ -3494,29 +3494,29 @@ EXTRA_COMMANDS.append(_register_bootstrap)
 `bootstrap.sh`:
 ```bash
 #!/usr/bin/env bash
-# Set up claude-kit on this machine. All logic lives in `claude-kit bootstrap`.
+# Set up loadout on this machine. All logic lives in `loadout bootstrap`.
 set -euo pipefail
 cd "$(dirname "$0")"
 if ! command -v python3 >/dev/null 2>&1; then
-  echo "claude-kit needs python3 (>= 3.10). Install it and re-run." >&2
+  echo "loadout needs python3 (>= 3.10). Install it and re-run." >&2
   exit 1
 fi
-exec python3 bin/claude-kit bootstrap "$@"
+exec python3 bin/loadout bootstrap "$@"
 ```
 
 `bootstrap.ps1`:
 ```powershell
-# Set up claude-kit on this machine. All logic lives in `claude-kit bootstrap`.
+# Set up loadout on this machine. All logic lives in `loadout bootstrap`.
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-  Write-Error 'claude-kit needs Python (>= 3.10). Install it (e.g. winget install Python.Python.3.12) and re-run.'
+  Write-Error 'loadout needs Python (>= 3.10). Install it (e.g. winget install Python.Python.3.12) and re-run.'
   exit 1
 }
 if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
   Write-Warning 'Git Bash not found: Claude Code hooks need Git for Windows.'
 }
-python bin/claude-kit bootstrap @args
+python bin/loadout bootstrap @args
 exit $LASTEXITCODE
 ```
 
@@ -3541,8 +3541,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 10b: Configure wizard (engine, CLI wizard, personal MCP servers, catalog offers)
 
 **Files:**
-- Create: `cli/claude_kit/personal_mcp.py`, `cli/claude_kit/configure.py`, `tests/test_configure.py`, `scripts/add_catalog_offers.py` (one-off; deleted after use)
-- Modify: `catalog.json` (via the script), `cli/claude_kit/commands.py`, `cli/claude_kit/bootstrap.py` (`bootstrap()`), `cli/claude_kit/maintenance.py` (`maintain()`)
+- Create: `cli/loadout/personal_mcp.py`, `cli/loadout/configure.py`, `tests/test_configure.py`, `scripts/add_catalog_offers.py` (one-off; deleted after use)
+- Modify: `catalog.json` (via the script), `cli/loadout/commands.py`, `cli/loadout/bootstrap.py` (`bootstrap()`), `cli/loadout/maintenance.py` (`maintain()`)
 
 **Interfaces:**
 - Consumes: `settings_merge.desired_settings/apply_settings`, `catalog.load/match`, `profiles.list_profiles/load_profile`, `bootstrap.setup_plugins`, `runner`, `paths`, `jsonio`, `scaffold.render`
@@ -3554,7 +3554,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `configure.set_mcp(catalog_id: str, on: bool) -> list[str]` (warnings, e.g. missing env vars)
   - `configure.set_pref(key: str, raw_json: str) -> None`
   - `configure.show() -> str`, `configure.apply_all(ask) -> None`, `configure.wizard(ask, first_run: bool) -> int`
-  - CLI `claude-kit configure [--first-run]`, `claude-kit configure show`, `claude-kit configure set plugin|mcp|pref <name> <value>`
+  - CLI `loadout configure [--first-run]`, `loadout configure show`, `loadout configure set plugin|mcp|pref <name> <value>`
 
 - [ ] **Step 1: Add catalog offers**
 
@@ -3598,7 +3598,7 @@ Expected: `catalog now has N entries`. `tests/test_repo_static.py` still passes.
 ```python
 import json
 
-from claude_kit import configure, paths, personal_mcp, runner
+from loadout import configure, paths, personal_mcp, runner
 
 
 def _personal_settings():
@@ -3678,11 +3678,11 @@ def test_show_marks_overrides(fake_home):
 - [ ] **Step 3: Run to verify failure**
 
 Run: `uv run --python 3.12 --with pytest pytest -q tests/test_configure.py`
-Expected: FAIL with `ModuleNotFoundError: claude_kit.configure`.
+Expected: FAIL with `ModuleNotFoundError: loadout.configure`.
 
 - [ ] **Step 4: Implement**
 
-`cli/claude_kit/personal_mcp.py`:
+`cli/loadout/personal_mcp.py`:
 ```python
 """Apply <personal>/mcp.json as user-scope MCP servers; remove only servers the kit applied before."""
 from __future__ import annotations
@@ -3714,7 +3714,7 @@ def apply_mcp() -> list[str]:
     return out
 ```
 
-`cli/claude_kit/configure.py`:
+`cli/loadout/configure.py`:
 ```python
 """Configure wizard: defaults stay as the kit ships them; choices go into the personal layer (spec §6.4)."""
 from __future__ import annotations
@@ -3849,7 +3849,7 @@ def apply_all(ask: Ask) -> None:
         status = runner.run(["git", "-C", str(root), "status", "--porcelain"])
         if status.stdout.strip() and ask("commit and push your personal layer? [y/N] ").strip().lower() == "y":
             runner.run(["git", "-C", str(root), "add", "-A"])
-            runner.run(["git", "-C", str(root), "commit", "-m", "chore: update claude-kit preferences"])
+            runner.run(["git", "-C", str(root), "commit", "-m", "chore: update loadout preferences"])
             runner.run(["git", "-C", str(root), "push"])
     print("Restart Claude Code (or run /reload-plugins) to load the changes.")
 
@@ -3901,7 +3901,7 @@ def wizard(ask: Ask, first_run: bool) -> int:
     return 0
 ```
 
-Append to `cli/claude_kit/commands.py`:
+Append to `cli/loadout/commands.py`:
 ```python
 def _register_configure(sub):
     from . import configure
@@ -3921,7 +3921,7 @@ def _register_configure(sub):
             print(configure.show())
             return 0
         if not (a.kind and a.name and a.value):
-            raise ValueError("usage: claude-kit configure set plugin|mcp|pref <name> <value>")
+            raise ValueError("usage: loadout configure set plugin|mcp|pref <name> <value>")
         if a.kind == "plugin":
             configure.set_plugin(a.name, a.value == "on")
         elif a.kind == "mcp":
@@ -3938,7 +3938,7 @@ def _register_configure(sub):
 EXTRA_COMMANDS.append(_register_configure)
 ```
 
-In `cli/claude_kit/bootstrap.py`:
+In `cli/loadout/bootstrap.py`:
 - `ensure_personal`: replace the starter branch (from the `values = {` line to the end of the function) with a call to the wizard's about-you step, so the same questions aren't duplicated:
 ```python
     root.mkdir(parents=True, exist_ok=True)
@@ -3957,7 +3957,7 @@ In `cli/claude_kit/bootstrap.py`:
         wizard(ask, first_run=False)
 ```
 
-In `cli/claude_kit/maintenance.py` `maintain()`, right after the `apply_settings()` call inside `if any(pulled):`, add:
+In `cli/loadout/maintenance.py` `maintain()`, right after the `apply_settings()` call inside `if any(pulled):`, add:
 ```python
                 from .personal_mcp import apply_mcp
                 apply_mcp()
@@ -3981,14 +3981,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 11: kit-core plugin and marketplace (MCP config, hooks, hook smoke tests)
+### Task 11: loadout plugin and marketplace (MCP config, hooks, hook smoke tests)
 
 **Files:**
-- Create: `.claude-plugin/marketplace.json`, `plugins/kit-core/.claude-plugin/plugin.json`, `plugins/kit-core/.mcp.json`, `plugins/kit-core/hooks/hooks.json`, `plugins/kit-core/hooks/run.sh`, `plugins/kit-core/hooks/subagent-context.sh`, `tests/test_hooks.py`
+- Create: `.claude-plugin/marketplace.json`, `plugins/loadout/.claude-plugin/plugin.json`, `plugins/loadout/.mcp.json`, `plugins/loadout/hooks/hooks.json`, `plugins/loadout/hooks/run.sh`, `plugins/loadout/hooks/subagent-context.sh`, `tests/test_hooks.py`
 
 **Interfaces:**
-- Consumes: `claude-kit hook-session-start` (Task 9), binaries `serena-hooks`, `rtk`, `codebase-memory-mcp`
-- Produces: plugin `kit-core@claude-kit` with MCP servers `serena` and `codebase-memory-mcp`; tool prefix `mcp__plugin_kit-core_serena__`
+- Consumes: `loadout hook-session-start` (Task 9), binaries `serena-hooks`, `rtk`, `codebase-memory-mcp`
+- Produces: plugin `loadout@agent-loadout` with MCP servers `serena` and `codebase-memory-mcp`; tool prefix `mcp__plugin_loadout_serena__`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4000,9 +4000,9 @@ import subprocess
 
 import pytest
 
-from claude_kit import paths
+from loadout import paths
 
-PLUGIN = paths.kit_root() / "plugins" / "kit-core"
+PLUGIN = paths.kit_root() / "plugins" / "loadout"
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="hook scripts run under bash")
 
 
@@ -4023,7 +4023,7 @@ def test_every_hook_uses_plugin_root_and_has_timeout():
 @pytest.mark.parametrize("args", [
     ["serena-hooks", "activate", "--client=claude-code"],
     ["rtk", "hook", "claude"],
-    ["claude-kit", "hook-session-start"],
+    ["loadout", "hook-session-start"],
     ["--soft", "codebase-memory-mcp", "hook-augment"],
 ])
 def test_run_sh_is_silent_noop_when_binary_missing(tmp_path, args):
@@ -4051,8 +4051,8 @@ def test_subagent_context_is_valid_json(tmp_path):
 
 def test_marketplace_lists_kit_core_without_version():
     market = json.loads((paths.kit_root() / ".claude-plugin/marketplace.json").read_text())
-    assert market["name"] == "claude-kit"
-    assert market["plugins"][0]["source"] == "./plugins/kit-core"
+    assert market["name"] == "agent-loadout"
+    assert market["plugins"][0]["source"] == "./plugins/loadout"
     plugin = json.loads((PLUGIN / ".claude-plugin/plugin.json").read_text())
     assert "version" not in plugin and "version" not in market["plugins"][0]
 ```
@@ -4068,33 +4068,33 @@ Expected: FAIL (`FileNotFoundError` for hooks.json).
 ```json
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-kit",
+  "name": "agent-loadout",
   "owner": { "name": "Jonas Weirauch" },
-  "metadata": { "description": "claude-kit: shareable, self-updating Claude Code setup" },
+  "metadata": { "description": "agent-loadout: shareable, self-updating Claude Code setup" },
   "plugins": [
     {
-      "name": "kit-core",
-      "description": "Core of claude-kit: Serena and codebase-memory MCP servers, tool hooks, onboarding and documentation skills.",
-      "source": "./plugins/kit-core",
+      "name": "loadout",
+      "description": "Core of agent-loadout: Serena and codebase-memory MCP servers, tool hooks, onboarding and documentation skills.",
+      "source": "./plugins/loadout",
       "category": "development"
     }
   ]
 }
 ```
 
-`plugins/kit-core/.claude-plugin/plugin.json`:
+`plugins/loadout/.claude-plugin/plugin.json`:
 ```json
 {
-  "name": "kit-core",
-  "description": "Core of claude-kit: Serena and codebase-memory MCP servers, tool hooks, onboarding and documentation skills.",
+  "name": "loadout",
+  "description": "Core of agent-loadout: Serena and codebase-memory MCP servers, tool hooks, onboarding and documentation skills.",
   "author": { "name": "Jonas Weirauch" },
-  "homepage": "https://github.com/jonasyr/claude-kit",
-  "repository": "https://github.com/jonasyr/claude-kit",
+  "homepage": "https://github.com/jonasyr/agent-loadout",
+  "repository": "https://github.com/jonasyr/agent-loadout",
   "license": "MIT"
 }
 ```
 
-`plugins/kit-core/.mcp.json`:
+`plugins/loadout/.mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -4109,7 +4109,7 @@ Expected: FAIL (`FileNotFoundError` for hooks.json).
 }
 ```
 
-`plugins/kit-core/hooks/run.sh`:
+`plugins/loadout/hooks/run.sh`:
 ```bash
 #!/usr/bin/env bash
 # Run a hook command only if its binary is installed, so a machine without a tool
@@ -4124,14 +4124,14 @@ fi
 exec "$@"
 ```
 
-`plugins/kit-core/hooks/subagent-context.sh`:
+`plugins/loadout/hooks/subagent-context.sh`:
 ```bash
 #!/usr/bin/env bash
 # SubagentStart: subagents get a one-line pointer to the kit's tool routing.
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"Tool routing (claude-kit): structure and call chains -> codebase-memory-mcp; exact symbol lookup or edits -> Serena; text/config -> Grep/Read; library docs -> Context7; UI checks -> playwright-cli."}}'
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"Tool routing (loadout): structure and call chains -> codebase-memory-mcp; exact symbol lookup or edits -> Serena; text/config -> Grep/Read; library docs -> Context7; UI checks -> playwright-cli."}}'
 ```
 
-`plugins/kit-core/hooks/hooks.json`:
+`plugins/loadout/hooks/hooks.json`:
 ```json
 {
   "hooks": {
@@ -4140,7 +4140,7 @@ printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SubagentStart","additiona
         "matcher": "",
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" serena-hooks activate --client=claude-code", "shell": "bash", "timeout": 15 },
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" claude-kit hook-session-start", "shell": "bash", "timeout": 10 }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" loadout hook-session-start", "shell": "bash", "timeout": 10 }
         ]
       }
     ],
@@ -4160,7 +4160,7 @@ printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SubagentStart","additiona
         ]
       },
       {
-        "matcher": "mcp__plugin_kit-core_serena__.*",
+        "matcher": "mcp__plugin_loadout_serena__.*",
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" serena-hooks auto-approve --client=claude-code", "shell": "bash", "timeout": 10 }
         ]
@@ -4184,18 +4184,18 @@ printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SubagentStart","additiona
 }
 ```
 
-Then: `chmod +x plugins/kit-core/hooks/*.sh`.
+Then: `chmod +x plugins/loadout/hooks/*.sh`.
 
 - [ ] **Step 4: Run tests and validate the manifests**
 
-Run: `uv run --python 3.12 --with pytest pytest -q && claude plugin validate --strict . && claude plugin validate --strict plugins/kit-core`
+Run: `uv run --python 3.12 --with pytest pytest -q && claude plugin validate --strict . && claude plugin validate --strict plugins/loadout`
 Expected: tests PASS. Both validations exit 0. If `--strict` flags a field name, fix the field as the validator says (e.g. remove `shell` if reported as unknown) and re-run.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: kit-core plugin with MCP servers and guarded hooks; marketplace manifest
+git commit -m "feat: loadout plugin with MCP servers and guarded hooks; marketplace manifest
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -4205,11 +4205,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 12: Skills: onboard, docs-sync, docs-audit
 
 **Files:**
-- Create: `plugins/kit-core/skills/onboard/SKILL.md`, `plugins/kit-core/skills/docs-sync/SKILL.md`, `plugins/kit-core/skills/docs-audit/SKILL.md`, `plugins/kit-core/skills/configure/SKILL.md`, `tests/test_skills.py`
+- Create: `plugins/loadout/skills/onboard/SKILL.md`, `plugins/loadout/skills/docs-sync/SKILL.md`, `plugins/loadout/skills/docs-audit/SKILL.md`, `plugins/loadout/skills/configure/SKILL.md`, `tests/test_skills.py`
 
 **Interfaces:**
-- Consumes: rules `docs-policy.md`, `memory-policy.md`; `claude-kit init/profile`; superpowers skills
-- Produces: `/kit-core:onboard`, `/kit-core:docs-sync`, `/kit-core:docs-audit`, `/kit-core:configure`
+- Consumes: rules `docs-policy.md`, `memory-policy.md`; `loadout init/profile`; superpowers skills
+- Produces: `/loadout:onboard`, `/loadout:docs-sync`, `/loadout:docs-audit`, `/loadout:configure`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -4217,9 +4217,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```python
 import re
 
-from claude_kit import paths
+from loadout import paths
 
-SKILLS = paths.kit_root() / "plugins/kit-core/skills"
+SKILLS = paths.kit_root() / "plugins/loadout/skills"
 
 
 def test_skills_have_frontmatter_and_short_descriptions():
@@ -4238,16 +4238,16 @@ Expected: FAIL (`FileNotFoundError`).
 
 - [ ] **Step 3: Write the skills**
 
-`plugins/kit-core/skills/onboard/SKILL.md`:
+`plugins/loadout/skills/onboard/SKILL.md`:
 ```markdown
 ---
 name: onboard
-description: Set up a repository for agent work — new/empty repos get a guided project definition (purpose, stack, structure, first ADR); existing repos get an accurate AGENTS.md, Serena memories and a codebase-memory index. Use after `claude-kit init`, or when a repo has no AGENTS.md.
+description: Set up a repository for agent work — new/empty repos get a guided project definition (purpose, stack, structure, first ADR); existing repos get an accurate AGENTS.md, Serena memories and a codebase-memory index. Use after `loadout init`, or when a repo has no AGENTS.md.
 ---
 
 # Onboard a repository
 
-Read `~/.claude/rules/kit/docs-policy.md` and `memory-policy.md` first; everything you write must follow them.
+Read `~/.claude/rules/loadout/docs-policy.md` and `memory-policy.md` first; everything you write must follow them.
 
 ## 1. Detect the mode
 
@@ -4263,7 +4263,7 @@ Say which mode you detected and why, and let the user correct you.
 2. When the design is agreed:
    - write `docs/README.md` (index) and `docs/adr/0001-<stack-decision>.md` (Context, Decision, Consequences, Status: accepted);
    - write `AGENTS.md`: purpose (one paragraph), commands (install/test/run for the chosen stack), hard conventions, map.
-3. Suggest profiles for the stack (`claude-kit profile <name>`: web, db, android, thesis, sonar) and run the ones the user accepts. For a web stack, suggest `@playwright/test` for E2E tests.
+3. Suggest profiles for the stack (`loadout profile <name>`: web, db, android, thesis, sonar) and run the ones the user accepts. For a web stack, suggest `@playwright/test` for E2E tests.
 4. Create the minimal directory skeleton the stack's conventions call for, such as package manifest, `src/`, `tests/` and a first passing test. Stop there; feature work goes through the normal superpowers flow.
 5. Show the diff and commit after approval.
 
@@ -4278,11 +4278,11 @@ Say which mode you detected and why, and let the user correct you.
 4. Leave an existing `.mcp.json` and `.claude/settings.json` unchanged; mention what they configure.
 5. Serena:
    - **No memories:** run Serena onboarding, but keep each memory a short summary plus links into `docs/`.
-   - **Memories or docs already exist:** recommend `/kit-core:docs-audit` instead of rewriting them here.
+   - **Memories or docs already exist:** recommend `/loadout:docs-audit` instead of rewriting them here.
 6. Show the diff and commit after approval (`docs: onboard repository for agents`).
 ```
 
-`plugins/kit-core/skills/docs-sync/SKILL.md`:
+`plugins/loadout/skills/docs-sync/SKILL.md`:
 ```markdown
 ---
 name: docs-sync
@@ -4291,7 +4291,7 @@ description: Cheap end-of-feature documentation pass — find which doc layers (
 
 # Docs sync
 
-Follow `~/.claude/rules/kit/docs-policy.md`.
+Follow `~/.claude/rules/loadout/docs-policy.md`.
 
 1. Determine the change: `git diff --stat <base>...HEAD` (base: the merge base with the default branch) plus uncommitted changes.
 2. For each changed area, decide which facts changed (commands, behaviour, configuration, architecture, decisions) and which layer owns each fact.
@@ -4302,24 +4302,24 @@ Follow `~/.claude/rules/kit/docs-policy.md`.
 4. Check every link and path in the files you touched: relative links resolve, referenced files and symbols exist.
 5. Show the diff. Commit separately from code (`docs: ...`) after approval.
 
-Keep it proportional: a small change usually touches zero or one doc file. If you find widespread rot, stop and recommend `/kit-core:docs-audit`.
+Keep it proportional: a small change usually touches zero or one doc file. If you find widespread rot, stop and recommend `/loadout:docs-audit`.
 ```
 
-`plugins/kit-core/skills/docs-audit/SKILL.md`:
+`plugins/loadout/skills/docs-audit/SKILL.md`:
 ```markdown
 ---
 name: docs-audit
-description: Full, expensive audit of all docs and memories in a repo — verifies every claim against the current code, asks about anything unclear, and rewrites everything into the claude-kit docs structure (docs/ as single source of truth). Resumable. Use when docs or memories may be stale, wrong or duplicated.
+description: Full, expensive audit of all docs and memories in a repo — verifies every claim against the current code, asks about anything unclear, and rewrites everything into the loadout docs structure (docs/ as single source of truth). Resumable. Use when docs or memories may be stale, wrong or duplicated.
 ---
 
 # Docs audit
 
-Thorough by design: it may take long and use many tokens. Correctness over speed. Follow `~/.claude/rules/kit/docs-policy.md` and `memory-policy.md`.
+Thorough by design: it may take long and use many tokens. Correctness over speed. Follow `~/.claude/rules/loadout/docs-policy.md` and `memory-policy.md`.
 
 ## 0. Resume or start
 
-- If `.claude-kit/docs-audit/` contains a checklist, resume it from the first unchecked item.
-- Otherwise create `.claude-kit/docs-audit/<YYYY-MM-DD>.md` and make sure `.claude-kit/` is in `.gitignore` while the audit runs.
+- If `.loadout/docs-audit/` contains a checklist, resume it from the first unchecked item.
+- Otherwise create `.loadout/docs-audit/<YYYY-MM-DD>.md` and make sure `.loadout/` is in `.gitignore` while the audit runs.
 - Update the checklist after every step, so the audit survives context compaction or a new session.
 
 ## 1. Inventory
@@ -4400,22 +4400,22 @@ Present:
 After approval, commit per layer (`docs: ...`, `docs(agents): ...`, `docs(memories): ...`). Delete the checklist and the temporary `.gitignore` entry.
 ```
 
-`plugins/kit-core/skills/configure/SKILL.md`:
+`plugins/loadout/skills/configure/SKILL.md`:
 ```markdown
 ---
 name: configure
-description: Conversationally adjust the user's claude-kit setup — preferences, global add-ons (plugins, MCP servers) and opt-outs of kit defaults — stored in their personal layer. Use when the user wants to add, remove or change tools or preferences globally.
+description: Conversationally adjust the user's loadout setup — preferences, global add-ons (plugins, MCP servers) and opt-outs of kit defaults — stored in their personal layer. Use when the user wants to add, remove or change tools or preferences globally.
 ---
 
-# Configure claude-kit
+# Configure loadout
 
-The kit's defaults stay untouched; every choice goes into the user's personal layer through the `claude-kit configure` engine.
+The kit's defaults stay untouched; every choice goes into the user's personal layer through the `loadout configure` engine.
 
-1. Run `claude-kit configure show` to see the current state: each add-on on/off, whether that is the kit default or a personal override, and the preferences.
+1. Run `loadout configure show` to see the current state: each add-on on/off, whether that is the kit default or a personal override, and the preferences.
 2. Ask what the user wants in their own words ("I do a lot of frontend debugging", "I never use Rust", "I want database access everywhere"). Ask one question at a time.
-3. Map the answers to concrete changes, using the reasons in `catalog.json` (in the kit repo, `claude-kit` resolves it). Prefer the kit's scoping: suggest a project profile (`claude-kit profile <name>`) when something is only needed in some repos, and global only when it is needed almost everywhere. Mention context cost for heavy add-ons (e.g. chrome-devtools, many-skill plugins).
+3. Map the answers to concrete changes, using the reasons in `catalog.json` (in the kit repo, `loadout` resolves it). Prefer the kit's scoping: suggest a project profile (`loadout profile <name>`) when something is only needed in some repos, and global only when it is needed almost everywhere. Mention context cost for heavy add-ons (e.g. chrome-devtools, many-skill plugins).
 4. Present the planned changes as a short list and get a yes.
-5. Apply each with `claude-kit configure set plugin <id> on|off`, `claude-kit configure set mcp <catalog-id> on|off` or `claude-kit configure set pref <key> <json>`. Relay any notes, e.g. missing environment variables and where to put them.
+5. Apply each with `loadout configure set plugin <id> on|off`, `loadout configure set mcp <catalog-id> on|off` or `loadout configure set pref <key> <json>`. Relay any notes, e.g. missing environment variables and where to put them.
 6. Tell the user to restart Claude Code or run `/reload-plugins`. If their personal layer is a git repo, offer to commit and push it.
 
 Never edit `~/.claude/settings.json` or `~/.claude.json` directly; the engine keeps kit-managed and personal values apart.
@@ -4423,7 +4423,7 @@ Never edit `~/.claude/settings.json` or `~/.claude.json` directly; the engine ke
 
 - [ ] **Step 4: Run tests and validate**
 
-Run: `uv run --python 3.12 --with pytest pytest -q && claude plugin validate --strict plugins/kit-core`
+Run: `uv run --python 3.12 --with pytest pytest -q && claude plugin validate --strict plugins/loadout`
 Expected: PASS; validation exit 0.
 
 - [ ] **Step 5: Commit**
@@ -4450,11 +4450,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 README rules: lead with what it is and why; first success within 5 minutes; plain words, no jargon without a one-line explanation; tasks organized by what the reader wants to do; every command copy-pasteable; troubleshooting and uninstall included.
 
 ````markdown
-# claude-kit
+# agent-loadout
 
 **One command turns any machine's Claude Code into a clean, current, well-configured setup — and keeps it that way.**
 
-Claude Code gets much better with the right plugins, MCP servers and instructions. But setups drift: every machine ends up different, old tools linger, versions go stale, and half of what is installed never gets used. claude-kit fixes that:
+Claude Code gets much better with the right plugins, MCP servers and instructions. But setups drift: every machine ends up different, old tools linger, versions go stale, and half of what is installed never gets used. loadout fixes that:
 
 - **Curated defaults.** A small, researched set of tools that complement each other instead of overlapping. Every keep/drop decision is explained in [`catalog.json`](catalog.json).
 - **Works on existing setups.** It shows what it would change and why, asks you first, and backs everything up. Undo is one command.
@@ -4467,8 +4467,8 @@ Claude Code gets much better with the right plugins, MCP servers and instruction
 ## Quick start (5 minutes)
 
 ```bash
-git clone https://github.com/jonasyr/claude-kit ~/claude-kit
-cd ~/claude-kit
+git clone https://github.com/jonasyr/agent-loadout ~/agent-loadout
+cd ~/agent-loadout
 ./bootstrap.sh --install          # Windows (PowerShell): .\bootstrap.ps1 --install
 ```
 
@@ -4480,19 +4480,19 @@ Answer a few questions:
 Then **restart Claude Code**. Check everything with:
 
 ```bash
-claude-kit check
+loadout check
 ```
 
 ## How it works
 
 ```
-┌──────────────── claude-kit (this repo, shared) ───────────────┐   ┌──── personal layer (yours) ────┐
-│ kit-core plugin  hooks · MCP servers · skills  (auto-updated) │   │ rules/me.md   who you are      │
+┌──────────────── loadout (this repo, shared) ───────────────┐   ┌──── personal layer (yours) ────┐
+│ loadout plugin  hooks · MCP servers · skills  (auto-updated) │   │ rules/me.md   who you are      │
 │ rules/           how Claude should use the tools              │ + │ settings.json your overrides   │
 │ catalog.json     what is good, superseded, optional — and why │   │ mcp.json      extra servers    │
 │ profiles/        per-project add-ons (thesis, web, db, …)     │   │ profiles/     your own presets │
 └───────────────────────────────────────────────────────────────┘   └────────────────────────────────┘
-                                   │  claude-kit merges both
+                                   │  loadout merges both
                                    ▼
             ~/.claude/  (your existing settings are kept; the kit only manages its own keys)
 ```
@@ -4502,17 +4502,17 @@ claude-kit check
 | I want to… | Run |
 |---|---|
 | Set up a new machine | `./bootstrap.sh --install` |
-| Clean up a machine that already has a Claude Code setup | `claude-kit adopt` (shows the plan) → `claude-kit adopt --apply` |
-| Undo what claude-kit changed | `claude-kit restore ~/.claude/backups/claude-kit-<timestamp>` |
-| Change preferences or add tools globally | `claude-kit configure`, or ask Claude: `/kit-core:configure` |
-| See what is on and why | `claude-kit configure show` |
-| Start a new project | `mkdir app && cd app && claude-kit init`, then in Claude Code: `/kit-core:onboard` |
-| Prepare an existing repo | `claude-kit init` (never overwrites), then `/kit-core:onboard` |
-| Add a domain tool to one repo | `claude-kit profile thesis` (also: `web`, `db`, `sonar`, `android`) |
-| Fix outdated or wrong docs in a repo | `/kit-core:docs-audit` (thorough; asks when something is unclear) |
-| Keep docs current after a feature | `/kit-core:docs-sync` |
-| Update tool binaries | `claude-kit update` |
-| Check that everything is healthy | `claude-kit check` |
+| Clean up a machine that already has a Claude Code setup | `loadout adopt` (shows the plan) → `loadout adopt --apply` |
+| Undo what loadout changed | `loadout restore ~/.claude/backups/loadout-<timestamp>` |
+| Change preferences or add tools globally | `loadout configure`, or ask Claude: `/loadout:configure` |
+| See what is on and why | `loadout configure show` |
+| Start a new project | `mkdir app && cd app && loadout init`, then in Claude Code: `/loadout:onboard` |
+| Prepare an existing repo | `loadout init` (never overwrites), then `/loadout:onboard` |
+| Add a domain tool to one repo | `loadout profile thesis` (also: `web`, `db`, `sonar`, `android`) |
+| Fix outdated or wrong docs in a repo | `/loadout:docs-audit` (thorough; asks when something is unclear) |
+| Keep docs current after a feature | `/loadout:docs-sync` |
+| Update tool binaries | `loadout update` |
+| Check that everything is healthy | `loadout check` |
 
 ## What you get
 
@@ -4520,7 +4520,7 @@ claude-kit check
 
 | Plugin | What it does for you |
 |---|---|
-| kit-core | Code-navigation servers (Serena, codebase-memory), tool hooks, the onboard/configure/docs skills, update notices |
+| loadout | Code-navigation servers (Serena, codebase-memory), tool hooks, the onboard/configure/docs skills, update notices |
 | superpowers | A disciplined workflow: brainstorm → plan → test-driven build → verify |
 | frontend-design + impeccable | Distinctive UI, then audit and polish it |
 | security-guidance | Warns about security mistakes while code is written |
@@ -4532,11 +4532,11 @@ claude-kit check
 
 **Per-project profiles:** `thesis` (academic research, RAG evaluation), `web` (browser debugging), `db` (database access), `sonar` (SonarQube), `android` (Kotlin).
 
-**Optional add-ons** (turn on with `claude-kit configure`): Playwright MCP, Chrome DevTools, GitHub MCP, hookify, Exa search, Sentry, a global database connection. Each lists what it costs in context.
+**Optional add-ons** (turn on with `loadout configure`): Playwright MCP, Chrome DevTools, GitHub MCP, hookify, Exa search, Sentry, a global database connection. Each lists what it costs in context.
 
 ## Your personal layer
 
-Your preferences live at `~/.config/claude-kit/personal` (or wherever `CLAUDE_KIT_PERSONAL` points):
+Your preferences live at `~/.config/loadout/personal` (or wherever `LOADOUT_PERSONAL` points):
 
 | File | Purpose |
 |---|---|
@@ -4545,40 +4545,40 @@ Your preferences live at `~/.config/claude-kit/personal` (or wherever `CLAUDE_KI
 | `mcp.json` | Extra MCP servers you want everywhere |
 | `profiles/*.json` | Your own project presets |
 
-You rarely edit these by hand: `claude-kit configure` does it for you. **To sync them across machines, make the folder a private git repo**; claude-kit pulls it daily.
+You rarely edit these by hand: `loadout configure` does it for you. **To sync them across machines, make the folder a private git repo**; loadout pulls it daily.
 
 ## Staying up to date
 
 | What | How |
 |---|---|
-| Plugins (including kit-core) | Claude Code auto-updates them |
+| Plugins (including loadout) | Claude Code auto-updates them |
 | This kit and your personal layer | Pulled at most once a day in the background (only when you have no local changes) |
-| Tool binaries | Checked weekly; Claude Code shows "updates available → `claude-kit update`" |
+| Tool binaries | Checked weekly; Claude Code shows "updates available → `loadout update`" |
 
 ## Secrets
 
-Never put API keys into config files. Put them in `~/.config/claude/secrets.env` (created for you, readable only by you):
+Never put API keys into config files. Put them in `~/.config/loadout/secrets.env` (created for you, readable only by you):
 
 ```bash
 DATABASE_URL=postgres://readonly:…@localhost/app
 ```
 
-Your shell loads this file. MCP configs reference values as `${DATABASE_URL}`. `claude-kit adopt` finds keys already sitting in plain text and offers to move them.
+Your shell loads this file. MCP configs reference values as `${DATABASE_URL}`. `loadout adopt` finds keys already sitting in plain text and offers to move them.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| `claude-kit: command not found` | Add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal |
-| A plugin or MCP server is missing in Claude Code | Restart Claude Code; then `claude-kit check` lists what is missing and how to fix it |
-| `invalid JSON in …/settings.json` | Fix the syntax error at the reported position, then `claude-kit apply-settings` |
-| "settings drift" warning | Something changed a kit-managed value. Run `claude-kit apply-settings`, or put your preferred value in your personal `settings.json` |
+| `loadout: command not found` | Add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal |
+| A plugin or MCP server is missing in Claude Code | Restart Claude Code; then `loadout check` lists what is missing and how to fix it |
+| `invalid JSON in …/settings.json` | Fix the syntax error at the reported position, then `loadout apply-settings` |
+| "settings drift" warning | Something changed a kit-managed value. Run `loadout apply-settings`, or put your preferred value in your personal `settings.json` |
 | Windows: links were copied instead of linked | Enable Developer Mode (Settings → For developers) and re-run bootstrap; copies still work and are refreshed daily |
-| Something went wrong after adopt | `claude-kit restore <backup path printed by adopt>` |
+| Something went wrong after adopt | `loadout restore <backup path printed by adopt>` |
 
 ## FAQ
 
-**Will it delete my stuff?** No. Anything it removes is moved into `~/.claude/backups/`, and `claude-kit restore` puts it back. Tools it doesn't know are left alone.
+**Will it delete my stuff?** No. Anything it removes is moved into `~/.claude/backups/`, and `loadout restore` puts it back. Tools it doesn't know are left alone.
 
 **I already have my own CLAUDE.md, hooks and settings.** They stay. The kit only manages its own keys. adopt *offers* to move your global CLAUDE.md into your personal layer.
 
@@ -4589,8 +4589,8 @@ Your shell loads this file. MCP configs reference values as `${DATABASE_URL}`. `
 ## Uninstall
 
 ```bash
-claude plugin uninstall kit-core@claude-kit
-rm ~/.claude/rules/kit ~/.claude/rules/personal ~/.local/bin/claude-kit
+claude plugin uninstall loadout@agent-loadout
+rm ~/.claude/rules/loadout ~/.claude/rules/personal ~/.local/bin/loadout
 ```
 
 Your `~/.claude/settings.json` keeps the merged values. Remove the kit's `enabledPlugins` and `extraKnownMarketplaces` entries if you want, or restore an older backup from `~/.claude/backups/`.
@@ -4599,7 +4599,7 @@ Your `~/.claude/settings.json` keeps the merged values. Remove the kit's `enable
 
 ```bash
 uv run --python 3.12 --with pytest pytest -q
-claude plugin validate --strict . && claude plugin validate --strict plugins/kit-core
+claude plugin validate --strict . && claude plugin validate --strict plugins/loadout
 ```
 
 To propose a tool, add or adjust its `catalog.json` entry with a `reason`; that's where the "why" lives.
@@ -4633,7 +4633,7 @@ jobs:
           node-version: 22
       - run: npm install -g @anthropic-ai/claude-code
       - run: claude plugin validate --strict .
-      - run: claude plugin validate --strict plugins/kit-core
+      - run: claude plugin validate --strict plugins/loadout
 ```
 
 - [ ] **Step 3: Run the full suite locally**
@@ -4655,7 +4655,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 14: The author's personal layer
 
 **Files:**
-- Create (new repo `/home/jonas/Documents/Code/claude-personal`): `rules/me.md`, `settings.json`, `README.md`, `.gitignore`
+- Create (new repo `/home/jonas/Documents/Code/loadout-personal`): `rules/me.md`, `settings.json`, `README.md`, `.gitignore`
 
 **Interfaces:**
 - Consumes: personal layer format (Task 10, spec §3.2)
@@ -4663,7 +4663,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 1: Create the repo and `rules/me.md`**
 
 ```bash
-mkdir -p /home/jonas/Documents/Code/claude-personal/rules && cd /home/jonas/Documents/Code/claude-personal && git init -q -b main
+mkdir -p /home/jonas/Documents/Code/loadout-personal/rules && cd /home/jonas/Documents/Code/loadout-personal && git init -q -b main
 ```
 
 `rules/me.md`:
@@ -4695,9 +4695,9 @@ Expected: `['agentPushNotifEnabled', 'alwaysThinkingEnabled', 'autoMode', 'effor
 
 `README.md`:
 ```markdown
-# claude-personal
+# loadout-personal
 
-Jonas's personal layer for [claude-kit](https://github.com/jonasyr/claude-kit): `rules/me.md` (loaded every session) and a `settings.json` overlay. Linked in via `~/.config/claude-kit/personal`.
+Jonas's personal layer for [loadout](https://github.com/jonasyr/agent-loadout): `rules/me.md` (loaded every session) and a `settings.json` overlay. Linked in via `~/.config/loadout/personal`.
 ```
 
 `.gitignore`:
@@ -4707,7 +4707,7 @@ Jonas's personal layer for [claude-kit](https://github.com/jonasyr/claude-kit): 
 
 ```bash
 git add -A
-git commit -m "feat: personal layer for claude-kit
+git commit -m "feat: personal layer for loadout
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -4722,19 +4722,17 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 Ask the user to run `! gh auth login`, then `! gh auth setup-git`. Wait for confirmation. Remind them to rotate the GitHub PAT and the Devin API key (spec §13) if not done yet.
 
-- [ ] **Step 2: Confirm name and visibility with the user**
+- [ ] **Step 2: Confirm visibility with the user**
 
-Ask first whether to keep the name `claude-kit` or switch to an agent-neutral one before anything is published (spec §14; renaming later means changing the marketplace source on every machine). If renamed, replace the name in all files (`grep -rl claude-kit . | xargs sed -i 's/claude-kit/<new>/g'`, then rename `cli/claude_kit` to match), run the tests, and commit.
-
-Ask: "Publish claude-kit as **public** (recommended: no personal data, easiest for your colleague, auto-updates without credentials) or private? claude-personal will be private." Wait for the answer.
+The name is decided: repo `agent-loadout`, CLI/plugin `loadout`. Ask: "Publish agent-loadout as **public** (recommended: no personal data, easiest for your colleague, auto-updates without credentials) or private? loadout-personal will be private." Wait for the answer.
 
 - [ ] **Step 3: Create and push**
 
 ```bash
-cd /home/jonas/Documents/Code/claude-kit && gh repo create jonasyr/claude-kit --<public|private> --source . --push
-cd /home/jonas/Documents/Code/claude-personal && gh repo create jonasyr/claude-personal --private --source . --push
+cd /home/jonas/Documents/Code/agent-loadout && gh repo create jonasyr/agent-loadout --<public|private> --source . --push
+cd /home/jonas/Documents/Code/loadout-personal && gh repo create jonasyr/loadout-personal --private --source . --push
 ```
-Expected: both URLs printed. Then check that CI passes: `gh run watch --repo jonasyr/claude-kit`. If the `validate` job fails because `claude plugin validate` needs auth in CI, replace those two steps with `python3 -c "import json; json.load(open('.claude-plugin/marketplace.json')); json.load(open('plugins/kit-core/.claude-plugin/plugin.json'))"` and push the fix.
+Expected: both URLs printed. Then check that CI passes: `gh run watch --repo jonasyr/agent-loadout`. If the `validate` job fails because `claude plugin validate` needs auth in CI, replace those two steps with `python3 -c "import json; json.load(open('.claude-plugin/marketplace.json')); json.load(open('plugins/loadout/.claude-plugin/plugin.json'))"` and push the fix.
 
 ---
 
@@ -4746,7 +4744,7 @@ Expected: both URLs printed. Then check that CI passes: `gh run watch --repo jon
 
 Run:
 ```bash
-mkdir -p ~/claude-kit-baseline && cp ~/.claude/settings.json ~/.claude/CLAUDE.md ~/.claude/RTK.md ~/claude-kit-baseline/ && claude mcp list > ~/claude-kit-baseline/mcp.txt 2>&1; claude plugin list > ~/claude-kit-baseline/plugins.txt 2>&1
+mkdir -p ~/agent-loadout-baseline && cp ~/.claude/settings.json ~/.claude/CLAUDE.md ~/.claude/RTK.md ~/agent-loadout-baseline/ && claude mcp list > ~/agent-loadout-baseline/mcp.txt 2>&1; claude plugin list > ~/agent-loadout-baseline/plugins.txt 2>&1
 ```
 Ask the user to start a fresh `claude` session in `~/Documents/Code/bachelor-rag-chunking`, run `/context`, and paste the numbers (baseline).
 
@@ -4756,21 +4754,21 @@ For each, record the answer in `docs/notes/2026-10-08-verification.md` in the ki
 1. **Rules subdirectories:** put a test rule `~/.claude/rules/kit-test/probe.md` containing "If asked for the probe word, answer PELICAN". Run `claude -p "What is the probe word?"`. If it answers PELICAN, subdirectories load. Delete the probe afterwards. If they don't load, change `link.LINKS()` to per-file links named `kit-<name>.md` / `personal-<name>.md`, update the tests, and commit.
 2. **User-level `settings.local.json`:** check `https://code.claude.com/docs/en/settings` (via the claude-code-guide agent). If it is not honored, the hyprctl permission already lives in the personal overlay; adopt leaves the file alone.
 3. **`autoMode` in project settings:** same docs check. If supported, offer the user to move the stormcut-specific lines into `stormcut/.claude/settings.json`.
-4. **Tool prefix:** after cutover, in a session, confirm the Serena tools are named `mcp__plugin_kit-core_serena__*`. If they differ, fix the matcher in `hooks.json`.
+4. **Tool prefix:** after cutover, in a session, confirm the Serena tools are named `mcp__plugin_loadout_serena__*`. If they differ, fix the matcher in `hooks.json`.
 5. **security-guidance cost:** read `~/.claude/plugins/cache/claude-plugins-official/security-guidance/*/README.md` for the Stop-hook LLM review configuration. If it calls a model on every Stop, report the cost and how to switch it off, and ask the user.
-6. **`codebase-memory-mcp update -y`:** run it inside `claude-kit update` (Step 4) and confirm the settings guard reverted any settings change.
+6. **`codebase-memory-mcp update -y`:** run it inside `loadout update` (Step 4) and confirm the settings guard reverted any settings change.
 
 - [ ] **Step 3: Link the personal layer and run bootstrap without adopt**
 
 ```bash
-mkdir -p ~/.config/claude-kit && ln -sfn ~/Documents/Code/claude-personal ~/.config/claude-kit/personal
-cd ~/Documents/Code/claude-kit && ./bootstrap.sh --no-adopt
+mkdir -p ~/.config/loadout && ln -sfn ~/Documents/Code/loadout-personal ~/.config/loadout/personal
+cd ~/Documents/Code/agent-loadout && ./bootstrap.sh --no-adopt
 ```
 Expected: links created, settings merged, marketplaces added, plugins installed, check output. Fix any FAIL lines before continuing.
 
 - [ ] **Step 4: Adopt, with the user deciding**
 
-Run `claude-kit adopt` (dry run) and show the full plan to the user. Ask which groups or items to apply. Per the spec, the user already decided:
+Run `loadout adopt` (dry run) and show the full plan to the user. Ask which groups or items to apply. Per the spec, the user already decided:
 - remove github-server, MCP_DOCKER, omarchy-kb;
 - migrate serena and codebase-memory;
 - scope-down sonarqube and ARS;
@@ -4779,15 +4777,15 @@ Run `claude-kit adopt` (dry run) and show the full plan to the user. Ask which g
 
 Then apply non-interactively, e.g.:
 ```bash
-claude-kit adopt --apply --groups remove,migrate,scope-down,review --skip <names the user wants kept>
+loadout adopt --apply --groups remove,migrate,scope-down,review --skip <names the user wants kept>
 ```
-Then `claude-kit update` for outdated binaries (codebase-memory 0.9.0 → 0.11.0) after the user confirms. Then `claude-kit check` must show no FAIL.
+Then `loadout update` for outdated binaries (codebase-memory 0.9.0 → 0.11.0) after the user confirms. Then `loadout check` must show no FAIL.
 
 - [ ] **Step 5: Verify in a fresh session**
 
 Ask the user to restart Claude Code in `bachelor-rag-chunking` and check:
 - `/context` (compare with the baseline);
-- `/mcp` (serena and codebase-memory connected via kit-core; no failing kit servers);
+- `/mcp` (serena and codebase-memory connected via loadout; no failing kit servers);
 - that the session-start hook produced no error.
 
 Record the before/after numbers in `docs/notes/2026-10-08-verification.md`, commit and push.
@@ -4795,8 +4793,8 @@ Record the before/after numbers in `docs/notes/2026-10-08-verification.md`, comm
 - [ ] **Step 6: Apply profiles to the obvious repos (with user confirmation)**
 
 Propose to the user:
-- `cd ~/Documents/Code/bachelor-rag-chunking && claude-kit init thesis --dry-run`, then the real run;
-- `claude-kit profile sonar` in gitray and sonarqube-issues-export-to-excel.
+- `cd ~/Documents/Code/bachelor-rag-chunking && loadout init thesis --dry-run`, then the real run;
+- `loadout profile sonar` in gitray and sonarqube-issues-export-to-excel.
 
 Run only the ones they approve.
 
@@ -4809,19 +4807,19 @@ Run only the ones they approve.
 - [ ] **Step 1: Empty repo**
 
 ```bash
-d=$(mktemp -d)/demo-app && mkdir -p "$d" && cd "$d" && claude-kit init --yes --no-install
+d=$(mktemp -d)/demo-app && mkdir -p "$d" && cd "$d" && loadout init --yes --no-install
 ```
 Expected:
 - git initialized;
 - AGENTS.md, CLAUDE.md, `docs/README.md`, `docs/adr/README.md` and `.gitignore` entries created;
-- "next: /kit-core:onboard" printed.
+- "next: /loadout:onboard" printed.
 
-Ask the user to open Claude Code there and run `/kit-core:onboard`. It must detect *new project* mode and start brainstorming.
+Ask the user to open Claude Code there and run `/loadout:onboard`. It must detect *new project* mode and start brainstorming.
 
 - [ ] **Step 2: Existing repo dry run**
 
 ```bash
-cd ~/Documents/Code/bachelor-rag-chunking && claude-kit init --dry-run
+cd ~/Documents/Code/bachelor-rag-chunking && loadout init --dry-run
 ```
 Expected:
 - it suggests `thesis` (directory name contains "thesis"? No: the name is `bachelor-rag-chunking`, so detection relies on `.tex`/`.bib` files; if none exist it suggests nothing, which is correct);
@@ -4837,4 +4835,4 @@ Summarize for the user:
   - rotate the leaked credentials;
   - disconnect the claude.ai Context7 connector;
   - prune unused claude.ai connectors and Cowork plugins;
-  - run `/kit-core:docs-audit` on repos with old Serena memories, starting with bachelor-rag-chunking.
+  - run `/loadout:docs-audit` on repos with old Serena memories, starting with bachelor-rag-chunking.

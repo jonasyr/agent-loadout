@@ -1,4 +1,4 @@
-# claude-kit: a shareable, self-updating Claude Code setup
+# agent-loadout: a shareable, self-updating Claude Code setup
 
 Date: 2026-10-08 · Status: design v2, pending spec review · Claude Code v2.1.294
 
@@ -16,11 +16,11 @@ One kit that anyone (the author, a colleague) can install on any machine, whatev
 
 Success criteria:
 
-1. **Fresh machine:** `bootstrap` + `gh auth login` yields the full setup; `claude-kit check` passes.
-2. **Machine with an existing config:** `claude-kit adopt` shows a dry-run plan covering every MCP server, plugin, marketplace, skill, hook and tool binary. Each item gets a reason and a choice. Nothing changes without confirmation; everything removed is backed up and restorable.
+1. **Fresh machine:** `bootstrap` + `gh auth login` yields the full setup; `loadout check` passes.
+2. **Machine with an existing config:** `loadout adopt` shows a dry-run plan covering every MCP server, plugin, marketplace, skill, hook and tool binary. Each item gets a reason and a choice. Nothing changes without confirmation; everything removed is backed up and restorable.
 3. **Updates:** a commit to the kit or personal repo reaches every machine without manual steps. Plugins update via marketplace auto-update, rules via a daily pull.
-4. **Projects:** `claude-kit init` + `/kit-core:onboard` work on an empty directory, a new repo and an existing repo with docs. They never overwrite without asking.
-5. **Docs:** `/kit-core:docs-audit` brings a repo's docs and memories into the target structure, verified against the current code.
+4. **Projects:** `loadout init` + `/loadout:onboard` work on an empty directory, a new repo and an existing repo with docs. They never overwrite without asking.
+5. **Docs:** `/loadout:docs-audit` brings a repo's docs and memories into the target structure, verified against the current code.
 6. **Secrets:** no plaintext secret in either repo, `~/.claude.json` or `settings.json`.
 7. **Overhead:** `/context` at session start shows less overhead than the 2026-10-08 baseline on the author's machine.
 8. **CI:** CI validates the kit on Linux and Windows on every push.
@@ -29,41 +29,41 @@ Success criteria:
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | Kit repo `jonasyr/claude-kit` (generic, recommended public) + personal repo per user (author: `jonasyr/claude-personal`, private) | Kit improvements reach everyone via auto-update; nobody merges upstream; personal data stays private |
-| D2 | Kit is also a plugin marketplace delivering `kit-core` (hooks, MCP config, skills) | Plugins solve auto-update and cross-platform delivery |
+| D1 | Kit repo `jonasyr/agent-loadout` (generic, recommended public) + personal repo per user (author: `jonasyr/loadout-personal`, private) | Kit improvements reach everyone via auto-update; nobody merges upstream; personal data stays private |
+| D2 | Kit is also a plugin marketplace delivering `loadout` (hooks, MCP config, skills) | Plugins solve auto-update and cross-platform delivery |
 | D3 | `settings.json` is merged: the kit manages only the keys it sets (three-way merge against the last applied snapshot), user keys untouched | Works on machines with existing settings; no symlink overwrites |
-| D4 | Rules are linked as directories: `~/.claude/rules/kit/` → kit, `~/.claude/rules/personal/` → personal layer. The kit never edits `~/.claude/CLAUDE.md` | Coexists with any existing global instructions |
+| D4 | Rules are linked as directories: `~/.claude/rules/loadout/` → kit, `~/.claude/rules/personal/` → personal layer. The kit never edits `~/.claude/CLAUDE.md` | Coexists with any existing global instructions |
 | D5 | A `catalog.json` in the kit encodes tool knowledge: what is core, profile-only, superseded or deprecated, version sources, install/update commands | Single source of truth for adopt, check and update; it captures the research behind each decision |
-| D6 | Secrets live in untracked `~/.config/claude/secrets.env` (mode 600), loaded by the shell, referenced as `${VAR}` | No secrets in git or `~/.claude.json` |
+| D6 | Secrets live in untracked `~/.config/loadout/secrets.env` (mode 600), loaded by the shell, referenced as `${VAR}` | No secrets in git or `~/.claude.json` |
 | D7 | Tiered scoping: core plugins global, domain plugins per project via profiles | Each globally enabled skill's description costs context in every session |
-| D8 | Code intelligence: official LSP plugins + Serena (memories kept, `remind` hook dropped) + codebase-memory-mcp, routed by `rules/kit/tooling.md` | Each tool has one job |
+| D8 | Code intelligence: official LSP plugins + Serena (memories kept, `remind` hook dropped) + codebase-memory-mcp, routed by `rules/loadout/tooling.md` | Each tool has one job |
 | D9 | Design: official `frontend-design` + `impeccable`; taste-skill is superseded | Researched 2026-10-08; see catalog reasons |
 | D10 | Knowledge model: `docs/` is the single source of truth; AGENTS.md and Serena memories link to it rather than copying it | Keep always-loaded context small, load details on demand; verbose generated context files hurt agents |
-| D11 | Tool binaries get a weekly update notice and are updated deliberately with `claude-kit update`; never silently | Upstream binary releases have broken before |
-| D12 | Every destructive action: dry run first, confirm, move to a timestamped backup (never delete); `claude-kit restore <backup>` undoes it | Safe on other people's machines |
+| D11 | Tool binaries get a weekly update notice and are updated deliberately with `loadout update`; never silently | Upstream binary releases have broken before |
+| D12 | Every destructive action: dry run first, confirm, move to a timestamped backup (never delete); `loadout restore <backup>` undoes it | Safe on other people's machines |
 
 ## 3. Layout
 
-### 3.1 Kit repo (`claude-kit`)
+### 3.1 Kit repo (`agent-loadout`)
 
 ```
-claude-kit/
-├── .claude-plugin/marketplace.json    marketplace "claude-kit"; lists kit-core
-├── plugins/kit-core/
+agent-loadout/
+├── .claude-plugin/marketplace.json    marketplace "agent-loadout"; lists loadout
+├── plugins/loadout/
 │   ├── .claude-plugin/plugin.json     no "version" → every commit is an update
 │   ├── .mcp.json                      serena, codebase-memory-mcp
 │   ├── hooks/hooks.json, hooks/*.sh   wrappers: exit 0 silently when binary missing
 │   └── skills/{onboard,docs-sync,docs-audit}/SKILL.md
-├── rules/                             → ~/.claude/rules/kit/
+├── rules/                             → ~/.claude/rules/loadout/
 │   └── tooling.md, docs-policy.md, memory-policy.md, workflow.md, rtk.md
 ├── settings.base.json                 kit-managed settings keys
 ├── catalog.json                       tool knowledge (section 5)
 ├── profiles/{thesis,sonar,db,web,android}.json
 ├── templates/project/                 AGENTS.md, CLAUDE.md, docs/README.md, docs/adr/README.md
 ├── templates/personal/                starter personal layer (section 3.2)
-├── cli/claude_kit/                    Python ≥3.10, stdlib only
-├── bin/claude-kit, bin/claude-kit.cmd
-├── bootstrap.sh, bootstrap.ps1        thin shims → `claude-kit bootstrap`
+├── cli/loadout/                    Python ≥3.10, stdlib only
+├── bin/loadout, bin/loadout.cmd
+├── bootstrap.sh, bootstrap.ps1        thin shims → `loadout bootstrap`
 ├── secrets.env.example
 ├── tests/
 ├── .github/workflows/ci.yml
@@ -72,7 +72,7 @@ claude-kit/
 
 ### 3.2 Personal layer
 
-Located at `$CLAUDE_KIT_PERSONAL`, default `~/.config/claude-kit/personal`. Can be a git clone (the author's) or a plain folder created by the wizard.
+Located at `$LOADOUT_PERSONAL`, default `~/.config/loadout/personal`. Can be a git clone (the author's) or a plain folder created by the wizard.
 
 ```
 personal/
@@ -92,7 +92,7 @@ The author's personal layer receives:
 
 | Plugin | Marketplace | Job |
 |---|---|---|
-| kit-core | claude-kit | Hooks, serena + codebase-memory MCP config, onboard/docs skills |
+| loadout | agent-loadout | Hooks, serena + codebase-memory MCP config, onboard/docs skills |
 | superpowers | claude-plugins-official | Process skills |
 | frontend-design | claude-plugins-official | Aesthetic direction for UI |
 | impeccable | impeccable (`pbakaus/impeccable`) | UI audit/critique/polish; per-edit hook off |
@@ -105,7 +105,7 @@ The author's personal layer receives:
 
 All third-party marketplaces are declared with `"autoUpdate": true`.
 
-Core binary (not a plugin): **Playwright CLI** (`@playwright/cli`, catalog `required: true`). Used skill-less in every repo via `rules/kit/tooling.md` (agent reads `playwright-cli --help`), so it adds no idle context. Chosen over the Playwright MCP plugin because it keeps snapshots/screenshots on disk (about 4× fewer tokens); the MCP stays in the catalog as `alternative`.
+Core binary (not a plugin): **Playwright CLI** (`@playwright/cli`, catalog `required: true`). Used skill-less in every repo via `rules/loadout/tooling.md` (agent reads `playwright-cli --help`), so it adds no idle context. Chosen over the Playwright MCP plugin because it keeps snapshots/screenshots on disk (about 4× fewer tokens); the MCP stays in the catalog as `alternative`.
 
 ### 4.2 Profiles
 
@@ -128,7 +128,7 @@ Profiles are merged into `<repo>/.claude/settings.json` and `<repo>/.mcp.json`. 
   - testing-suite, documentation-generator (stale, superseded)
   - taste-skill skills (superseded by frontend-design + impeccable)
   - the `serena-hooks remind` hook
-- **Migrate into kit-core:**
+- **Migrate into loadout:**
   - user-scope serena and codebase-memory-mcp MCP entries
   - the cbm and serena hooks in `settings.json`
   - `~/.claude/.mcp.json`
@@ -160,26 +160,26 @@ Each entry:
 
 ### 6.1 `bootstrap`
 
-Runs `claude-kit bootstrap [--install] [--yes]`. Safe to re-run.
+Runs `loadout bootstrap [--install] [--yes]`. Safe to re-run.
 
 1. **Prerequisites:**
    - claude, git, python3, uv, node;
    - `gh auth status` (then `gh auth setup-git`; needed only for private repos).
    - Catalog binaries with `required: true` are checked. `--install` installs missing ones via their catalog commands; otherwise they are reported.
 2. **Personal layer:**
-   - If `$CLAUDE_KIT_PERSONAL` is missing, ask: clone an existing personal repo (URL), or create a starter one via a wizard (name, role, languages, working preferences). The wizard renders `templates/personal`.
-3. **Link** the rules directories (D4) and `bin/claude-kit` into `~/.local/bin` (Windows: `.cmd` shim in `%USERPROFILE%\.local\bin`).
+   - If `$LOADOUT_PERSONAL` is missing, ask: clone an existing personal repo (URL), or create a starter one via a wizard (name, role, languages, working preferences). The wizard renders `templates/personal`.
+3. **Link** the rules directories (D4) and `bin/loadout` into `~/.local/bin` (Windows: `.cmd` shim in `%USERPROFILE%\.local\bin`).
    - If symlinks are unavailable (Windows without Developer Mode), copy and record copy mode.
 4. **Settings:** three-way merge of `settings.base.json` + personal `settings.json` into `~/.claude/settings.json` (section 6.3).
 5. **Plugins:**
    - `claude plugin marketplace add` for each declared marketplace;
    - `claude plugin install --scope user` for each enabled plugin not yet installed.
-6. **Adopt:** run `claude-kit adopt` (dry run, then interactive).
+6. **Adopt:** run `loadout adopt` (dry run, then interactive).
 7. **Secrets:**
    - create `secrets.env` from the example if missing;
    - add a guarded load line to the shell profile (bashrc/zshrc/PowerShell profile);
    - report empty variables.
-8. **Check:** run `claude-kit check`.
+8. **Check:** run `loadout check`.
 
 ### 6.2 `adopt` (existing configs)
 
@@ -193,8 +193,8 @@ Runs `claude-kit bootstrap [--install] [--yes]`. Safe to re-run.
 2. **Secret scan:** flag values in `~/.claude.json` MCP `env`/`args`/`headers` that match token patterns: `ghp_`, `github_pat_`, `sk-`, `apk_`, long base64/hex strings, or keys named `*KEY*`/`*TOKEN*`/`*SECRET*`. The fix moves the value to `secrets.env` and replaces it with `${VAR}`.
 3. **Classify** each item via the catalog into these actions:
    - *keep*;
-   - *migrate* (duplicates something kit-core provides → remove the user-level copy);
-   - *scope down* (profile-only → disable globally, print `claude-kit init <profile>` hint);
+   - *migrate* (duplicates something loadout provides → remove the user-level copy);
+   - *scope down* (profile-only → disable globally, print `loadout init <profile>` hint);
    - *remove* (superseded/deprecated, with reason and replacement);
    - *update* (binary outdated: installed → latest);
    - *unknown* (kept untouched).
@@ -202,15 +202,15 @@ Runs `claude-kit bootstrap [--install] [--yes]`. Safe to re-run.
    - `--dry-run` (default when not interactive) stops here.
    - Interactive: confirm per group, with an option to pick individual items.
 5. **Apply:**
-   - Back up everything touched to `~/.claude/backups/claude-kit-<timestamp>/`, with a manifest recording the original location and the undo command.
+   - Back up everything touched to `~/.claude/backups/loadout-<timestamp>/`, with a manifest recording the original location and the undo command.
    - Execute via the `claude` CLI where possible (`claude mcp remove`, `claude plugin uninstall`, `claude plugin marketplace remove`); move files/symlinks into the backup.
 6. **Global CLAUDE.md:** if `~/.claude/CLAUDE.md` has content, offer to move it into `personal/rules/me.md` and leave CLAUDE.md empty except a comment. It is never changed without confirmation.
 
-`claude-kit restore <backup-dir>` replays the manifest in reverse.
+`loadout restore <backup-dir>` replays the manifest in reverse.
 
 ### 6.3 Settings merge
 
-- **State:** `~/.claude/.claude-kit/managed-settings.json` is the snapshot last applied.
+- **State:** `~/.claude/.loadout/managed-settings.json` is the snapshot last applied.
 - **Inputs:**
   - `desired = deep_merge(settings.base.json, personal/settings.json)`
   - `current` = the existing `~/.claude/settings.json`
@@ -220,22 +220,22 @@ Runs `claude-kit bootstrap [--install] [--yes]`. Safe to re-run.
 - **After merge:** write the result and the new snapshot.
 - **check:** reports drift only on desired paths.
 
-### 6.4 Configure wizard (`claude-kit configure`, `/kit-core:configure`)
+### 6.4 Configure wizard (`loadout configure`, `/loadout:configure`)
 
 One engine, two front-ends. Defaults stay as the kit ships them; the wizard only writes the personal layer.
 
 - **Engine (CLI, non-interactive):**
-  - `claude-kit configure set plugin <id> on|off` → `<personal>/settings.json` `enabledPlugins`. `off` opts out of a kit default.
-  - `claude-kit configure set mcp <catalog-id> on|off` → `<personal>/mcp.json`. The servers listed there are applied as user-scope MCP servers via `claude mcp add-json -s user`. The managed names are kept in a snapshot, so an `off` removes only kit-applied servers.
-  - `claude-kit configure set pref <key> <json-value>` → `<personal>/settings.json`.
-  - `claude-kit configure show` prints the effective setup: kit default vs personal override.
+  - `loadout configure set plugin <id> on|off` → `<personal>/settings.json` `enabledPlugins`. `off` opts out of a kit default.
+  - `loadout configure set mcp <catalog-id> on|off` → `<personal>/mcp.json`. The servers listed there are applied as user-scope MCP servers via `claude mcp add-json -s user`. The managed names are kept in a snapshot, so an `off` removes only kit-applied servers.
+  - `loadout configure set pref <key> <json-value>` → `<personal>/settings.json`.
+  - `loadout configure show` prints the effective setup: kit default vs personal override.
   - After each change it runs the settings merge and the MCP apply. If the personal layer is a git repo, it offers to commit and push.
-- **Interactive CLI wizard** (`claude-kit configure`; bootstrap runs it in first-run mode instead of the separate personal wizard):
+- **Interactive CLI wizard** (`loadout configure`; bootstrap runs it in first-run mode instead of the separate personal wizard):
   1. About you (`me.md`).
   2. Preferences (effort, thinking, UI).
   3. Global add-ons, grouped by category: kit defaults (opt out) + profile plugins (opt in globally) + catalog `offer` items, each with its reason and context-cost note.
   4. Done: summary and apply.
-- **Skill `/kit-core:configure`**: the same choices, conversationally inside Claude Code. Reads the catalog and the current personal layer, asks what you want ("I mostly do X", "I'd like browser automation everywhere"), recommends, then calls the non-interactive engine commands.
+- **Skill `/loadout:configure`**: the same choices, conversationally inside Claude Code. Reads the catalog and the current personal layer, asks what you want ("I mostly do X", "I'd like browser automation everywhere"), recommends, then calls the non-interactive engine commands.
 - **Catalog additions:**
   - an optional `category` (docs, browser, design, data, research, security, workflow, language);
   - an optional `offer`: `{ "plugin": "<id>" }` or `{ "mcp": { "<name>": <config> } }` with an optional `"needs": ["ENV_VAR"]`. Only entries with an offer appear as global add-ons.
@@ -244,14 +244,14 @@ One engine, two front-ends. Defaults stay as the kit ships them; the wizard only
 
 | What | Mechanism |
 |---|---|
-| Plugins (incl. kit-core) | Marketplace auto-update |
-| Kit and personal repos | kit-core SessionStart hook (sync, fast) prints a pending notice if any, spawns detached `claude-kit maintenance`. maintenance runs at most daily: `git pull --ff-only` on kit and personal repos when clean, then re-apply the settings merge and relink (copy mode: re-copy) |
-| Binaries | maintenance, weekly: compare catalog versions; write a notice ("updates available → `claude-kit update`") shown at the next session start via `systemMessage` |
-| `claude-kit update` | Runs catalog update commands for outdated binaries. Before and after, snapshots `~/.claude/settings.json`; if a tool's installer modified it (e.g. re-adding its own hooks), the change is shown and reverted to the merged result |
+| Plugins (incl. loadout) | Marketplace auto-update |
+| Kit and personal repos | loadout SessionStart hook (sync, fast) prints a pending notice if any, spawns detached `loadout maintenance`. maintenance runs at most daily: `git pull --ff-only` on kit and personal repos when clean, then re-apply the settings merge and relink (copy mode: re-copy) |
+| Binaries | maintenance, weekly: compare catalog versions; write a notice ("updates available → `loadout update`") shown at the next session start via `systemMessage` |
+| `loadout update` | Runs catalog update commands for outdated binaries. Before and after, snapshots `~/.claude/settings.json`; if a tool's installer modified it (e.g. re-adding its own hooks), the change is shown and reverted to the merged result |
 
 ## 7. Project setup
 
-### 7.1 `claude-kit init [profiles…]`
+### 7.1 `loadout init [profiles…]`
 
 Run in the project directory; never overwrites.
 
@@ -267,15 +267,15 @@ Run in the project directory; never overwrites.
 - **Scaffold missing** `AGENTS.md`, `CLAUDE.md` (`@AGENTS.md`), `docs/README.md`, `docs/adr/README.md`.
   - If `CLAUDE.md` exists but `AGENTS.md` doesn't, skip both and note that onboard will offer the migration.
 - **`.gitignore`:** add `.claude/settings.local.json` and `.serena/cache/`.
-- **Print profile notes and next step:** `/kit-core:onboard`.
+- **Print profile notes and next step:** `/loadout:onboard`.
 
-### 7.2 `/kit-core:onboard` (skill)
+### 7.2 `/loadout:onboard` (skill)
 
 - **Mode detection:** *new project* if the repo has no source files (only README/LICENSE/.gitignore/templates); otherwise *existing*.
 - **New project:**
   - Use `superpowers:brainstorming` to settle what the project becomes (purpose, users, stack, constraints).
   - Then write AGENTS.md, `docs/README.md` and `docs/adr/0001-<stack-decision>.md`.
-  - Suggest profiles (`claude-kit profile <name>`) and create the initial directory skeleton the stack calls for.
+  - Suggest profiles (`loadout profile <name>`) and create the initial directory skeleton the stack calls for.
   - Commit after approval.
 - **Existing project:**
   - Fill or repair AGENTS.md from the code: purpose, commands (verified by running `--help`/dry forms), conventions, map of docs and memories.
@@ -283,7 +283,7 @@ Run in the project directory; never overwrites.
   - Pick up an existing `.mcp.json` and `.claude/settings.json` without changing them.
   - Run Serena onboarding under `memory-policy.md` if no memories exist.
   - Index with codebase-memory-mcp.
-  - If docs or memories already exist, recommend `/kit-core:docs-audit`.
+  - If docs or memories already exist, recommend `/loadout:docs-audit`.
   - Show the diff; commit after approval.
 
 ## 8. Knowledge model and docs skills
@@ -296,11 +296,11 @@ Run in the project directory; never overwrites.
 | Native auto-memory | Machine-local or temporary notes | No project facts |
 | Personal layer | User preferences and working style | Changed by commit |
 
-**`/kit-core:docs-sync`** (cheap, end of each feature, after superpowers finishing-a-development-branch): find which layers the change affects; update only those; verify links.
+**`/loadout:docs-sync`** (cheap, end of each feature, after superpowers finishing-a-development-branch): find which layers the change affects; update only those; verify links.
 
-**`/kit-core:docs-audit`** (full, expensive, run on request):
+**`/loadout:docs-audit`** (full, expensive, run on request):
 
-1. **Inventory:** every doc layer above plus README; write `.claude-kit/docs-audit/<date>.md` as a resumable checklist (gitignored until done).
+1. **Inventory:** every doc layer above plus README; write `.loadout/docs-audit/<date>.md` as a resumable checklist (gitignored until done).
 2. **Claim extraction:** commands, paths, symbols, parameters, architecture/behaviour statements, decisions, status claims.
 3. **Verification against current code:**
    - parallel subagents, one per doc area;
@@ -335,14 +335,14 @@ Run in the project directory; never overwrites.
 
 The SubagentStart hook injects a one-line pointer to the tooling routing. The SessionStart "ALWAYS use codebase-memory FIRST" reminder is dropped, since the rules load every session.
 
-## 10. kit-core hooks
+## 10. loadout hooks
 
 | Event | Command (via `run.sh`, which exits 0 if binary missing) |
 |---|---|
-| SessionStart | `serena-hooks activate --client=claude-code`; `claude-kit hook-session-start` |
+| SessionStart | `serena-hooks activate --client=claude-code`; `loadout hook-session-start` |
 | SessionEnd | `serena-hooks cleanup --client=claude-code` |
 | PreToolUse `Bash` | `rtk hook claude` |
-| PreToolUse `mcp__plugin_kit-core_serena__.*` | `serena-hooks auto-approve --client=claude-code` (it matches on "serena" substring, so plugin-namespaced names work) |
+| PreToolUse `mcp__plugin_loadout_serena__.*` | `serena-hooks auto-approve --client=claude-code` (it matches on "serena" substring, so plugin-namespaced names work) |
 | PreToolUse `Grep\|Glob` | `codebase-memory-mcp hook-augment` (soft: stderr dropped, always exit 0) |
 | SubagentStart | tooling pointer JSON |
 
@@ -365,7 +365,7 @@ The SubagentStart hook injects a one-line pointer to the tooling routing. The Se
   - session hook due-logic and notice;
   - update's settings guard.
 - **Fresh-HOME bootstrap test** (no network, `--no-plugins`).
-- **Static checks:** `claude plugin validate --strict` on the marketplace and kit-core; all JSON parses; profiles and settings reference only declared marketplaces; catalog schema check.
+- **Static checks:** `claude plugin validate --strict` on the marketplace and loadout; all JSON parses; profiles and settings reference only declared marketplaces; catalog schema check.
 - **Hook smoke tests:** each hook with its binary absent from PATH exits 0 with no output (POSIX).
 - **CI:** GitHub Actions on ubuntu-latest and windows-latest.
 - **Acceptance on the author's machine:**
@@ -410,7 +410,7 @@ Decisions now that keep this cheap:
 
 ## 16. Verify during implementation
 
-- Does `~/.claude/rules/` load subdirectories (`rules/kit/`, `rules/personal/`)? If not, link per-file as `kit-*.md` / `personal-*.md`.
+- Does `~/.claude/rules/` load subdirectories (`rules/loadout/`, `rules/personal/`)? If not, link per-file as `kit-*.md` / `personal-*.md`.
 - Is user-level `~/.claude/settings.local.json` honored? If not, the adopt plan migrates its contents into the personal overlay.
 - Is `autoMode` honored in project settings? If yes, offer to move the stormcut-specific lines to stormcut.
 - Exact tool-name prefix of plugin MCP tools (for the auto-approve matcher).
