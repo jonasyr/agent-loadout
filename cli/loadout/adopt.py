@@ -37,6 +37,9 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
 
 def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask: Ask) -> list[Verdict]:
     if groups is not None:
+        valid = set(GROUP_ORDER) - {"keep"}
+        for g in sorted(groups - valid):
+            raise ValueError(f"unknown group '{g}' (valid: {', '.join(x for x in GROUP_ORDER if x in valid)})")
         return [v for v in verdicts if v.action in groups and v.item.name not in skip]
     chosen = []
     for group in GROUP_ORDER[:-1]:
@@ -88,9 +91,10 @@ def _apply_plugin(v: Verdict, bk: Backup) -> str:
 
 def _apply_marketplace(v: Verdict, bk: Backup) -> str:
     src = v.item.extra.get("source", {})
-    origin = src.get("repo") or src.get("url")
-    if origin:
-        bk.record_command(f"marketplace {v.item.name}", ["claude", "plugin", "marketplace", "add", origin])
+    origin = src.get("repo") or src.get("url") or src.get("path")
+    if not origin:
+        return f"marketplace {v.item.name}: skipped (no source to restore from)"
+    bk.record_command(f"marketplace {v.item.name}", ["claude", "plugin", "marketplace", "add", origin])
     return f"marketplace {v.item.name}: " + _claude(["plugin", "marketplace", "remove", v.item.name])
 
 
@@ -147,7 +151,9 @@ def _apply_binary(v: Verdict) -> str:
 
 def migrate_claude_md(bk: Backup) -> list[str]:
     src = paths.claude_home() / "CLAUDE.md"
-    if not src.exists() or src.is_symlink():
+    if src.is_symlink():
+        return ["skipped: ~/.claude/CLAUDE.md is a symlink"]
+    if not src.exists():
         return []
     content = src.read_text(encoding="utf-8").strip()
     if not content or content.startswith(MIGRATED_MARKER):
@@ -200,7 +206,9 @@ def fix_secrets(findings: list, bk: Backup) -> list[str]:
             fh.writelines(lines)
         if os.name != "nt":
             os.chmod(secrets_path, 0o600)
-        bk.record_command(f"secrets {server}", ["claude", "mcp", "add-json", "-s", "user", server, json.dumps(original)])
+        # reverse replay: remove the ${VAR} server first, then re-add the original
+        bk.record_command(f"secrets {server} (original)", ["claude", "mcp", "add-json", "-s", "user", server, json.dumps(original)])
+        bk.record_command(f"secrets {server} (remove rewritten)", ["claude", "mcp", "remove", "-s", "user", server])
         _claude(["mcp", "remove", "-s", "user", server])
         res = _claude(["mcp", "add-json", "-s", "user", server, json.dumps(cfg)])
         if res != "ok":
@@ -211,10 +219,11 @@ def fix_secrets(findings: list, bk: Backup) -> list[str]:
 
 def apply(selected: list[Verdict], bk: Backup) -> list[str]:
     out, moved = [], set()
+    selected = [v for v in selected if v.action != "keep"]  # keep never acts, whatever was passed in
     for v in selected:
         kind = v.item.kind
-        if v.action in ("review", "unknown", "keep") and kind != "claude-md":
-            out.append(f"{kind} {v.item.name}: no automatic action for '{v.action}', left untouched")
+        if kind == "binary" and v.action not in ("install", "update"):
+            out.append(f"binary {v.item.name}: nothing to run for '{v.action}'")
         elif kind == "mcp":
             out.append(_apply_mcp(v, bk, moved, selected))
         elif kind == "plugin":

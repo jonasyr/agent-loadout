@@ -115,11 +115,64 @@ def test_mcp_json_with_unselected_servers_is_edited_not_moved(machine):
     assert "codebase-memory-mcp" in json.loads((machine / ".claude/.mcp.json").read_text())["mcpServers"]
 
 
-def test_unknown_items_are_not_touched_even_when_selected(machine, fake_runner):
-    chosen = [v for v in _verdicts() if v.action == "unknown" and v.item.kind == "plugin"]
-    assert chosen
+def test_unselected_unknown_hook_survives(machine):
+    chosen = [v for v in _verdicts() if v.action == "remove" and v.item.kind == "hook"]
     adopt.apply(chosen, backup.Backup())
+    settings = json.loads((machine / ".claude/settings.json").read_text())
+    assert "my-own-linter" in json.dumps(settings)
+
+
+def test_groups_unknown_removes_and_restores(machine, fake_runner):
+    chosen = adopt.select(_verdicts(), {"unknown"}, set(), ask=lambda q: "")
+    bk = backup.Backup()
+    adopt.apply(chosen, bk)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
+    assert "my-own-linter" not in (machine / ".claude/settings.json").read_text()
+    backup.restore(bk.root)
+    assert "my-own-linter" in (machine / ".claude/settings.json").read_text()
+    assert any(c[:6] == ["claude", "mcp", "add-json", "-s", "user", "omarchy-kb"] for c in fake_runner.calls)
+
+
+def test_keep_never_acts(machine, fake_runner):
+    kept = [v for v in _verdicts() if v.action == "keep"]
+    assert kept
+    adopt.apply(kept, backup.Backup())
     assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+
+
+def test_secret_fix_undo_removes_then_readds_original(machine, fake_runner):
+    from loadout import secrets
+    found = [f for f in secrets.scan(json.loads((machine / ".claude.json").read_text())) if f.fixable]
+    bk = backup.Backup()
+    adopt.fix_secrets(found, bk)
+    fake_runner.calls.clear()
+    backup.restore(bk.root)
+    srv = found[0].server
+    kinds = [(c[2], c[5]) for c in fake_runner.calls if c[:1] == ["claude"]]
+    assert kinds[:2] == [("remove", srv), ("add-json", srv)]
+    assert found[0].value in fake_runner.calls[1][-1]
+
+
+def test_marketplace_without_source_is_skipped(machine, fake_runner):
+    v = [x for x in _verdicts() if x.item.kind == "marketplace"][0]
+    v.item.extra["source"] = {}
+    out = adopt.apply([adopt.Verdict(v.item, "remove", "x")], backup.Backup())
+    assert "skipped (no source to restore from)" in out[0]
+    assert fake_runner.calls == []
+
+
+def test_unknown_group_name_rejected(machine):
+    with pytest.raises(ValueError, match="unknown group 'bogus'"):
+        adopt.select(_verdicts(), {"bogus"}, set(), ask=lambda q: "")
+
+
+def test_migrate_claude_md_symlink_skipped(machine):
+    md = machine / ".claude/CLAUDE.md"
+    real = machine / "real.md"
+    real.write_text("x")
+    md.unlink()
+    md.symlink_to(real)
+    assert "symlink" in adopt.migrate_claude_md(backup.Backup())[0]
 
 
 def test_migrate_claude_md_is_idempotent(machine):
