@@ -123,3 +123,38 @@ def _register_bootstrap(sub):
 
 
 EXTRA_COMMANDS.append(_register_bootstrap)
+
+
+def _register_configure(sub):
+    from . import configure
+    from .__main__ import _ask
+
+    p = sub.add_parser("configure", help="choose preferences and global add-ons (personal layer)")
+    p.add_argument("action", nargs="?", choices=["show", "set"])
+    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref"])
+    p.add_argument("name", nargs="?")
+    p.add_argument("value", nargs="?")
+    p.add_argument("--first-run", action="store_true")
+
+    def run(a):
+        if a.action is None:
+            return configure.wizard(_ask, a.first_run)
+        if a.action == "show":
+            print(configure.show())
+            return 0
+        if not (a.kind and a.name and a.value):
+            raise ValueError("usage: loadout configure set plugin|mcp|pref <name> <value>")
+        if a.kind == "plugin":
+            configure.set_plugin(a.name, a.value == "on")
+        elif a.kind == "mcp":
+            for warning in configure.set_mcp(a.name, a.value == "on"):
+                print(f"note: {warning}")
+        else:
+            configure.set_pref(a.name, a.value)
+        configure.apply_all(lambda q: "n")
+        return 0
+
+    p.set_defaults(func=run)
+
+
+EXTRA_COMMANDS.append(_register_configure)

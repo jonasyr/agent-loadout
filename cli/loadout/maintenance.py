@@ -82,6 +82,8 @@ def maintain(now: float) -> None:
         if any(pulled):
             try:
                 apply_settings()
+                from .personal_mcp import apply_mcp
+                apply_mcp()
             except Exception as exc:  # never crash in the background; surface next session
                 _stamp(NOTICE).write_text(f"loadout: could not apply settings after sync: {exc}")
             if link.is_copy_mode():

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, catalog, check, link, paths, runner, scaffold, settings_merge
+from . import adopt, catalog, check, link, paths, runner, settings_merge
 from .backup import Backup
 from .jsonio import load_json
 
@@ -55,18 +55,10 @@ def ensure_personal(ask: Ask) -> str:
     if url:
         res = runner.run(["git", "clone", url, str(root)], timeout=300)
         return f"cloned {url} -> {root}" if res.ok else f"clone failed: {res.stderr.strip()}"
-    values = {
-        "NAME": ask("Your name: ").strip() or "me",
-        "ROLE": ask("Your role (e.g. backend developer, CS student): ").strip() or "developer",
-        "LANGUAGES": ask("Main languages/stacks: ").strip() or "(not specified)",
-        "PREFERENCES": ask("Working preferences (e.g. concise answers, ask before deleting): ").strip() or "(not specified)",
-    }
-    template = paths.kit_root() / "templates" / "personal"
-    for src in template.rglob("*"):
-        if src.is_file():
-            dest = root / src.relative_to(template)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(scaffold.render(src.read_text(encoding="utf-8"), values), encoding="utf-8")
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "settings.json").write_text("{}\n", encoding="utf-8")
+    from .configure import _about_you
+    _about_you(ask)
     return f"created starter personal layer at {root} (make it a git repo to sync it across machines)"
 
 
@@ -142,6 +134,12 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         bk.save_copy(settings_path, "settings.json before loadout merge")
     before, after = settings_merge.apply_settings()
     print("settings updated" if before != after else "settings already up to date")
+    from .personal_mcp import apply_mcp
+    for line in apply_mcp():
+        print(line)
+    if not yes and ask("Customize preferences and global add-ons now? [y/N] ").strip().lower() == "y":
+        from .configure import wizard
+        wizard(ask, first_run=False)
     if plugins:
         _step("Marketplaces and plugins")
         for line in setup_plugins():

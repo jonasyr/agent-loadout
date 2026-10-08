@@ -57,6 +57,12 @@ def test_catalog_entries_are_well_formed():
             assert (ROOT / "profiles" / f"{e['profile']}.json").exists(), e["id"]
         if e["kind"] == "binary":
             assert "version" in e and "cmd" in e["version"], e["id"]
+        if "offer" in e:
+            assert set(e["offer"]) <= {"plugin", "mcp", "needs"}, e["id"]
+            if "plugin" in e["offer"]:
+                assert e["offer"]["plugin"].split("@")[1] in _declared_marketplaces(), e["id"]
+            for server in e["offer"].get("mcp", {}).values():
+                assert all("@latest" not in a for a in server.get("args", [])), e["id"]
 
 
 def test_rules_and_templates_exist():
