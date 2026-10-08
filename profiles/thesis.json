@@ -1,0 +1,16 @@
+{
+  "description": "Academic writing and ML/RAG research",
+  "install": [
+    "academic-research-skills@academic-research-skills",
+    "deepeval@claude-plugins-official",
+    "huggingface-skills@claude-plugins-official"
+  ],
+  "settings": {
+    "enabledPlugins": {
+      "academic-research-skills@academic-research-skills": true,
+      "deepeval@claude-plugins-official": true,
+      "huggingface-skills@claude-plugins-official": true
+    }
+  },
+  "notes": "Prefer the targeted ARS modes (/ars-lit-review, /ars-citation-check, /ars-reviewer); a full /ars-full pipeline run costs a few dollars. Literature search: Scholar Gateway connector or the deep-research skill."
+}

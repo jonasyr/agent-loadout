@@ -1,0 +1,11 @@
+{
+  "description": "Web UI work: Playwright skills, Chrome DevTools MCP (off by default)",
+  "mcp": {
+    "mcpServers": {
+      "chrome-devtools": { "type": "stdio", "command": "npx", "args": ["-y", "chrome-devtools-mcp@1.10.1"] }
+    }
+  },
+  "settings": { "disabledMcpjsonServers": ["chrome-devtools"] },
+  "commands": [["playwright-cli", "install", "--skills"]],
+  "notes": "chrome-devtools is for performance/network debugging; enable it in /mcp when needed. For E2E tests in the project itself, add @playwright/test as a dev dependency."
+}

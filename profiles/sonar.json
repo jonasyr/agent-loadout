@@ -1,0 +1,6 @@
+{
+  "description": "SonarQube static analysis",
+  "install": ["sonarqube@claude-plugins-official"],
+  "settings": { "enabledPlugins": { "sonarqube@claude-plugins-official": true } },
+  "notes": "Needs the sonar CLI logged in (`sonar auth login`) and a sonar-project.properties. Optional secret-scanning hooks for this repo: run `sonar integrate` here."
+}

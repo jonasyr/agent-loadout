@@ -1,0 +1,6 @@
+{
+  "description": "Android / Kotlin",
+  "install": ["kotlin-lsp@claude-plugins-official"],
+  "settings": { "enabledPlugins": { "kotlin-lsp@claude-plugins-official": true } },
+  "notes": "Requires the kotlin-lsp binary (see the plugin README)."
+}

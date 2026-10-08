@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "agent-loadout": { "source": { "source": "github", "repo": "jonasyr/agent-loadout" }, "autoUpdate": true },
+    "impeccable": { "source": { "source": "github", "repo": "pbakaus/impeccable" }, "autoUpdate": true },
+    "academic-research-skills": { "source": { "source": "github", "repo": "Imbad0202/academic-research-skills" }, "autoUpdate": true }
+  },
+  "enabledPlugins": {
+    "loadout@agent-loadout": true,
+    "superpowers@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "impeccable@impeccable": true,
+    "commit-commands@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "microsoft-docs@claude-plugins-official": true
+  }
+}

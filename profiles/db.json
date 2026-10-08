@@ -1,0 +1,13 @@
+{
+  "description": "Database access via DBHub MCP",
+  "mcp": {
+    "mcpServers": {
+      "dbhub": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@bytebase/dbhub@1.4.0", "--transport", "stdio", "--dsn", "${DATABASE_URL}"]
+      }
+    }
+  },
+  "notes": "Set DATABASE_URL in your shell or ~/.config/loadout/secrets.env. Use a read-only database user."
+}
