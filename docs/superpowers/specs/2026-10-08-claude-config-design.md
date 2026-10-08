@@ -44,13 +44,13 @@ claude-config/
 │   ├── .mcp.json                      serena, codebase-memory-mcp
 │   ├── hooks/hooks.json
 │   ├── hooks/*.sh                     wrappers: exit 0 silently if binary missing; timeouts set
-│   └── skills/docs-sync/SKILL.md
+│   └── skills/{docs-sync,onboard}/SKILL.md
 ├── home/                              linked into ~/.claude/
 │   ├── CLAUDE.md
 │   ├── settings.json
 │   └── rules/{tooling,docs-policy,memory-policy,workflow,rtk}.md
 ├── profiles/{thesis,sonar,db,web}.json
-├── bin/claude-config                  subcommands: update, check, profile <name>
+├── bin/claude-config                  subcommands: init [profiles…], profile <name>, check, update
 ├── bootstrap.sh, bootstrap.ps1
 ├── secrets.env.example
 ├── tests/                             fresh-HOME bootstrap test, JSON/plugin validation, hook smoke tests
@@ -154,6 +154,34 @@ Safe to re-run; each step reports what it did.
 7. **Check:** run `claude-config check`.
 
 `claude-config check` verifies links, valid JSON, enabled plugins present, binaries on PATH, secrets set, and the repo working tree clean (drift).
+
+## 7b. Project setup (new and existing repos)
+
+Two steps: mechanical work in a CLI, work that needs to understand the code in a skill.
+
+1. **`claude-config init [profiles…]`** (terminal, in the repo root; safe to re-run, never overwrites):
+   - Detects suggested profiles:
+     - `sonar-project.properties` → sonar
+     - Android Gradle plugin in `build.gradle*` → android
+     - `package.json` with react, next, vue, svelte or astro → web
+     - `DATABASE_URL` in `.env.example` → db
+     - `*.tex`, `*.bib`, or `thesis`/`paper` in the repo name → thesis
+   - Prints the suggestions; the user confirms or edits them.
+   - Merges the chosen profiles into committed `.claude/settings.json` and runs `claude plugin install <p> --scope project` for each plugin they enable.
+   - Scaffolds missing files only:
+     - `AGENTS.md` skeleton (purpose, commands, conventions, map of docs and memories)
+     - `CLAUDE.md` containing `@AGENTS.md`
+     - `docs/README.md` (index)
+     - `docs/adr/`
+   - Adds `.gitignore` entries: `.claude/settings.local.json`, `.serena/cache/`. `.serena/memories/` and `.serena/project.yml` stay committed.
+   - Existing files: prints a diff of what it would add; asks before changing.
+2. **`/jonas-core:onboard`** (skill, first session in the repo):
+   - Fills the AGENTS.md skeleton from the codebase, staying concise and hand-curated in style.
+   - Runs Serena onboarding under `rules/memory-policy.md`: memories are summary + link, never copies of `docs/`.
+   - Indexes the repo with codebase-memory-mcp.
+   - Shows all changes; commits only after approval.
+
+Existing repos use the same two steps. docs-sync distill mode remains a separate optional step.
 
 ## 8. Update flow
 
