@@ -105,6 +105,8 @@ The author's personal layer receives:
 
 All third-party marketplaces are declared with `"autoUpdate": true`.
 
+Core binary (not a plugin): **Playwright CLI** (`@playwright/cli`, catalog `required: true`). Used skill-less in every repo via `rules/kit/tooling.md` (agent reads `playwright-cli --help`), so it adds no idle context. Chosen over the Playwright MCP plugin because it keeps snapshots/screenshots on disk (about 4× fewer tokens); the MCP stays in the catalog as `alternative`.
+
 ### 4.2 Profiles
 
 Profiles are merged into `<repo>/.claude/settings.json` and `<repo>/.mcp.json`. Each plugin is installed with `--scope project`.
@@ -114,7 +116,7 @@ Profiles are merged into `<repo>/.claude/settings.json` and `<repo>/.mcp.json`. 
 | thesis | academic-research-skills (latest), deepeval, huggingface-skills |
 | sonar | sonarqube |
 | db | dbhub `@bytebase/dbhub@1.4.0`, `--dsn ${DATABASE_URL}` |
-| web | chrome-devtools-mcp `@1.10.1` (listed in `disabledMcpjsonServers`, enable when needed); note to install the Playwright CLI skill: `npm i -g @playwright/cli` then `playwright-cli install --skills` |
+| web | `playwright-cli install --skills` in the project (richer Playwright guidance); chrome-devtools-mcp `@1.10.1` (listed in `disabledMcpjsonServers`, enable for perf/network debugging); onboard suggests `@playwright/test` E2E as a project dependency |
 | android | kotlin-lsp |
 
 ### 4.3 Catalog verdicts for things found on the author's machine (adopt proposes these)
@@ -299,13 +301,14 @@ Run in the project directory; never overwrites.
   - diagnostics → LSP (automatic);
   - text/config → Grep/Read;
   - docs → Context7, then Microsoft Learn, then web;
+  - UI verification / browser checks → `playwright-cli` (read `--help` first);
   - shell → rtk when installed (`rtk proxy` for raw output).
 - **`docs-policy.md`, `memory-policy.md`:** section 8 table and rules.
 - **`workflow.md`:**
   - superpowers process skills;
   - one review pass (`/code-review` or superpowers review, not both);
   - `/security-review` before merging security-relevant changes;
-  - impeccable for UI;
+  - UI loop: frontend-design (direction) → build → playwright-cli (render at 320/768/1280 px, exercise flows, read console) → impeccable audit/polish; UI is not done until verified in a browser;
   - docs-sync at the end of features;
   - profiles for domain tools.
 - **`rtk.md`:** rtk usage (applies only when rtk is installed).
