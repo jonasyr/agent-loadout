@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Callable
 
 from . import adopt, catalog, check, link, paths, runner, scaffold, settings_merge
@@ -97,15 +98,16 @@ def setup_secrets() -> list[str]:
         out.append(f"created {path}")
     if os.name != "nt":
         os.chmod(path, 0o600)
-        targets = [paths.home() / ".bashrc", paths.home() / ".zshrc"]
+        targets = [r for r in (paths.home() / ".bashrc", paths.home() / ".zshrc") if r.exists()]
+        if not targets:
+            zsh = os.path.basename(os.environ.get("SHELL", "")) == "zsh"
+            targets = [paths.home() / (".zshrc" if zsh else ".bashrc")]
         block = RC_LINE
     else:
         res = runner.run(["powershell", "-NoProfile", "-Command", "$PROFILE"], timeout=30)
-        targets = [__import__("pathlib").Path(res.stdout.strip())] if res.ok and res.stdout.strip() else []
+        targets = [Path(res.stdout.strip())] if res.ok and res.stdout.strip() else []
         block = PS_BLOCK
     for rc in targets:
-        if os.name != "nt" and not rc.exists():
-            continue
         text = rc.read_text(encoding="utf-8") if rc.exists() else ""
         if RC_MARKER in text:
             continue
@@ -119,6 +121,12 @@ def setup_secrets() -> list[str]:
     return out
 
 
+def _settings_would_change() -> bool:
+    current = load_json(paths.claude_home() / "settings.json")
+    previous = load_json(paths.state_dir() / "managed-settings.json")
+    return settings_merge.merge_settings(current, settings_merge.desired_settings(), previous) != current
+
+
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask) -> int:
     _step("Prerequisites")
     check_prereqs(install, ask)
@@ -130,7 +138,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         print(line)
     _step("Settings")
     settings_path = paths.claude_home() / "settings.json"
-    if settings_path.exists():
+    if settings_path.exists() and _settings_would_change():
         bk.save_copy(settings_path, "settings.json before loadout merge")
     before, after = settings_merge.apply_settings()
     print("settings updated" if before != after else "settings already up to date")

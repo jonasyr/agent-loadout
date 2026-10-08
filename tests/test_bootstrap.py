@@ -66,3 +66,23 @@ def test_bootstrap_backs_up_existing_settings(fake_home, fake_runner):
                and s["undo"]["restore-file"][1] == str(fake_home / ".claude/settings.json")]
     assert restore
     assert json.loads(open(restore[0]["undo"]["restore-file"][0]).read()) == {"theme": "dark"}
+
+
+def test_bootstrap_rerun_makes_no_new_backup(fake_home, fake_runner, capsys):
+    (fake_home / ".claude").mkdir()
+    (fake_home / ".claude/settings.json").write_text('{"theme": "dark"}\n')
+    answers = lambda q: "x"
+    b.bootstrap(False, True, False, False, answers)
+    before = sorted(paths.backups_root().iterdir())
+    capsys.readouterr()
+    b.bootstrap(False, True, False, False, answers)
+    assert sorted(paths.backups_root().iterdir()) == before
+    assert "backup:" not in capsys.readouterr().out
+
+
+def test_secrets_creates_rc_from_shell(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+    b.setup_secrets()
+    b.setup_secrets()
+    assert (fake_home / ".zshrc").read_text().count(b.RC_MARKER) == 1
+    assert not (fake_home / ".bashrc").exists()
