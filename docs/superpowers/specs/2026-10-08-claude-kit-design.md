@@ -220,7 +220,27 @@ Runs `claude-kit bootstrap [--install] [--yes]`. Safe to re-run.
 - **After merge:** write the result and the new snapshot.
 - **check:** reports drift only on desired paths.
 
-### 6.4 Updates
+### 6.4 Configure wizard (`claude-kit configure`, `/kit-core:configure`)
+
+One engine, two front-ends. Defaults stay as the kit ships them; the wizard only writes the personal layer.
+
+- **Engine (CLI, non-interactive):**
+  - `claude-kit configure set plugin <id> on|off` → `<personal>/settings.json` `enabledPlugins`. `off` opts out of a kit default.
+  - `claude-kit configure set mcp <catalog-id> on|off` → `<personal>/mcp.json`. The servers listed there are applied as user-scope MCP servers via `claude mcp add-json -s user`. The managed names are kept in a snapshot, so an `off` removes only kit-applied servers.
+  - `claude-kit configure set pref <key> <json-value>` → `<personal>/settings.json`.
+  - `claude-kit configure show` prints the effective setup: kit default vs personal override.
+  - After each change it runs the settings merge and the MCP apply. If the personal layer is a git repo, it offers to commit and push.
+- **Interactive CLI wizard** (`claude-kit configure`; bootstrap runs it in first-run mode instead of the separate personal wizard):
+  1. About you (`me.md`).
+  2. Preferences (effort, thinking, UI).
+  3. Global add-ons, grouped by category: kit defaults (opt out) + profile plugins (opt in globally) + catalog `offer` items, each with its reason and context-cost note.
+  4. Done: summary and apply.
+- **Skill `/kit-core:configure`**: the same choices, conversationally inside Claude Code. Reads the catalog and the current personal layer, asks what you want ("I mostly do X", "I'd like browser automation everywhere"), recommends, then calls the non-interactive engine commands.
+- **Catalog additions:**
+  - an optional `category` (docs, browser, design, data, research, security, workflow, language);
+  - an optional `offer`: `{ "plugin": "<id>" }` or `{ "mcp": { "<name>": <config> } }` with an optional `"needs": ["ENV_VAR"]`. Only entries with an offer appear as global add-ons.
+
+### 6.5 Updates
 
 | What | Mechanism |
 |---|---|
@@ -361,13 +381,34 @@ The SubagentStart hook injects a one-line pointer to the tooling routing. The Se
 - **Pinning:** npx-launched MCP servers in profiles are version-pinned.
 - **Installer scripts:** `curl | sh` installers run only with `--install` or after confirmation in `update`, and the exact command is shown first.
 
-## 14. Out of scope
+## 14. Roadmap: other agents (not in this version)
+
+The kit is becoming an agent-neutral framework. The parts that are already agent-neutral:
+- the catalog;
+- rules (plain Markdown);
+- AGENTS.md / `docs/`;
+- Serena / codebase-memory (MCP);
+- skills (agentskills.io format).
+
+The Claude-specific parts are settings, plugins/marketplace, hooks, and MCP registration. A later version adds **targets**:
+- `targets/claude` (today's code);
+- `targets/codex` (`~/.codex/config.toml` MCP servers, `AGENTS.md` global rules, skills directory);
+- possibly Gemini CLI / Cursor.
+
+Each target maps the same personal layer and catalog to that agent's config format.
+
+Decisions now that keep this cheap:
+- The CLI keeps Claude-specific code in `settings_merge`, `bootstrap.setup_plugins`, `adopt._apply_*` and `link`, so it can later move behind a target interface.
+- Rules stay free of Claude-only syntax where possible.
+- Naming: the kit keeps an agent-neutral identity in README wording. A rename of the repo/CLI (e.g. away from "claude-") is cheapest **before** publishing (Task 15); decide then.
+
+## 15. Out of scope
 
 - Managing claude.ai account connectors and Cowork plugins.
 - Configs for non-Claude agents (AGENTS.md stays agent-neutral).
 - Running docs-audit on all repos (run per repo on request).
 
-## 15. Verify during implementation
+## 16. Verify during implementation
 
 - Does `~/.claude/rules/` load subdirectories (`rules/kit/`, `rules/personal/`)? If not, link per-file as `kit-*.md` / `personal-*.md`.
 - Is user-level `~/.claude/settings.local.json` honored? If not, the adopt plan migrates its contents into the personal overlay.
