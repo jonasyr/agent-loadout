@@ -21,6 +21,7 @@
 ## Global Constraints
 
 - Repo root: `/home/jonas/Documents/Code/claude-kit`. All paths below are relative to it unless absolute.
+- Always invoke the CLI via `bin/claude-kit` (it imports `claude_kit.__main__` as a module; `python -m claude_kit` would load `__main__` twice and lose subcommand registrations).
 - Python ≥3.10, **stdlib only** in `cli/claude_kit/`. Tests: `uv run --python 3.12 --with pytest pytest -q`.
 - **Every subprocess goes through `claude_kit.runner.run` / `runner.have`**, called as `runner.run(...)` after `from . import runner`. Never use `from .runner import run`: tests monkeypatch the module attribute.
 - Every path comes from `claude_kit.paths` functions, which read `HOME`/`USERPROFILE` at call time. No module-level path constants derived from home.
@@ -3658,6 +3659,8 @@ def test_apply_mcp_adds_and_removes_only_managed(fake_home, fake_runner):
 def test_wizard_toggles_and_applies(fake_home, fake_runner, monkeypatch):
     applied = []
     monkeypatch.setattr(configure, "apply_all", lambda ask: applied.append(1))
+    (paths.personal_root() / "rules").mkdir(parents=True)
+    (paths.personal_root() / "rules/me.md").write_text("me")  # existing profile: wizard skips about-you
     menu = configure.addons()
     idx = [a.key for a in menu].index("plugin:hookify@claude-plugins-official") + 1
     answers = iter(["", "", str(idx), ""])  # keep effort, keep thinking, toggle hookify, done
