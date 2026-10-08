@@ -400,7 +400,7 @@ Each target maps the same personal layer and catalog to that agent's config form
 Decisions now that keep this cheap:
 - The CLI keeps Claude-specific code in `settings_merge`, `bootstrap.setup_plugins`, `adopt._apply_*` and `link`, so it can later move behind a target interface.
 - Rules stay free of Claude-only syntax where possible.
-- Naming: the kit keeps an agent-neutral identity in README wording. A rename of the repo/CLI (e.g. away from "claude-") is cheapest **before** publishing (Task 15); decide then.
+- Naming (decided 2026-10-08): project/repo/marketplace `agent-loadout`; CLI, plugin and Python package `loadout`.
 
 ## 15. Out of scope
 
