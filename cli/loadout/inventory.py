@@ -31,7 +31,9 @@ def _mcp_items() -> list[Item]:
     sources = [(paths.claude_json(), "~/.claude.json"), (paths.claude_home() / ".mcp.json", "~/.claude/.mcp.json")]
     for path, label in sources:
         for name, cfg in load_json(path).get("mcpServers", {}).items():
-            detail = " ".join([cfg.get("command", ""), *cfg.get("args", []), cfg.get("url", "")]).strip()
+            args = cfg.get("args")
+            args = [str(a) for a in args if isinstance(a, str)] if isinstance(args, list) else []
+            detail = " ".join([str(cfg.get("command") or ""), *args, str(cfg.get("url") or "")]).strip()
             items.append(Item("mcp", name, detail, label, {"config": cfg}))
     return items
 

@@ -37,10 +37,14 @@ def scan(claude_json: dict, location: str = "~/.claude.json") -> list[Finding]:
     found = []
     for server, cfg in claude_json.get("mcpServers", {}).items():
         for field in ("env", "headers"):
-            for key, value in (cfg.get(field) or {}).items():
+            mapping = cfg.get(field)
+            for key, value in (mapping if isinstance(mapping, dict) else {}).items():
                 if looks_secret(key, value):
                     found.append(Finding(server, field, key, value, location, True))
-        for i, arg in enumerate(cfg.get("args") or []):
+        args = cfg.get("args")
+        for i, arg in enumerate(args if isinstance(args, list) else []):
+            if not isinstance(arg, str):
+                continue
             key = arg.split("=", 1)[0] if "=" in arg else str(i)
             value = arg.split("=", 1)[1] if "=" in arg else arg
             if looks_secret(key, value):

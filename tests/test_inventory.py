@@ -45,8 +45,10 @@ def test_classification_of_author_machine(machine):
 
 
 def test_project_scoped_mcp_is_not_touched(machine):
-    names = [(i.name, i.location) for i in inventory.collect(with_versions=False) if i.kind == "mcp"]
-    assert all("projects" not in loc for _, loc in names)
+    # The fixture has a project-scoped "serena" (no args) under projects; only the top-level one counts.
+    serena = [i for i in inventory.collect(with_versions=False) if i.kind == "mcp" and i.name == "serena"]
+    assert len(serena) == 1
+    assert serena[0].extra["config"]["args"] == ["start-mcp-server", "--context=claude-code", "--project-from-cwd"]
 
 
 def test_secret_scan_finds_env_and_args():
@@ -82,3 +84,16 @@ def test_binary_outdated_and_missing(fake_home, fake_runner, monkeypatch):
     assert v[("binary", "serena")].action == "update"
     assert "1.7.0 -> 1.8.0" in v[("binary", "serena")].item.detail
     assert v[("binary", "codebase-memory-mcp")].action == "install"
+
+
+def test_malformed_mcp_config_does_not_crash(fake_home, fake_runner):
+    from fixtures import _w
+    bad = {"mcpServers": {
+        "weird-args": {"command": "x", "args": None},
+        "mixed-args": {"command": "y", "args": ["a", 3]},
+        "weird-env": {"command": "z", "args": ["k=v"], "env": "x"},
+    }}
+    _w(fake_home / ".claude.json", bad)
+    names = {i.name for i in inventory.collect(with_versions=False) if i.kind == "mcp"}
+    assert names == {"weird-args", "mixed-args", "weird-env"}
+    assert secrets.scan(bad) == []
