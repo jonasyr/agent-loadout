@@ -65,3 +65,46 @@ def _register_check(sub):
 
 
 EXTRA_COMMANDS.append(_register_check)
+
+
+def _register_maintenance(sub):
+    import time
+
+    from . import maintenance
+    from .__main__ import _ask
+
+    p = sub.add_parser("hook-session-start", help=argparse_hidden())
+
+    def hook(a):
+        try:
+            out = maintenance.session_start(time.time())
+        except Exception:
+            return 0  # a hook must never break a session
+        if out:
+            print(out)
+        return 0
+
+    p.set_defaults(func=hook)
+
+    p = sub.add_parser("maintenance", help=argparse_hidden())
+
+    def maint(a):
+        try:
+            maintenance.maintain(time.time())
+        except Exception:
+            pass
+        return 0
+
+    p.set_defaults(func=maint)
+
+    p = sub.add_parser("update", help="update outdated tool binaries")
+    p.add_argument("--yes", action="store_true")
+    p.set_defaults(func=lambda a: maintenance.update(a.yes, _ask))
+
+
+def argparse_hidden():
+    import argparse
+    return argparse.SUPPRESS
+
+
+EXTRA_COMMANDS.append(_register_maintenance)
