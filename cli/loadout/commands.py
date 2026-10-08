@@ -40,3 +40,28 @@ def _register_adopt(sub):
 
 
 EXTRA_COMMANDS.append(_register_adopt)
+
+
+def _register_check(sub):
+    from . import check, settings_merge
+
+    p = sub.add_parser("check", help="verify this machine's loadout setup")
+
+    def run_check(a):
+        text, code = check.format_results(check.run_checks())
+        print(text)
+        return code
+
+    p.set_defaults(func=run_check)
+
+    p = sub.add_parser("apply-settings", help="merge kit + personal settings into ~/.claude/settings.json")
+
+    def run_apply(a):
+        before, after = settings_merge.apply_settings()
+        print("settings updated" if before != after else "settings already up to date")
+        return 0
+
+    p.set_defaults(func=run_apply)
+
+
+EXTRA_COMMANDS.append(_register_check)
