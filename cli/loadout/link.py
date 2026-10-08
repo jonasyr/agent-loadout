@@ -1,6 +1,7 @@
 """Link kit/personal rules into ~/.claude/rules and put loadout on PATH."""
 from __future__ import annotations
 
+import filecmp
 import os
 import shutil
 from pathlib import Path
@@ -29,6 +30,15 @@ def _points_to(dest: Path, src: Path) -> bool:
     return dest.is_symlink() and dest.resolve() == src.resolve()
 
 
+SENTINEL = ".loadout-copy"
+
+
+def _is_kit_copy(dest: Path, src: Path) -> bool:
+    if src.is_dir():
+        return dest.is_dir() and not dest.is_symlink() and (dest / SENTINEL).is_file()
+    return dest.is_file() and not dest.is_symlink() and filecmp.cmp(dest, src, shallow=False)
+
+
 def _replace_with_copy(src: Path, dest: Path) -> None:
     if dest.is_symlink() or dest.is_file():
         dest.unlink()
@@ -36,6 +46,7 @@ def _replace_with_copy(src: Path, dest: Path) -> None:
         shutil.rmtree(dest)
     if src.is_dir():
         shutil.copytree(src, dest)
+        (dest / SENTINEL).write_text("copied by loadout; refreshed on every link run\n", encoding="utf-8")
     else:
         shutil.copy2(src, dest)
 
@@ -45,10 +56,12 @@ def _link_one(dest: Path, src: Path, bk: Backup) -> str | None:
         return None
     dest.parent.mkdir(parents=True, exist_ok=True)
     if is_copy_mode() and not dest.is_symlink():
+        if dest.exists() and not _is_kit_copy(dest, src):
+            bk.move(dest, f"replaced {dest}", replace=True)
         _replace_with_copy(src, dest)
         return None  # refresh, not news
     if dest.exists() or dest.is_symlink():
-        bk.move(dest, f"replaced {dest}")
+        bk.move(dest, f"replaced {dest}", replace=True)
     try:
         os.symlink(src, dest, target_is_directory=src.is_dir())
         return f"linked {dest} -> {src}"
