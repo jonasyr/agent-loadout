@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agent-loadout",
+  "owner": { "name": "Jonas Weirauch" },
+  "metadata": { "description": "agent-loadout: shareable, self-updating Claude Code setup" },
+  "plugins": [
+    {
+      "name": "loadout",
+      "description": "Core of agent-loadout: Serena and codebase-memory MCP servers, tool hooks, onboarding and documentation skills.",
+      "source": "./plugins/loadout",
+      "category": "development"
+    }
+  ]
+}

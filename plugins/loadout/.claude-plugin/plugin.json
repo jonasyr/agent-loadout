@@ -1,0 +1,8 @@
+{
+  "name": "loadout",
+  "description": "Core of agent-loadout: Serena and codebase-memory MCP servers, tool hooks, onboarding and documentation skills.",
+  "author": { "name": "Jonas Weirauch" },
+  "homepage": "https://github.com/jonasyr/agent-loadout",
+  "repository": "https://github.com/jonasyr/agent-loadout",
+  "license": "MIT"
+}

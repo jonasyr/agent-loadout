@@ -1,0 +1,49 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" serena-hooks activate --client=claude-code", "shell": "bash", "timeout": 15 },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" loadout hook-session-start", "shell": "bash", "timeout": 10 }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" serena-hooks cleanup --client=claude-code", "shell": "bash", "timeout": 10 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" rtk hook claude", "shell": "bash", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_loadout_serena__.*",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" serena-hooks auto-approve --client=claude-code", "shell": "bash", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft codebase-memory-mcp hook-augment", "shell": "bash", "timeout": 5 }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-context.sh\"", "shell": "bash", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}
