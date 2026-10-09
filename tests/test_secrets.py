@@ -203,8 +203,10 @@ def test_powershell_block_loads_values(tmp_path):
     env_file = tmp_path / "secrets.env"
     env_file.write_text("LOADOUT_T1=" + secrets.quote(NASTY) + "\n# c\nLOADOUT_T2='plain'\n", encoding="utf-8")
     block = bootstrap.PS_BLOCK.replace("Join-Path $HOME '.config/loadout/secrets.env'", f"'{env_file}'")
-    block = block.replace("& {", ". {", 1)  # dot-source so the test can read the values back
+    script = tmp_path / "t.ps1"
+    script.write_text(block + "\n[Console]::Out.Write($env:LOADOUT_T1 + '|' + $env:LOADOUT_T2)\n", encoding="utf-8-sig")
     exe = shutil.which("pwsh") or shutil.which("powershell")
-    proc = subprocess.run([exe, "-NoProfile", "-Command", block + "\n[Console]::Out.Write($env:LOADOUT_T1 + '|' + $env:LOADOUT_T2)"],
+    # -ExecutionPolicy Bypass applies to this one process only; -NoProfile keeps the real profile out of it
+    proc = subprocess.run([exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
                           capture_output=True, text=True, encoding="utf-8")
     assert proc.stdout == NASTY + "|plain", proc.stderr

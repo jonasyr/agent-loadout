@@ -11,6 +11,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv run --python 3.12 --with pytest pytest -q
+      - name: hook scripts run under Git Bash (catches CRLF checkouts)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          bash plugins/loadout/hooks/run.sh loadout hook-session-start
+          bash plugins/loadout/hooks/run.sh --soft no-such-tool
+          bash plugins/loadout/hooks/subagent-context.sh | python -c "import json,sys; json.load(sys.stdin)"
 
   validate:
     runs-on: ubuntu-latest
