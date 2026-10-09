@@ -12,7 +12,7 @@ from .inventory import Verdict
 from .jsonio import InvalidJSON, load_json, save_json
 from .secrets import redact
 
-GROUP_ORDER = ["remove", "migrate", "scope-down", "update", "install", "review", "unknown", "keep"]
+GROUP_ORDER = ["remove", "migrate", "scope-down", "update", "install", "review", "own", "keep"]
 # Selected by Enter at the prompt and by --yes. Binary update/install never are: they need
 # --groups update/install or an interactive pick, and each command is shown and confirmed.
 DEFAULT_ALL = {"remove", "migrate", "scope-down"}
@@ -23,11 +23,11 @@ GROUP_HELP = {
     "update": "run the tool's update command (each command is shown and confirmed first).",
     "install": "run the tool's install command (each command is shown and confirmed first).",
     "review": "picking removes it; restorable.",
-    "unknown": "picking removes it; restorable.",
+    "own": "not managed by loadout; they stay only on this machine unless you choose.",
     "keep": "nothing to do.",
 }
 VERB = {"remove": "remove", "migrate": "remove", "scope-down": "disable globally", "update": "update",
-        "install": "install", "review": "remove", "unknown": "remove"}
+        "install": "install", "review": "remove", "own": "remove"}
 MIGRATED_MARKER = "<!-- Global instructions live in"
 Ask = Callable[[str], str]
 
@@ -62,7 +62,8 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
         members = [v for v in verdicts if v.action == group]
         if not members:
             continue
-        lines.append(f"\n{group.upper()} ({len(members)}) — {GROUP_HELP[group]}")
+        title = "YOUR OWN TOOLS" if group == "own" else group.upper()
+        lines.append(f"\n{title} ({len(members)}) — {GROUP_HELP[group]}")
         if any(v.item.kind == "claude-md" for v in members):
             lines.append("  (CLAUDE.md: picking moves its content into your personal layer instead; restorable.)")
         if group == "keep":

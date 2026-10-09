@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 
 from . import catalog, paths, runner, versions
 from .jsonio import load_json
-from .settings_merge import desired_settings
 
 
 @dataclass(frozen=True)
@@ -21,7 +20,7 @@ class Item:
 @dataclass
 class Verdict:
     item: Item
-    action: str        # remove | migrate | scope-down | update | install | review | unknown | keep
+    action: str        # remove | migrate | scope-down | update | install | review | own | keep
     reason: str
     entry_id: str = ""
 
@@ -126,9 +125,13 @@ def _why(entry: dict) -> str:
 
 
 def classify(items: list[Item]) -> list[Verdict]:
-    desired = desired_settings()
-    kit_plugins = {p for p, on in desired.get("enabledPlugins", {}).items() if on}
-    kit_markets = set(desired.get("extraKnownMarketplaces", {})) | {"claude-plugins-official"}
+    from . import own
+
+    kit = load_json(paths.kit_root() / "settings.base.json")
+    kit_plugins = {p for p, on in kit.get("enabledPlugins", {}).items() if on}
+    kit_markets = set(kit.get("extraKnownMarketplaces", {})) | {"claude-plugins-official"}
+    index = own.personal_index()
+    left = own.decisions()
     out = []
     for item in items:
         if item.kind == "binary":
@@ -150,9 +153,16 @@ def classify(items: list[Item]) -> list[Verdict]:
         if item.kind == "marketplace" and item.name in kit_markets:
             out.append(Verdict(item, "keep", "Declared by the kit."))
             continue
+        personal = own.in_personal_layer(item, index)
+        if personal:
+            out.append(Verdict(item, "keep", personal))
+            continue
+        if left.get(own.decision_key(item)) == "leave":
+            out.append(Verdict(item, "keep", own.LEFT_REASON))
+            continue
         entry = catalog.match(item.kind, item.name, item.detail)
         if entry is None:
-            out.append(Verdict(item, "unknown", "Not in the catalog; left untouched unless you choose otherwise."))
+            out.append(Verdict(item, "own", own.OWN_REASON))
             continue
         status = entry["status"]
         if status == "core":

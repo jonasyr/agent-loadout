@@ -33,7 +33,7 @@ def test_select_interactive_defaults(machine):
     chosen = adopt.select(_verdicts() + [_outdated()], None, set(), ask=lambda q: "")
     actions = {v.action for v in chosen}
     assert actions <= {"remove", "migrate", "scope-down"}
-    assert "unknown" not in actions and "update" not in actions
+    assert "own" not in actions and "update" not in actions
 
 
 def test_apply_runs_cli_and_records_undo(machine, fake_runner):
@@ -122,8 +122,8 @@ def test_unselected_unknown_hook_survives(machine):
     assert "my-own-linter" in json.dumps(settings)
 
 
-def test_groups_unknown_removes_and_restores(machine, fake_runner):
-    chosen = adopt.select(_verdicts(), {"unknown"}, set(), ask=lambda q: "")
+def test_groups_own_removes_and_restores(machine, fake_runner):
+    chosen = adopt.select(_verdicts(), {"own"}, set(), ask=lambda q: "")
     bk = backup.Backup()
     adopt.apply(chosen, bk)
     assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
@@ -194,7 +194,7 @@ def _outdated(action="update"):
 @pytest.mark.parametrize("word", ["a", "all", "y", "YES", "Yes"])
 def test_group_prompt_accepts_yes_words(machine, word):
     chosen = adopt.select(_verdicts(), None, set(), ask=lambda q: word if "[a]ll" in q else "")
-    assert {v.action for v in chosen} >= {"remove", "unknown"}
+    assert {v.action for v in chosen} >= {"remove", "own"}
 
 
 def test_group_prompt_reasks_on_invalid_answer(machine, capsys):
