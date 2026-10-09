@@ -190,7 +190,7 @@ def _apply_binary(v: Verdict, ask: Ask, confirm_cmds: bool) -> str:
         return f"{v.item.name} {key}: skipped"
     results = []
     for cmd in cmds:
-        res = runner.run(cmd, timeout=900)
+        res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
         results.append("ok" if res.ok else f"failed: {res.stderr.strip()[:200]}")
     return f"{v.item.name} {key}: " + ", ".join(results)
 

@@ -113,10 +113,11 @@ def test_update_uses_package_manager_command(fake_home, fake_runner, monkeypatch
 
 
 def test_refused_update_is_remembered_and_not_renotified(fake_home, fake_runner, monkeypatch, capsys):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
     entry = _entry("uv")
-    fake_runner.paths["uv"] = f"{MISE}/uv/0.8.23/uv"
+    fake_runner.paths["uv"] = "/home/u/.local/bin/uv"  # not managed: uv self update
     monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (0, 8, 23), (0, 9, 0))])
-    monkeypatch.setattr(versions, "local_version", lambda e: (0, 8, 23))  # mise held it back
+    monkeypatch.setattr(versions, "local_version", lambda e: (0, 8, 23))  # the updater ran but installed nothing newer
     m.update(yes=True, ask=lambda q: "")
     assert "still 0.8.23" in capsys.readouterr().out
     state = json.loads((paths.state_dir() / "refused-updates.json").read_text())
@@ -196,4 +197,45 @@ def test_partial_update_is_not_a_refusal(fake_home, fake_runner, monkeypatch, ca
 def test_refused_file_that_is_not_an_object_is_ignored(fake_home):
     paths.state_dir().mkdir(parents=True)
     (paths.state_dir() / "refused-updates.json").write_text('["uv"]')
+    assert m._refused() == {}
+
+
+def _record_cwd(fake_runner, monkeypatch):
+    seen = []
+
+    def spy(cmd, cwd=None, timeout=300, env=None):
+        seen.append((list(cmd), cwd))
+        return fake_runner(cmd, cwd, timeout, env)
+
+    monkeypatch.setattr(runner, "run", spy)
+    return seen
+
+
+def test_mise_upgrade_runs_in_home_from_update(fake_home, fake_runner, monkeypatch):
+    fake_runner.paths["uv"] = f"{MISE}/uv/0.8.23/uv"
+    monkeypatch.setattr(m, "find_outdated", lambda: [(_entry("uv"), (0, 8, 23), (0, 9, 0))])
+    seen = _record_cwd(fake_runner, monkeypatch)
+    m.update(yes=True, ask=lambda q: "")
+    assert (["mise", "upgrade", "uv"], str(fake_home)) in seen
+
+
+def test_mise_upgrade_runs_in_home_from_adopt(fake_home, fake_runner, monkeypatch):
+    from loadout import adopt, backup, inventory
+    fake_runner.paths["uv"] = f"{MISE}/uv/0.8.23/uv"
+    item = inventory.Item("binary", "uv", "", "PATH", {"entry": _entry("uv"), "state": "outdated"})
+    seen = _record_cwd(fake_runner, monkeypatch)
+    adopt.apply([adopt.Verdict(item, "update", "", "uv")], backup.Backup(), confirm_cmds=False)
+    assert (["mise", "upgrade", "uv"], str(fake_home)) in seen
+
+
+def test_mise_tools_get_no_refusal_bookkeeping(fake_home, fake_runner, monkeypatch):
+    entry = _entry("uv")
+    fake_runner.paths["uv"] = f"{MISE}/uv/0.8.23/uv"
+    paths.state_dir().mkdir(parents=True)
+    (paths.state_dir() / "refused-updates.json").write_text('{"uv": "0.9.0"}')
+    # a stale entry must not hide what mise itself reports as outdated
+    assert m.worth_notifying([(entry, (0, 8, 23), (0, 9, 0))]) == [(entry, (0, 8, 23), (0, 9, 0))]
+    monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (0, 8, 23), (0, 9, 0))])
+    monkeypatch.setattr(versions, "local_version", lambda e: (0, 8, 23))  # unchanged after mise upgrade
+    m.update(yes=True, ask=lambda q: "")
     assert m._refused() == {}

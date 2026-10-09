@@ -78,18 +78,23 @@ def is_duplicate_mcp(item: Item) -> bool:
     args = cfg.get("args") or []
     if not isinstance(args, list):
         return False
+    # a command server's type is stdio whether or not it is written down; env: missing == empty
     return (_exe(cfg["command"]) == _exe(ours.get("command", ""))
-            and sorted(map(str, args)) == sorted(map(str, ours.get("args") or [])))
+            and sorted(map(str, args)) == sorted(map(str, ours.get("args") or []))
+            and (cfg.get("type") or "stdio") == (ours.get("type") or "stdio")
+            and (cfg.get("env") or {}) == (ours.get("env") or {}))
 
 
 def _legacy_script(cmd: str) -> bool:
+    """Exactly `<~/.claude/hooks>/cbm-x[.sh]`, optionally run by one bare `bash`/`sh` word."""
     words = cmd.split()
-    if not words:
+    if len(words) == 2 and words[0] in ("bash", "sh"):
+        words = words[1:]
+    if len(words) != 1:
         return False
-    name = os.path.basename(words[-1])
-    name = name[:-3] if name.endswith(".sh") else name
-    hooks_dir = str(paths.claude_home() / "hooks")
-    return name in LEGACY_SCRIPTS and words[-1].startswith(hooks_dir)
+    path = os.path.normpath(words[0])
+    hooks_dir = os.path.normpath(str(paths.claude_home() / "hooks"))
+    return os.path.dirname(path) == hooks_dir and is_legacy_script_file(os.path.basename(path))
 
 
 def is_duplicate_hook(item: Item) -> bool:

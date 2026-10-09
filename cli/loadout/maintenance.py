@@ -127,8 +127,13 @@ def _remember_refused(tool: str, latest: tuple | None) -> None:
 def worth_notifying(outdated: list) -> list:
     """Drop updates a package manager already refused (e.g. mise minimum_release_age) until a newer one appears."""
     refused = _refused()
-    return [(e, a, b) for e, a, b in outdated
-            if not (e["id"] in refused and (versions.parse_version(refused[e["id"]]) or ()) >= b)]
+
+    def held(e, b):
+        if e["id"] not in refused or pkgmgr.mise_tool(e):  # mise tools: mise already filtered them
+            return False
+        return (versions.parse_version(refused[e["id"]]) or ()) >= b
+
+    return [(e, a, b) for e, a, b in outdated if not held(e, b)]
 
 
 LOCK = "maintenance.lock"
@@ -167,11 +172,29 @@ def _acquire_lock() -> bool:
     return False
 
 
-def _release_lock() -> None:
+def _own_lock() -> bool:
     try:
-        _stamp(LOCK).unlink()
+        return _stamp(LOCK).read_text(encoding="utf-8").strip() == str(os.getpid())
     except OSError:
-        pass
+        return False
+
+
+def _touch_lock() -> None:
+    """Long runs refresh the lock, so nobody takes it over as stale while we still work."""
+    if _own_lock():
+        try:
+            os.utime(_stamp(LOCK), None)
+        except OSError:
+            pass
+
+
+def _release_lock() -> None:
+    """Only our own lock: if it was taken over as stale meanwhile, the new owner keeps it."""
+    if _own_lock():
+        try:
+            _stamp(LOCK).unlink()
+        except OSError:
+            pass
 
 
 def maintain(now: float) -> None:
@@ -205,6 +228,7 @@ def _maintain(now: float) -> None:
                 if not bk.empty:
                     notify(f"loadout: refreshed the copied rules; your edited copies are in {bk.root} "
                            f"(undo: loadout restore {bk.root})")
+    _touch_lock()
     if is_due("last-update-check", WEEK, now):
         touch("last-update-check", now)
         outdated = worth_notifying(find_outdated())
@@ -285,6 +309,7 @@ def _update(yes: bool, ask: Callable[[str], str]) -> int:
     if not outdated:
         print("all tools up to date")
     for entry, local, latest in outdated:
+        _touch_lock()
         cmds, how = pkgmgr.update_plan(entry)
         print(f"{entry['id']}: {versions.fmt(local)} -> {versions.fmt(latest)}" + (f" (via {how})" if how != "catalog" else ""))
         if not cmds:
@@ -297,9 +322,12 @@ def _update(yes: bool, ask: Callable[[str], str]) -> int:
         ran = True
         all_ok = True
         for cmd in cmds:
-            res = runner.run(cmd, timeout=900)
+            res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
             all_ok = all_ok and res.ok
             print("  ok" if res.ok else f"  failed: {res.stderr.strip()[:300]}")
+        if how == "mise":  # mise decides what is outdated (minimum_release_age): no bookkeeping of our own
+            _remember_refused(entry["id"], None)
+            continue
         now = versions.local_version(entry)
         if now is not None and now >= latest:
             _remember_refused(entry["id"], None)

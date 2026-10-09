@@ -285,3 +285,23 @@ def test_stale_lock_taken_by_someone_else_in_between_is_given_back(fake_home, mo
     monkeypatch.setattr(os, "rename", racing_rename)
     assert m._acquire_lock() is False
     assert lock.exists() and not list(lock.parent.glob("maintenance.lock.stale-*"))
+
+
+def test_lock_taken_over_is_not_released_by_the_old_owner(fake_home):
+    assert m._acquire_lock()
+    lock = paths.state_dir() / "maintenance.lock"
+    lock.write_text("99999999")  # our run looked stale; another run took the lock over
+    m._release_lock()
+    assert lock.exists() and lock.read_text() == "99999999"
+    lock.unlink()
+
+
+def test_lock_is_refreshed_during_a_run(fake_home):
+    assert m._acquire_lock()
+    lock = paths.state_dir() / "maintenance.lock"
+    old = time.time() - 1800
+    os.utime(lock, (old, old))
+    m._touch_lock()
+    assert time.time() - lock.stat().st_mtime < 60
+    m._release_lock()
+    assert not lock.exists()

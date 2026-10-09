@@ -197,3 +197,25 @@ def test_lookalike_hook_script_file_is_kept(fake_home, fake_runner, monkeypatch)
     _run_update(fake_home, fake_runner, monkeypatch)
     names = sorted(p.name for p in (fake_home / ".claude/hooks").iterdir())
     assert names == ["cbm-session-reminder.bak", "my-cbm-session-reminder-wrapper.sh", "my-hook.sh"]
+
+
+def _hook_item(command):
+    from loadout.inventory import Item
+    return Item("hook", "PreToolUse:", command, "~/.claude/settings.json", {})
+
+
+def test_legacy_cbm_hook_match_is_exact(fake_home):
+    from loadout import duplicates
+    assert duplicates.is_duplicate_hook(_hook_item("~/.claude/hooks/cbm-code-discovery-gate"))
+    assert duplicates.is_duplicate_hook(_hook_item("bash ~/.claude/hooks/cbm-session-reminder.sh"))
+    assert not duplicates.is_duplicate_hook(_hook_item("my-wrapper && ~/.claude/hooks/cbm-code-discovery-gate"))
+    assert not duplicates.is_duplicate_hook(_hook_item("~/.claude/hooks.old/cbm-code-discovery-gate"))
+    assert not duplicates.is_duplicate_hook(_hook_item("~/.claude/hooks/sub/cbm-code-discovery-gate"))
+    assert not duplicates.is_duplicate_hook(_hook_item("python ~/.claude/hooks/cbm-code-discovery-gate"))
+
+
+def test_server_with_own_env_or_type_is_not_a_duplicate(fake_home, fake_runner, monkeypatch):
+    _servers(fake_home, {"serena": {**SERENA, "env": {"SERENA_LOG": "debug"}},
+                         "codebase-memory-mcp": {"type": "http", "command": CBM}})
+    _run_update(fake_home, fake_runner, monkeypatch, side_effects=False)
+    assert _removed(fake_runner) == []

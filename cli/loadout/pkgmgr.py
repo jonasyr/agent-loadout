@@ -49,6 +49,11 @@ def _mise_tool(entry: dict, path: str) -> str | None:
     return entry["id"]
 
 
+def run_cwd(cmd: list[str]) -> str | None:
+    """mise commands run in HOME, so a project's mise.toml in the current directory does not apply."""
+    return _home() if cmd and cmd[0] == "mise" else None
+
+
 def mise_tool(entry: dict) -> str | None:
     path = runner.which(entry["id"])
     return _mise_tool(entry, path) if path else None
