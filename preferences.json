@@ -1,5 +1,5 @@
 {
-  "$comment": "Working preferences asked by `loadout configure prefs`. target.me_md: the line written into the managed block of <personal>/rules/me.md per option ({text} = free text, null = no line). target.setting: dotted key in <personal>/settings.json; values maps option -> JSON value (null = remove the key). A target may have both. detect: how existing answers are read (me_md: case-insensitive regexes on whitespace-normalised free-text lines, read only; settings: rules with equals, contains or present). generator: special handling (automode).",
+  "$comment": "Working preferences asked by `loadout configure prefs`. target.me_md: the line written into the managed block of <personal>/rules/me.md per option ({text} = free text, null = no line). target.setting: dotted key in <personal>/settings.json; values maps option -> JSON value (null = remove the key). A target may have both. detect: how existing answers are read (me_md: case-insensitive regexes on whitespace-normalised free-text lines, read only; me_md_report: patterns that never set an answer, only name a free-text line that also states one; settings: rules with equals, contains or present). generator: special handling (automode).",
   "preferences": [
     {
       "id": "answer_language",
@@ -126,6 +126,12 @@
             "key": "includeCoAuthoredBy",
             "equals": true,
             "value": "on"
+          }
+        ],
+        "me_md_report": [
+          {
+            "pattern": "\\b(never|no|don't|do not)\\b.*\\b(co-authored-by|attribution)\\b",
+            "value": "off"
           }
         ]
       }

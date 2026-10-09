@@ -45,6 +45,7 @@ class State:
     block: list = field(default_factory=list)   # me.md line indexes inside the managed block
     moves: list = field(default_factory=list)   # indexes of exact template lines outside the block
     stated: list = field(default_factory=list)  # indexes of free-text lines that state it (never touched)
+    stated_as: dict = field(default_factory=dict)  # stated index -> the answer that line states
 
     @property
     def is_set(self) -> bool:
@@ -166,9 +167,20 @@ def _me_states(prefs: list[dict], lines: list[str]) -> dict[str, State]:
                 st.block.append(i)
             elif stated or st.block:   # a template line repeating a block answer is left where it is
                 st.stated.append(i)
+                st.stated_as[i] = hit[0]
             else:
                 st.moves.append(i)
-            break  # one line expresses one preference
+            break  # one line sets one preference
+    # report-only patterns: a line may also state other preferences; it never sets their answer
+    for p in me_prefs:
+        for rule in p.get("detect", {}).get("me_md_report", []):
+            for i in range(len(lines)):
+                if i in inside or i in markers or not re.search(rule["pattern"], _norm(lines[i]), re.I):
+                    continue
+                st = states.setdefault(p["id"], State())
+                if i not in st.stated and i not in st.moves:
+                    st.stated.append(i)
+                    st.stated_as[i] = rule["value"]
     return states
 
 
@@ -202,7 +214,7 @@ def _render_me(prefs: list[dict], lines: list[str], states: dict[str, State], ch
     drop = {i for st in states.values() for i in st.moves} | remove
     if rng:
         out = [l for i, l in enumerate(lines[:rng[0]]) if i not in drop]
-        out += [START, *new_block, END]
+        out += [START, *new_block, END] if new_block else []  # an empty block leaves no markers behind
         out += [l for i, l in enumerate(lines[rng[1] + 1:], rng[1] + 1) if i not in drop]
     elif new_block:
         out = [l for i, l in enumerate(lines) if i not in drop]
@@ -354,7 +366,20 @@ def _check_effective(pref: dict, value: str, bk: Backup, ask: Ask, interactive: 
     remaining = _blockers(pref, value)
     for path, dotted, theirs in remaining:
         out.append(f"{pref['id']}: {NOT_EFFECTIVE}: {dotted} in {path} still sets it to {theirs}; remove that key to finish")
-    return out if remaining else out + [f"{pref['id']}: {value}"]
+    lines = _me_lines_against(pref, value)
+    for n, line in lines:
+        out.append(f"{pref['id']}: {NOT_EFFECTIVE}: me.md line {n} still says otherwise: {line}; "
+                   "edit or remove that line to finish")
+    return out if remaining or lines else out + [f"{pref['id']}: {value}"]
+
+
+def _me_lines_against(pref: dict, value: str) -> list[tuple[int, str]]:
+    """Free-text me.md lines (1-based, text) that state another answer than value (re-read after writes)."""
+    if "me_md" not in pref["target"]:
+        return []
+    _, lines = _read_me()
+    st = _me_states(load(), lines).get(pref["id"], State())
+    return [(i + 1, lines[i].strip()) for i in st.stated if st.stated_as.get(i) not in (None, value)]
 
 
 # --- detection ---
@@ -371,7 +396,7 @@ def detect() -> dict[str, State]:
         if "setting" in p["target"]:
             setting = _setting_state(p, sources)
             if setting.is_set:
-                setting.block, setting.moves, setting.stated = st.block, st.moves, st.stated
+                setting.block, setting.moves, setting.stated, setting.stated_as = st.block, st.moves, st.stated, st.stated_as
                 st = setting
         states[p["id"]] = st
     return states

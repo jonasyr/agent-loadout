@@ -230,11 +230,67 @@ def test_conservative_detection(fake_home, fake_runner, line, pid, expected):
     assert preferences.detect()[pid].value == expected
 
 
-def test_ai_attribution_is_not_read_from_the_commit_line(fake_home, fake_runner):
-    _layer(me=f"# About me\n{COMMITS_LINE}\n")
+def _author_layer_for(kind, tmp_path, monkeypatch):
+    if kind == "synthetic":
+        _layer(me=AUTHOR_ME, settings=AUTHOR_SETTINGS)
+        return AUTHOR_ME, AUTHOR_SETTINGS
+    if not (AUTHOR_LAYER / "rules" / "me.md").is_file():
+        pytest.skip("author's personal layer not on this machine")
+    copy = tmp_path / "personal-copy"
+    shutil.copytree(AUTHOR_LAYER, copy, ignore=shutil.ignore_patterns(".git"))
+    monkeypatch.setenv("LOADOUT_PERSONAL", str(copy))
+    return (copy / "rules" / "me.md").read_bytes().decode("utf-8"), json.loads((copy / "settings.json").read_text())
+
+
+@pytest.mark.parametrize("kind", ["synthetic", "real-copy"])
+def test_attribution_on_is_blocked_by_a_free_text_line(fake_home, fake_runner, tmp_path, monkeypatch, kind):
+    me, settings = _author_layer_for(kind, tmp_path, monkeypatch)
     states = preferences.detect()
+    assert states["ai_attribution"].source == "personal settings"  # detection stays settings-only
     assert states["commit_style"].value == "conventional"
-    assert not states["ai_attribution"].is_set
+    n = me.splitlines().index(next(l for l in me.splitlines() if "Co-Authored-By" in l)) + 1
+    out = preferences.set_choice("ai_attribution", "on")
+    assert f"me.md line {n} also states this (ai_attribution)" in "\n".join(out)
+    assert any(preferences.NOT_EFFECTIVE in l and f"me.md line {n}" in l for l in out)
+    assert "ai_attribution: on" not in out
+    assert _me().read_bytes() == me.encode("utf-8")  # free text untouched, no empty block left behind
+    assert "attribution" not in _settings()
+
+
+@pytest.mark.parametrize("kind", ["synthetic", "real-copy"])
+def test_attribution_off_on_the_author_layer_is_a_noop(fake_home, fake_runner, tmp_path, monkeypatch, kind):
+    me, settings = _author_layer_for(kind, tmp_path, monkeypatch)
+    assert preferences.set_choice("ai_attribution", "off") == ["ai_attribution: already off"]
+    assert _me().read_bytes() == me.encode("utf-8") and _settings() == settings
+
+
+def test_attribution_on_cli_exits_1_and_interactive_removal_finishes(fake_home, fake_runner):
+    _layer(me=AUTHOR_ME, settings=AUTHOR_SETTINGS)
+    assert main(["configure", "set", "pref-choice", "ai_attribution", "on"]) == 1
+    _layer(me=AUTHOR_ME, settings=AUTHOR_SETTINGS)
+    bk = preferences.Backup(description="test")
+    out = preferences.set_choice("ai_attribution", "on", ask=lambda q: "y" if "line 7" in q else "n",
+                                 interactive=True, bk=bk)
+    assert out[-1] == "ai_attribution: on"
+    assert COMMITS_LINE not in _me().read_text() and ASK_LINE in _me().read_text()
+    assert any("restore-file" in s["undo"] for s in bk.steps)
+
+
+def test_attribution_report_pattern_never_sets_an_answer(fake_home, fake_runner):
+    _layer(me="# About me\n- No AI attribution in my commits, please.\n")
+    assert not preferences.detect()["ai_attribution"].is_set
+    assert preferences.detect()["ai_attribution"].stated == [1]
+
+
+def test_empty_block_removes_only_its_markers(fake_home, fake_runner):
+    _layer(me="# About me\n- before\n")
+    preferences.set_choice("ai_attribution", "off")
+    text = _me().read_text()
+    _me().write_text(text + "- after\n")
+    preferences.set_choice("ai_attribution", "on")
+    text = _me().read_text()
+    assert preferences.START not in text and preferences.END not in text
+    assert text.startswith("# About me\n- before\n") and text.endswith("- after\n")
 
 
 # --- choices and validation ---
@@ -273,7 +329,7 @@ def test_ai_attribution_writes_setting_and_me_line(fake_home, fake_runner):
     assert _block(_me().read_text()) == [_tpl("ai_attribution", "off")]
     out = preferences.set_choice("ai_attribution", "on")
     assert "attribution" not in _settings()
-    assert _block(_me().read_text()) == []
+    assert preferences.START not in _me().read_text()
     assert out == ["ai_attribution: on"]
 
 
