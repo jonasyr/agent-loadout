@@ -172,9 +172,13 @@ def _register_configure(sub):
             for warning in configure.set_mcp(a.name, configure.parse_switch(a.value, "mcp")):
                 print(f"note: {warning}")
         elif a.kind == "pref-choice":
-            from . import ui
-            for line in configure.set_pref_choice(a.name, a.value, _ask, ui.is_interactive()):
+            from . import preferences, ui
+            lines = configure.set_pref_choice(a.name, a.value, _ask, ui.is_interactive())
+            for line in lines:
                 print(line)
+            if any(preferences.NOT_EFFECTIVE in line for line in lines):
+                configure.apply_all(lambda q: "n")
+                return 1
         else:
             configure.set_pref(a.name, a.value)
         configure.apply_all(lambda q: "n")

@@ -141,8 +141,8 @@ def show() -> str:
         lines.append(f"      {a.reason}")
     lines += preferences.show_lines()
     personal = load_json(_personal_settings_path())
-    skip = {"enabledPlugins", "extraKnownMarketplaces"} | preferences.owned_setting_keys()
-    other = {k: v for k, v in personal.items() if k not in skip}
+    other = {k: v for k, v in preferences.without_owned_settings(personal).items()
+             if k not in ("enabledPlugins", "extraKnownMarketplaces")}
     if other:
         lines.append(redact("other personal settings (set with: loadout configure set pref <key> <json>): "
                             + json.dumps(other, ensure_ascii=False)))
@@ -223,14 +223,17 @@ def prefs(ask: Ask, interactive: bool | None = None) -> int:
     return 0
 
 
-def wizard(ask: Ask, first_run: bool, setup: bool = True, interactive: bool | None = None) -> int:
+def wizard(ask: Ask, first_run: bool, setup: bool = True, interactive: bool | None = None,
+           preferences_asked: bool = False) -> int:
+    """preferences_asked: the caller (bootstrap's starter layer) just asked them; do not ask twice."""
     interactive = ui.is_interactive() if interactive is None else interactive
     bk = Backup(description="configure")
     new_me = False
     if first_run or not (paths.personal_root() / "rules" / "me.md").exists():
         print("\n-- About you (stored in your personal layer, loaded every session)")
         new_me = _about_you(ask, bk)
-    ask_preferences(ask, fill_defaults=new_me, interactive=interactive, bk=bk)
+    if not preferences_asked:
+        ask_preferences(ask, fill_defaults=new_me, interactive=interactive, bk=bk)
     menu = addons()
     while True:
         print("\n-- Global add-ons (toggle by number; enter = done)")

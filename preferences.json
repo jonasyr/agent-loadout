@@ -1,5 +1,5 @@
 {
-  "$comment": "Working preferences asked by `loadout configure prefs`. target.me_md: the line written into the managed block of <personal>/rules/me.md per option ({text} = free text). target.setting: dotted key in <personal>/settings.json; values maps option -> JSON value (null = remove the key). detect: how existing answers are recognised (me_md regexes, case-insensitive; settings rules with equals/present). generator: special handling (automode).",
+  "$comment": "Working preferences asked by `loadout configure prefs`. target.me_md: the line written into the managed block of <personal>/rules/me.md per option ({text} = free text, null = no line). target.setting: dotted key in <personal>/settings.json; values maps option -> JSON value (null = remove the key). A target may have both. detect: how existing answers are read (me_md: case-insensitive regexes on whitespace-normalised free-text lines, read only; settings: rules with equals, contains or present). generator: special handling (automode).",
   "preferences": [
     {
       "id": "answer_language",
@@ -35,16 +35,16 @@
       "detect": {
         "me_md": [
           {
-            "pattern": "^\\s*[-*]?\\s*language:.*\\b(if i write in|language i write in|same language|that language)\\b",
-            "value": "match"
-          },
-          {
-            "pattern": "^\\s*[-*]?\\s*language:.*\\balways\\b.*\\benglish\\b",
+            "pattern": "^[-*]?\\s*language:\\s*(answer\\s+)?(in\\s+)?always\\s+(answer\\s+)?(in\\s+)?english\\b",
             "value": "english"
           },
           {
-            "pattern": "^\\s*[-*]?\\s*language:.*\\balways\\b.*\\bgerman\\b",
+            "pattern": "^[-*]?\\s*language:\\s*(answer\\s+)?(in\\s+)?always\\s+(answer\\s+)?(in\\s+)?german\\b",
             "value": "german"
+          },
+          {
+            "pattern": "^[-*]?\\s*language:(?!.*\\b(always|even if|never|regardless)\\b).*\\b(if i write in|the language i write in|same language as)\\b",
+            "value": "match"
           }
         ]
       }
@@ -72,7 +72,7 @@
       "detect": {
         "me_md": [
           {
-            "pattern": "^\\s*[-*]?\\s*commits?\\b.*\\bconventional commits\\b",
+            "pattern": "^[-*]?\\s*commits?:(?!.*\\b(don't|do not|never|no longer|not)\\s+(always\\s+)?use conventional commits\\b).*\\b(always\\s+)?use conventional commits\\b",
             "value": "conventional"
           }
         ]
@@ -101,10 +101,22 @@
             "sessionUrl": false
           },
           "on": null
+        },
+        "me_md": {
+          "off": "- Never add Co-Authored-By or any AI attribution line to commits or PRs.",
+          "on": null
         }
       },
       "detect": {
         "settings": [
+          {
+            "key": "attribution",
+            "contains": {
+              "commit": "",
+              "pr": ""
+            },
+            "value": "off"
+          },
           {
             "key": "includeCoAuthoredBy",
             "equals": false,
@@ -113,11 +125,6 @@
           {
             "key": "includeCoAuthoredBy",
             "equals": true,
-            "value": "on"
-          },
-          {
-            "key": "attribution",
-            "present": true,
             "value": "on"
           }
         ]
@@ -146,11 +153,11 @@
       "detect": {
         "me_md": [
           {
-            "pattern": "^\\s*[-*]?\\s*answers?( style)?:.*\\b(concise|short|brief)\\b",
+            "pattern": "^[-*]?\\s*answers?( style)?:\\s*(concise|short|brief)\\b",
             "value": "concise"
           },
           {
-            "pattern": "^\\s*[-*]?\\s*answers?( style)?:.*\\b(detailed|thorough)\\b",
+            "pattern": "^[-*]?\\s*answers?( style)?:\\s*(detailed|thorough)\\b",
             "value": "detailed"
           }
         ]
@@ -179,7 +186,7 @@
       "detect": {
         "me_md": [
           {
-            "pattern": "\\bask\\b[^.;]*\\bbefore\\b[^.;]*\\b(remov|delet|replac|overwrit)",
+            "pattern": "^[-*]?\\s*(always\\s+)?ask( me)?( first)? before (removing|deleting|replacing|overwriting)\\b",
             "value": "ask"
           }
         ]
@@ -299,11 +306,11 @@
       "detect": {
         "me_md": [
           {
-            "pattern": "^\\s*[-*]?\\s*commit messages[^:]*:\\s*english\\b",
+            "pattern": "^[-*]?\\s*commit messages[^:]*:\\s*english\\b",
             "value": "english"
           },
           {
-            "pattern": "^\\s*[-*]?\\s*commit messages[^:]*:\\s*match\\b",
+            "pattern": "^[-*]?\\s*commit messages[^:]*:\\s*match\\b",
             "value": "project"
           }
         ]
