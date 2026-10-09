@@ -40,5 +40,10 @@
   "env": {
     "ENABLE_STOP_REVIEW": "0",
     "MCP_TIMEOUT": "60000"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(loadout advisor-mark:*)"
+    ]
   }
 }

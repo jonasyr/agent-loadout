@@ -88,3 +88,8 @@ def test_no_secrets_in_tracked_files():
         for pattern in SECRET_PATTERNS:
             assert not re.search(pattern, text), f"possible secret in {rel}"
     assert "secrets.env" not in files
+
+
+def test_advisor_mark_is_preapproved():
+    """The execution-advisor skill runs it on every evaluation; it must not prompt each time."""
+    assert "Bash(loadout advisor-mark:*)" in _json("settings.base.json")["permissions"]["allow"]
