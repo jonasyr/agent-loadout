@@ -6,7 +6,8 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from . import catalog, paths, profiles, runner, scaffold
+from . import catalog, paths, profiles, runner, scaffold, ui
+from .backup import Backup
 from .jsonio import load_json, save_json
 
 Ask = Callable[[str], str]
@@ -118,14 +119,16 @@ def show() -> str:
     return "\n".join(lines)
 
 
-def apply_all(ask: Ask) -> None:
-    from .bootstrap import setup_plugins
+def apply_all(ask: Ask, setup: bool = True) -> None:
+    """setup=False: the caller (bootstrap) applies settings, MCP servers and plugins itself afterwards."""
+    from . import bootstrap
     from .personal_mcp import apply_mcp
     from .settings_merge import apply_settings
 
-    apply_settings()
-    for line in setup_plugins() + apply_mcp():
-        print(line)
+    if setup:
+        apply_settings()
+        for line in bootstrap.setup_plugins() + apply_mcp():
+            print(line)
     root = paths.personal_root()
     if (root / ".git").exists():
         status = runner.run(["git", "-C", str(root), "status", "--porcelain"])
@@ -133,10 +136,16 @@ def apply_all(ask: Ask) -> None:
             runner.run(["git", "-C", str(root), "add", "-A"])
             runner.run(["git", "-C", str(root), "commit", "-m", "chore: update loadout preferences"])
             runner.run(["git", "-C", str(root), "push"])
-    print("Restart Claude Code (or run /reload-plugins) to load the changes.")
+    if setup:
+        print("Restart Claude Code (or run /reload-plugins) to load the changes.")
 
 
-def _about_you(ask: Ask) -> None:
+def _about_you(ask: Ask, bk: Backup) -> None:
+    me = paths.personal_root() / "rules" / "me.md"
+    if me.exists():
+        if not ui.confirm(ask, f"{me} already exists. Replace it with a new one? (the current one is backed up) [y/N] "):
+            print(f"kept {me}")
+            return
     values = {
         "NAME": ask("Your name: ").strip() or "me",
         "ROLE": ask("Your role (e.g. backend developer, CS student): ").strip() or "developer",
@@ -144,15 +153,19 @@ def _about_you(ask: Ask) -> None:
         "PREFERENCES": ask("Working preferences (e.g. concise answers, ask before deleting): ").strip() or "(not specified)",
     }
     template = (paths.kit_root() / "templates/personal/rules/me.md").read_text(encoding="utf-8")
-    me = paths.personal_root() / "rules" / "me.md"
     me.parent.mkdir(parents=True, exist_ok=True)
+    if me.exists():
+        bk.save_copy(me, "personal me.md before configure")
+    else:
+        bk.record_created(me, "created personal me.md")
     me.write_text(scaffold.render(template, values), encoding="utf-8")
 
 
-def wizard(ask: Ask, first_run: bool) -> int:
+def wizard(ask: Ask, first_run: bool, setup: bool = True) -> int:
+    bk = Backup(description="configure")
     if first_run or not (paths.personal_root() / "rules" / "me.md").exists():
         print("\n-- About you (stored in your personal layer, loaded every session)")
-        _about_you(ask)
+        _about_you(ask, bk)
     print("\n-- Preferences (enter = keep current)")
     personal = load_json(_personal_settings_path())
     for key, label, _ in PREFS:
@@ -179,5 +192,7 @@ def wizard(ask: Ask, first_run: bool) -> int:
                 else:
                     for warning in set_mcp(a.target, not is_on(a)):
                         print(f"  note: {warning}")
-    apply_all(ask)
+    if not bk.empty:
+        print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+    apply_all(ask, setup=setup)
     return 0

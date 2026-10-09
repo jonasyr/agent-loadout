@@ -284,3 +284,27 @@ def test_marketplace_undo_records_full_source(machine, fake_runner):
     step = [s for s in bk.steps if "marketplace" in s["label"]][0]
     assert step["source"] == {"source": "git", "url": "https://github.com/davila7/claude-code-templates.git", "ref": "v2"}
     assert step["undo"]["run"][-1] == "https://github.com/davila7/claude-code-templates.git"
+
+
+def test_migrate_rewrites_relative_imports_that_exist(machine):
+    (machine / ".claude/RTK.md").write_text("rtk rules")
+    out = adopt.migrate_claude_md(backup.Backup())
+    me = (paths.personal_root() / "rules/me.md").read_text()
+    assert "@~/.claude/RTK.md" in me and "\n@RTK.md" not in me
+    assert not any(line.startswith("warning") for line in out)
+
+
+def test_migrate_warns_about_missing_import_by_name(machine):
+    out = adopt.migrate_claude_md(backup.Backup())
+    assert any(line.startswith("warning") and "@RTK.md" in line for line in out)
+    assert "@RTK.md" in (paths.personal_root() / "rules/me.md").read_text()
+
+
+def test_migrate_new_me_md_is_undone_by_restore(machine):
+    bk = backup.Backup()
+    adopt.migrate_claude_md(bk)
+    me = paths.personal_root() / "rules/me.md"
+    assert me.exists()
+    backup.restore(bk.root)
+    assert not me.exists()
+    assert "Skill Check Rule" in (machine / ".claude/CLAUDE.md").read_text()

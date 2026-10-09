@@ -60,7 +60,7 @@ def test_apply_mcp_adds_and_removes_only_managed(fake_home, fake_runner):
 
 def test_wizard_toggles_and_applies(fake_home, fake_runner, monkeypatch):
     applied = []
-    monkeypatch.setattr(configure, "apply_all", lambda ask: applied.append(1))
+    monkeypatch.setattr(configure, "apply_all", lambda ask, **k: applied.append(1))
     (paths.personal_root() / "rules").mkdir(parents=True)
     (paths.personal_root() / "rules/me.md").write_text("me")  # existing profile: wizard skips about-you
     menu = configure.addons()
@@ -124,3 +124,33 @@ def test_apply_mcp_keeps_failed_removal_managed(fake_home, fake_runner):
     fake_runner.responses[("claude", "mcp", "remove")] = runner.Result(1, "", "busy")
     personal_mcp.apply_mcp()
     assert _snapshot() == {"x": {"command": "x"}}
+
+
+# --- me.md is never overwritten silently (R-F) ---
+
+def _existing_me():
+    me = paths.personal_root() / "rules/me.md"
+    me.parent.mkdir(parents=True, exist_ok=True)
+    me.write_text("# About me\n\n## Migrated from ~/.claude/CLAUDE.md\nprecious\n")
+    return me
+
+
+def test_first_run_keeps_existing_me_md_by_default(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(configure, "apply_all", lambda ask, **k: None)
+    me = _existing_me()
+    configure.wizard(lambda q: "", first_run=True)
+    assert "precious" in me.read_text()
+
+
+def test_first_run_replace_backs_up_me_md(fake_home, fake_runner, monkeypatch, capsys):
+    from loadout import backup
+    monkeypatch.setattr(configure, "apply_all", lambda ask, **k: None)
+    me = _existing_me()
+    answers = iter(["y", "Max", "Dev", "Python", "short"] + [""] * 10)
+    configure.wizard(lambda q: next(answers), first_run=True)
+    assert "Max" in me.read_text()
+    out = capsys.readouterr().out
+    assert "loadout restore" in out
+    root = out.split("loadout restore ")[1].split(")")[0].split()[0]
+    backup.restore(paths.home() / root if not root.startswith("/") else __import__("pathlib").Path(root))
+    assert "precious" in me.read_text()

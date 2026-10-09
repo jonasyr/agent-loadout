@@ -10,6 +10,7 @@ from typing import Callable
 from . import adopt, catalog, check, link, paths, runner, secrets, settings_merge, ui
 from .backup import Backup
 from .jsonio import load_json
+from .secrets import redact
 
 Ask = Callable[[str], str]
 RC_MARKER = "# loadout secrets"
@@ -65,19 +66,25 @@ def check_prereqs(install: bool, ask: Ask) -> list[str]:
     return missing
 
 
-def ensure_personal(ask: Ask) -> str:
+def ensure_personal(ask: Ask, bk: Backup | None = None) -> tuple[str, bool]:
+    """Returns (message, ok). ok is False only when a clone was asked for and failed."""
+    bk = bk if bk is not None else Backup(description="bootstrap")
     root = paths.personal_root()
     if root.exists():
-        return f"personal layer: {root}"
+        return f"personal layer: {root}", True
     url = ask("Personal layer: git URL to clone (empty = create a starter one): ").strip()
     if url:
-        res = runner.run(["git", "clone", url, str(root)], timeout=300)
-        return f"cloned {url} -> {root}" if res.ok else f"clone failed: {res.stderr.strip()}"
+        res = runner.run(["git", "clone", "--", url, str(root)], timeout=300)
+        if res.ok:
+            return f"cloned {url} -> {root}", True
+        return (f"clone failed: {redact(res.stderr.strip())}\n"
+                f"  fix access (e.g. `gh auth login`), then re-run bootstrap; continuing without a personal layer"), False
     root.mkdir(parents=True, exist_ok=True)
     (root / "settings.json").write_text("{}\n", encoding="utf-8")
+    bk.record_created(root / "settings.json", "created personal settings.json")
     from .configure import _about_you
-    _about_you(ask)
-    return f"created starter personal layer at {root} (make it a git repo to sync it across machines)"
+    _about_you(ask, bk)
+    return f"created starter personal layer at {root} (make it a git repo to sync it across machines)", True
 
 
 def setup_plugins() -> list[str]:
@@ -203,12 +210,18 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         interactive = ui.is_interactive()
     _step("Prerequisites")
     check_prereqs(install, ask)
+    bk = Backup(description="bootstrap")
     _step("Personal layer")
-    print(ensure_personal(ask))
+    message, personal_ok = ensure_personal(ask, bk)
+    print(message)
     _step("Links")
-    bk = Backup()
     for line in link.link_all(bk) + link.link_bin(bk):
         print(line)
+    if not yes and not interactive:
+        print("\nnon-interactive: skipping the configure prompt (run `loadout configure` later)")
+    elif not yes and ui.confirm(ask, "\nCustomize preferences and global add-ons now? [y/N] "):
+        from .configure import wizard
+        wizard(ask, first_run=False, setup=False)  # settings, MCP servers and plugins are applied below
     _step("Settings")
     settings_path = paths.claude_home() / "settings.json"
     if settings_path.exists() and _settings_would_change():
@@ -218,11 +231,6 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     from .personal_mcp import apply_mcp
     for line in apply_mcp():
         print(line)
-    if not yes and not interactive:
-        print("non-interactive: skipping the configure prompt (run `loadout configure` later)")
-    elif not yes and ui.confirm(ask, "Customize preferences and global add-ons now? [y/N] "):
-        from .configure import wizard
-        wizard(ask, first_run=False)
     if plugins:
         _step("Marketplaces and plugins")
         for line in setup_plugins():
@@ -242,4 +250,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     text, code = check.format_results(check.run_checks())
     print(text)
     print("\nRestart Claude Code to load plugins and rules.")
+    if not personal_ok:
+        print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
+        return 1
     return code

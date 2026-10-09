@@ -17,7 +17,7 @@ def test_personal_wizard_renders_template(fake_home, fake_runner):
 def test_personal_clone(fake_home, fake_runner):
     answers = iter(["git@github.com:me/loadout-personal.git"])
     b.ensure_personal(lambda q: next(answers))
-    assert ["git", "clone", "git@github.com:me/loadout-personal.git", str(paths.personal_root())] in fake_runner.calls
+    assert ["git", "clone", "--", "git@github.com:me/loadout-personal.git", str(paths.personal_root())] in fake_runner.calls
 
 
 def test_secrets_setup_idempotent(fake_home, fake_runner):
@@ -101,3 +101,33 @@ def test_bootstrap_non_interactive_skips_adopt_and_configure(fake_home, fake_run
     out = capsys.readouterr().out
     assert called == []
     assert "non-interactive" in out and "adopt" in out and "configure" in out
+
+
+def test_bootstrap_clone_failure_sets_exit_code(fake_home, fake_runner, capsys, monkeypatch):
+    from loadout import runner
+    monkeypatch.setattr(b.check, "run_checks", lambda: [])
+    fake_runner.responses[("git", "clone")] = runner.Result(128, "", "repository not found")
+    answers = iter(["git@github.com:me/nope.git"] + [""] * 20)
+    rc = b.bootstrap(False, True, False, False, lambda q: next(answers), interactive=False)
+    assert rc == 1
+    assert "clone failed" in capsys.readouterr().out
+
+
+def test_bootstrap_new_personal_layer_is_recorded_as_created(fake_home, fake_runner):
+    bk_steps = []
+    b.bootstrap(False, True, False, False, lambda q: "", interactive=False)
+    for m in paths.backups_root().rglob("manifest.json"):
+        bk_steps += json.loads(m.read_text())["steps"]
+    created = {s["undo"].get("created") for s in bk_steps}
+    assert str(paths.personal_root() / "rules/me.md") in created
+    assert str(paths.personal_root() / "settings.json") in created
+
+
+def test_bootstrap_wizard_does_not_set_up_plugins_twice(fake_home, fake_runner, monkeypatch):
+    from loadout import configure
+    calls = []
+    monkeypatch.setattr(b, "setup_plugins", lambda: calls.append(1) or [])
+    monkeypatch.setattr(configure, "addons", lambda: [])
+    answers = iter(["", "", "", "", "", "y"] + [""] * 20)
+    b.bootstrap(False, False, True, False, lambda q: next(answers), interactive=True)
+    assert calls == [1]

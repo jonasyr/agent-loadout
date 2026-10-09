@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Callable
 
@@ -197,17 +198,34 @@ def migrate_claude_md(bk: Backup) -> list[str]:
         return ["~/.claude/CLAUDE.md already migrated"]
     me = paths.personal_root() / "rules" / "me.md"
     me.parent.mkdir(parents=True, exist_ok=True)
+    content, notes = _rewrite_imports(content, me)
     if me.exists():
         bk.save_copy(me, "personal me.md before migration")
+    else:
+        bk.record_created(me, "created personal me.md")
     existing = me.read_text(encoding="utf-8") if me.exists() else "# About me\n"
     me.write_text(existing.rstrip() + "\n\n## Migrated from ~/.claude/CLAUDE.md\n\n" + content + "\n", encoding="utf-8")
     bk.save_copy(src, "global CLAUDE.md")
     src.write_text(MIGRATED_MARKER + " ~/.claude/rules/ (loadout). -->\n", encoding="utf-8")
-    out = [f"moved ~/.claude/CLAUDE.md content into {me}"]
-    imports = [ln for ln in content.splitlines() if ln.startswith("@")]
-    if imports:
-        out.append(f"warning: relative @imports ({', '.join(imports)}) now resolve from {me.parent}; check them")
-    return out
+    return [f"moved ~/.claude/CLAUDE.md content into {me}", *notes]
+
+
+def _rewrite_imports(content: str, me: Path) -> tuple[str, list[str]]:
+    """Relative @imports resolved from ~/.claude; after the move they would resolve from the personal layer."""
+    lines, notes = [], []
+    for line in content.splitlines():
+        if line.startswith("@"):
+            target = line[1:].strip()
+            relative = target and not target.startswith(("/", "~")) and not re.match(r"^[A-Za-z]:[\\/]", target)
+            if relative:
+                if (paths.claude_home() / target).exists():
+                    line = f"@~/.claude/{target}"
+                    notes.append(f"rewrote @{target} -> {line}")
+                else:
+                    notes.append(f"warning: @{target} kept as-is, but ~/.claude/{target} does not exist; "
+                                 f"it now resolves from {me.parent}")
+        lines.append(line)
+    return "\n".join(lines), notes
 
 
 def _open_secrets_file(path: Path, bk: Backup):
