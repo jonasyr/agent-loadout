@@ -210,3 +210,50 @@ def test_powershell_block_loads_values(tmp_path):
     proc = subprocess.run([exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
                           capture_output=True, text=True, encoding="utf-8")
     assert proc.stdout == NASTY + "|plain", proc.stderr
+
+
+def test_rewrite_returns_var_config_and_lines():
+    from loadout import secrets
+    cfg = {"command": "x", "env": {"API_KEY": "k" * 20}}
+    found = secrets.scan({"mcpServers": {"srv": cfg}})
+    known = {}
+    new, lines, names = secrets.rewrite("srv", cfg, found, known)
+    assert new["env"]["API_KEY"] == "${SRV_API_KEY}"
+    assert cfg["env"]["API_KEY"] == "k" * 20          # original untouched
+    assert lines == ["SRV_API_KEY='" + "k" * 20 + "'\n"] and names == ["SRV_API_KEY"]
+    assert known == {"SRV_API_KEY": "k" * 20}
+
+
+def test_rewrite_never_overwrites_a_different_value():
+    from loadout import secrets
+    cfg = {"command": "x", "env": {"API_KEY": "k" * 20}}
+    found = secrets.scan({"mcpServers": {"srv": cfg}})
+    new, lines, names = secrets.rewrite("srv", cfg, found, {"SRV_API_KEY": "other"})
+    assert names == ["SRV_API_KEY_2"] and new["env"]["API_KEY"] == "${SRV_API_KEY_2}"
+
+
+def test_append_env_creates_private_file_and_records_it(fake_home):
+    import os, stat
+    from loadout import backup, paths, secrets
+    bk = backup.Backup()
+    secrets.append_env(paths.secrets_file(), ["A='1'\n"], bk)
+    assert paths.secrets_file().read_text() == "A='1'\n"
+    if os.name != "nt":
+        assert stat.S_IMODE(paths.secrets_file().stat().st_mode) == 0o600
+    assert any("created" in s["undo"] for s in bk.steps)
+
+
+def test_replace_user_server_records_undo_and_reports_ok(fake_home, fake_runner):
+    from loadout import backup, personal_mcp
+    bk = backup.Backup()
+    assert personal_mcp.replace_user_server("srv", {"command": "a"}, {"command": "b"}, bk) == "ok"
+    assert ["claude", "mcp", "remove", "-s", "user", "srv"] in fake_runner.calls
+    assert [s["undo"]["run"][2] for s in bk.steps] == ["add-json", "remove"]
+
+
+def test_replace_user_server_cmd_shim_removes_nothing(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, personal_mcp, runner
+    monkeypatch.setattr(runner, "would_refuse", lambda cmd: True)
+    res = personal_mcp.replace_user_server("srv", {"command": "a"}, {"command": "b"}, backup.Backup())
+    assert res.startswith("manual: ")
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []

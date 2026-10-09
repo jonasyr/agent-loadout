@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 from typing import Callable
@@ -256,20 +255,9 @@ def _rewrite_imports(content: str, me: Path) -> tuple[str, list[str]]:
     return "\n".join(lines), notes
 
 
-def _open_secrets_file(path: Path, bk: Backup):
-    """Append handle to secrets.env; a new file is created 0600 from the start and recorded as created."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        bk.save_copy(path, "secrets.env before additions")
-    else:
-        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
-        bk.record_created(path, "created secrets.env")
-    if os.name != "nt":
-        os.chmod(path, 0o600)
-    return path.open("a", encoding="utf-8", newline="\n")
-
-
 def fix_secrets(findings: list, bk: Backup) -> list[str]:
+    from .personal_mcp import replace_user_server
+
     out = []
     claude_json = load_json(paths.claude_json())
     secrets_path = paths.secrets_file()
@@ -289,40 +277,15 @@ def fix_secrets(findings: list, bk: Backup) -> list[str]:
         if any("\n" in f.value or "\r" in f.value for f in group):
             out.append(f"{server}: a secret value contains a newline; move it to secrets.env by hand (skipped)")
             continue
-        cfg = json.loads(json.dumps(original))
-        new_lines, names = [], []
-        for f in group:
-            var = secrets.var_name(f.server, f.key)
-            n = 2
-            while var in known and known[var] != f.value:  # same name, different value: never overwrite
-                var = f"{secrets.var_name(f.server, f.key)}_{n}"
-                n += 1
-            if var not in known:
-                known[var] = f.value
-                new_lines.append(f"{var}={secrets.quote(f.value)}\n")
-            cfg[f.field][f.key] = cfg[f.field][f.key].replace(f.value, "${" + var + "}")
-            names.append(var)
-        if new_lines:
-            existing = secrets_path.read_bytes() if secrets_path.exists() else b""
-            with _open_secrets_file(secrets_path, bk) as fh:
-                if existing and not existing.endswith(b"\n"):
-                    fh.write("\n")
-                fh.writelines(new_lines)
-        add_cfg = ["claude", "mcp", "add-json", "-s", "user", server, json.dumps(cfg)]
-        if runner.would_refuse(add_cfg):  # nothing is removed: a refused add would lose the user's server
-            where = _manual(bk, f"secrets {server}", [["claude", "mcp", "remove", "-s", "user", server], add_cfg])
-            out.append(f"{server} -> " + ", ".join("${" + n + "}" for n in names)
-                       + f": not changed in claude (Windows .cmd shim cannot take JSON); secrets.env is updated, run the commands in {where}")
+        cfg, lines, names = secrets.rewrite(server, original, group, known)
+        secrets.append_env(secrets_path, lines, bk)
+        refs = ", ".join("${" + n + "}" for n in names)
+        res = replace_user_server(server, original, cfg, bk)
+        if res.startswith("manual: "):
+            out.append(f"{server} -> {refs}: not changed in claude (Windows .cmd shim cannot take JSON); "
+                       f"secrets.env is updated, run the commands in {res[8:]}")
             continue
-        # reverse replay: remove the ${VAR} server first, then re-add the original
-        bk.record_command(f"secrets {server} (original)", ["claude", "mcp", "add-json", "-s", "user", server, json.dumps(original)])
-        bk.record_command(f"secrets {server} (remove rewritten)", ["claude", "mcp", "remove", "-s", "user", server])
-        _claude(["mcp", "remove", "-s", "user", server])
-        res = _claude(["mcp", "add-json", "-s", "user", server, json.dumps(cfg)])
-        if res != "ok":
-            back = _claude(["mcp", "add-json", "-s", "user", server, json.dumps(original)])  # never leave the server missing
-            res += f" (original re-added: {back})"
-        out.append(f"{server} -> " + ", ".join("${" + n + "}" for n in names) + ": " + res)
+        out.append(f"{server} -> {refs}: {res}")
     return out
 
 

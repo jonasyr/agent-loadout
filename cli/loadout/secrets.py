@@ -155,3 +155,48 @@ def load_env(path: Path) -> dict[str, str]:
         if parsed:
             out[parsed[0]] = parsed[1]
     return out
+
+
+def rewrite(server: str, cfg: dict, findings: list[Finding], known: dict[str, str]) -> tuple[dict, list[str], list[str]]:
+    """Replace each fixable finding's value in a copy of cfg with ${VAR}. known (secrets.env) is updated in place.
+
+    Returns (new config, new secrets.env lines, var names). A name that already holds a different value is
+    never reused: _2, _3, ... is appended instead.
+    """
+    import json
+
+    new = json.loads(json.dumps(cfg))
+    lines, names = [], []
+    for f in findings:
+        var = var_name(f.server, f.key)
+        n = 2
+        while var in known and known[var] != f.value:
+            var = f"{var_name(f.server, f.key)}_{n}"
+            n += 1
+        if var not in known:
+            known[var] = f.value
+            lines.append(f"{var}={quote(f.value)}\n")
+        new[f.field][f.key] = new[f.field][f.key].replace(f.value, "${" + var + "}")
+        names.append(var)
+    return new, lines, names
+
+
+def append_env(path: Path, lines: list[str], bk) -> None:
+    """Append to secrets.env; a new file is created 0600 from the start and recorded as created."""
+    import os
+
+    if not lines:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.read_bytes() if path.exists() else b""
+    if path.exists():
+        bk.save_copy(path, "secrets.env before additions")
+    else:
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        bk.record_created(path, "created secrets.env")
+    if os.name != "nt":
+        os.chmod(path, 0o600)
+    with path.open("a", encoding="utf-8", newline="\n") as fh:
+        if existing and not existing.endswith(b"\n"):
+            fh.write("\n")
+        fh.writelines(lines)
