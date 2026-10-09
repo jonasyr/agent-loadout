@@ -130,6 +130,7 @@ def show() -> str:
         on = is_on(a)
         source = "default" if on == a.default_on else "personal"
         lines.append(f"{'on' if on else 'off'} ({source})  [{a.category}] {a.label}  — id: {a.kind} {a.target}")
+        lines.append(f"      {a.reason}")
     personal = load_json(_personal_settings_path())
     prefs = {k: v for k, v in personal.items() if k not in ("enabledPlugins", "extraKnownMarketplaces")}
     if prefs:

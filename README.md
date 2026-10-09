@@ -26,7 +26,9 @@ Bootstrap asks a few questions along the way:
 
 - **Personal layer:** paste the git URL of your own personal repo to clone it, or leave empty to create a starter one (it asks four short questions about you).
 - **Preferences and add-ons:** optionally run the configure wizard.
-- **Existing setup:** reviews your current tools and offers to remove duplicates, with a backup first.
+- **Existing setup:** reviews your current tools (`loadout adopt`): it offers to remove superseded or duplicate tools, disable per-project tools globally, and move plaintext secrets into `secrets.env`, with a backup first and a final "Apply N changes?" question. Binary updates and installs (which run package-manager or installer commands) are never pre-selected; each command is shown and confirmed.
+
+Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input) bootstrap never changes your existing setup: it skips adopt and the configure prompt and tells you so. Pass `--yes` to accept the safe defaults instead.
 
 Then **restart Claude Code** and verify:
 
@@ -56,7 +58,7 @@ If `loadout: command not found`, see [Troubleshooting](#troubleshooting).
 |---|---|
 | Set up a new machine | `./bootstrap.sh --install` |
 | Clean up a machine that already has a Claude Code setup | `loadout adopt` (shows the plan only), then `loadout adopt --apply` |
-| Undo what loadout changed | `loadout restore ~/.claude/backups/loadout-<timestamp>` |
+| Undo what loadout changed | `loadout restore --list`, then `loadout restore ~/.claude/backups/loadout-<timestamp>` |
 | Change preferences or add tools globally | `loadout configure`, or ask Claude: `/loadout:configure` |
 | See what is on and why | `loadout configure show` |
 | Start a new project | `mkdir app && cd app && loadout init`, then in Claude Code: `/loadout:onboard` |
@@ -74,10 +76,10 @@ Run `loadout <command> --help` for details.
 
 | Command | What it does | Options |
 |---|---|---|
-| `loadout bootstrap` | Set up or repair this machine (safe to re-run) | `--install` install missing tools, `--yes` accept defaults, `--no-plugins`, `--no-adopt` |
-| `loadout adopt` | Review an existing setup. Dry run unless `--apply` | `--apply`, `--groups remove,migrate`, `--skip NAME,...`, `--yes`, `--no-versions` |
-| `loadout restore DIR` | Undo a backup | none |
-| `loadout configure` | Wizard for preferences and add-ons | `show`; `set plugin ID on\|off`; `set mcp ID on\|off`; `set pref KEY JSON` |
+| `loadout bootstrap` | Set up or repair this machine (safe to re-run) | `--install` install missing tools, `--yes` accept defaults (never binary updates), `--no-plugins`, `--no-adopt` |
+| `loadout adopt` | Review an existing setup. Dry run unless `--apply`; without a terminal, `--apply` needs `--yes` or `--groups` (otherwise exit code 2) | `--apply`, `--groups remove,migrate`, `--skip NAME,...`, `--yes`, `--no-versions` |
+| `loadout restore DIR` | Undo a backup. Whatever it replaces goes into a new backup, so a restore can be undone too | `--list` (newest first), `--force` (replay an already restored backup) |
+| `loadout configure` | Wizard for preferences and add-ons | `show` (lists each add-on's id); `set plugin ID on\|off`; `set mcp ID-or-server-name on\|off`; `set pref KEY JSON`; `--first-run` (ask the "about you" questions again) |
 | `loadout init [PROFILE...]` | Prepare the current project (AGENTS.md, CLAUDE.md, docs/, .gitignore entries, profiles) | `--yes`, `--no-install`, `--dry-run` |
 | `loadout profile NAME` | Add one profile to the current project | `--no-install` |
 | `loadout check` | Verify this machine | none |
@@ -135,15 +137,36 @@ You rarely edit these by hand: `loadout configure` does it for you. **To sync th
 | This kit and your personal layer | Pulled at most once a day in the background, only when you have no local changes |
 | Tool binaries | Checked weekly; Claude Code then shows "updates available, run `loadout update`" |
 
+## Security & trust
+
+loadout is self-updating, so it is worth knowing what runs without asking:
+
+- **Plugins and marketplaces** with `"autoUpdate": true` (the kit's own, and the third-party ones in `settings.base.json`) are updated by Claude Code. A plugin can ship hooks, so an update can run new code in your next session.
+- **This kit and your personal layer** are pulled once a day (`git pull --ff-only`, only when the checkout has no local changes). After a pull, loadout re-merges settings into `~/.claude/settings.json`, applies your personal `mcp.json`, and the next session runs the pulled `loadout` code and the plugin's hooks.
+- **Tool binaries are never updated silently**; `loadout update` shows each command and asks.
+
+To opt out:
+
+- set `"autoUpdate": false` for a marketplace in your personal `settings.json`, e.g. `{"extraKnownMarketplaces": {"impeccable": {"autoUpdate": false}}}`;
+- set `LOADOUT_NO_AUTO_PULL=1` in your environment to stop the daily pull (run `git pull` in the kit and personal folders yourself).
+
+For a team, use a fork of this repo that you control (and point `LOADOUT_ROOT` or your clone at it), so changes reach colleagues only after you review them.
+
+Backups under `~/.claude/backups/` can contain old configs and undo commands with secrets in them; they are created readable only by you (0700/0600). Delete old ones when you no longer need them.
+
 ## Secrets
 
 Never put API keys into config files. Put them in `~/.config/loadout/secrets.env` (created for you, readable only by you):
 
 ```bash
-DATABASE_URL=postgres://readonly:password@localhost/app
+DATABASE_URL='postgres://readonly:password@localhost/app'
 ```
 
-Bootstrap adds a line to your shell startup file (`.bashrc`/`.zshrc`, or your PowerShell profile) that loads this file. MCP configs reference values as `${DATABASE_URL}`. `loadout adopt` finds keys already sitting in plain text in your MCP configs and offers to move them.
+Write values in single quotes; a `'` inside a value is written as `'\''`. That way the shell never runs or mangles part of a value. Bootstrap adds a line to your shell startup file (the one for your `$SHELL`, plus an existing `.bashrc`/`.zshrc`; on Windows both the Windows PowerShell and PowerShell 7 profiles) that loads this file. MCP configs reference values as `${DATABASE_URL}`.
+
+`loadout adopt` finds keys sitting in plain text and never prints them. Secrets in user-scope MCP servers in `~/.claude.json` can be moved to `secrets.env` automatically; it also reports (for you to move by hand) secrets in project-scoped servers, `~/.claude/.mcp.json`, your personal `mcp.json`, the `env` block of `~/.claude/settings.json`, and URL query strings.
+
+Secrets loaded by your shell only reach Claude Code started from that shell. On Windows, if PowerShell's execution policy is `Restricted`, profiles do not run; bootstrap prints the command to allow them (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`) but does not change it.
 
 ## Troubleshooting
 
@@ -154,12 +177,13 @@ Bootstrap adds a line to your shell startup file (`.bashrc`/`.zshrc`, or your Po
 | `invalid JSON in .../settings.json` | Fix the syntax error at the reported position, then run `loadout apply-settings` |
 | "settings drift" warning | Something changed a kit-managed value. Run `loadout apply-settings`, or put your preferred value in your personal `settings.json` |
 | Windows: links were copied instead of linked | Enable Developer Mode (Settings, For developers) and re-run bootstrap; copies still work and are refreshed daily |
-| Something went wrong after adopt | `loadout restore <backup path printed by adopt>` |
+| Something went wrong after adopt | `loadout restore <backup path printed by adopt>` (`loadout restore --list` shows all backups) |
+| `adopt --apply` exits with code 2 | It was run without a terminal. Add `--yes` (safe defaults) or `--groups remove,migrate,...` |
 | A required tool is missing | Re-run `./bootstrap.sh --install`; `loadout check` shows manual install steps for what it cannot install |
 
 ## FAQ
 
-**Will it delete my stuff?** No. Anything it removes or replaces is moved into `~/.claude/backups/loadout-<timestamp>`, and `loadout restore` puts it back. Tools it does not know are left alone.
+**Will it delete my stuff?** No. Anything it removes or replaces is moved into `~/.claude/backups/loadout-<timestamp>`, and `loadout restore` puts it back. Restore itself moves whatever it replaces into a new backup first, and files loadout created (such as a new `me.md` or `secrets.env`) are moved aside, not deleted. Plugins are uninstalled with `--keep-data`. Tools it does not know are left alone.
 
 **I already have my own CLAUDE.md, hooks and settings.** They stay. The kit only manages its own keys. `adopt` offers to move your global CLAUDE.md content into your personal layer.
 
@@ -171,10 +195,14 @@ Bootstrap adds a line to your shell startup file (`.bashrc`/`.zshrc`, or your Po
 
 ```bash
 claude plugin uninstall loadout@agent-loadout
+claude plugin marketplace remove agent-loadout
 rm ~/.claude/rules/loadout ~/.claude/rules/personal ~/.local/bin/loadout
+rm -r ~/.claude/.loadout          # loadout's state (snapshots, timestamps)
 ```
 
-Windows: delete `loadout` and `loadout.cmd` in `%USERPROFILE%\.local\bin`, and replace the `rm` links with the copied folders under `%USERPROFILE%\.claude\rules`.
+Windows: delete `loadout` and `loadout.cmd` in `%USERPROFILE%\.local\bin`, and delete the folders `%USERPROFILE%\.claude\rules\loadout`, `%USERPROFILE%\.claude\rules\personal` and `%USERPROFILE%\.claude\.loadout`.
+
+MCP servers from your personal `mcp.json` were added with `claude mcp add-json -s user`; remove them with `claude mcp remove -s user NAME` if you no longer want them. Plugins that bootstrap installed stay installed; uninstall them with `claude plugin uninstall ID` if you want.
 
 Your `~/.claude/settings.json` keeps the merged values. Remove the kit's `enabledPlugins` and `extraKnownMarketplaces` entries if you want, or restore an older backup from `~/.claude/backups/`. You can also delete the "# loadout secrets" block that bootstrap added to your shell startup file. Your personal layer and `secrets.env` under `~/.config/loadout/` are never touched; delete them yourself if you want them gone.
 

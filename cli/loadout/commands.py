@@ -84,7 +84,7 @@ def _register_maintenance(sub):
     from . import maintenance
     from .__main__ import _ask
 
-    p = sub.add_parser("hook-session-start", help=argparse_hidden())
+    p = sub.add_parser("hook-session-start")  # internal: no help=, so it stays out of --help
 
     def hook(a):
         try:
@@ -97,7 +97,7 @@ def _register_maintenance(sub):
 
     p.set_defaults(func=hook)
 
-    p = sub.add_parser("maintenance", help=argparse_hidden())
+    p = sub.add_parser("maintenance")  # internal
 
     def maint(a):
         try:
@@ -109,13 +109,8 @@ def _register_maintenance(sub):
     p.set_defaults(func=maint)
 
     p = sub.add_parser("update", help="update outdated tool binaries")
-    p.add_argument("--yes", action="store_true")
+    p.add_argument("--yes", action="store_true", help="run every update command without asking (each is still printed)")
     p.set_defaults(func=lambda a: maintenance.update(a.yes, _ask))
-
-
-def argparse_hidden():
-    import argparse
-    return argparse.SUPPRESS
 
 
 EXTRA_COMMANDS.append(_register_maintenance)
@@ -128,8 +123,8 @@ def _register_bootstrap(sub):
     p = sub.add_parser("bootstrap", help="set up (or repair) this machine")
     p.add_argument("--install", action="store_true", help="install missing tool binaries")
     p.add_argument("--yes", action="store_true", help="accept defaults without asking (adopt applies remove/migrate/scope-down; never binary updates)")
-    p.add_argument("--no-plugins", action="store_true")
-    p.add_argument("--no-adopt", action="store_true")
+    p.add_argument("--no-plugins", action="store_true", help="skip adding marketplaces and installing plugins (offline/CI)")
+    p.add_argument("--no-adopt", action="store_true", help="skip reviewing the existing setup")
     p.set_defaults(func=lambda a: bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask))
 
 
@@ -140,12 +135,21 @@ def _register_configure(sub):
     from . import configure
     from .__main__ import _ask
 
-    p = sub.add_parser("configure", help="choose preferences and global add-ons (personal layer)")
-    p.add_argument("action", nargs="?", choices=["show", "set"])
-    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref"])
-    p.add_argument("name", nargs="?")
-    p.add_argument("value", nargs="?")
-    p.add_argument("--first-run", action="store_true")
+    import argparse
+
+    p = sub.add_parser("configure", help="choose preferences and global add-ons (personal layer)",
+                       formatter_class=argparse.RawDescriptionHelpFormatter,
+                       description="Without arguments: an interactive wizard. Choices go into your personal layer.",
+                       epilog="examples:\n"
+                              "  loadout configure show\n"
+                              "  loadout configure set plugin hookify@claude-plugins-official on\n"
+                              "  loadout configure set mcp dbhub on\n"
+                              "  loadout configure set pref effortLevel '\"high\"'")
+    p.add_argument("action", nargs="?", choices=["show", "set"], help="show the current state, or set one value")
+    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref"], help="what to set")
+    p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, or preference key (ids: configure show)")
+    p.add_argument("value", nargs="?", help="on|off for plugin/mcp; a JSON value for pref")
+    p.add_argument("--first-run", action="store_true", help="also ask the 'about you' questions again (keeps your me.md unless you agree)")
 
     def run(a):
         if a.action is None:
