@@ -65,9 +65,23 @@ def mcp_target(cmd: list) -> tuple[str, str, str] | None:
 WIN_JSON = r"%USERPROFILE%\.claude.json"
 
 
-def _windows_lines(cmds: list[list[str]]) -> list[str]:
+def _windows_add(cmd: list[str], verb: str) -> list[str] | None:
+    t = mcp_target(cmd)
+    if not (t and t[0] == "add-json" and t[1] == "user"):
+        return None
+    try:
+        cfg = json.loads(cmd[-1])
+    except ValueError:
+        return None
+    if not isinstance(cfg, dict):
+        return None
+    block = json.dumps({t[2]: cfg}, indent=2, ensure_ascii=False).splitlines()[1:-1]
+    return [f'# - {verb} under "mcpServers" in {WIN_JSON}:', *(line[2:] for line in block)]
+
+
+def _windows_lines(cmds: list[list[str]], replace: bool) -> list[str]:
     """No cmd.exe/PowerShell form for claude.cmd + JSON: that goes through the parsing the refusal avoids."""
-    added = {t[2] for c in cmds if (t := mcp_target(c)) and t[0] == "add-json"}
+    added = {t[2] for c in cmds if (t := mcp_target(c)) and t[0] == "add-json"} if replace else set()
     out = []
     for cmd in cmds:
         t = mcp_target(cmd)
@@ -76,38 +90,41 @@ def _windows_lines(cmds: list[list[str]]) -> list[str]:
         if t and t[0] == "remove" and t[1] == "user":
             out.append(f'# - delete the "{t[2]}" entry under "mcpServers" in {WIN_JSON}')
             continue
-        if t and t[0] == "add-json" and t[1] == "user":
-            try:
-                cfg = json.loads(cmd[-1])
-            except ValueError:
-                cfg = None
-            if isinstance(cfg, dict):
-                block = json.dumps({t[2]: cfg}, indent=2, ensure_ascii=False).splitlines()[1:-1]
-                out.append(f'# - add this under "mcpServers" in {WIN_JSON} (replacing an existing "{t[2]}" entry):')
-                out += [line[2:] for line in block]
-                continue
-        if any(set(a) & CMD_METACHARS for a in cmd[1:]):
+        add = _windows_add(cmd, f'add this (replacing an existing "{t[2]}" entry)' if t else "")
+        if add:
+            out += add
+        elif any(set(a) & CMD_METACHARS for a in cmd[1:]):
             out.append("# - (no safe Windows form; use the native claude.exe with the shell form above)")
         else:
             out.append(subprocess.list2cmdline(cmd))
     return out
 
 
-def manual_block(title: str, cmds: list[list[str]]) -> tuple[str, str]:
-    """(title line, body): a macOS/Linux shell form, and Windows instructions (JSON to put into ~/.claude.json)."""
+def manual_block(title: str, cmds: list[list[str]], undo: list[list[str]] | None = None) -> tuple[str, str]:
+    """(title line, body): a macOS/Linux shell form, and Windows instructions (JSON to put into ~/.claude.json).
+
+    cmds run in order; several commands for one server (remove + add-json) mean "replace it".
+    undo: commands that reverse cmds, shown separately as "to undo" (never part of the change).
+    """
     body = ("# macOS / Linux shell:\n" + "".join(shell_line(c) + "\n" for c in cmds)
             + "# Windows (claude.cmd cannot take JSON safely): close Claude Code, then:\n"
-            + "".join(line + "\n" for line in _windows_lines(cmds)))
+            + "".join(line + "\n" for line in _windows_lines(cmds, replace=True)))
+    if undo:
+        body += ("# To undo later, macOS / Linux shell:\n" + "".join(shell_line(c) + "\n" for c in undo)
+                 + "# To undo later, Windows (Claude Code closed):\n")
+        for cmd in undo:
+            add = _windows_add(cmd, "add this back")
+            body += "".join(line + "\n" for line in (add or _windows_lines([cmd], replace=True)))
     return f"# {title}\n", body
 
 
-def write_manual_commands(directory, title: str, cmds: list[list[str]]) -> str:
+def write_manual_commands(directory, title: str, cmds: list[list[str]], undo: list[list[str]] | None = None) -> str:
     """Append the exact commands to <directory>/manual-commands.txt (0600), once. Returns the file path."""
     from pathlib import Path
     d = Path(directory)
     d.mkdir(parents=True, exist_ok=True)
     path = d / "manual-commands.txt"
-    head, body = manual_block(title, cmds)
+    head, body = manual_block(title, cmds, undo)
     existing = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
     if head + body not in existing:  # identical block already there: do not repeat it
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)

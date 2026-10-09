@@ -91,9 +91,9 @@ def _claude(args: list[str]) -> str:
     return "ok" if res.ok else f"failed: {res.stderr.strip()}"
 
 
-def _manual(bk: Backup, title: str, cmds: list[list[str]]) -> str:
+def _manual(bk: Backup, title: str, cmds: list[list[str]], undo: list[list[str]] | None = None) -> str:
     bk._ensure_root()
-    return runner.write_manual_commands(bk.root, title + " (full commands, contains secrets)", cmds)
+    return runner.write_manual_commands(bk.root, title + " (full commands, contains secrets)", cmds, undo)
 
 
 def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> str:
@@ -116,7 +116,7 @@ def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> s
     undo = ["claude", "mcp", "add-json", "-s", "user", v.item.name, cfg]
     remove = ["claude", "mcp", "remove", "-s", "user", v.item.name]
     if runner.would_refuse(undo):  # the undo could not be replayed: do not remove
-        where = _manual(bk, f"mcp {v.item.name}: remove (undo: add-json below)", [remove, undo])
+        where = _manual(bk, f"mcp {v.item.name}: remove", [remove], undo=[undo])
         return f"mcp {v.item.name}: not removed, its undo cannot run through this claude (Windows .cmd shim); commands are in {where}"
     bk.record_command(f"mcp {v.item.name}", undo)
     return f"mcp {v.item.name}: " + _claude(["mcp", "remove", "-s", "user", v.item.name])

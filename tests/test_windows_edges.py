@@ -32,7 +32,7 @@ def test_manual_commands_have_shell_form_and_windows_json_block(tmp_path):
     assert "claude mcp remove -s user srv" in shell and "claude mcp add-json -s user srv '{" in shell
     assert "--%" not in text and "claude mcp add-json" not in windows  # no claude.cmd + JSON invocation
     assert "close Claude Code" in windows and "%USERPROFILE%\\.claude.json" in windows
-    block = windows.split("):\n", 1)[1]
+    block = windows.split(".claude.json:\n", 1)[1]
     assert json.loads("{" + block + "}") == {"srv": cfg}  # the block is valid JSON under mcpServers
 
 
@@ -107,3 +107,39 @@ def test_two_notices_are_both_kept(fake_home, monkeypatch):
     maintenance.notify("second")
     msg = json.loads(maintenance.session_start(0.0))["systemMessage"]
     assert "first" in msg and "second" in msg
+
+
+def test_manual_block_removal_with_undo_is_not_a_replace(tmp_path):
+    cfg = {"command": "docker", "env": {"K": "v"}}
+    remove = ["claude", "mcp", "remove", "-s", "user", "srv"]
+    add = ["claude", "mcp", "add-json", "-s", "user", "srv", json.dumps(cfg)]
+    text = Path(runner.write_manual_commands(tmp_path, "mcp srv: remove", [remove], undo=[add])).read_text()
+    change, undo = text.split("# To undo later, macOS / Linux shell:")
+    windows_change = change.split("# Windows")[1]
+    assert 'delete the "srv" entry under "mcpServers"' in windows_change and "add this" not in windows_change
+    assert "claude mcp add-json" not in change  # the change itself never re-adds the server
+    assert "claude mcp add-json -s user srv" in undo
+    win_undo = undo.split("# To undo later, Windows (Claude Code closed):\n")[1]
+    assert win_undo.startswith('# - add this back under "mcpServers"')
+    assert json.loads("{" + win_undo.split(":\n", 1)[1] + "}") == {"srv": cfg}
+
+
+def test_manual_block_replace_pair_keeps_replace_form(tmp_path):
+    cmds = [["claude", "mcp", "remove", "-s", "user", "srv"],
+            ["claude", "mcp", "add-json", "-s", "user", "srv", '{"command": "x"}']]
+    text = Path(runner.write_manual_commands(tmp_path, "secrets srv", cmds)).read_text()
+    windows = text.split("# Windows")[1]
+    assert "delete the" not in windows and 'replacing an existing "srv" entry' in windows
+    assert "To undo" not in text
+
+
+def test_adopt_refused_removal_writes_delete_plus_undo(fake_home, fake_runner, windows_cmd):
+    from loadout import adopt, inventory
+    from fixtures import author_machine
+    author_machine(fake_home)
+    chosen = [v for v in inventory.classify(inventory.collect(with_versions=False))
+              if v.item.kind == "mcp" and v.item.name == "github-server"]
+    bk = backup.Backup()
+    adopt.apply(chosen, bk)
+    text = (bk.root / "manual-commands.txt").read_text(encoding="utf-8")
+    assert 'delete the "github-server" entry' in text and "To undo later" in text
