@@ -66,6 +66,7 @@ If `loadout: command not found`, see [Troubleshooting](#troubleshooting).
 | Add a domain tool to one repo | `loadout profile thesis` (also: `web`, `db`, `sonar`, `android`) |
 | Fix outdated or wrong docs in a repo | `/loadout:docs-audit` (thorough; asks when something is unclear) |
 | Keep docs current after a feature | `/loadout:docs-sync` |
+| Decide how to run a finished plan (inline, subagents or a mix) | `/loadout:execution-advisor` (offered automatically after a plan is written) |
 | Update tool binaries | `loadout update` |
 | Re-apply settings after editing your personal layer by hand | `loadout apply-settings` |
 | Check that everything is healthy | `loadout check` |
@@ -92,13 +93,15 @@ Run `loadout <command> --help` for details.
 
 | Plugin | What it does for you |
 |---|---|
-| loadout | Code-navigation servers (Serena, codebase-memory), tool hooks, the onboard/configure/docs skills, update notices |
+| loadout | Code-navigation servers (Serena, codebase-memory), tool hooks, the onboard/configure/docs/execution-advisor skills, update notices |
 | superpowers | A disciplined workflow: brainstorm, plan, test-driven build, verify |
 | frontend-design, impeccable | Distinctive UI, then audit and polish it |
 | security-guidance | Warns about security mistakes while code is written, and reviews each `git commit`. The per-turn Opus diff review is off by default (`ENABLE_STOP_REVIEW=0`, to save usage) — set it to `"1"` under `env` in your personal settings.json to turn it on |
 | pyright-lsp, typescript-lsp, rust-analyzer-lsp | Claude sees type errors right after each edit |
 | context7, microsoft-docs | Up-to-date library documentation instead of outdated training data |
 | commit-commands, claude-md-management | Commits and PRs; keeping CLAUDE.md/AGENTS.md healthy |
+
+**After a plan.** When superpowers writes an implementation plan (`docs/superpowers/plans/*.md`), a plugin hook asks Claude once per plan version to run `/loadout:execution-advisor` before you choose how to execute it. The advisor judges each task (complete code in the plan, coupling, risk, steps that need you, size, context, cost) and recommends Inline, subagent-driven or a Hybrid with a per-task table of mode, model tier and review, instead of defaulting to subagents. You confirm before anything runs.
 
 **Command-line tools** (installed by `--install` where possible): `serena`, `codebase-memory-mcp`, `playwright-cli` (Claude checks UIs in a real browser), `rtk` (shrinks noisy command output to save tokens), and the language servers `pyright`, `typescript-language-server`, `rust-analyzer`.
 
