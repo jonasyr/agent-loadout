@@ -48,6 +48,11 @@ off (default)  [data] sentry@claude-plugins-official  — id: plugin sentry@clau
       Read Sentry issues and traces while debugging production errors.
 off (default)  [data] dbhub  — id: mcp addon-dbhub-global
       DBHub for one database you use from every repo (otherwise use the db profile per project).
+Preferences (change one with: loadout configure set pref-choice <id> <value>)
+match (me.md)  Which language should Claude answer in?  — id: pref-choice answer_language
+      options: match | english | german | other:<text> (default match)
+medium (personal settings)  Default effort level?  — id: pref-choice effort_level
+      options: low | medium | high (default medium)
 EOF
 }
 
@@ -62,7 +67,8 @@ case "${1:-} ${2:-}" in
           echo "note: DSN is not set: add it to ~/.config/loadout/secrets.env"
         echo "Restart Claude Code (or run /reload-plugins) to load the changes." ;;
       pref) echo "pref ${4} = ${5:-}" ;;
-      *) echo "usage: loadout configure set <plugin|mcp|pref> <name> <value>" >&2; exit 2 ;;
+      pref-choice) echo "${4}: ${5:-}" ;;
+      *) echo "usage: loadout configure set <plugin|mcp|pref-choice|pref> <name> <value>" >&2; exit 2 ;;
     esac ;;
   "configure "*) echo "the interactive wizard needs a terminal; use: loadout configure show | set ..." >&2; exit 2 ;;
   "profile "*) echo "added profile ${2:-}: plugins installed with --scope project" ;;
