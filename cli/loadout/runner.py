@@ -37,22 +37,35 @@ def would_refuse(cmd: list[str]) -> bool:
 
 
 def shell_line(cmd: list[str]) -> str:
-    """One command as a line to paste by hand (full text, nothing redacted)."""
-    if _is_windows():
-        return subprocess.list2cmdline(cmd)
+    """One command as a POSIX sh line to paste by hand (full text, nothing redacted)."""
     import shlex
     return shlex.join(cmd)
 
 
+def powershell_line(cmd: list[str]) -> str:
+    """PowerShell: `--%` (stop-parsing) passes the rest verbatim, with CreateProcess quoting."""
+    return f"{cmd[0]} --% {subprocess.list2cmdline(cmd[1:])}" if len(cmd) > 1 else cmd[0]
+
+
+def manual_block(title: str, cmds: list[list[str]]) -> tuple[str, str]:
+    """(title line, body) of a paste-ready block with labelled POSIX sh and PowerShell forms."""
+    body = ("# POSIX sh (bash, zsh, Git Bash):\n" + "".join(shell_line(c) + "\n" for c in cmds)
+            + "# PowerShell:\n" + "".join(powershell_line(c) + "\n" for c in cmds))
+    return f"# {title}\n", body
+
+
 def write_manual_commands(directory, title: str, cmds: list[list[str]]) -> str:
-    """Append the exact commands to <directory>/manual-commands.txt (0600). Returns the file path."""
+    """Append the exact commands to <directory>/manual-commands.txt (0600), once. Returns the file path."""
     from pathlib import Path
     d = Path(directory)
     d.mkdir(parents=True, exist_ok=True)
     path = d / "manual-commands.txt"
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as fh:
-        fh.write(f"# {title}\n" + "".join(shell_line(c) + "\n" for c in cmds) + "\n")
+    head, body = manual_block(title, cmds)
+    existing = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    if head + body not in existing:  # identical block already there: do not repeat it
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as fh:
+            fh.write(head + body + "\n")
     if os.name != "nt":
         os.chmod(path, 0o600)
     return str(path)

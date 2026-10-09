@@ -180,6 +180,7 @@ Secrets loaded by your shell only reach Claude Code started from that shell. On 
 | Windows: links were copied instead of linked | Enable Developer Mode (Settings, For developers) and re-run bootstrap; copies still work and are refreshed daily |
 | Something went wrong after adopt | `loadout restore <backup path printed by adopt>` (`loadout restore --list` shows all backups) |
 | `adopt --apply` exits with code 2 | It was run without a terminal. Add `--yes` (safe defaults) or `--groups remove,migrate,...` |
+| Windows: "cannot take JSON arguments (Windows .cmd shim)" | The npm-installed `claude.cmd` cannot receive JSON safely, so loadout changes nothing and writes the exact commands to a private `manual-commands.txt` (path printed), each in a POSIX sh form (Git Bash) and a PowerShell form. Paste one form, or install the native `claude.exe` |
 | A required tool is missing | Re-run `./bootstrap.sh --install`; `loadout check` shows manual install steps for what it cannot install |
 
 ## FAQ

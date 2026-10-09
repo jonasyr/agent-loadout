@@ -104,6 +104,45 @@ def _exists(path: Path) -> bool:
     return path.exists() or path.is_symlink()
 
 
+def _mcp_target(cmd: list) -> tuple[str, str] | None:
+    """("remove"|"add-json", server name) for a `claude mcp remove|add-json` command, else None."""
+    if len(cmd) < 3 or cmd[:2] != ["claude", "mcp"] or cmd[2] not in ("remove", "add-json"):
+        return None
+    rest, pos = cmd[3:], []
+    i = 0
+    while i < len(rest):
+        if rest[i] in ("-s", "--scope"):
+            i += 2
+            continue
+        pos.append(rest[i])
+        i += 1
+    return (cmd[2], pos[0]) if pos else None
+
+
+def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, str]:
+    """Replay positions to skip: a remove whose paired (later) add-json would be refused, and that add.
+
+    Running the remove alone would lose the server (Windows npm claude.cmd cannot take JSON).
+    """
+    skip: dict[int, str] = {}
+    for i, step in enumerate(ordered):
+        cmd = step.get("undo", {}).get("run")
+        if not cmd or (step.get("restored") and not force) or _mcp_target(cmd) is None or _mcp_target(cmd)[0] != "remove":
+            continue
+        name = _mcp_target(cmd)[1]
+        for j in range(i + 1, len(ordered)):
+            other = ordered[j].get("undo", {}).get("run")
+            if other and _mcp_target(other) == ("add-json", name):
+                if runner.would_refuse(other):
+                    where = runner.write_manual_commands(
+                        root, f"restore: mcp {name} (remove, then add; full commands, contains secrets)", [cmd, other])
+                    msg = (f"failed: {{label}}: not run, the paired add-json cannot run through this claude "
+                           f"(Windows .cmd shim); run both commands in {where} by hand")
+                    skip[i] = skip[j] = msg
+                break
+    return skip
+
+
 def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
     undo, label = step["undo"], step["label"]
     if "move" in undo:
@@ -159,12 +198,14 @@ def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | No
     pre = Backup(description=f"pre-restore of {root}")
     lines, ok = [], True
     failed = []
-    for step in reversed(manifest.get("steps", [])):
+    ordered = list(reversed(manifest.get("steps", [])))
+    paired = _refused_pairs(ordered, root, force)
+    for i, step in enumerate(ordered):
         if step.get("restored") and not force:
             lines.append(f"already restored: {step.get('label', '?')}")
             continue
         try:
-            msg = _undo(step, pre, root)
+            msg = paired[i].replace("{label}", step.get("label", "?"), 1) if i in paired else _undo(step, pre, root)
         except Exception as exc:  # one broken step must not abort the rest
             msg = f"failed: {step.get('label', '?')}: {exc}"
         if msg.startswith(("failed", "skipped (exists)")):

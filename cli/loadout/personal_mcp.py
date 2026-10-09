@@ -36,6 +36,8 @@ def apply_mcp() -> list[str]:
             where = runner.write_manual_commands(paths.state_dir(), f"mcp {name} (full commands, contains secrets)", cmds)
             out.append(f"mcp {name}: not changed, this claude (a Windows .cmd shim) cannot take JSON arguments; "
                        f"run the commands in {where} by hand, or install the native claude.exe")
+            if name in current and name in previous:
+                managed[name] = current[name]  # still ours: retry next time instead of calling it unmanaged
             continue
         if name in current:
             runner.run(["claude", "mcp", "remove", "-s", "user", name])

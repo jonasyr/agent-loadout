@@ -42,6 +42,14 @@ def _spawn_background() -> None:
     subprocess.Popen([sys.executable, str(paths.kit_root() / "bin" / "loadout"), "maintenance"], **kwargs)
 
 
+def notify(text: str) -> None:
+    """Queue a message for the next session start; several messages are all kept."""
+    path = _stamp(NOTICE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(text.rstrip() + "\n")
+
+
 def session_start(now: float) -> str | None:
     out = None
     notice = _stamp(NOTICE)
@@ -86,10 +94,11 @@ def maintain(now: float) -> None:
         if any(pulled):
             try:
                 apply_settings()
-                from .personal_mcp import apply_mcp
-                apply_mcp()
+                from . import personal_mcp
+                for line in personal_mcp.apply_mcp():
+                    notify(f"loadout: {line}")
             except Exception as exc:  # never crash in the background; surface next session
-                _stamp(NOTICE).write_text(f"loadout: could not apply settings after sync: {exc}", encoding="utf-8")
+                notify(f"loadout: could not apply settings after sync: {exc}")
             if link.is_copy_mode():
                 link.link_all(Backup())
     if is_due("last-update-check", WEEK, now):
@@ -97,7 +106,7 @@ def maintain(now: float) -> None:
         outdated = find_outdated()
         if outdated:
             items = ", ".join(f"{e['id']} {versions.fmt(a)} -> {versions.fmt(b)}" for e, a, b in outdated)
-            _stamp(NOTICE).write_text(f"loadout: updates available for {items} → run `loadout update`", encoding="utf-8")
+            notify(f"loadout: updates available for {items} → run `loadout update`")
 
 
 def update(yes: bool, ask: Callable[[str], str]) -> int:

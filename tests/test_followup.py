@@ -52,7 +52,7 @@ def test_apply_mcp_replace_issues_no_remove_when_add_would_be_refused(fake_home,
     text = _private_text(paths.state_dir() / "manual-commands.txt")
     assert SECRET in text and "add-json" in text and "mcp remove" in text
     assert SECRET not in "\n".join(out) and "manual-commands.txt" in "\n".join(out)
-    assert json.loads(snap.read_text())["mcpServers"] == {}  # not claimed as applied
+    assert json.loads(snap.read_text())["mcpServers"] == {"srv": old}  # still managed (old config), new not claimed
 
 
 def test_fix_secrets_issues_no_remove_when_add_would_be_refused(fake_home, fake_runner, windows_cmd):
