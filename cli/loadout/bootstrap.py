@@ -233,8 +233,11 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         print(line)
     if plugins:
         _step("Marketplaces and plugins")
-        for line in setup_plugins():
+        lines = setup_plugins()
+        for line in lines:
             print(line)
+        if any(line.endswith(": added") for line in lines):
+            settings_merge.apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
     if adopt_step:
         _step("Adopt existing setup")
         if not yes and not interactive:

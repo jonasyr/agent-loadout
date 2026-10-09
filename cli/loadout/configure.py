@@ -146,7 +146,10 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
 
     if setup:
         apply_settings()
-        for line in bootstrap.setup_plugins() + apply_mcp():
+        plugin_lines = bootstrap.setup_plugins()
+        if any(line.endswith(": added") for line in plugin_lines):
+            apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
+        for line in plugin_lines + apply_mcp():
             print(line)
     root = paths.personal_root()
     if (root / ".git").exists():

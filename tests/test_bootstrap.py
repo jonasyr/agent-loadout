@@ -175,3 +175,47 @@ def test_bootstrap_wizard_does_not_set_up_plugins_twice(fake_home, fake_runner, 
     answers = iter(["", "", "", "", "", "y"] + [""] * 20)
     b.bootstrap(False, False, True, False, lambda q: next(answers), interactive=True)
     assert calls == [1]
+
+
+def _rewriting_add(fake_runner, monkeypatch):
+    """Stub `claude plugin marketplace add` the way the real CLI behaves: it rewrites the entry without autoUpdate."""
+    from loadout import runner
+    settings = paths.claude_home() / "settings.json"
+    real = fake_runner.__call__
+
+    def run(cmd, *a, **kw):
+        if list(cmd[:4]) == ["claude", "plugin", "marketplace", "add"]:
+            data = json.loads(settings.read_text())
+            for cfg in data.get("extraKnownMarketplaces", {}).values():
+                cfg.pop("autoUpdate", None)
+            settings.write_text(json.dumps(data))
+        return real(cmd, *a, **kw)
+
+    monkeypatch.setattr(runner, "run", run)
+    return settings
+
+
+def _assert_autoupdate_survived(settings):
+    from loadout import settings_merge
+    data = json.loads(settings.read_text())
+    assert data["extraKnownMarketplaces"]["agent-loadout"]["autoUpdate"] is True
+    assert settings_merge.drift() == []
+
+
+def test_bootstrap_remerges_settings_after_marketplace_add(fake_home, fake_runner, monkeypatch):
+    from loadout import configure
+    settings = _rewriting_add(fake_runner, monkeypatch)
+    monkeypatch.setattr(configure, "addons", lambda: [])
+    answers = iter([""] * 30)
+    b.bootstrap(False, False, True, False, lambda q: next(answers), interactive=True)
+    assert ["claude", "plugin", "marketplace", "add", "jonasyr/agent-loadout"] in fake_runner.calls
+    _assert_autoupdate_survived(settings)
+
+
+def test_configure_apply_all_remerges_settings_after_marketplace_add(fake_home, fake_runner, monkeypatch):
+    from loadout import configure
+    paths.personal_root().mkdir(parents=True)
+    settings = _rewriting_add(fake_runner, monkeypatch)
+    configure.apply_all(lambda q: "n")
+    assert ["claude", "plugin", "marketplace", "add", "jonasyr/agent-loadout"] in fake_runner.calls
+    _assert_autoupdate_survived(settings)
