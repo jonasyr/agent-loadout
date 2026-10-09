@@ -24,13 +24,15 @@ Use the plan path from the hook message or the user; otherwise the newest file i
 | **Independent, parallelisable tasks** (no shared files or interfaces) | Parallel subagents |
 | **Cost**: SDD = a fresh context per task + a review per task; Inline = one context + one final review | Pick the cheapest option that still covers the risk |
 
-Model tiers: **cheap** (Haiku-class) for transcription and mechanical edits, **standard** (Sonnet-class) for normal implementation, **top** (Opus-class) for design-heavy or risky work and for the final whole-branch review. A tier only applies to delegated work: an inline task runs on the session's model, so write `session` in its Model column. Hence, outside a 1–3 task plan, transcription tasks are cheapest in one cheap-tier subagent (batch several into one) rather than inline on the session model.
+Model tiers: **cheap** (Haiku-class) for transcription and mechanical edits, **standard** (Sonnet-class) for normal implementation, **top** (Opus-class) for design-heavy or risky work and for the final whole-branch review. A tier only applies to delegated work: an inline task runs on the session's model, so write `session` in its Model column. Transcription done inline is paid at the session model's price; delegating it to the cheap tier pays off once the tasks are several or long enough to amortise a subagent's ramp-up (re-reading the repo). You may batch trivial same-shape edits into one cheap delegated dispatch.
 
 ## 3. Verdict
 
-- **Inline**: every task stays in this session (superpowers:executing-plans).
-- **SDD**: every task goes to a subagent (superpowers:subagent-driven-development).
-- **Hybrid**: some tasks inline, some delegated, per the table.
+Each task row is **Inline** (done in this session) or **Delegated** (an implementer subagent with an explicit model). Its review is **per-task** (an independent task reviewer right after it) or **final-review-only** (covered by the one whole-branch review at the end).
+
+- **Inline**: every task is Inline.
+- **SDD**: every task is Delegated with a per-task review (exactly what superpowers:subagent-driven-development does).
+- **Hybrid**: anything else, e.g. some tasks Inline, or Delegated tasks that are final-review-only.
 
 Interactive and real-machine steps are always Inline, whatever the verdict.
 
@@ -46,16 +48,20 @@ Verdict: Hybrid — <one sentence why>
 | Task | Mode | Model | Review | Why |
 |---|---|---|---|---|
 | 1 Schema migration | Inline | session | per-task | migrates user data; needs the user's go-ahead |
-| 2 CSV writer | SDD | cheap | final-only | complete code in plan, independent |
+| 2 CSV writer | Delegated | cheap | final-review-only | complete code in plan, independent |
 
 Cost: recommended <low|medium|high> · all-Inline <…> · all-SDD <…>
-Review policy: <e.g. per-task review on tasks 1 and 4, then one Opus whole-branch review at the end>
+Review policy: <e.g. per-task review on tasks 1 and 4, then one top-tier whole-branch review at the end>
 ```
 
-Review is one of `per-task`, `final-only` or `none`. Then ask the user to choose, with the recommended option first and marked **(Recommended)**, followed by the alternatives (e.g. "1. Hybrid as above (Recommended) 2. All Inline 3. All SDD"). Do not start executing before the user answers.
+Always include the Cost and Review policy lines. Then ask the user to choose, with the recommended option first and marked **(Recommended)**, followed by the alternatives (e.g. "1. Hybrid as above (Recommended) 2. All Inline 3. All SDD"). If an execution question or recommendation was already shown (for example the planner's "Subagent-driven or Inline?"), say explicitly that this recommendation supersedes it. Do not start executing before the user answers.
 
 ## 6. Running the chosen option
 
-- **Inline**: superpowers:executing-plans in this session.
-- **SDD**: superpowers:subagent-driven-development, passing each task's model tier and review policy.
-- **Hybrid**: one session, one shared ledger (the plan's checkboxes plus the todo list). Walk the tasks in plan order: run delegated tasks through superpowers:subagent-driven-development (one task per subagent, with the tier from the table) and inline tasks through superpowers:executing-plans, ticking each task in the plan as it lands. Run independent delegated tasks in parallel only when they touch disjoint files. Apply the review column, then the final review policy.
+- **SDD** (every row Delegated with per-task review): superpowers:subagent-driven-development, unchanged, with the model from each row.
+- **Inline** and **Hybrid**: one driver, superpowers:executing-plans. It owns the single workspace and ledger (`<workspace>/progress.md`, from the `sdd-workspace` script), the pre-flight scan and the final review. Walk the tasks in plan order:
+  - **Inline row**: executing-plans' own per-task loop (`task-start`, the steps, `task-done`).
+  - **Delegated row**: dispatch one implementer subagent with subagent-driven-development's `implementer-prompt.md` and the row's model set explicitly. A batched dispatch covers its consecutive tasks in one brief.
+  - **Per-task review**: only on rows that say so, dispatch a reviewer with subagent-driven-development's `task-reviewer-prompt.md` before moving on; fix what it finds.
+  - **Ledger**: record every finished task, inline or delegated, as its own `Task <N>: complete` line in that `progress.md`.
+  - **End**: one top-tier whole-branch review, as executing-plans prescribes, then superpowers:finishing-a-development-branch.

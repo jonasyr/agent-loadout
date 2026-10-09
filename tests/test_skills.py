@@ -40,21 +40,27 @@ def test_onboard_new_project_does_not_hand_off_to_brainstorming():
     assert "superpowers:brainstorming" in new_project.split("Stop")[-1]  # suggested at the end, for the first feature
 
 
-def test_execution_advisor_covers_the_rubric_and_hybrid_execution():
+def test_execution_advisor_covers_the_rubric_and_one_execution_driver():
     _, description, _, text = _frontmatter("execution-advisor")
     assert "SDD or inline" in description  # also fires on the user's question, not only the hook
     for criterion in ("Plan completeness", "interface coupling", "Risk", "User interaction", "Size and count",
                       "session context", "parallelisable", "Cost"):
         assert criterion in text, criterion
-    for column in ("| Task | Mode | Model | Review | Why |", "per-task", "final-only", "(Recommended)"):
+    for column in ("| Task | Mode | Model | Review | Why |", "per-task", "final-review-only", "(Recommended)",
+                   "Cost:", "Review policy:", "supersedes"):
         assert column in text, column
     assert "loadout advisor-mark" in text
-    hybrid = text.split("**Hybrid**:", 2)[2]
-    assert "superpowers:subagent-driven-development" in hybrid and "superpowers:executing-plans" in hybrid
-    assert "ledger" in hybrid
+    assert "| SDD |" not in text and "final-only" not in text  # rows SDD cannot run are "Delegated"
+    run = text.split("## 6. Running the chosen option", 1)[1]
+    assert "one driver, superpowers:executing-plans" in run
+    for needle in ("progress.md", "implementer-prompt.md", "task-reviewer-prompt.md", "Task <N>: complete",
+                   "top-tier whole-branch review", "model set explicitly"):
+        assert needle in run, needle
+    assert "checkboxes" not in run and "todo list" not in run  # the ledger is progress.md
 
 
 def test_workflow_rule_points_to_the_advisor():
     rule = (paths.kit_root() / "rules/workflow.md").read_text(encoding="utf-8")
-    assert ("After an implementation plan is written, the execution recommendation comes from "
-            "/loadout:execution-advisor (not the planner's default).") in rule
+    assert ("After writing an implementation plan, do not ask the planner's own execution question: run "
+            "/loadout:execution-advisor in the same turn and ask only its question. If an execution question "
+            "was already shown, state that the advisor's Recommended option supersedes it.") in rule
