@@ -809,13 +809,13 @@
     {
       "id": "skill-codebase-memory",
       "kind": "skill",
-      "status": "core",
+      "status": "recommended",
       "match": {
         "names": [
           "codebase-memory"
         ]
       },
-      "reason": "Installed by codebase-memory-mcp; kit rules cover tool routing."
+      "reason": "Installed by codebase-memory-mcp; a useful how-to for graph queries that complements the kit's tool-routing rule."
     },
     {
       "id": "hook-serena-remind",

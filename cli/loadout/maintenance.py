@@ -216,13 +216,14 @@ def _stray_hook_scripts(bk: Backup) -> list[str]:
 
 
 def undo_reregistered(bk: Backup) -> list[str]:
-    """Apply only adopt's `migrate` verdicts: exact duplicates of what the loadout plugin provides."""
+    """Apply only adopt's `migrate` verdicts for MCP servers and hooks: exact duplicates of what the loadout plugin provides."""
     from . import adopt, inventory
     try:
         verdicts = inventory.classify(inventory.collect(with_versions=False))
     except Exception as exc:  # e.g. invalid JSON: report, never guess
         return [f"could not check for re-registered duplicates: {exc}"]
-    dupes = [v for v in verdicts if v.action == "migrate" and v.item.kind in ("mcp", "hook", "skill")]
+    # never skills, plugins or marketplaces automatically: only MCP servers and hooks
+    dupes = [v for v in verdicts if v.action == "migrate" and v.item.kind in ("mcp", "hook")]
     out = adopt.apply(dupes, bk) if dupes else []
     return out + _stray_hook_scripts(bk)
 

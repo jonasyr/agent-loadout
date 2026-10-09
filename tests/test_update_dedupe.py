@@ -89,3 +89,30 @@ def test_no_cleanup_when_no_update_ran(fake_home, fake_runner, monkeypatch):
     m.update(yes=True, ask=lambda q: "")
     assert (fake_home / ".claude/.mcp.json").exists()
     assert not [c for c in fake_runner.calls if c[:3] == ["claude", "mcp", "remove"]]
+
+
+def test_codebase_memory_skill_is_kept(fake_home, fake_runner):
+    from loadout import inventory
+    (fake_home / ".claude/skills/codebase-memory").mkdir(parents=True)
+    v = [v for v in inventory.classify(inventory.collect(with_versions=False)) if v.item.name == "codebase-memory"]
+    assert v and v[0].action == "keep"
+
+
+def test_update_never_auto_removes_a_migrate_skill(fake_home, fake_runner, monkeypatch):
+    from loadout import inventory
+    _machine(fake_home)
+    skill = fake_home / ".claude/skills/dup-skill"
+    skill.mkdir(parents=True)
+    real = inventory.classify
+
+    def classify(items):  # pretend the catalog marks this skill as a kit duplicate
+        out = real(items)
+        for v in out:
+            if v.item.kind == "skill" and v.item.name == "dup-skill":
+                v.action = "migrate"
+        return out
+
+    monkeypatch.setattr(inventory, "classify", classify)
+    _run_update(fake_home, fake_runner, monkeypatch)
+    assert skill.exists()
+    assert not (fake_home / ".claude/.mcp.json").exists()  # MCP duplicates are still undone
