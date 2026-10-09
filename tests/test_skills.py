@@ -15,7 +15,7 @@ def _frontmatter(name):
 
 
 def test_skills_have_frontmatter_and_short_descriptions():
-    for name in ("onboard", "docs-sync", "docs-audit", "configure"):
+    for name in ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor"):
         got, description, extra, _ = _frontmatter(name)
         assert got == name
         assert len(description) <= 400, f"{name} description too long (loaded every session)"
@@ -25,7 +25,7 @@ def test_skills_have_frontmatter_and_short_descriptions():
 def test_heavy_skills_are_user_invoked_only():
     for name in ("onboard", "docs-audit"):
         assert _frontmatter(name)[2].get("disable-model-invocation") == "true", name
-    for name in ("docs-sync", "configure"):
+    for name in ("docs-sync", "configure", "execution-advisor"):
         assert "disable-model-invocation" not in _frontmatter(name)[2], name
 
 
@@ -38,3 +38,23 @@ def test_onboard_new_project_does_not_hand_off_to_brainstorming():
     assert "one at a time" in new_project
     assert "docs/adr/0001" in new_project and "AGENTS.md" in new_project and "docs/README.md" in new_project
     assert "superpowers:brainstorming" in new_project.split("Stop")[-1]  # suggested at the end, for the first feature
+
+
+def test_execution_advisor_covers_the_rubric_and_hybrid_execution():
+    _, description, _, text = _frontmatter("execution-advisor")
+    assert "SDD or inline" in description  # also fires on the user's question, not only the hook
+    for criterion in ("Plan completeness", "interface coupling", "Risk", "User interaction", "Size and count",
+                      "session context", "parallelisable", "Cost"):
+        assert criterion in text, criterion
+    for column in ("| Task | Mode | Model | Review | Why |", "per-task", "final-only", "(Recommended)"):
+        assert column in text, column
+    assert "loadout advisor-mark" in text
+    hybrid = text.split("**Hybrid**:", 2)[2]
+    assert "superpowers:subagent-driven-development" in hybrid and "superpowers:executing-plans" in hybrid
+    assert "ledger" in hybrid
+
+
+def test_workflow_rule_points_to_the_advisor():
+    rule = (paths.kit_root() / "rules/workflow.md").read_text(encoding="utf-8")
+    assert ("After an implementation plan is written, the execution recommendation comes from "
+            "/loadout:execution-advisor (not the planner's default).") in rule
