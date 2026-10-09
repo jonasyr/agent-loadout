@@ -1,9 +1,12 @@
 """Structured working preferences (preferences.json at the kit root).
 
 Answers live in the personal layer only: lines in a managed block of rules/me.md, or keys in
-settings.json. Existing answers are detected (managed block, free text in me.md, personal
-settings, kit defaults, then the user's own ~/.claude/settings.json via adopt), so a re-run
-changes nothing the user already decided.
+settings.json (a preference may have both). Existing answers are detected (managed block, free
+text in me.md, personal settings, kit defaults, then the user's own ~/.claude/settings.json via
+adopt), so a re-run changes nothing the user already decided.
+
+Free text in me.md is the user's: it is read to prefill answers, never moved or rewritten. Only a
+line that equals a template line moves into the block, and only when the block is written anyway.
 """
 from __future__ import annotations
 
@@ -21,6 +24,8 @@ from .settings_merge import MISSING, get_path
 
 START = "<!-- loadout:preferences:start -->"
 END = "<!-- loadout:preferences:end -->"
+MAX_TEXT = 100
+NOT_EFFECTIVE = "not effective"
 Ask = Callable[[str], str]
 STACKS = [("package.json", "npm/node"), ("pyproject.toml", "uv/python"), ("requirements.txt", "uv/python"),
           ("Cargo.toml", "cargo"), ("go.mod", "go"), ("build.gradle", "gradle"), ("build.gradle.kts", "gradle"),
@@ -37,15 +42,14 @@ class State:
     text: str = ""             # free text of a free_text option
     source: str = ""           # where the answer was found
     raw: object = None         # a setting value that is none of the options (kept as is)
-    lines: list = field(default_factory=list)  # me.md lines expressing it: (segment, index, line)
+    block: list = field(default_factory=list)   # me.md line indexes inside the managed block
+    moves: list = field(default_factory=list)   # indexes of exact template lines outside the block
+    stated: list = field(default_factory=list)  # indexes of free-text lines that state it (never touched)
+    stated_as: dict = field(default_factory=dict)  # stated index -> the answer that line states
 
     @property
     def is_set(self) -> bool:
         return self.value is not None or self.raw is not None
-
-    @property
-    def outside(self) -> bool:
-        return any(seg != "block" for seg, _, _ in self.lines)
 
 
 def load() -> list[dict]:
@@ -72,8 +76,17 @@ def _settings_path() -> Path:
     return paths.personal_root() / "settings.json"
 
 
+def _claude_settings_path() -> Path:
+    return paths.claude_home() / "settings.json"
+
+
 def _kit_settings() -> dict:
     return load_json(paths.kit_root() / "settings.base.json")
+
+
+def _own_settings() -> dict:
+    from .adopt import prefill_settings
+    return prefill_settings()
 
 
 def _key(dotted: str) -> tuple:
@@ -81,105 +94,179 @@ def _key(dotted: str) -> tuple:
 
 
 def _tilde(path: Path) -> str:
-    home = str(paths.home())
-    return "~" + str(path)[len(home):] if str(path).startswith(home) else str(path)
+    """User-facing path: ~/... with forward slashes on every platform."""
+    try:
+        rel = path.relative_to(paths.home())
+    except ValueError:
+        return path.as_posix()
+    return "~" + ("/" + rel.as_posix() if rel.parts else "")
+
+
+def _norm(line: str) -> str:
+    return " ".join(line.split())
 
 
 # --- me.md ---
 
-def _split(text: str) -> tuple[list[str], list[str] | None, list[str]]:
-    lines = text.splitlines()
-    marks = [l.strip() for l in lines]
-    if START in marks and END in marks[marks.index(START):]:
-        s = marks.index(START)
-        e = marks.index(END, s)
-        return lines[:s], lines[s + 1:e], lines[e + 1:]
-    return lines, None, []
-
-
-def _match_line(pref: dict, line: str) -> tuple[str, str] | None:
-    s = line.strip()
-    templates = pref["target"]["me_md"]
-    free = [o for o in pref["options"] if o.get("free_text")]
-    for opt in pref["options"]:
-        if not opt.get("free_text") and s == templates[opt["value"]]:
-            return opt["value"], ""
-    for opt in free:
-        pattern = re.escape(templates[opt["value"]]).replace(re.escape("{text}"), "(.+)")
-        m = re.fullmatch(pattern, s)
-        if m:
-            return opt["value"], m.group(1)
-    for rule in pref.get("detect", {}).get("me_md", []):
-        if re.search(rule["pattern"], s, re.I):
-            return rule["value"], ""
+def _block_range(lines: list[str], strict: bool) -> tuple[int, int] | None:
+    starts = [i for i, l in enumerate(lines) if l.strip() == START]
+    ends = [i for i, l in enumerate(lines) if l.strip() == END]
+    if not starts and not ends:
+        return None
+    if len(starts) == 1 and len(ends) == 1 and starts[0] < ends[0]:
+        return starts[0], ends[0]
+    if strict:
+        raise ValueError(f"{_me_path()}: the loadout preference markers are unbalanced, duplicated or out of order "
+                         f"(start at line(s) {[i + 1 for i in starts]}, end at line(s) {[i + 1 for i in ends]}); "
+                         f"fix them by hand (one {START} followed by one {END}), nothing was written")
     return None
 
 
-def _me_states(prefs: list[dict], text: str) -> dict[str, State]:
-    before, block, after = _split(text)
+def _template_hit(pref: dict, norm: str) -> tuple[str, str] | None:
+    templates = pref["target"]["me_md"]
+    for opt in pref["options"]:
+        tpl = templates.get(opt["value"])
+        if tpl is None:
+            continue
+        if opt.get("free_text"):
+            m = re.fullmatch(re.escape(_norm(tpl)).replace(re.escape("{text}"), "(.+)"), norm)
+            if m:
+                return opt["value"], m.group(1)
+        elif norm == _norm(tpl):
+            return opt["value"], ""
+    return None
+
+
+def _regex_hit(pref: dict, norm: str) -> str | None:
+    for rule in pref.get("detect", {}).get("me_md", []):
+        if re.search(rule["pattern"], norm, re.I):
+            return rule["value"]
+    return None
+
+
+def _me_states(prefs: list[dict], lines: list[str]) -> dict[str, State]:
+    rng = _block_range(lines, strict=False)
+    inside = set(range(rng[0] + 1, rng[1])) if rng else set()
+    markers = set(rng) if rng else set()
     me_prefs = [p for p in prefs if "me_md" in p["target"]]
     states: dict[str, State] = {}
-    segments = [("block", block or [], "me.md")] + [(seg, lines, "me.md, free text") for seg, lines in (("before", before), ("after", after))]
-    for seg, lines, source in segments:
-        for i, line in enumerate(lines):
-            if not line.strip():
+    order = sorted(inside) + [i for i in range(len(lines)) if i not in inside and i not in markers]
+    for i in order:
+        norm = _norm(lines[i])
+        if not norm:
+            continue
+        for p in me_prefs:
+            hit = _template_hit(p, norm)
+            stated = False
+            if hit is None and i not in inside:
+                value = _regex_hit(p, norm)
+                hit, stated = ((value, ""), True) if value else (None, False)
+            if hit is None:
                 continue
-            for p in me_prefs:
-                hit = _match_line(p, line)
-                if hit is None:
+            st = states.setdefault(p["id"], State())
+            if not st.is_set:
+                st.value, st.text = hit
+                st.source = "me.md" if i in inside else "me.md, free text"
+            if i in inside:
+                st.block.append(i)
+            elif stated or st.block:   # a template line repeating a block answer is left where it is
+                st.stated.append(i)
+                st.stated_as[i] = hit[0]
+            else:
+                st.moves.append(i)
+            break  # one line sets one preference
+    # report-only patterns: a line may also state other preferences; it never sets their answer
+    for p in me_prefs:
+        for rule in p.get("detect", {}).get("me_md_report", []):
+            for i in range(len(lines)):
+                if i in inside or i in markers or not re.search(rule["pattern"], _norm(lines[i]), re.I):
                     continue
-                st = states.get(p["id"])
-                if st is None:
-                    st = states[p["id"]] = State(value=hit[0], text=hit[1], source=source)
-                if (seg == "block") == (st.source == "me.md"):  # free text never adds to a block answer
-                    st.lines.append((seg, i, line))
-                break  # one line expresses one preference
+                st = states.setdefault(p["id"], State())
+                if i not in st.stated and i not in st.moves:
+                    st.stated.append(i)
+                    st.stated_as[i] = rule["value"]
     return states
 
 
-def _render_me(prefs: list[dict], text: str, states: dict[str, State], changes: dict) -> str:
-    before, block, after = _split(text)
-    claimed = {(seg, i) for st in states.values() for seg, i, _ in st.lines}
-    new_block = []
+def _read_me() -> tuple[str, list[str]]:
+    path = _me_path()
+    text = path.read_bytes().decode("utf-8") if path.exists() else ""  # bytes: keep CRLF visible
+    return text, text.splitlines()
+
+
+def _render_me(prefs: list[dict], lines: list[str], states: dict[str, State], changes: dict,
+               remove: set[int]) -> tuple[list[str], list[tuple[int, str]]]:
+    """New lines of me.md and the exact template lines moved into the block (1-based line, text)."""
+    rng = _block_range(lines, strict=True)
+    new_block, moved = [], []
     for p in prefs:
         if "me_md" not in p["target"]:
             continue
+        st = states.get(p["id"], State())
         if p["id"] in changes:
             value, free = changes[p["id"]]
-            new_block.append(p["target"]["me_md"][value].replace("{text}", free))
-        elif p["id"] in states:
-            new_block += [line for _, _, line in states[p["id"]].lines]
-    new_block += [l for i, l in enumerate(block or []) if l.strip() and ("block", i) not in claimed]  # lines we do not know: kept
-    keep_before = [l for i, l in enumerate(before) if ("before", i) not in claimed]
-    keep_after = [l for i, l in enumerate(after) if ("after", i) not in claimed]
-    if block is None and not new_block:
-        return text
-    if block is None:
-        while keep_before and not keep_before[-1].strip():
-            keep_before.pop()
-        out = keep_before + ([""] if keep_before else []) + [START, *new_block, END]
+            tpl = p["target"]["me_md"].get(value)
+            if tpl is not None:
+                new_block.append(tpl.replace("{text}", free))
+        else:
+            new_block += [lines[i] for i in st.block]
+            new_block += [_norm(lines[i]) for i in st.moves]
+        moved += [(i + 1, lines[i].strip()) for i in st.moves]
+    known = {i for st in states.values() for i in st.block}
+    if rng:
+        new_block += [lines[i] for i in range(rng[0] + 1, rng[1]) if lines[i].strip() and i not in known]
+    drop = {i for st in states.values() for i in st.moves} | remove
+    if rng:
+        out = [l for i, l in enumerate(lines[:rng[0]]) if i not in drop]
+        out += [START, *new_block, END] if new_block else []  # an empty block leaves no markers behind
+        out += [l for i, l in enumerate(lines[rng[1] + 1:], rng[1] + 1) if i not in drop]
+    elif new_block:
+        out = [l for i, l in enumerate(lines) if i not in drop]
+        while out and not out[-1].strip():
+            out.pop()
+        out += ([""] if out else []) + [START, *new_block, END]
     else:
-        out = keep_before + [START, *new_block, END] + keep_after
-    return "\n".join(out) + "\n"
+        out = [l for i, l in enumerate(lines) if i not in drop]
+    return out, moved
 
 
-def _write_me(prefs: list[dict], states: dict[str, State], changes: dict, bk: Backup) -> bool:
-    """Writes the managed block; free-text lines equivalent to a preference move into it."""
-    path = _me_path()
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    new = _render_me(prefs, text, states, changes)
+def _write_me(prefs, states, changes, bk: Backup, ask: Ask, interactive: bool) -> list[str]:
+    text, lines = _read_me()
+    _block_range(lines, strict=True)
+    out, remove = [], set()
+    for pid in changes:
+        for i in states.get(pid, State()).stated:
+            out.append(f"me.md line {i + 1} also states this ({pid}): {lines[i].strip()}")
+            if interactive and ui.confirm(ask, f"  remove me.md line {i + 1}? (it is backed up) [y/N] "):
+                remove.add(i)
+                out.append(f"removed me.md line {i + 1}")
+    new_lines, moved = _render_me(prefs, lines, states, changes, remove)
+    newline = "\r\n" if "\r\n" in text else "\n"
+    new = newline.join(new_lines) + newline
     if new == text:
-        return False
+        return out
+    path = _me_path()
     if path.exists():
         bk.save_copy(path, "personal me.md before preferences")
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
         bk.record_created(path, "created personal me.md")
     write_atomic(path, new)
-    return True
+    out += [f"moved me.md line {n} into the managed preferences block: {line}" for n, line in moved]
+    return out
 
 
 # --- settings ---
+
+def _rule_matches(rule: dict, found) -> bool:
+    if rule.get("present"):
+        return True
+    if "equals" in rule:
+        return found == rule["equals"]
+    if "contains" in rule:
+        return isinstance(found, dict) and all(found.get(k, MISSING) == v for k, v in rule["contains"].items())
+    return False
+
 
 def _setting_state(pref: dict, sources: list[tuple[str, dict]]) -> State:
     target = pref["target"]
@@ -192,9 +279,7 @@ def _setting_state(pref: dict, sources: list[tuple[str, dict]]) -> State:
                     return State(value=opt, source=source)
         for rule in pref.get("detect", {}).get("settings", []):
             found = get_path(data, _key(rule["key"]))
-            if found is MISSING:
-                continue
-            if rule.get("present") or ("equals" in rule and found == rule["equals"]):
+            if found is not MISSING and _rule_matches(rule, found):
                 return State(value=rule["value"], source=source)
         if now is not MISSING:
             return State(raw=now, source=source)
@@ -241,21 +326,83 @@ def _write_settings(changes: dict[str, object], bk: Backup) -> bool:
     return True
 
 
+def _removes_key(pref: dict, value: str) -> bool:
+    target = pref["target"]
+    return "setting" in target and target.get("values", {}).get(value, MISSING) is None
+
+
+def _blockers(pref: dict, value: str) -> list[tuple[Path, str, str]]:
+    """For an answer that removes its key (e.g. ai_attribution on): keys the settings merge does not
+    override that still state another answer, as (file, dotted key, their answer). Legacy keys (detect
+    rules on other keys) count in the personal layer and in the user's own ~/.claude/settings.json;
+    the target key itself only in the latter."""
+    if not _removes_key(pref, value):
+        return []
+    target = pref["target"]["setting"]
+    legacy = [r["key"] for r in pref.get("detect", {}).get("settings", []) if r["key"] != target]
+    found = []
+    for path, data, keys in ((_settings_path(), load_json(_settings_path()), legacy),
+                             (_claude_settings_path(), _own_settings(), [target, *legacy])):
+        for dotted in dict.fromkeys(keys):
+            top = _key(dotted)[0]
+            if get_path(data, _key(dotted)) is MISSING:
+                continue
+            st = _setting_state(pref, [("", {top: data[top]})])
+            if st.value is not None and st.value != value:
+                found.append((path, dotted, st.value))
+    return found
+
+
+def _remove_key_from(path: Path, dotted: str, bk: Backup) -> None:
+    data = load_json(path)
+    bk.save_copy(path, f"{path} before removing {dotted}")
+    _remove_path(data, _key(dotted))
+    save_json(path, data)
+
+
+def _check_effective(pref: dict, value: str, bk: Backup, ask: Ask, interactive: bool) -> list[str]:
+    out = []
+    for path, dotted, theirs in _blockers(pref, value):
+        if interactive and ui.confirm(ask, f"  {dotted} in {path} still sets {pref['id']} to {theirs}. "
+                                           f"Remove it? (it is backed up) [y/N] "):
+            _remove_key_from(path, dotted, bk)
+            out.append(f"removed {dotted} from {path}")
+    remaining = _blockers(pref, value)
+    for path, dotted, theirs in remaining:
+        out.append(f"{pref['id']}: {NOT_EFFECTIVE}: {dotted} in {path} still sets it to {theirs}; remove that key to finish")
+    lines = _me_lines_against(pref, value)
+    for n, line in lines:
+        out.append(f"{pref['id']}: {NOT_EFFECTIVE}: me.md line {n} still says otherwise: {line}; "
+                   "edit or remove that line to finish")
+    return out if remaining or lines else out + [f"{pref['id']}: {value}"]
+
+
+def _me_lines_against(pref: dict, value: str) -> list[tuple[int, str]]:
+    """Free-text me.md lines (1-based, text) that state another answer than value (re-read after writes)."""
+    if "me_md" not in pref["target"]:
+        return []
+    _, lines = _read_me()
+    st = _me_states(load(), lines).get(pref["id"], State())
+    return [(i + 1, lines[i].strip()) for i in st.stated if st.stated_as.get(i) not in (None, value)]
+
+
 # --- detection ---
 
 def detect() -> dict[str, State]:
-    from .adopt import prefill_settings
-
     prefs = load()
-    me = _me_path()
-    states = _me_states(prefs, me.read_text(encoding="utf-8") if me.exists() else "")
+    _, lines = _read_me()
+    me = _me_states(prefs, lines)
     sources = [("personal settings", load_json(_settings_path())), ("kit default", _kit_settings()),
-               ("existing settings", prefill_settings())]
+               ("existing settings", _own_settings())]
+    states = {}
     for p in prefs:
+        st = me.get(p["id"], State())
         if "setting" in p["target"]:
-            states[p["id"]] = _setting_state(p, sources)
-        else:
-            states.setdefault(p["id"], State())
+            setting = _setting_state(p, sources)
+            if setting.is_set:
+                setting.block, setting.moves, setting.stated, setting.stated_as = st.block, st.moves, st.stated, st.stated_as
+                st = setting
+        states[p["id"]] = st
     return states
 
 
@@ -275,21 +422,37 @@ def _options_hint(pref: dict) -> str:
     return " | ".join(o["value"] + (":<text>" if o.get("free_text") else "") for o in pref["options"])
 
 
+def _check_text(pref: dict, text: str) -> str:
+    if "\n" in text or "\r" in text:
+        raise ValueError(f"{pref['id']}: the text must be a single line")
+    text = text.strip()
+    if not text:
+        raise ValueError(f"{pref['id']}: the text is empty")
+    if "<!--" in text or "-->" in text:
+        raise ValueError(f"{pref['id']}: the text must not contain HTML comment markers")
+    if len(text) > MAX_TEXT:
+        raise ValueError(f"{pref['id']}: the text is longer than {MAX_TEXT} characters")
+    return text
+
+
 def parse_choice(pref: dict, raw: str, ask: Ask | None = None) -> tuple[str, str]:
-    raw = raw.strip()
     options = pref["options"]
-    name, _, free = raw.partition(":")
-    if raw.isdigit() and 1 <= int(raw) <= len(options):
-        name, free = options[int(raw) - 1]["value"], ""
-    opt = next((o for o in options if o["value"].lower() == name.strip().lower()), None)
+    name, sep, free = raw.partition(":")
+    name = name.strip()
+    if name.isdigit() and 1 <= int(name) <= len(options):
+        name = options[int(name) - 1]["value"]
+    opt = next((o for o in options if o["value"].lower() == name.lower()), None)
     if opt is None:
-        raise ValueError(f"'{raw}' is not an option of {pref['id']} (options: {_options_hint(pref)})")
-    if opt.get("free_text"):
-        free = free.strip() or (ask("  your text: ").strip() if ask else "")
-        if not free:
-            raise ValueError(f"{pref['id']} {opt['value']} needs a text, e.g. {opt['value']}:French")
-        return opt["value"], free
-    return opt["value"], ""
+        raise ValueError(f"'{raw.strip()}' is not an option of {pref['id']} (options: {_options_hint(pref)})")
+    if not opt.get("free_text"):
+        if sep:
+            raise ValueError(f"'{raw.strip()}': {opt['value']} takes no text (options: {_options_hint(pref)})")
+        return opt["value"], ""
+    if not sep and ask is not None:
+        free = ask("  your text: ")
+    elif not sep:
+        raise ValueError(f"{pref['id']} {opt['value']} needs a text, e.g. {opt['value']}:French")
+    return opt["value"], _check_text(pref, free)
 
 
 # --- automode generator ---
@@ -358,6 +521,24 @@ def generate_automode(folder: Path, owners: list[str] | None = None,
     ]
 
 
+def _pick_owners(ask: Ask, counts: dict[str, int]) -> list[str] | None:
+    """The owners the user calls their own. One clear favourite is preselected; a tie needs an explicit choice."""
+    print("  origin owners found: " + ", ".join(f"{o} ({n})" for o, n in counts.items()))
+    top = max(counts.values())
+    mine = [o for o, n in counts.items() if n == top]
+    default = mine[0] if len(mine) == 1 else None
+    hint = f"[{default}]" if default else "(several have the same count: type yours)"
+    for _ in range(3):
+        answer = ask(f"  Which are your own accounts or orgs? Only these are trusted (comma-separated) {hint}: ").strip()
+        if not answer and default is None:
+            print("  type at least one owner, e.g. " + mine[0])
+            continue
+        picked = [a.strip() for a in answer.split(",") if a.strip()] if answer else [default]
+        return [next((o for o in counts if o.lower() == p.lower() or o.split("/", 1)[1].lower() == p.lower()), p)
+                for p in picked]
+    return None
+
+
 def _run_generator(pref: dict, ask: Ask, bk: Backup) -> list[str]:
     default = paths.home() / "Documents" / "Code"
     answer = ask(f"  Code folder to scan for your git repos [{_tilde(default)}]: ").strip()
@@ -365,45 +546,57 @@ def _run_generator(pref: dict, ask: Ask, bk: Backup) -> list[str]:
     if not folder.is_dir():
         return [f"{pref['id']}: {folder} is not a folder; nothing generated"]
     scanned = scan_repos(folder)
-    counts = scanned[0]
     owners: list[str] = []
-    if counts:
-        print("  origin owners found: " + ", ".join(f"{o} ({n})" for o, n in counts.items()))
-        top = max(counts.values())
-        mine = [o for o, n in counts.items() if n == top]
-        answer = ask(f"  Which are your own accounts or orgs? Only these are trusted (comma-separated) [{', '.join(mine)}]: ").strip()
-        picked = [a.strip() for a in answer.split(",") if a.strip()] if answer else mine
-        owners = [next((o for o in counts if o.lower() == p.lower() or o.split("/", 1)[1].lower() == p.lower()), p)
-                  for p in picked]
+    if scanned[0]:
+        picked = _pick_owners(ask, scanned[0])
+        if picked is None:
+            return [f"{pref['id']}: no owner chosen; nothing generated"]
+        owners = picked
     lines = generate_automode(folder, owners, scanned)
-    print(f"\nDraft auto mode environment (settings {pref['target']['setting']}):")
+    setting = pref["target"]["setting"]
+    print(f"\nDraft auto mode environment (settings {setting}):")
     for line in lines:
         print(f"  {line}")
-    if not ui.confirm(ask, "Save this auto mode environment to your personal layer? [y/N] "):
+    current = get_path(load_json(_settings_path()), _key(setting))
+    own = get_path(_own_settings(), _key(setting))
+    if isinstance(current, list):
+        question = f"This REPLACES your current {setting} ({len(current)} entries) in {_settings_path()}. Save? [y/N] "
+    elif isinstance(own, list):
+        question = (f"Save to your personal layer? Your own {setting} in {_claude_settings_path()} ({len(own)} entries) "
+                    "is kept and these lines are added to it. [y/N] ")
+    else:
+        question = "Save this auto mode environment to your personal layer? [y/N] "
+    if not ui.confirm(ask, question):
         return [f"{pref['id']}: draft not saved"]
-    _write_settings({pref["target"]["setting"]: lines}, bk)
+    _write_settings({setting: lines}, bk)
     return [f"{pref['id']}: auto mode environment saved"]
 
 
 # --- front-ends ---
 
 def _apply(prefs: list[dict], states: dict[str, State], answers: dict[str, tuple[str, str]], bk: Backup,
-           migrate: bool) -> list[str]:
-    me_changes, setting_changes, out = {}, {}, []
+           ask: Ask, interactive: bool) -> list[str]:
+    me_changes, setting_changes, changed, out = {}, {}, [], []
     for pid, (value, free) in answers.items():
         pref = by_id_in(prefs, pid)
         st = states[pid]
         if st.value == value and st.text == free:
             continue
-        out.append(f"{pid}: {value}{':' + free if free else ''}")
+        changed.append((pref, value, free))
         if "me_md" in pref["target"]:
             me_changes[pid] = (value, free)
-        else:
+        if "setting" in pref["target"]:
             setting_changes[pref["target"]["setting"]] = pref["target"]["values"][value]
-    if me_changes or migrate:
-        _write_me(prefs, states, me_changes, bk)
+    if me_changes:
+        _block_range(_read_me()[1], strict=True)  # refuse before anything is written
+        out += _write_me(prefs, states, me_changes, bk, ask, interactive)
     if setting_changes:
         _write_settings(setting_changes, bk)
+    for pref, value, free in changed:
+        if _removes_key(pref, value):
+            out += _check_effective(pref, value, bk, ask, interactive)
+        else:
+            out.append(f"{pref['id']}: {value}{':' + free if free else ''}")
     return out
 
 
@@ -419,11 +612,10 @@ def set_choice(pid: str, raw: str, ask: Ask = lambda q: "", interactive: bool = 
             raise ValueError(f"{pid} {value} shows a draft that needs your confirmation: "
                              "run `loadout configure prefs` in a terminal")
         return _run_generator(pref, ask, bk)
-    prefs = load()
     states = detect()
     if states[pid].value == value and states[pid].text == free:
         return [f"{pid}: already {value}"]
-    return _apply(prefs, states, {pid: (value, free)}, bk, migrate="me_md" in pref["target"])
+    return _apply(load(), states, {pid: (value, free)}, bk, ask, interactive)
 
 
 def _ask_one(ask: Ask, pref: dict, state: State, fill_defaults: bool) -> tuple[str, str] | None:
@@ -467,7 +659,7 @@ def ask_all(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup | None 
                 out += _run_generator(pref, ask, bk)
             continue
         answers[pref["id"]] = answer
-    return _apply(prefs, states, answers, bk, migrate=True) + out
+    return _apply(prefs, states, answers, bk, ask, interactive) + out
 
 
 def show_lines() -> list[str]:
@@ -479,5 +671,10 @@ def show_lines() -> list[str]:
     return lines
 
 
-def owned_setting_keys() -> set[str]:
-    return {p["target"]["setting"].split(".")[0] for p in load() if "setting" in p["target"]}
+def without_owned_settings(data: dict) -> dict:
+    """data minus the exact keys a preference writes (e.g. autoMode.environment, not all of autoMode)."""
+    rest = copy.deepcopy(data)
+    for pref in load():
+        if "setting" in pref["target"]:
+            _remove_path(rest, _key(pref["target"]["setting"]))
+    return rest

@@ -221,7 +221,10 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     check_prereqs(install, ask)
     bk = Backup(description="bootstrap")
     _step("Personal layer")
+    fresh = not paths.personal_root().exists()
     message, personal_ok = ensure_personal(ask, bk, interactive)
+    # a starter layer was just created and its preference questions asked (a clone has .git)
+    starter = fresh and personal_ok and paths.personal_root().exists() and not (paths.personal_root() / ".git").exists()
     print(message)
     _step("Links")
     for line in link.link_all(bk, retry_symlinks=True) + link.link_bin(bk):
@@ -230,7 +233,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         print("\nnon-interactive: skipping the configure prompt (run `loadout configure` later)")
     elif not yes and ui.confirm(ask, "\nCustomize preferences and global add-ons now? [y/N] "):
         from .configure import wizard
-        wizard(ask, first_run=False, setup=False, interactive=interactive)  # settings, MCP servers and plugins are applied below
+        wizard(ask, first_run=False, setup=False, interactive=interactive, preferences_asked=starter)  # settings, MCP servers and plugins are applied below
     _step("Settings")
     settings_path = paths.claude_home() / "settings.json"
     if settings_path.exists() and _settings_would_change():
