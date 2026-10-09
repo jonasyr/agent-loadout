@@ -116,3 +116,84 @@ def test_update_never_auto_removes_a_migrate_skill(fake_home, fake_runner, monke
     _run_update(fake_home, fake_runner, monkeypatch)
     assert skill.exists()
     assert not (fake_home / ".claude/.mcp.json").exists()  # MCP duplicates are still undone
+
+
+# --- only exact duplicates of the enabled loadout plugin (review C1) ----------------------
+
+SERENA = {"type": "stdio", "command": "serena", "args": ["--project-from-cwd", "start-mcp-server", "--context=claude-code"]}
+
+
+def _servers(home, servers):
+    _w(home / ".claude.json", {"mcpServers": servers})
+
+
+def _removed(fake_runner):
+    return sorted(c[-1] for c in fake_runner.calls if c[:3] == ["claude", "mcp", "remove"])
+
+
+def _personal(home, settings=None, mcp=None):
+    root = paths.personal_root()
+    root.mkdir(parents=True, exist_ok=True)
+    if settings is not None:
+        _w(root / "settings.json", settings)
+    if mcp is not None:
+        _w(root / "mcp.json", {"mcpServers": mcp})
+
+
+def test_exact_serena_duplicate_is_removed_args_order_insensitive(fake_home, fake_runner, monkeypatch):
+    _servers(fake_home, {"serena": SERENA})
+    _run_update(fake_home, fake_runner, monkeypatch, side_effects=False)
+    assert _removed(fake_runner) == ["serena"]
+
+
+def test_own_context7_server_is_left_alone(fake_home, fake_runner, monkeypatch, capsys):
+    _personal(fake_home, settings={"enabledPlugins": {"context7@claude-plugins-official": False}})
+    _servers(fake_home, {"context7": {"type": "http", "url": "https://mcp.context7.com/mcp",
+                                      "headers": {"CONTEXT7_API_KEY": "${C7}"}}})
+    _run_update(fake_home, fake_runner, monkeypatch, side_effects=False)
+    assert _removed(fake_runner) == []
+    assert "context7" in capsys.readouterr().out  # reported, not removed
+
+
+def test_forked_serena_is_left_alone(fake_home, fake_runner, monkeypatch):
+    _servers(fake_home, {"serena": {"command": "uvx", "args": ["--from", "git+https://github.com/me/serena-fork",
+                                                               "serena", "start-mcp-server", "--context", "ide-assistant"]}})
+    _run_update(fake_home, fake_runner, monkeypatch, side_effects=False)
+    assert _removed(fake_runner) == []
+
+
+def test_personal_managed_server_is_left_alone(fake_home, fake_runner, monkeypatch):
+    _personal(fake_home, mcp={"serena": SERENA, "my-serena": SERENA})
+    _servers(fake_home, {"serena": SERENA, "my-serena": SERENA})
+    _run_update(fake_home, fake_runner, monkeypatch, side_effects=False)
+    assert _removed(fake_runner) == []
+
+
+def test_nothing_removed_when_loadout_plugin_disabled(fake_home, fake_runner, monkeypatch):
+    _personal(fake_home, settings={"enabledPlugins": {"loadout@agent-loadout": False}})
+    _machine(fake_home)
+    _w(fake_home / ".claude/settings.json", {"hooks": {"PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "rtk hook claude"}]}]}})
+    _run_update(fake_home, fake_runner, monkeypatch)
+    assert _removed(fake_runner) == []
+    assert "rtk hook claude" in (fake_home / ".claude/settings.json").read_text()
+    assert (fake_home / ".claude/hooks/cbm-session-reminder").exists()
+
+
+def test_rtk_hook_removed_only_when_identical_and_plugin_enabled(fake_home, fake_runner, monkeypatch):
+    _servers(fake_home, {})
+    _w(fake_home / ".claude/settings.json", {"hooks": {"PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "rtk  hook claude"}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "rtk hook claude --verbose"}]}]}})
+    _run_update(fake_home, fake_runner, monkeypatch, side_effects=False)
+    text = (fake_home / ".claude/settings.json").read_text()
+    assert "rtk hook claude --verbose" in text and '"rtk  hook claude"' not in text
+
+
+def test_lookalike_hook_script_file_is_kept(fake_home, fake_runner, monkeypatch):
+    _machine(fake_home)
+    for name in ("my-cbm-session-reminder-wrapper.sh", "cbm-session-reminder.bak"):
+        _w(fake_home / ".claude/hooks" / name, "x")
+    _run_update(fake_home, fake_runner, monkeypatch)
+    names = sorted(p.name for p in (fake_home / ".claude/hooks").iterdir())
+    assert names == ["cbm-session-reminder.bak", "my-cbm-session-reminder-wrapper.sh", "my-hook.sh"]

@@ -88,6 +88,13 @@ def find_outdated() -> list[tuple[dict, tuple, tuple]]:
     for entry in catalog.binaries():
         if not runner.have(entry["id"]):
             continue
+        tool = pkgmgr.mise_tool(entry)
+        if tool:  # ask mise: it knows the user's minimum_release_age and pins
+            status = pkgmgr.mise_outdated(tool)
+            if status is not None:
+                if status:
+                    out.append((entry, status[0] or versions.local_version(entry), status[1]))
+                continue
         local, latest = versions.local_version(entry), versions.latest_version(entry)
         if local and latest and latest > local:
             out.append((entry, local, latest))
@@ -102,6 +109,8 @@ def _refused() -> dict:
     try:
         data = load_json(_refused_path())
     except Exception:
+        return {}
+    if not isinstance(data, dict):
         return {}
     return {k: v for k, v in data.items() if isinstance(v, str)}
 
@@ -201,31 +210,45 @@ def _hook_references() -> str:
 
 
 def _stray_hook_scripts(bk: Backup) -> list[str]:
-    """Hook script files duplicating kit hooks (cbm-*) that no settings hook references any more."""
+    """Legacy kit-duplicate hook scripts (exact cbm-* names) that no settings hook references any more."""
+    from . import duplicates
     hooks_dir = paths.claude_home() / "hooks"
     if not hooks_dir.is_dir():
         return []
     refs, out = _hook_references(), []
     for path in sorted(hooks_dir.iterdir()):
-        entry = catalog.match("hook", path.name, path.name)
-        if entry is None or entry["status"] != "core" or path.name in refs:
+        if not path.is_file() or not duplicates.is_legacy_script_file(path.name) or path.name in refs:
             continue
         bk.move(path, f"hook script {path}")
         out.append(f"moved unreferenced hook script {path} to the backup")
     return out
 
 
-def undo_reregistered(bk: Backup) -> list[str]:
-    """Apply only adopt's `migrate` verdicts for MCP servers and hooks: exact duplicates of what the loadout plugin provides."""
-    from . import adopt, inventory
+def undo_reregistered(bk: Backup) -> tuple[list[str], list[str]]:
+    """(removed, reported). Removes only exact duplicates of MCP servers/hooks the enabled loadout plugin ships."""
+    from . import adopt, duplicates, inventory
     try:
-        verdicts = inventory.classify(inventory.collect(with_versions=False))
+        items = [i for i in inventory.collect(with_versions=False) if i.kind in ("mcp", "hook")]
+        enabled = duplicates.plugin_enabled()
+        verdicts = {(v.item.kind, v.item.name, v.item.location, v.item.detail): v.action
+                    for v in inventory.classify(items)}
     except Exception as exc:  # e.g. invalid JSON: report, never guess
-        return [f"could not check for re-registered duplicates: {exc}"]
-    # never skills, plugins or marketplaces automatically: only MCP servers and hooks
-    dupes = [v for v in verdicts if v.action == "migrate" and v.item.kind in ("mcp", "hook")]
-    out = adopt.apply(dupes, bk) if dupes else []
-    return out + _stray_hook_scripts(bk)
+        return [], [f"could not check for re-registered duplicates: {exc}"]
+    dupes, reported = [], []
+    for item in items:
+        exact = enabled and (duplicates.is_duplicate_mcp(item) if item.kind == "mcp" else duplicates.is_duplicate_hook(item))
+        if exact and duplicates.would_refuse_undo(item):
+            reported.append(f"{item.kind} {item.name}: duplicate, not removed automatically here (Windows .cmd shim); "
+                            "review with `loadout adopt`")
+        elif exact:
+            dupes.append(inventory.Verdict(item, "migrate", "exact duplicate of the loadout plugin"))
+        elif verdicts.get((item.kind, item.name, item.location, item.detail)) == "migrate":
+            reported.append(f"{item.kind} {item.name}: resembles a kit item but is not an exact duplicate of the "
+                            "enabled loadout plugin; left alone (review with `loadout adopt`)")
+    removed = adopt.apply(dupes, bk) if dupes else []
+    if enabled:
+        removed += _stray_hook_scripts(bk)
+    return removed, reported
 
 
 def update(yes: bool, ask: Callable[[str], str]) -> int:
@@ -247,16 +270,23 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
         if not yes and ask("  run it? [y/N] ").strip().lower() != "y":
             continue
         ran = True
+        all_ok = True
         for cmd in cmds:
             res = runner.run(cmd, timeout=900)
+            all_ok = all_ok and res.ok
             print("  ok" if res.ok else f"  failed: {res.stderr.strip()[:300]}")
         now = versions.local_version(entry)
         if now is not None and now >= latest:
             _remember_refused(entry["id"], None)
-        else:
+        elif not all_ok or now is None:
+            pass  # a failure is not a refusal: keep notifying
+        elif now == local:
             _remember_refused(entry["id"], latest)
-            print(f"  still {versions.fmt(now or local)} (the package manager may hold it back, e.g. mise "
-                  f"minimum_release_age); no new notice until a version newer than {versions.fmt(latest)} appears")
+            print(f"  still {versions.fmt(now)}: the update ran but the package manager installed nothing newer; "
+                  f"no new notice until a version newer than {versions.fmt(latest)} appears")
+        else:
+            _remember_refused(entry["id"], None)
+            print(f"  updated to {versions.fmt(now)}; {versions.fmt(latest)} was not installed (held back by the package manager?)")
     after = load_json(settings_path)
     if after != before:
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
@@ -267,11 +297,13 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
         save_json(settings_path, before)
     if ran:  # installers re-register what the loadout plugin already provides
         bk = Backup(description="update: duplicates re-registered by installers")
-        lines = undo_reregistered(bk)
-        if lines:
+        removed, reported = undo_reregistered(bk)
+        if removed:
             print("\nundid duplicates that an installer re-registered (the loadout plugin provides them):")
-            for line in lines:
+            for line in removed:
                 print(f"  {redact(line)}")
+        for line in reported:
+            print(f"note: {redact(line)}")
         if not bk.empty:
             print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     return 0

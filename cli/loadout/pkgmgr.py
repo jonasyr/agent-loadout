@@ -5,6 +5,7 @@ either fail or create a second copy the package manager does not know about.
 """
 from __future__ import annotations
 
+import json
 import os
 
 from . import catalog, runner
@@ -21,10 +22,17 @@ def _realpath(path: str) -> str:
     return os.path.realpath(path)
 
 
+def _home() -> str:
+    from . import paths
+    return str(paths.home())  # not the user's cwd: a project mise.toml must not change the answer
+
+
 def _mise_tool(entry: dict, path: str) -> str | None:
+    if not runner.have("mise"):
+        return None
     p = _norm(path)
-    if MISE_SHIMS in p and runner.have("mise"):
-        res = runner.run(["mise", "which", entry["id"]], timeout=20)
+    if MISE_SHIMS in p:
+        res = runner.run(["mise", "which", entry["id"]], cwd=_home(), timeout=20)
         if res.ok and res.stdout.strip():
             p = _norm(res.stdout.strip())
     if MISE_INSTALLS not in p:
@@ -41,16 +49,41 @@ def _mise_tool(entry: dict, path: str) -> str | None:
     return entry["id"]
 
 
+def mise_tool(entry: dict) -> str | None:
+    path = runner.which(entry["id"])
+    return _mise_tool(entry, path) if path else None
+
+
+def mise_outdated(tool: str) -> tuple | None:
+    """What mise itself would upgrade (it honours minimum_release_age and pins).
+
+    None: unknown (mise failed); (): up to date; (current, latest): outdated.
+    """
+    from .versions import parse_version
+    res = runner.run(["mise", "outdated", tool, "--json"], cwd=_home(), timeout=60)
+    if not res.ok:
+        return None
+    try:
+        data = json.loads(res.stdout or "{}")
+    except ValueError:
+        return None
+    rows = list(data.values()) if isinstance(data, dict) else data if isinstance(data, list) else []
+    for row in rows:
+        if isinstance(row, dict) and row.get("latest"):
+            current, latest = parse_version(str(row.get("current", ""))), parse_version(str(row["latest"]))
+            if latest and (current is None or latest > current):
+                return (current, latest)
+    return ()
+
+
 def _brew_formula(entry: dict, path: str) -> str | None:
+    """Only a proven formula install (<prefix>/Cellar/<formula>/...). Casks and npm globals under brew's
+    node are not brew formulae: they keep the catalog command."""
     if not runner.have("brew"):
         return None
     real = _norm(_realpath(path))
     if "/Cellar/" in real:
-        return entry.get("brew") or real.split("/Cellar/", 1)[1].split("/", 1)[0]
-    res = runner.run(["brew", "--prefix"], timeout=20)
-    prefix = _norm(res.stdout.strip()).rstrip("/") if res.ok else ""
-    if prefix and _norm(path).startswith(prefix + "/"):
-        return entry.get("brew") or entry["id"]
+        return real.split("/Cellar/", 1)[1].split("/", 1)[0]
     return None
 
 
