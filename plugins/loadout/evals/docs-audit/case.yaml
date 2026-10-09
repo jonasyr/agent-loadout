@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: docs-audit
+description: >-
+  Repo whose README, docs/, AGENTS.md and Serena memories contain planted wrong, stale,
+  duplicated and contradictory claims plus one genuinely ambiguous item (see scaffold.sh).
+  /loadout:docs-audit must create the resumable checklist (gitignored), flag every planted
+  error, ask about the ambiguous `--all` instead of deciding it, not rewrite docs before
+  the questions are answered, not run the test suite without asking, and not commit.
+tags: [docs-audit, expensive]
+runs: 3
+context:
+  scaffold_script: scaffold.sh

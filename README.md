@@ -219,6 +219,8 @@ uv run --python 3.12 --with pytest pytest -q
 claude plugin validate . && claude plugin validate plugins/loadout
 ```
 
+Skill evals: run `plugins/loadout/evals/run.sh [--case <name>] [--runs N]`. They make real model calls (a full run costs about $8). Never run `claude plugin eval` on the plugin directly. The scaffolds refuse to run without run.sh's stubs and global-state checks. The browser routing case is opt-in: `run.sh --eval-dir evals-browser`.
+
 To propose a tool, add or adjust its `catalog.json` entry with a `reason`; that is where the "why" lives.
 
 ## License

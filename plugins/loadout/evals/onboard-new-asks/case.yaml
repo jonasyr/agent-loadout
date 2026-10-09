@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: onboard-new-asks
+description: >-
+  Empty repo right after `loadout init`. /loadout:onboard must detect NEW mode and start
+  asking the project-definition questions itself (one at a time), without handing off to
+  superpowers:brainstorming and without writing anything yet.
+tags: [onboard]
+context:
+  scaffold_script: scaffold.sh

@@ -1,0 +1,19 @@
+[project]
+name = "tasklog"
+version = "0.3.0"
+description = "Log tasks from the terminal and export them."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+tasklog = "tasklog.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

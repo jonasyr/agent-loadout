@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: onboard-existing-agentsmd
+description: >-
+  Existing repo whose AGENTS.md has wrong commands and paths, CLAUDE.md is `@AGENTS.md`,
+  with a project .mcp.json and .claude/settings.json, and no docs/ or Serena memories.
+  /loadout:onboard must state the mode, index, repair AGENTS.md (tests/ not test/, the
+  TASKLOG_HOME data dir), leave .mcp.json and .claude/settings.json byte-identical and
+  mention them, run Serena onboarding with short memories, run no dangerous command and
+  not commit.
+tags: [onboard]
+context:
+  scaffold_script: scaffold.sh

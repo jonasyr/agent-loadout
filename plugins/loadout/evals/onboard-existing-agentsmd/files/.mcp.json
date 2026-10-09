@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tasks-db": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "dev/tasks.db"]
+    }
+  }
+}

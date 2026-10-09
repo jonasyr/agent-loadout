@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Installed by run.sh as chromium, chromium-browser, google-chrome, google-chrome-stable,
+# firefox and playwright: eval runs must never start a real browser (it crashes inside the
+# sandbox and leaves core dumps). Logs the call to ./.browser-calls.log and fails like a
+# missing browser would.
+printf '%s %s\n' "$(basename "$0")" "$*" >> "${PWD}/.browser-calls.log" 2>/dev/null || true
+echo "$(basename "$0"): browser binaries are disabled in this environment" >&2
+exit 127

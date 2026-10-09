@@ -33,7 +33,7 @@ Note where each claim lives (file and line).
 
 ## 3. Verify against the current code
 
-Dispatch parallel subagents (superpowers:dispatching-parallel-agents), one per doc area or about 30 claims. Give each its claim list and these rules:
+Dispatch parallel subagents (superpowers:dispatching-parallel-agents), one per doc area or about 30 claims; for a small repo (under ~30 claims) verify inline instead. Give each subagent its claim list; either way, apply these rules:
 - **Symbols and structure:** codebase-memory-mcp (`search_graph`, `trace_path`, `get_code_snippet`) and Serena (`find_symbol`). Index first if needed.
 - **Paths:** check existence.
 - **Commands:** verify with harmless forms only (`--help`, `--version`, dry run, `--collect-only`). Ask the user before running tests or builds. Never run anything that deploys, deletes or writes outside the repo.

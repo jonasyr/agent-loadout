@@ -12,4 +12,4 @@ Pick the tool by the question, not by habit:
 | UI verification and browser checks | `playwright-cli` (read `playwright-cli --help` first); screenshots and snapshots go to disk, open only what you need |
 | Shell commands | rtk rewrites them automatically when installed; use `rtk proxy <cmd>` when you need raw output |
 
-Before ending a task that touched UI, verify it in a browser with playwright-cli. Never claim it "looks right" without having looked.
+Before ending a task that touched UI, verify it in a browser with playwright-cli. Never claim it "looks right" without having looked. If playwright-cli is missing or fails, say so (and suggest `loadout check`) instead of launching a browser binary yourself.

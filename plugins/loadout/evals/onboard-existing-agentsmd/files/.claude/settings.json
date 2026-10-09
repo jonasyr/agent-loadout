@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "allow": ["Bash(uv run pytest:*)", "Bash(uv run tasklog:*)"]
+  }
+}

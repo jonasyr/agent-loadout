@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Stand-in for the real `loadout` CLI during evals (run.sh puts it first on PATH).
+# It never touches real state: it appends each call to ./.loadout-calls.log in the
+# current directory and prints what the real command would print for the fixture setup.
+case "${1:-}" in
+  hook-*|maintenance) exit 0 ;;  # plugin hooks: no-op, and no logging
+esac
+printf '%s\n' "$*" >> "${PWD}/.loadout-calls.log" 2>/dev/null || true
+
+addons() {
+cat <<'EOF'
+Change one with: loadout configure set <plugin|mcp> <id> on|off
+on (default)  [kit default] loadout@agent-loadout  — id: plugin loadout@agent-loadout
+      Enabled by the kit.
+on (default)  [kit default] superpowers@claude-plugins-official  — id: plugin superpowers@claude-plugins-official
+      Process skills.
+on (default)  [kit default] frontend-design@claude-plugins-official  — id: plugin frontend-design@claude-plugins-official
+      Enabled by the kit.
+on (default)  [kit default] impeccable@impeccable  — id: plugin impeccable@impeccable
+      Enabled by the kit.
+on (default)  [kit default] commit-commands@claude-plugins-official  — id: plugin commit-commands@claude-plugins-official
+      Enabled by the kit.
+on (default)  [kit default] pyright-lsp@claude-plugins-official  — id: plugin pyright-lsp@claude-plugins-official
+      Enabled by the kit.
+on (default)  [kit default] typescript-lsp@claude-plugins-official  — id: plugin typescript-lsp@claude-plugins-official
+      Enabled by the kit.
+on (default)  [kit default] rust-analyzer-lsp@claude-plugins-official  — id: plugin rust-analyzer-lsp@claude-plugins-official
+      Enabled by the kit.
+on (default)  [kit default] context7@claude-plugins-official  — id: plugin context7@claude-plugins-official
+      Enabled by the kit.
+on (default)  [kit default] microsoft-docs@claude-plugins-official  — id: plugin microsoft-docs@claude-plugins-official
+      Enabled by the kit.
+off (default)  [profile android] kotlin-lsp@claude-plugins-official  — id: plugin kotlin-lsp@claude-plugins-official
+      Android / Kotlin
+off (default)  [profile sonar] sonarqube@claude-plugins-official  — id: plugin sonarqube@claude-plugins-official
+      SonarQube static analysis
+off (default)  [profile thesis] academic-research-skills@academic-research-skills  — id: plugin academic-research-skills@academic-research-skills
+      Academic writing and ML/RAG research
+off (default)  [browser] playwright@claude-plugins-official  — id: plugin playwright@claude-plugins-official
+      Playwright as MCP server: richer tool surface, but snapshots land in context (playwright-cli is the cheaper default).
+off (default)  [browser] chrome-devtools-mcp@claude-plugins-official  — id: plugin chrome-devtools-mcp@claude-plugins-official
+      Performance traces, network and console debugging in Chrome. Heavy context per call; enable when you debug frontends often.
+off (default)  [workflow] github@claude-plugins-official  — id: plugin github@claude-plugins-official
+      Official GitHub MCP (Actions logs, security alerts). The gh CLI covers most needs with less context.
+off (default)  [workflow] hookify@claude-plugins-official  — id: plugin hookify@claude-plugins-official
+      Write guard-rail hooks as plain-language rules (e.g. block force-push to main).
+off (default)  [data] sentry@claude-plugins-official  — id: plugin sentry@claude-plugins-official
+      Read Sentry issues and traces while debugging production errors.
+off (default)  [data] dbhub  — id: mcp addon-dbhub-global
+      DBHub for one database you use from every repo (otherwise use the db profile per project).
+EOF
+}
+
+case "${1:-} ${2:-}" in
+  "configure show") addons ;;
+  "configure set")
+    case "${3:-}" in
+      plugin|mcp)
+        [ "${5:-}" = on ] || [ "${5:-}" = off ] || { echo "value must be on or off" >&2; exit 2; }
+        echo "${3} ${4}: ${5}"
+        [ "${3} ${4} ${5}" = "mcp dbhub on" ] || [ "${3} ${4} ${5}" = "mcp addon-dbhub-global on" ] &&
+          echo "note: DSN is not set: add it to ~/.config/loadout/secrets.env"
+        echo "Restart Claude Code (or run /reload-plugins) to load the changes." ;;
+      pref) echo "pref ${4} = ${5:-}" ;;
+      *) echo "usage: loadout configure set <plugin|mcp|pref> <name> <value>" >&2; exit 2 ;;
+    esac ;;
+  "configure "*) echo "the interactive wizard needs a terminal; use: loadout configure show | set ..." >&2; exit 2 ;;
+  "profile "*) echo "added profile ${2:-}: plugins installed with --scope project" ;;
+  "init "*) echo "scaffolded AGENTS.md, CLAUDE.md, docs/README.md, docs/adr/README.md" ;;
+  *) echo "usage: loadout {init,profile,configure,check,...}" ;;
+esac
