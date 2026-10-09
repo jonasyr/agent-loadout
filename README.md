@@ -95,7 +95,7 @@ Run `loadout <command> --help` for details.
 | loadout | Code-navigation servers (Serena, codebase-memory), tool hooks, the onboard/configure/docs skills, update notices |
 | superpowers | A disciplined workflow: brainstorm, plan, test-driven build, verify |
 | frontend-design, impeccable | Distinctive UI, then audit and polish it |
-| security-guidance | Warns about security mistakes while code is written |
+| security-guidance | Warns about security mistakes while code is written, and reviews each `git commit`. The per-turn Opus diff review is off by default (`ENABLE_STOP_REVIEW=0`, to save usage) — set it to `"1"` under `env` in your personal settings.json to turn it on |
 | pyright-lsp, typescript-lsp, rust-analyzer-lsp | Claude sees type errors right after each edit |
 | context7, microsoft-docs | Up-to-date library documentation instead of outdated training data |
 | commit-commands, claude-md-management | Commits and PRs; keeping CLAUDE.md/AGENTS.md healthy |

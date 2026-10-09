@@ -1,9 +1,27 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "extraKnownMarketplaces": {
-    "agent-loadout": { "source": { "source": "github", "repo": "jonasyr/agent-loadout" }, "autoUpdate": true },
-    "impeccable": { "source": { "source": "github", "repo": "pbakaus/impeccable" }, "autoUpdate": true },
-    "academic-research-skills": { "source": { "source": "github", "repo": "Imbad0202/academic-research-skills" }, "autoUpdate": true }
+    "agent-loadout": {
+      "source": {
+        "source": "github",
+        "repo": "jonasyr/agent-loadout"
+      },
+      "autoUpdate": true
+    },
+    "impeccable": {
+      "source": {
+        "source": "github",
+        "repo": "pbakaus/impeccable"
+      },
+      "autoUpdate": true
+    },
+    "academic-research-skills": {
+      "source": {
+        "source": "github",
+        "repo": "Imbad0202/academic-research-skills"
+      },
+      "autoUpdate": true
+    }
   },
   "enabledPlugins": {
     "loadout@agent-loadout": true,
@@ -18,5 +36,8 @@
     "rust-analyzer-lsp@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "microsoft-docs@claude-plugins-official": true
+  },
+  "env": {
+    "ENABLE_STOP_REVIEW": "0"
   }
 }
