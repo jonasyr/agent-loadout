@@ -99,3 +99,23 @@ def test_init_offers_git_init(tmp_path, fake_runner):
     proj.mkdir()
     project.init(proj, [], yes=False, install=False, dry_run=False, ask=lambda q: "y" if "git init" in q else "-")
     assert ["git", "init"] in fake_runner.calls
+
+
+def test_init_non_interactive_applies_no_profiles(tmp_path, fake_home, fake_runner, capsys):
+    from loadout import project
+    (tmp_path / "proj").mkdir()
+    (tmp_path / "proj/paper.tex").write_text("x")
+    project.init(tmp_path / "proj", [], False, True, False, lambda q: "", interactive=False)
+    out = capsys.readouterr().out
+    assert "non-interactive" in out
+    assert not [c for c in fake_runner.calls if c[:3] == ["claude", "plugin", "install"]]
+    assert ["git", "init"] not in fake_runner.calls
+
+
+def test_init_validates_all_profile_names_first(tmp_path, fake_home, fake_runner):
+    import pytest
+    from loadout import project
+    (tmp_path / "p").mkdir()
+    with pytest.raises(ValueError, match="thesi"):
+        project.init(tmp_path / "p", ["web", "thesi"], True, False, False, lambda q: "")
+    assert not (tmp_path / "p/.claude/settings.json").exists()

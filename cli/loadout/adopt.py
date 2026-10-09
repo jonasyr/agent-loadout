@@ -6,15 +6,34 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, paths, runner, secrets
+from . import catalog, inventory, paths, runner, secrets, ui
 from .backup import Backup
-from .inventory import Verdict, classify, collect
+from .inventory import Verdict
 from .jsonio import load_json, save_json
+from .secrets import redact
 
 GROUP_ORDER = ["remove", "migrate", "scope-down", "update", "install", "review", "unknown", "keep"]
-DEFAULT_ALL = {"remove", "migrate", "scope-down", "update"}
+# Selected by Enter at the prompt and by --yes. Binary update/install never are: they need
+# --groups update/install or an interactive pick, and each command is shown and confirmed.
+DEFAULT_ALL = {"remove", "migrate", "scope-down"}
+GROUP_HELP = {
+    "remove": "uninstall/remove; restorable.",
+    "migrate": "remove your copy, because the loadout plugin provides it.",
+    "scope-down": "disable globally; enable per project with `loadout profile X`.",
+    "update": "run the tool's update command (each command is shown and confirmed first).",
+    "install": "run the tool's install command (each command is shown and confirmed first).",
+    "review": "picking removes it; restorable.",
+    "unknown": "picking removes it; restorable.",
+    "keep": "nothing to do.",
+}
+VERB = {"remove": "remove", "migrate": "remove", "scope-down": "disable globally", "update": "update",
+        "install": "install", "review": "remove", "unknown": "remove"}
 MIGRATED_MARKER = "<!-- Global instructions live in"
 Ask = Callable[[str], str]
+
+
+def _verb(v: Verdict) -> str:
+    return "move into your personal layer:" if v.item.kind == "claude-md" else VERB[v.action]
 
 
 def render_plan(verdicts: list[Verdict], findings: list) -> str:
@@ -23,14 +42,18 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
         members = [v for v in verdicts if v.action == group]
         if not members:
             continue
-        lines.append(f"\n{group.upper()} ({len(members)})")
+        lines.append(f"\n{group.upper()} ({len(members)}) — {GROUP_HELP[group]}")
+        if any(v.item.kind == "claude-md" for v in members):
+            lines.append("  (CLAUDE.md: picking moves its content into your personal layer instead; restorable.)")
         for v in members:
-            lines.append(f"  [{v.item.kind}] {v.item.name}  {v.item.detail}".rstrip())
-            lines.append(f"      {v.reason}")
+            lines.append(redact(f"  [{v.item.kind}] {v.item.name}  {v.item.detail}".rstrip()))
+            lines.append(redact(f"      {v.reason}"))
+            if v.item.kind == "marketplace" and group != "keep":
+                lines.append("      note: plugins from a removed marketplace stay installed unless picked too.")
     if findings:
-        lines.append("\nPLAINTEXT SECRETS")
+        lines.append("\nPLAINTEXT SECRETS (values hidden)")
         for f in findings:
-            how = "can move to secrets.env" if f.fixable else "in command args: remove the server or fix manually"
+            how = "can move to secrets.env" if f.fixable else "report only: move it to secrets.env by hand"
             lines.append(f"  {f.server}.{f.field}.{f.key} ({f.location}) — {how}")
     return "\n".join(lines)
 
@@ -47,11 +70,13 @@ def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask
         if not members:
             continue
         default = "a" if group in DEFAULT_ALL else "n"
-        answer = (ask(f"{group}: {len(members)} item(s). [a]ll / [n]one / [p]ick (default {default}): ").strip().lower() or default)
+        question = (f"{group}: {len(members)} item(s) — {GROUP_HELP[group]} "
+                    f"[a]ll / [n]one / [p]ick (default {'all' if default == 'a' else 'none'}): ")
+        answer = ui.choose_group(ask, question, default)
         if answer == "a":
             chosen += members
         elif answer == "p":
-            chosen += [v for v in members if ask(f"  {v.item.kind} {v.item.name}? [y/N] ").strip().lower() == "y"]
+            chosen += [v for v in members if ui.confirm(ask, f"  {_verb(v)} {v.item.kind} {v.item.name}? [y/N] ")]
     return chosen
 
 
@@ -86,7 +111,8 @@ def _apply_plugin(v: Verdict, bk: Backup) -> str:
         bk.record_command(f"plugin {v.item.name}", ["claude", "plugin", "enable", v.item.name, "--scope", "user"])
         return f"plugin {v.item.name} disabled globally: " + _claude(["plugin", "disable", v.item.name, "--scope", "user"])
     bk.record_command(f"plugin {v.item.name}", ["claude", "plugin", "install", v.item.name, "--scope", "user"])
-    return f"plugin {v.item.name} uninstalled: " + _claude(["plugin", "uninstall", v.item.name, "--scope", "user"])
+    # --keep-data: the plugin's ~/.claude/plugins/data/<id>/ survives, so the undo (reinstall) is complete
+    return f"plugin {v.item.name} uninstalled: " + _claude(["plugin", "uninstall", v.item.name, "--scope", "user", "--keep-data"])
 
 
 def _apply_marketplace(v: Verdict, bk: Backup) -> str:
@@ -135,15 +161,19 @@ def _apply_hooks(hook_verdicts: list[Verdict], bk: Backup) -> list[str]:
     return [f"hook {v.item.name}: removed ({v.item.detail[:60]})" for v in hook_verdicts]
 
 
-def _apply_binary(v: Verdict) -> str:
+def _apply_binary(v: Verdict, ask: Ask, confirm_cmds: bool) -> str:
     key = "install" if v.action == "install" else "update"
     entry = v.item.extra["entry"]
     cmds = catalog.platform_cmds(entry, key)
     if not cmds:
         return f"{v.item.name}: no {key} command for this platform. {entry.get('manual', '')}".strip()
+    print(f"{v.item.name} {key}:")
+    for cmd in cmds:
+        print("  command: " + " ".join(cmd))
+    if confirm_cmds and not ui.confirm(ask, "  run it? [y/N] "):
+        return f"{v.item.name} {key}: skipped"
     results = []
     for cmd in cmds:
-        print("running: " + " ".join(cmd))
         res = runner.run(cmd, timeout=900)
         results.append("ok" if res.ok else f"failed: {res.stderr.strip()[:200]}")
     return f"{v.item.name} {key}: " + ", ".join(results)
@@ -217,7 +247,7 @@ def fix_secrets(findings: list, bk: Backup) -> list[str]:
     return out
 
 
-def apply(selected: list[Verdict], bk: Backup) -> list[str]:
+def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_cmds: bool = True) -> list[str]:
     out, moved = [], set()
     selected = [v for v in selected if v.action != "keep"]  # keep never acts, whatever was passed in
     for v in selected:
@@ -233,31 +263,43 @@ def apply(selected: list[Verdict], bk: Backup) -> list[str]:
         elif kind == "skill":
             out.append(_apply_skill(v, bk))
         elif kind == "binary":
-            out.append(_apply_binary(v))
+            out.append(_apply_binary(v, ask, confirm_cmds))
         elif kind == "claude-md":
             out += migrate_claude_md(bk)
     out += _apply_hooks([v for v in selected if v.item.kind == "hook"], bk)
     return out
 
 
-def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask, with_versions: bool = True) -> int:
-    verdicts = classify(collect(with_versions=with_versions))
+def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask, with_versions: bool = True,
+        interactive: bool | None = None) -> int:
+    if interactive is None:
+        interactive = ui.is_interactive()
+    verdicts = inventory.classify(inventory.collect(with_versions=with_versions))
     findings = secrets.scan(load_json(paths.claude_json()))
     print(render_plan(verdicts, findings))
     if not apply_changes:
         print("\n(dry run — nothing changed. Re-run with --apply to choose and apply.)")
         return 0
-    chosen = select(verdicts, groups if groups is not None else (DEFAULT_ALL if yes else None), skip, ask)
-    if not chosen and not findings:
+    if not interactive and not yes and groups is None:
+        print("\nnon-interactive: re-run with --yes or --groups GROUP,... to apply (nothing changed).")
+        return 2
+    explicit = groups is not None
+    chosen = select(verdicts, groups if explicit else (DEFAULT_ALL if yes else None), skip, ask)
+    if chosen and interactive and not yes:
+        if not ui.confirm(ask, f"Apply {len(chosen)} change(s)? [y/N] "):
+            print("nothing changed")
+            return 0
+    elif not chosen and not findings:
         print("nothing selected")
         return 0
-    bk = Backup()
-    for line in apply(chosen, bk):
-        print(line)
-    remaining = [f for f in findings if f.server not in {v.item.name for v in chosen if v.item.kind == "mcp"}]
-    if remaining and (yes or ask("move detected plaintext secrets to secrets.env? [y/N] ").strip().lower() == "y"):
+    bk = Backup(description="adopt")
+    for line in apply(chosen, bk, ask, confirm_cmds=not (yes and explicit)):
+        print(redact(line))
+    remaining = [f for f in findings if f.fixable
+                 and f.server not in {v.item.name for v in chosen if v.item.kind == "mcp"}]
+    if remaining and (yes or ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] ")):
         for line in fix_secrets(remaining, bk):
-            print(line)
+            print(redact(line))
     if not bk.empty:
-        print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root})")
+        print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
     return 0

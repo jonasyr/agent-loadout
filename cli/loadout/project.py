@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from . import detect, profiles, runner, scaffold
+from . import detect, profiles, runner, scaffold, ui
 
 Ask = Callable[[str], str]
 
@@ -39,12 +39,17 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     return 0
 
 
-def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: bool, ask: Ask) -> int:
+def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: bool, ask: Ask,
+         interactive: bool | None = None) -> int:
+    if interactive is None:
+        interactive = ui.is_interactive()
     project = project.resolve()
+    for name in names:
+        profiles.load_profile(name)  # validate every name before changing anything
     if not (project / ".git").exists():
         if dry_run:
             print("would offer: git init")
-        elif yes or ask(f"{project} is not a git repository. Run git init? [y/N] ").strip().lower() == "y":
+        elif yes or ui.confirm(ask, f"{project} is not a git repository. Run git init? [y/N] "):
             runner.run(["git", "init"], cwd=str(project))
     chosen = list(names)
     if not chosen:
@@ -52,9 +57,13 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         print(f"suggested profiles: {', '.join(suggested) or '(none)'} — available: {', '.join(profiles.list_profiles())}")
         if yes or dry_run:
             chosen = suggested
+        elif not interactive:
+            print("non-interactive: no profiles applied (name them, e.g. `loadout init web`, or pass --yes)")
         else:
             answer = ask("profiles to apply (comma separated, empty = suggested, '-' = none): ").strip()
             chosen = suggested if answer == "" else [] if answer == "-" else [a.strip() for a in answer.split(",") if a.strip()]
+            for name in chosen:
+                profiles.load_profile(name)
     for name in chosen:
         add_profile(project, name, install=install, dry_run=dry_run)
     created, notes = scaffold.scaffold(project, dry_run=dry_run)

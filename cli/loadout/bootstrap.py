@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, catalog, check, link, paths, runner, settings_merge
+from . import adopt, catalog, check, link, paths, runner, settings_merge, ui
 from .backup import Backup
 from .jsonio import load_json
 
@@ -119,7 +119,9 @@ def _settings_would_change() -> bool:
     return settings_merge.merge_settings(current, settings_merge.desired_settings(), previous) != current
 
 
-def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask) -> int:
+def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
+    if interactive is None:
+        interactive = ui.is_interactive()
     _step("Prerequisites")
     check_prereqs(install, ask)
     _step("Personal layer")
@@ -137,7 +139,9 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     from .personal_mcp import apply_mcp
     for line in apply_mcp():
         print(line)
-    if not yes and ask("Customize preferences and global add-ons now? [y/N] ").strip().lower() == "y":
+    if not yes and not interactive:
+        print("non-interactive: skipping the configure prompt (run `loadout configure` later)")
+    elif not yes and ui.confirm(ask, "Customize preferences and global add-ons now? [y/N] "):
         from .configure import wizard
         wizard(ask, first_run=False)
     if plugins:
@@ -146,7 +150,10 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
             print(line)
     if adopt_step:
         _step("Adopt existing setup")
-        adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask)
+        if not yes and not interactive:
+            print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
+        else:
+            adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive)
     _step("Secrets")
     for line in setup_secrets():
         print(line)

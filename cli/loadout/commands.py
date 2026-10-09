@@ -37,9 +37,9 @@ def _register_adopt(sub):
 
     p = sub.add_parser("adopt", help="review and migrate the existing Claude Code setup")
     p.add_argument("--apply", action="store_true", help="choose and apply changes (default: dry run)")
-    p.add_argument("--groups", help="non-interactive: comma-separated groups to apply, e.g. remove,migrate")
+    p.add_argument("--groups", help="apply exactly these groups, e.g. remove,migrate (update/install run each command after confirmation unless --yes)")
     p.add_argument("--skip", default="", help="comma-separated item names to leave alone")
-    p.add_argument("--yes", action="store_true")
+    p.add_argument("--yes", action="store_true", help="no questions: apply --groups, or remove,migrate,scope-down, and move secrets")
     p.add_argument("--no-versions", action="store_true", help="skip network version checks")
 
     def run(a):
@@ -127,7 +127,7 @@ def _register_bootstrap(sub):
 
     p = sub.add_parser("bootstrap", help="set up (or repair) this machine")
     p.add_argument("--install", action="store_true", help="install missing tool binaries")
-    p.add_argument("--yes", action="store_true", help="accept defaults (adopt applies remove/migrate/scope-down/update)")
+    p.add_argument("--yes", action="store_true", help="accept defaults without asking (adopt applies remove/migrate/scope-down; never binary updates)")
     p.add_argument("--no-plugins", action="store_true")
     p.add_argument("--no-adopt", action="store_true")
     p.set_defaults(func=lambda a: bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask))

@@ -86,3 +86,18 @@ def test_secrets_creates_rc_from_shell(fake_home, fake_runner, monkeypatch):
     b.setup_secrets()
     assert (fake_home / ".zshrc").read_text().count(b.RC_MARKER) == 1
     assert not (fake_home / ".bashrc").exists()
+
+
+def test_bootstrap_non_interactive_skips_adopt_and_configure(fake_home, fake_runner, capsys):
+    from loadout import adopt
+    called = []
+    import loadout.bootstrap as bmod
+    orig = adopt.run
+    adopt.run = lambda *a, **k: called.append(1)
+    try:
+        b.bootstrap(False, False, False, True, lambda q: "", interactive=False)
+    finally:
+        adopt.run = orig
+    out = capsys.readouterr().out
+    assert called == []
+    assert "non-interactive" in out and "adopt" in out and "configure" in out

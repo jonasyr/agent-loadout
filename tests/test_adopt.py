@@ -30,10 +30,10 @@ def test_select_by_groups_with_skip(machine):
 
 
 def test_select_interactive_defaults(machine):
-    chosen = adopt.select(_verdicts(), None, set(), ask=lambda q: "")
+    chosen = adopt.select(_verdicts() + [_outdated()], None, set(), ask=lambda q: "")
     actions = {v.action for v in chosen}
-    assert actions <= {"remove", "migrate", "scope-down", "update"}
-    assert "unknown" not in actions
+    assert actions <= {"remove", "migrate", "scope-down"}
+    assert "unknown" not in actions and "update" not in actions
 
 
 def test_apply_runs_cli_and_records_undo(machine, fake_runner):
@@ -42,7 +42,7 @@ def test_apply_runs_cli_and_records_undo(machine, fake_runner):
                                                           "sonarqube@claude-plugins-official", "claude-code-templates"}]
     adopt.apply(chosen, bk)
     assert ["claude", "mcp", "remove", "-s", "user", "github-server"] in fake_runner.calls
-    assert ["claude", "plugin", "uninstall", "auto-memory@severity1-marketplace", "--scope", "user"] in fake_runner.calls
+    assert ["claude", "plugin", "uninstall", "auto-memory@severity1-marketplace", "--scope", "user", "--keep-data"] in fake_runner.calls
     assert ["claude", "plugin", "disable", "sonarqube@claude-plugins-official", "--scope", "user"] in fake_runner.calls
     assert ["claude", "plugin", "marketplace", "remove", "claude-code-templates"] in fake_runner.calls
     manifest = json.loads((bk.root / "manifest.json").read_text())
@@ -180,3 +180,97 @@ def test_migrate_claude_md_is_idempotent(machine):
     adopt.migrate_claude_md(backup.Backup())
     me = (paths.personal_root() / "rules/me.md").read_text()
     assert me.count("Migrated from") == 1
+
+
+# --- non-interactive input and prompt UX (R-A, R-B) ---
+
+def _outdated(action="update"):
+    from loadout import catalog
+    entry = next(e for e in catalog.binaries() if e["id"] == "rtk")
+    item = inventory.Item("binary", "rtk", "0.1.0 -> 0.2.0", "PATH", {"entry": entry, "state": "outdated"})
+    return adopt.Verdict(item, action, entry["reason"], entry["id"])
+
+
+@pytest.mark.parametrize("word", ["a", "all", "y", "YES", "Yes"])
+def test_group_prompt_accepts_yes_words(machine, word):
+    chosen = adopt.select(_verdicts(), None, set(), ask=lambda q: word if "[a]ll" in q else "")
+    assert {v.action for v in chosen} >= {"remove", "unknown"}
+
+
+def test_group_prompt_reasks_on_invalid_answer(machine, capsys):
+    answers = iter(["maybe", "none"] + ["n"] * 20)
+    chosen = adopt.select(_verdicts(), None, set(), ask=lambda q: next(answers))
+    assert chosen == []
+    assert "please answer" in capsys.readouterr().out
+
+
+def test_group_prompts_name_the_action(machine):
+    questions = []
+    adopt.select(_verdicts(), None, set(), ask=lambda q: (questions.append(q), "p" if "[a]ll" in q else "")[1])
+    text = "\n".join(questions)
+    assert "remove mcp omarchy-kb? [y/N]" in text
+    assert "disable globally plugin sonarqube@claude-plugins-official? [y/N]" in text
+
+
+def test_plan_headers_explain_each_action(machine):
+    text = adopt.render_plan(_verdicts() + [_outdated()], [])
+    assert "REMOVE (" in text and "uninstall/remove; restorable." in text
+    assert "remove your copy, because the loadout plugin provides it." in text
+    assert "disable globally; enable per project with `loadout profile X`." in text
+    assert "picking removes it; restorable." in text
+    assert "plugins from a removed marketplace stay installed unless picked" in text
+
+
+def test_plan_redacts_secrets(machine):
+    from fixtures import FAKE_PAT
+    text = adopt.render_plan(_verdicts(), [])
+    assert FAKE_PAT not in text and "***" in text
+
+
+def test_non_interactive_apply_changes_nothing_and_exits_2(machine, fake_runner, capsys):
+    rc = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False)
+    assert rc == 2
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+    assert "non-interactive: re-run with --yes or --groups" in capsys.readouterr().out
+    assert not paths.backups_root().exists()
+
+
+def test_interactive_apply_needs_final_confirmation(machine, fake_runner, capsys):
+    rc = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=True)
+    assert rc == 0
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+    assert "nothing changed" in capsys.readouterr().out
+
+
+def test_interactive_apply_confirmed(machine, fake_runner):
+    asked = []
+    def ask(q):
+        asked.append(q)
+        return "y" if q.startswith("Apply") else ""
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    assert any(q.startswith("Apply ") and "[y/N]" in q for q in asked)
+    assert ["claude", "mcp", "remove", "-s", "user", "github-server"] in fake_runner.calls
+
+
+def test_yes_never_selects_binary_updates(machine):
+    chosen = adopt.select(_verdicts() + [_outdated()], adopt.DEFAULT_ALL, set(), ask=lambda q: "")
+    assert "update" not in {v.action for v in chosen}
+
+
+def test_binary_update_shown_and_confirmed_unless_yes_with_groups(machine, fake_runner, capsys):
+    asked = []
+    out = adopt.apply([_outdated()], backup.Backup(), ask=lambda q: (asked.append(q), "")[1], confirm_cmds=True)
+    assert asked and "run it?" in asked[0]
+    assert "skipped" in out[0]
+    assert not [c for c in fake_runner.calls if c[:1] != ["claude"]]
+    assert "command:" in capsys.readouterr().out
+    adopt.apply([_outdated()], backup.Backup(), ask=lambda q: "", confirm_cmds=False)
+    assert [c for c in fake_runner.calls if c[:1] != ["claude"]]
+
+
+def test_adopt_cli_yes_with_groups_update_runs_without_prompt(machine, fake_runner, monkeypatch):
+    monkeypatch.setattr(inventory, "classify", lambda items: [_outdated()])
+    rc = adopt.run(True, {"update"}, set(), True, ask=lambda q: (_ for _ in ()).throw(AssertionError(q)),
+                   with_versions=False, interactive=False)
+    assert rc == 0
+    assert [c for c in fake_runner.calls if c[:1] != ["claude"]]
