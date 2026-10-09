@@ -173,6 +173,7 @@ Secrets loaded by your shell only reach Claude Code started from that shell. On 
 | Symptom | Fix |
 |---|---|
 | `loadout: command not found` | Add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal |
+| `npm error code EACCES` when installing pyright / typescript-language-server / playwright-cli | Your global npm prefix is root-owned (e.g. `/usr`). Either `npm config set prefix ~/.local` (then re-run `loadout bootstrap --install`), or install them with your version manager, e.g. `mise use -g npm:pyright npm:typescript-language-server` |
 | A plugin or MCP server is missing in Claude Code | Restart Claude Code; then `loadout check` lists what is missing and how to fix it |
 | `invalid JSON in .../settings.json` | Fix the syntax error at the reported position, then run `loadout apply-settings` |
 | "settings drift" warning | Something changed a kit-managed value. Run `loadout apply-settings`, or put your preferred value in your personal `settings.json` |

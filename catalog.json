@@ -221,14 +221,16 @@
           [
             "codebase-memory-mcp",
             "update",
-            "-y"
+            "-y",
+            "--standard"
           ]
         ],
         "windows": [
           [
             "codebase-memory-mcp",
             "update",
-            "-y"
+            "-y",
+            "--standard"
           ]
         ]
       },
