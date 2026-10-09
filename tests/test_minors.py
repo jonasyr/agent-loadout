@@ -10,6 +10,10 @@ from loadout import adopt, backup, bootstrap, check, configure, inventory, link,
 from fixtures import author_machine
 
 
+def _by_name(results):
+    return {r.name: r for r in results}
+
+
 # --- maintenance lock (A-I8) ---------------------------------------------------------------
 
 def test_maintenance_skips_while_another_run_holds_the_lock(fake_home, fake_runner, monkeypatch):
@@ -122,10 +126,10 @@ def test_bootstrap_link_step_clears_copy_mode_when_symlinks_work(fake_home):
 
 def test_check_copy_mode_link_requires_kit_copy(fake_home, fake_runner):
     dest = _copy_mode(fake_home)
-    assert check._by_name(check._links())["link rules/personal"].ok
+    assert _by_name(check._links())["link rules/personal"].ok
     shutil.rmtree(dest)
     dest.mkdir()
-    assert not check._by_name(check._links())["link rules/personal"].ok
+    assert not _by_name(check._links())["link rules/personal"].ok
 
 
 # --- adopt -------------------------------------------------------------------------------
@@ -172,7 +176,7 @@ def test_inventory_tolerates_non_dict_plugins_value(fake_home, fake_runner):
     p.mkdir(parents=True)
     (p / "installed_plugins.json").write_text(json.dumps({"plugins": ["x"]}))
     inventory.collect(with_versions=False)
-    assert check._by_name(check._plugins())["plugins installed"].severity == "warn"
+    assert _by_name(check._plugins())["plugins installed"].severity == "warn"
 
 
 def test_fix_secrets_tolerates_non_dict_mcp_servers(fake_home):
@@ -217,10 +221,10 @@ def test_redact_masks_dsn_credentials():
 def test_personal_push_refused_when_env_file_would_be_committed(fake_home, fake_runner, capsys):
     root = paths.personal_root()
     (root / ".git").mkdir(parents=True)
-    fake_runner.responses[("git", "-C", str(root), "status", "--porcelain")] = runner.Result(0, "?? secrets.env\n", "")
+    fake_runner.responses[("git", "-C", str(root), "status", "--porcelain", "-uall")] = runner.Result(0, "?? new/x.env\n", "")
     configure.apply_all(lambda q: "y", setup=False)
     assert not [c for c in fake_runner.calls if "push" in c or "commit" in c]
-    assert "secrets.env" in capsys.readouterr().out
+    assert "new/x.env" in capsys.readouterr().out
 
 
 # --- Windows / platform -------------------------------------------------------------------
@@ -256,3 +260,28 @@ def test_gh_setup_git_is_announced(fake_home, fake_runner, capsys):
     bootstrap.check_prereqs(False, lambda q: "")
     assert ["gh", "auth", "setup-git"] in fake_runner.calls
     assert "gh auth setup-git" in capsys.readouterr().out
+
+
+def test_update_waits_for_background_maintenance(fake_home, fake_runner, capsys):
+    lock = paths.state_dir() / "maintenance.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text("1")
+    assert m.update(yes=True, ask=lambda q: "") == 1
+    assert fake_runner.calls == [] and "try" in capsys.readouterr().out
+
+
+def test_stale_lock_taken_by_someone_else_in_between_is_given_back(fake_home, monkeypatch):
+    lock = paths.state_dir() / "maintenance.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text("old")
+    old = time.time() - 2 * 3600
+    os.utime(lock, (old, old))
+    real_rename = os.rename
+
+    def racing_rename(src, dst):
+        os.utime(lock, None)  # another run replaced the stale lock with a fresh one just now
+        return real_rename(src, dst)
+
+    monkeypatch.setattr(os, "rename", racing_rename)
+    assert m._acquire_lock() is False
+    assert lock.exists() and not list(lock.parent.glob("maintenance.lock.stale-*"))

@@ -155,7 +155,7 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
             print(line)
     root = paths.personal_root()
     if (root / ".git").exists():
-        status = runner.run(["git", "-C", str(root), "status", "--porcelain"])
+        status = runner.run(["git", "-C", str(root), "status", "--porcelain", "-uall"])  # -uall: files inside new dirs
         changed = [line[3:].strip().strip('"') for line in status.stdout.splitlines() if line.strip()]
         env_files = [p for p in changed if p.rsplit("/", 1)[-1].endswith(".env")]
         if env_files:

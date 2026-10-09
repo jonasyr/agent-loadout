@@ -98,10 +98,6 @@ def _repos() -> list[CheckResult]:
     return out
 
 
-def _by_name(results: list[CheckResult]) -> dict[str, CheckResult]:
-    return {r.name: r for r in results}
-
-
 def run_checks() -> list[CheckResult]:
     return [*_links(), *_settings(), *_plugins(), *_binaries(), *_gh(), *_secrets(), *_repos()]
 

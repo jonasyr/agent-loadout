@@ -67,9 +67,9 @@ def session_start(now: float) -> str | None:
 
 
 def pull_if_clean(root: Path) -> bool:
+    """True only when a pull brought new commits (so settings/MCP need re-applying)."""
     if not (root / ".git").exists() and not root.is_dir():
         return False
-    """True only when a pull brought new commits (so settings/MCP need re-applying)."""
     status = runner.run(["git", "-C", str(root), "status", "--porcelain"], timeout=30)
     if not status.ok or status.stdout.strip():
         return False
@@ -136,17 +136,28 @@ STALE_LOCK = 3600.0
 
 
 def _acquire_lock() -> bool:
-    """One maintenance run at a time; a lock older than an hour is from a crashed run."""
+    """One maintenance/update run at a time; a lock older than an hour is from a crashed run."""
     lock = _stamp(LOCK)
     lock.parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(2):
+    for _ in range(3):
         try:
             fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError:
             try:
                 if time.time() - lock.stat().st_mtime < STALE_LOCK:
                     return False
-                lock.unlink()
+                # rename first: only one taker gets the file; re-check it is really the stale one
+                aside = lock.with_name(f"{LOCK}.stale-{os.getpid()}-{time.time_ns()}")
+                os.rename(lock, aside)
+                fresh = time.time() - aside.stat().st_mtime < STALE_LOCK
+                if fresh:  # another run took over in between: give its lock back
+                    try:
+                        os.link(aside, lock)
+                    except OSError:
+                        pass
+                aside.unlink()
+                if fresh:
+                    return False
             except OSError:
                 return False
             continue
@@ -156,16 +167,20 @@ def _acquire_lock() -> bool:
     return False
 
 
+def _release_lock() -> None:
+    try:
+        _stamp(LOCK).unlink()
+    except OSError:
+        pass
+
+
 def maintain(now: float) -> None:
     if not _acquire_lock():
         return
     try:
         _maintain(now)
     finally:
-        try:
-            _stamp(LOCK).unlink()
-        except OSError:
-            pass
+        _release_lock()
 
 
 def _maintain(now: float) -> None:
@@ -252,6 +267,16 @@ def undo_reregistered(bk: Backup) -> tuple[list[str], list[str]]:
 
 
 def update(yes: bool, ask: Callable[[str], str]) -> int:
+    if not _acquire_lock():
+        print("loadout maintenance is running in the background; try `loadout update` again in a minute")
+        return 1
+    try:
+        return _update(yes, ask)
+    finally:
+        _release_lock()
+
+
+def _update(yes: bool, ask: Callable[[str], str]) -> int:
     runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
     settings_path = paths.claude_home() / "settings.json"
     before = load_json(settings_path)

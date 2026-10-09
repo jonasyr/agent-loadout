@@ -77,7 +77,10 @@ def _symlinks_work() -> bool:
         os.symlink(probe_dir, probe, target_is_directory=True)
     except OSError:
         return False
-    probe.unlink()
+    try:
+        probe.unlink()
+    except OSError:
+        pass
     return True
 
 
