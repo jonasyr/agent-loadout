@@ -29,10 +29,10 @@ def test_backup_save_copy_restores_original_content(fake_home):
 
 def test_restore_runs_undo_commands_in_reverse(fake_home, fake_runner):
     bk = backup.Backup()
-    bk.record_command("one", ["echo", "1"])
-    bk.record_command("two", ["echo", "2"])
+    bk.record_command("one", ["claude", "1"])
+    bk.record_command("two", ["claude", "2"])
     backup.restore(bk.root)
-    assert fake_runner.calls == [["echo", "2"], ["echo", "1"]]
+    assert fake_runner.calls == [["claude", "2"], ["claude", "1"]]
 
 
 def _personal(fake_home):
@@ -190,3 +190,118 @@ def test_git_bash_shim_has_lf_only_and_uses_current_python(fake_home):
     assert b"\r" not in raw
     assert Path(sys.executable).as_posix().encode() in raw
     assert sys.executable.encode() in (fake_home / ".local/bin/loadout.cmd").read_bytes()
+
+
+# --- restore safety (R-C) ---
+
+def _rules_with_user_file(fake_home):
+    _personal(fake_home)
+    mine = fake_home / ".claude/rules/loadout/mine.md"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("USER DATA")
+    return mine
+
+
+def test_restore_twice_refuses_and_never_loses_data(fake_home):
+    mine = _rules_with_user_file(fake_home)
+    bk = backup.Backup()
+    link.link_all(bk)
+    lines, ok, _ = backup.restore(bk.root)
+    assert ok and mine.read_text() == "USER DATA"
+    lines, ok, _ = backup.restore(bk.root)
+    assert not ok and "already restored" in " ".join(lines)
+    assert mine.read_text() == "USER DATA"
+    lines, ok, _ = backup.restore(bk.root, force=True)
+    assert mine.read_text() == "USER DATA"
+    assert any("already restored" in line for line in lines)
+
+
+def test_restore_moves_current_state_into_pre_restore_backup(fake_home):
+    f = fake_home / ".config/loadout/secrets.env"
+    f.parent.mkdir(parents=True)
+    f.write_text("OLD=1\n")
+    bk = backup.Backup()
+    bk.save_copy(f, "secrets.env before additions")
+    f.write_text("REAL_TOKEN=filled-in-later\n")
+    lines, ok, pre = backup.restore(bk.root)
+    assert ok and f.read_text() == "OLD=1\n"
+    assert pre is not None and pre != bk.root
+    assert "REAL_TOKEN=filled-in-later" in "".join(p.read_text() for p in (pre / "files").iterdir())
+    backup.restore(pre)  # restore is itself undoable
+    assert f.read_text() == "REAL_TOKEN=filled-in-later\n"
+
+
+def test_restore_replace_moves_edited_kit_copy_aside(fake_home):
+    _personal(fake_home)
+    marker = paths.state_dir() / "copy-mode"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("copy\n")
+    user = fake_home / ".claude/rules/personal"
+    user.mkdir(parents=True)
+    (user / "user.md").write_text("mine")
+    bk = backup.Backup()
+    link.link_all(bk)
+    (user / "edited.md").write_text("edited inside the kit copy")
+    _, ok, pre = backup.restore(bk.root)
+    assert ok and (user / "user.md").read_text() == "mine"
+    assert list(pre.rglob("edited.md"))
+
+
+def test_created_step_moves_new_file_into_pre_restore(fake_home):
+    me = fake_home / "me.md"
+    me.write_text("new")
+    bk = backup.Backup()
+    bk.record_created(me, "created me.md")
+    _, ok, pre = backup.restore(bk.root)
+    assert ok and not me.exists()
+    assert [p.read_text() for p in pre.rglob("*-me.md")] == ["new"]
+
+
+def test_backup_is_private(fake_home):
+    if os.name == "nt":
+        pytest.skip("posix modes")
+    f = fake_home / "settings.json"
+    f.write_text("{}")
+    f.chmod(0o644)
+    bk = backup.Backup()
+    copy = bk.save_copy(f, "s")
+    assert bk.root.stat().st_mode & 0o777 == 0o700
+    assert (bk.root / "manifest.json").stat().st_mode & 0o777 == 0o600
+    assert copy.stat().st_mode & 0o777 == 0o600
+    f.write_text('{"x": 1}')
+    backup.restore(bk.root)
+    assert f.stat().st_mode & 0o777 == 0o644
+
+
+def test_restore_refuses_non_claude_commands_and_redacts(fake_home, fake_runner):
+    from loadout import runner
+    secret = "ghp_" + "Z" * 30
+    fake_runner.responses[("claude",)] = runner.Result(1, "", f"boom {secret}")
+    bk = backup.Backup()
+    bk.record_command("evil", ["sh", "-c", "touch x"])
+    bk.record_command("mcp", ["claude", "mcp", "add-json", "-s", "user", "g", '{"env": {"GITHUB_TOKEN": "%s"}}' % secret])
+    lines, ok, _ = backup.restore(bk.root)
+    assert not ok
+    assert ["sh", "-c", "touch x"] not in fake_runner.calls
+    assert secret not in "\n".join(lines)
+
+
+def test_cli_restore_exit_codes_and_list(fake_home, fake_runner, capsys):
+    from loadout import runner
+    from loadout.__main__ import main
+    assert main(["restore", str(fake_home / "nope")]) == 1
+    f = fake_home / "a.txt"
+    f.write_text("a")
+    bk = backup.Backup(description="test run")
+    bk.move(f, "move a")
+    bk2 = backup.Backup()
+    bk2.record_command("x", ["claude", "plugin", "install", "p"])
+    fake_runner.responses[("claude",)] = runner.Result(1, "", "nope")
+    assert main(["restore", str(bk2.root)]) == 1
+    assert main(["restore", str(bk.root)]) == 0
+    capsys.readouterr()
+    assert main(["restore", "--list"]) == 0
+    out = capsys.readouterr().out
+    rows = [line.split()[0] for line in out.splitlines() if line.startswith(str(paths.backups_root()))]
+    assert rows.index(str(bk2.root)) < rows.index(str(bk.root))
+    assert "1 step" in out and "restored" in out and "test run" in out
