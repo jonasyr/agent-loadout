@@ -84,7 +84,7 @@ Run `loadout <command> --help` for details.
 | `loadout profile NAME` | Add one profile to the current project | `--no-install` |
 | `loadout check` | Verify this machine | none |
 | `loadout apply-settings` | Merge kit and personal settings into `~/.claude/settings.json` | none |
-| `loadout update` | Update outdated tool binaries | `--yes` |
+| `loadout update` | Update outdated tool binaries (through mise/Homebrew when they manage the tool), then undo duplicates an installer re-registered | `--yes` |
 
 ## What you get
 
@@ -137,7 +137,7 @@ You rarely edit these by hand: `loadout configure` does it for you. **To sync th
 | This kit and your personal layer | Pulled at most once a day in the background, only when you have no local changes |
 | Tool binaries | Checked weekly; Claude Code then shows "updates available, run `loadout update`" |
 
-`loadout update` updates a tool through the package manager that installed it: `mise upgrade <tool>` when the binary lives under mise's `installs` directory (also behind a mise shim), `brew upgrade <formula>` when it lives under the Homebrew prefix, otherwise the tool's own updater (`claude update`, `uv self update`, ...). The mise tool name is the catalog id, or `npm:<package>` for mise's npm backend; a catalog entry can override it with `"mise": "<name>"` (and `"brew": "<formula>"`). If the package manager holds an update back (for example mise's `minimum_release_age`), loadout remembers that version and does not notify you again until a newer one appears.
+`loadout update` updates a tool through the package manager that installed it: `mise upgrade <tool>` when the binary lives under mise's `installs` directory (also behind a mise shim), `brew upgrade <formula>` when it lives under the Homebrew prefix, otherwise the tool's own updater (`claude update`, `uv self update`, ...). The mise tool name is the catalog id, or `npm:<package>` for mise's npm backend; a catalog entry can override it with `"mise": "<name>"` (and `"brew": "<formula>"`). Some installers re-register what the loadout plugin already provides (for example `codebase-memory-mcp update` re-adds its user-scope MCP server, `~/.claude/.mcp.json` and `~/.claude/hooks/cbm-*`). After running updates, `loadout update` removes exactly those duplicates (adopt's `migrate` items, plus `cbm-*` hook scripts no settings hook references), moves them into a backup, prints what it undid and how to restore it. Nothing else is touched. If the package manager holds an update back (for example mise's `minimum_release_age`), loadout remembers that version and does not notify you again until a newer one appears.
 
 ## Security & trust
 

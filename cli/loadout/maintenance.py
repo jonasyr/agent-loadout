@@ -11,6 +11,7 @@ from typing import Callable
 from . import catalog, link, paths, pkgmgr, runner, versions
 from .backup import Backup
 from .jsonio import load_json, save_json
+from .secrets import redact
 
 DAY = 86400.0
 WEEK = 7 * DAY
@@ -137,11 +138,50 @@ def maintain(now: float) -> None:
             notify(f"loadout: updates available for {items} → run `loadout update`")
 
 
+def _hook_references() -> str:
+    """Every hook command in the user's settings files, as one searchable text."""
+    texts = []
+    for name in ("settings.json", "settings.local.json"):
+        try:
+            texts.append(json.dumps(load_json(paths.claude_home() / name).get("hooks", {})))
+        except Exception:
+            texts.append("")
+    return "\n".join(texts)
+
+
+def _stray_hook_scripts(bk: Backup) -> list[str]:
+    """Hook script files duplicating kit hooks (cbm-*) that no settings hook references any more."""
+    hooks_dir = paths.claude_home() / "hooks"
+    if not hooks_dir.is_dir():
+        return []
+    refs, out = _hook_references(), []
+    for path in sorted(hooks_dir.iterdir()):
+        entry = catalog.match("hook", path.name, path.name)
+        if entry is None or entry["status"] != "core" or path.name in refs:
+            continue
+        bk.move(path, f"hook script {path}")
+        out.append(f"moved unreferenced hook script {path} to the backup")
+    return out
+
+
+def undo_reregistered(bk: Backup) -> list[str]:
+    """Apply only adopt's `migrate` verdicts: exact duplicates of what the loadout plugin provides."""
+    from . import adopt, inventory
+    try:
+        verdicts = inventory.classify(inventory.collect(with_versions=False))
+    except Exception as exc:  # e.g. invalid JSON: report, never guess
+        return [f"could not check for re-registered duplicates: {exc}"]
+    dupes = [v for v in verdicts if v.action == "migrate" and v.item.kind in ("mcp", "hook", "skill")]
+    out = adopt.apply(dupes, bk) if dupes else []
+    return out + _stray_hook_scripts(bk)
+
+
 def update(yes: bool, ask: Callable[[str], str]) -> int:
     runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
     settings_path = paths.claude_home() / "settings.json"
     before = load_json(settings_path)
     outdated = find_outdated()
+    ran = False
     if not outdated:
         print("all tools up to date")
     for entry, local, latest in outdated:
@@ -154,6 +194,7 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
             print("  command: " + " ".join(cmd))
         if not yes and ask("  run it? [y/N] ").strip().lower() != "y":
             continue
+        ran = True
         for cmd in cmds:
             res = runner.run(cmd, timeout=900)
             print("  ok" if res.ok else f"  failed: {res.stderr.strip()[:300]}")
@@ -172,4 +213,13 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
         print(f"an installer modified ~/.claude/settings.json (keys: {', '.join(changed)}); reverting to the "
               f"kit-merged version. The installer's version is in {bk.root}")
         save_json(settings_path, before)
+    if ran:  # installers re-register what the loadout plugin already provides
+        bk = Backup(description="update: duplicates re-registered by installers")
+        lines = undo_reregistered(bk)
+        if lines:
+            print("\nundid duplicates that an installer re-registered (the loadout plugin provides them):")
+            for line in lines:
+                print(f"  {redact(line)}")
+        if not bk.empty:
+            print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     return 0
