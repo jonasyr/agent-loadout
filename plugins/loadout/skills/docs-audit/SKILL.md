@@ -1,6 +1,7 @@
 ---
 name: docs-audit
 description: Full, expensive audit of all docs and memories in a repo — verifies every claim against the current code, asks about anything unclear, and rewrites everything into the loadout docs structure (docs/ as single source of truth). Resumable. Use when docs or memories may be stale, wrong or duplicated.
+disable-model-invocation: true
 ---
 
 # Docs audit

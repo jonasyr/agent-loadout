@@ -1,6 +1,7 @@
 ---
 name: onboard
 description: Set up a repository for agent work — new/empty repos get a guided project definition (purpose, stack, structure, first ADR); existing repos get an accurate AGENTS.md, Serena memories and a codebase-memory index. Use after `loadout init`, or when a repo has no AGENTS.md.
+disable-model-invocation: true
 ---
 
 # Onboard a repository
@@ -17,13 +18,23 @@ Say which mode you detected and why, and let the user correct you.
 
 ## 2a. New project
 
-1. Invoke `superpowers:brainstorming` to settle what the project should become: purpose, users, success criteria, constraints, stack. Ask one question at a time.
-2. When the design is agreed:
-   - write `docs/README.md` (index) and `docs/adr/0001-<stack-decision>.md` (Context, Decision, Consequences, Status: accepted);
-   - write `AGENTS.md`: purpose (one paragraph), commands (install/test/run for the chosen stack), hard conventions, map.
-3. Suggest profiles for the stack (`loadout profile <name>`: web, db, android, thesis, sonar) and run the ones the user accepts. For a web stack, suggest `@playwright/test` for E2E tests.
-4. Create the minimal directory skeleton the stack's conventions call for, such as package manifest, `src/`, `tests/` and a first passing test. Stop there; feature work goes through the normal superpowers flow.
-5. Show the diff and commit after approval.
+Define the project yourself; do not hand off to another workflow skill here.
+
+1. Ask these questions one at a time, waiting for each answer (offer choices where you can):
+   - **Purpose:** what should the project do, and what does success look like?
+   - **Users:** who uses it, and how (CLI, web app, library, service)?
+   - **Stack:** language, framework, package manager, test runner (suggest a default that fits the answers so far).
+   - **Constraints:** deadlines, hosting, licences, performance, things to avoid.
+2. Summarise the answers in a few lines and get a yes.
+3. Write the project definition (`loadout init` already created skeletons; fill them in, do not create second copies):
+   - `docs/adr/0001-<stack-decision>.md` (Context, Decision, Consequences, Status: accepted);
+   - `AGENTS.md`: purpose (one paragraph), commands (install/test/run for the chosen stack), hard conventions, map;
+   - `docs/README.md`: the index, linking the ADR.
+4. Suggest profiles for the stack (`loadout profile <name>`: web, db, android, thesis, sonar) and run the ones the user accepts. For a web stack, suggest `@playwright/test` for E2E tests.
+5. Create the minimal skeleton the stack's conventions call for, such as package manifest, `src/`, `tests/` and a first passing test.
+6. Show the diff and commit after approval.
+
+Stop there. For the first feature, suggest `superpowers:brainstorming`.
 
 ## 2b. Existing project
 
