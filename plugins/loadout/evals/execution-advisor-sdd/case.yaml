@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: execution-advisor-sdd
+description: >-
+  Delegation should clearly win: eight fully independent exporter tasks (one new module and
+  test file each, no shared code, read-only on user data) that need judgment rather than
+  transcription, in a session whose context is already about 80% full. The advisor must
+  delegate every task (SDD, or a Hybrid in which no task stays inline) and say why.
+tags: [execution-advisor]
+context:
+  scaffold_script: scaffold.sh

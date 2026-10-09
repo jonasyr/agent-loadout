@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: execution-advisor-hook
+description: >-
+  The hook-triggered path: the planner already ended its turn recommending Subagent-Driven
+  for the two-task plan, then the Stop hook's instruction arrives (the prompt replays both;
+  its text must equal hooks/advisor.py INSTRUCTION). The advisor must recommend Inline and
+  say explicitly that its recommendation supersedes the planner's suggestion and question.
+tags: [execution-advisor]
+context:
+  scaffold_script: scaffold.sh

@@ -204,3 +204,13 @@ def test_stub_advisor_mark_logs_and_checks_the_plan(tmp_path):
                              capture_output=True, text=True)
     assert missing.returncode == 1 and "no such plan" in missing.stderr
     assert (tmp_path / ".loadout-calls.log").read_text() == f"advisor-mark {plan}\nadvisor-mark nope.md\n"
+
+
+def test_hook_path_case_replays_the_current_hook_instruction():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("advisor_hook", paths.kit_root() / "plugins/loadout/hooks/advisor.py")
+    hook = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hook)
+    prompt = (EVALS / "execution-advisor-hook/prompt.md").read_text(encoding="utf-8")
+    expected = hook.INSTRUCTION.format(path="docs/superpowers/plans/2026-10-09-title-cleanup.md")
+    assert expected in prompt, "regenerate the case's hook text from hooks/advisor.py INSTRUCTION"
