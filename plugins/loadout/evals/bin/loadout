@@ -71,6 +71,8 @@ case "${1:-} ${2:-}" in
       *) echo "usage: loadout configure set <plugin|mcp|pref-choice|pref> <name> <value>" >&2; exit 2 ;;
     esac ;;
   "configure "*) echo "the interactive wizard needs a terminal; use: loadout configure show | set ..." >&2; exit 2 ;;
+  "advisor-mark "*) [ -f "${2:-}" ] || { echo "loadout: no such plan: ${2:-}" >&2; exit 1; }
+    echo "marked ${2} as evaluated (0123456789ab)" ;;
   "profile "*) echo "added profile ${2:-}: plugins installed with --scope project" ;;
   "init "*) echo "scaffolded AGENTS.md, CLAUDE.md, docs/README.md, docs/adr/README.md" ;;
   *) echo "usage: loadout {init,profile,configure,check,...}" ;;

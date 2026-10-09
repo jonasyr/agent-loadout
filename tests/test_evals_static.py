@@ -13,7 +13,7 @@ from loadout import configure, paths
 
 EVALS = paths.kit_root() / "plugins/loadout/evals"
 BROWSER_EVALS = paths.kit_root() / "plugins/loadout/evals-browser"  # opt-in suite
-SKILLS = ("onboard", "docs-sync", "docs-audit", "configure")
+SKILLS = ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor")
 GRADER_TYPES = {"regex", "tool_used", "tool_order", "file_exists", "llm", "baseline"}
 # The stubs and scaffolds are bash scripts; Windows can't run them (same as tests/test_hooks.py).
 posix_only = pytest.mark.skipif(os.name == "nt", reason="bash scripts; not run on Windows")
@@ -191,3 +191,16 @@ def test_stub_ids_match_the_real_configure_show(fake_home, tmp_path):
 def test_stub_ignores_hooks(tmp_path):
     subprocess.run([str(EVALS / "bin/loadout"), "hook-session-start"], cwd=tmp_path, check=True)
     assert not (tmp_path / ".loadout-calls.log").exists()
+
+
+@posix_only
+def test_stub_advisor_mark_logs_and_checks_the_plan(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text("# X Implementation Plan\n- [ ] a\n")
+    out = subprocess.run([str(EVALS / "bin/loadout"), "advisor-mark", str(plan)], cwd=tmp_path,
+                         capture_output=True, text=True)
+    assert out.returncode == 0 and out.stdout.startswith(f"marked {plan} as evaluated")
+    missing = subprocess.run([str(EVALS / "bin/loadout"), "advisor-mark", "nope.md"], cwd=tmp_path,
+                             capture_output=True, text=True)
+    assert missing.returncode == 1 and "no such plan" in missing.stderr
+    assert (tmp_path / ".loadout-calls.log").read_text() == f"advisor-mark {plan}\nadvisor-mark nope.md\n"
