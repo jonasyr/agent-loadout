@@ -86,6 +86,11 @@ def _claude(args: list[str]) -> str:
     return "ok" if res.ok else f"failed: {res.stderr.strip()}"
 
 
+def _manual(bk: Backup, title: str, cmds: list[list[str]]) -> str:
+    bk._ensure_root()
+    return runner.write_manual_commands(bk.root, title + " (full commands, contains secrets)", cmds)
+
+
 def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> str:
     if v.item.location == "~/.claude/.mcp.json":
         path = paths.claude_home() / ".mcp.json"
@@ -103,7 +108,12 @@ def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> s
         save_json(path, data)
         return f"removed {sorted(chosen & set(servers))} from {path}"
     cfg = json.dumps(v.item.extra.get("config", {}))
-    bk.record_command(f"mcp {v.item.name}", ["claude", "mcp", "add-json", "-s", "user", v.item.name, cfg])
+    undo = ["claude", "mcp", "add-json", "-s", "user", v.item.name, cfg]
+    remove = ["claude", "mcp", "remove", "-s", "user", v.item.name]
+    if runner.would_refuse(undo):  # the undo could not be replayed: do not remove
+        where = _manual(bk, f"mcp {v.item.name}: remove (undo: add-json below)", [remove, undo])
+        return f"mcp {v.item.name}: not removed, its undo cannot run through this claude (Windows .cmd shim); commands are in {where}"
+    bk.record_command(f"mcp {v.item.name}", undo)
     return f"mcp {v.item.name}: " + _claude(["mcp", "remove", "-s", "user", v.item.name])
 
 
@@ -279,6 +289,12 @@ def fix_secrets(findings: list, bk: Backup) -> list[str]:
                 if existing and not existing.endswith(b"\n"):
                     fh.write("\n")
                 fh.writelines(new_lines)
+        add_cfg = ["claude", "mcp", "add-json", "-s", "user", server, json.dumps(cfg)]
+        if runner.would_refuse(add_cfg):  # nothing is removed: a refused add would lose the user's server
+            where = _manual(bk, f"secrets {server}", [["claude", "mcp", "remove", "-s", "user", server], add_cfg])
+            out.append(f"{server} -> " + ", ".join("${" + n + "}" for n in names)
+                       + f": not changed in claude (Windows .cmd shim cannot take JSON); secrets.env is updated, run the commands in {where}")
+            continue
         # reverse replay: remove the ${VAR} server first, then re-add the original
         bk.record_command(f"secrets {server} (original)", ["claude", "mcp", "add-json", "-s", "user", server, json.dumps(original)])
         bk.record_command(f"secrets {server} (remove rewritten)", ["claude", "mcp", "remove", "-s", "user", server])
@@ -337,7 +353,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         print("nothing selected")
         return 0
     bk = Backup(description="adopt")
-    for line in apply(chosen, bk, ask, confirm_cmds=not (yes and explicit)):
+    for line in apply(chosen, bk, ask if interactive else (lambda q: ""), confirm_cmds=not (yes and explicit)):
         print(redact(line))
     remaining = [f for f in findings if f.fixable
                  and f.server not in {v.item.name for v in chosen if v.item.kind == "mcp"}]

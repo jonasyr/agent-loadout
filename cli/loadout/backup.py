@@ -104,7 +104,7 @@ def _exists(path: Path) -> bool:
     return path.exists() or path.is_symlink()
 
 
-def _undo(step: dict, pre: Backup) -> str:
+def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
     undo, label = step["undo"], step["label"]
     if "move" in undo:
         src, dst = map(Path, undo["move"])
@@ -138,6 +138,9 @@ def _undo(step: dict, pre: Backup) -> str:
         cmd = undo["run"]
         if not cmd or cmd[0] != "claude":
             return f"failed: refusing to run a non-claude command from a manifest: {' '.join(cmd)}"
+        if runner.would_refuse(cmd):
+            where = runner.write_manual_commands(root or pre.root, f"restore: {label} (full command, contains secrets)", [cmd])
+            return f"failed: {label}: cannot run through this claude (Windows .cmd shim); run the command in {where} by hand"
         res = runner.run(cmd)
         if not res.ok:
             return f"failed: {' '.join(cmd)}: {res.stderr.strip()}"
@@ -155,16 +158,29 @@ def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | No
         return [f"{root} was already restored at {when}; re-run with --force to replay it again"], False, None
     pre = Backup(description=f"pre-restore of {root}")
     lines, ok = [], True
+    failed = []
     for step in reversed(manifest.get("steps", [])):
+        if step.get("restored") and not force:
+            lines.append(f"already restored: {step.get('label', '?')}")
+            continue
         try:
-            msg = _undo(step, pre)
+            msg = _undo(step, pre, root)
         except Exception as exc:  # one broken step must not abort the rest
             msg = f"failed: {step.get('label', '?')}: {exc}"
-        ok = ok and not msg.startswith("failed")
+        if msg.startswith(("failed", "skipped (exists)")):
+            failed.append(step.get("label", "?"))
+            step.pop("restored", None)
+        else:
+            step["restored"] = True
         lines.append(redact(msg))
+    ok = not failed
     if ok:
         manifest["restored_at"] = time.time()
-        save_json(manifest_path, manifest)
+    if manifest.get("steps"):
+        save_json(manifest_path, manifest, mode=PRIVATE_FILE)
+    if failed:
+        lines.append(f"{len(failed)} step(s) NOT restored: {'; '.join(redact(x) for x in failed)}; "
+                     "fix the cause and re-run the same restore to complete them")
     return lines, ok, (None if pre.empty else pre.root)
 
 

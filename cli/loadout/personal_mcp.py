@@ -30,6 +30,13 @@ def apply_mcp() -> list[str]:
             out.append(f"mcp {name}: skipped, a server with this name exists and is not managed by loadout "
                        f"(remove it with `claude mcp remove -s user {name}` to let loadout manage it)")
             continue
+        add_cmd = ["claude", "mcp", "add-json", "-s", "user", name, json.dumps(cfg)]
+        if runner.would_refuse(add_cmd):  # decide before removing anything: a refused add would lose the server
+            cmds = ([["claude", "mcp", "remove", "-s", "user", name]] if name in current else []) + [add_cmd]
+            where = runner.write_manual_commands(paths.state_dir(), f"mcp {name} (full commands, contains secrets)", cmds)
+            out.append(f"mcp {name}: not changed, this claude (a Windows .cmd shim) cannot take JSON arguments; "
+                       f"run the commands in {where} by hand, or install the native claude.exe")
+            continue
         if name in current:
             runner.run(["claude", "mcp", "remove", "-s", "user", name])
         res = _add(name, cfg)
