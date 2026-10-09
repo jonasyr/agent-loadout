@@ -80,7 +80,7 @@ def test_fix_secrets_moves_env_value_to_secrets_file(machine, fake_runner):
     found = secrets.scan(json.loads((machine / ".claude.json").read_text()))
     adopt.fix_secrets(found, backup.Backup())
     text = paths.secrets_file().read_text()
-    assert f"MCP_DOCKER_DEVIN_API_KEY={FAKE_DEVIN}" in text
+    assert f"MCP_DOCKER_DEVIN_API_KEY='{FAKE_DEVIN}'" in text
     add = [c for c in fake_runner.calls if c[:3] == ["claude", "mcp", "add-json"]][0]
     assert "${MCP_DOCKER_DEVIN_API_KEY}" in add[-1]
 

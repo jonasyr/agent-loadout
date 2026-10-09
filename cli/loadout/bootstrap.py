@@ -1,21 +1,39 @@
 """`loadout bootstrap` (spec §6.1). Safe to re-run."""
 from __future__ import annotations
 
+import codecs
+import locale
 import os
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, catalog, check, link, paths, runner, settings_merge, ui
+from . import adopt, catalog, check, link, paths, runner, secrets, settings_merge, ui
 from .backup import Backup
 from .jsonio import load_json
 
 Ask = Callable[[str], str]
 RC_MARKER = "# loadout secrets"
 RC_LINE = (f'{RC_MARKER}\n[ -f "$HOME/.config/loadout/secrets.env" ] && '
-           'set -a && . "$HOME/.config/loadout/secrets.env" && set +a\n')
-PS_BLOCK = (f"{RC_MARKER}\n$f = Join-Path $HOME '.config/loadout/secrets.env'\n"
-            "if (Test-Path $f) { Get-Content $f | ForEach-Object { if ($_ -match '^\\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') "
-            "{ [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2].Trim('\"'), 'Process') } } }\n")
+           '{ set -a; . "$HOME/.config/loadout/secrets.env"; set +a; }\n')
+# Parses secrets.env's NAME='value' format (POSIX quoting: '\'' is a literal quote).
+# `& { }` runs in a child scope, so no variables leak into the session.
+PS_BLOCK = f"""{RC_MARKER}
+& {{
+  $f = Join-Path $HOME '.config/loadout/secrets.env'
+  if (Test-Path $f) {{
+    Get-Content -Encoding UTF8 $f | ForEach-Object {{
+      if ($_ -match '^\\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {{
+        $v = $Matches[2].Trim()
+        if ($v.Length -ge 2 -and $v.StartsWith("'") -and $v.EndsWith("'")) {{ $v = $v.Substring(1, $v.Length - 2).Replace("'\\''", "'") }}
+        elseif ($v.Length -ge 2 -and $v.StartsWith('"') -and $v.EndsWith('"')) {{ $v = $v.Substring(1, $v.Length - 2) }}
+        [Environment]::SetEnvironmentVariable($Matches[1], $v, 'Process')
+      }}
+    }}
+  }}
+}}
+"""
+POLICY_NOTE = ("PowerShell's execution policy is Restricted, so profiles (and the secrets loader) do not run. "
+               "To allow them: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned")
 
 
 def _step(title: str) -> None:
@@ -81,33 +99,94 @@ def setup_plugins() -> list[str]:
     return out
 
 
-def setup_secrets() -> list[str]:
+def _decode_profile(raw: bytes) -> tuple[str, str]:
+    """PowerShell 5.1 writes UTF-16 (Out-File, >) or ANSI; keep whatever the file uses."""
+    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return raw.decode("utf-16"), "utf-16"
+    if raw.startswith(codecs.BOM_UTF8):
+        return raw.decode("utf-8-sig"), "utf-8-sig"
+    try:
+        return raw.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        enc = locale.getpreferredencoding(False)
+        return raw.decode(enc, errors="replace"), enc
+
+
+def _powershell_profiles() -> tuple[list[Path], list[str]]:
+    targets, notes = [], []
+    for exe in ("powershell", "pwsh"):  # Windows PowerShell 5.1 and PowerShell 7 use different profiles
+        if not runner.have(exe):
+            continue
+        res = runner.run([exe, "-NoProfile", "-Command", "$PROFILE"], timeout=30)
+        if res.ok and res.stdout.strip():
+            targets.append(Path(res.stdout.strip()))
+    for exe in ("powershell", "pwsh"):
+        if runner.have(exe):
+            policy = runner.run([exe, "-NoProfile", "-Command", "Get-ExecutionPolicy"], timeout=30)
+            if policy.ok and policy.stdout.strip() == "Restricted":
+                notes.append(POLICY_NOTE)
+            break
+    return list(dict.fromkeys(targets)), notes
+
+
+def _add_block(rc: Path, block: str, bk: Backup | None, windows: bool) -> str | None:
+    if rc.exists():
+        raw = rc.read_bytes()
+        if windows:
+            text, enc = _decode_profile(raw)
+            if RC_MARKER in text:
+                return None
+            if "\r\n" in text:
+                block = block.replace("\n", "\r\n")
+            sep = "" if not text or text.endswith("\n") else ("\r\n" if "\r\n" in text else "\n")
+            # encode the whole text again so a UTF-16 profile stays UTF-16 (one BOM, at the start)
+            rc.write_bytes((text + sep + block).encode(enc))
+        else:
+            if RC_MARKER.encode() in raw:
+                return None
+            with rc.open("ab") as fh:  # append: never re-encode the user's rc file
+                fh.write((b"" if not raw or raw.endswith(b"\n") else b"\n") + block.encode("utf-8"))
+        return f"added secrets loading to {rc}"
+    rc.parent.mkdir(parents=True, exist_ok=True)
+    rc.write_bytes(block.encode("utf-8"))
+    if bk is not None:
+        bk.record_created(rc, f"created {rc}")
+    return f"created {rc} with secrets loading"
+
+
+def setup_secrets(bk: Backup | None = None) -> list[str]:
     out = []
     path = paths.secrets_file()
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text((paths.kit_root() / "secrets.env.example").read_text(encoding="utf-8"), encoding="utf-8")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write((paths.kit_root() / "secrets.env.example").read_text(encoding="utf-8"))
+        if bk is not None:
+            bk.record_created(path, "created secrets.env")
         out.append(f"created {path}")
     if os.name != "nt":
         os.chmod(path, 0o600)
-        targets = [r for r in (paths.home() / ".bashrc", paths.home() / ".zshrc") if r.exists()]
-        if not targets:
-            zsh = os.path.basename(os.environ.get("SHELL", "")) == "zsh"
-            targets = [paths.home() / (".zshrc" if zsh else ".bashrc")]
-        block = RC_LINE
-    else:
-        res = runner.run(["powershell", "-NoProfile", "-Command", "$PROFILE"], timeout=30)
-        targets = [Path(res.stdout.strip())] if res.ok and res.stdout.strip() else []
+    windows = paths.platform_key() == "windows"
+    if windows:
+        targets, notes = _powershell_profiles()
         block = PS_BLOCK
+        out += notes
+    else:
+        home = paths.home()
+        targets = [r for r in (home / ".bashrc", home / ".zshrc") if r.exists()]
+        shell = os.path.basename(os.environ.get("SHELL", ""))
+        own = {"zsh": home / ".zshrc", "bash": home / ".bashrc"}.get(shell)
+        if own is not None and own not in targets:
+            targets.append(own)  # always the rc of the user's shell (macOS: zsh, often with an old .bashrc)
+        if not targets:
+            targets = [home / ".bashrc"]
+        block = RC_LINE
     for rc in targets:
-        text = rc.read_text(encoding="utf-8") if rc.exists() else ""
-        if RC_MARKER in text:
-            continue
-        rc.parent.mkdir(parents=True, exist_ok=True)
-        rc.write_text(text + ("" if text.endswith("\n") or not text else "\n") + block, encoding="utf-8")
-        out.append(f"added secrets loading to {rc}")
-    empty = [line.split("=", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()
-             if line and not line.startswith("#") and line.endswith("=")]
+        line = _add_block(rc, block, bk, windows)
+        if line:
+            out.append(line)
+    empty = [name for name, value in secrets.load_env(path).items() if value == ""]
     if empty:
         out.append(f"empty secrets: {', '.join(empty)}")
     return out
@@ -155,7 +234,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         else:
             adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive)
     _step("Secrets")
-    for line in setup_secrets():
+    for line in setup_secrets(bk):
         print(line)
     if not bk.empty:
         print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root})")

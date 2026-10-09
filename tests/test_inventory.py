@@ -97,3 +97,14 @@ def test_malformed_mcp_config_does_not_crash(fake_home, fake_runner):
     names = {i.name for i in inventory.collect(with_versions=False) if i.kind == "mcp"}
     assert names == {"weird-args", "mixed-args", "weird-env"}
     assert secrets.scan(bad) == []
+
+
+def test_collect_survives_non_dict_entries(fake_home, fake_runner):
+    import json as _json
+    from loadout import inventory as inv
+    (fake_home / ".claude").mkdir(exist_ok=True)
+    (fake_home / ".claude.json").write_text(_json.dumps({"mcpServers": {"odd": "x", "ok": {"command": "y"}}}))
+    (fake_home / ".claude/settings.json").write_text(_json.dumps({"hooks": {"Stop": ["bad", {"hooks": ["bad", {"command": "c"}]}], "X": "bad"}}))
+    items = inv.collect(with_versions=False)
+    assert [i.name for i in items if i.kind == "mcp"] == ["ok"]
+    assert [i.detail for i in items if i.kind == "hook"] == ["c"]

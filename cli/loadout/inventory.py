@@ -30,7 +30,10 @@ def _mcp_items() -> list[Item]:
     items = []
     sources = [(paths.claude_json(), "~/.claude.json"), (paths.claude_home() / ".mcp.json", "~/.claude/.mcp.json")]
     for path, label in sources:
-        for name, cfg in load_json(path).get("mcpServers", {}).items():
+        servers = load_json(path).get("mcpServers")
+        for name, cfg in (servers if isinstance(servers, dict) else {}).items():
+            if not isinstance(cfg, dict):
+                continue
             args = cfg.get("args")
             args = [str(a) for a in args if isinstance(a, str)] if isinstance(args, list) else []
             detail = " ".join([str(cfg.get("command") or ""), *args, str(cfg.get("url") or "")]).strip()
@@ -67,11 +70,15 @@ def _skill_items() -> list[Item]:
 
 
 def _hook_items() -> list[Item]:
-    hooks = load_json(paths.claude_home() / "settings.json").get("hooks", {})
+    hooks = load_json(paths.claude_home() / "settings.json").get("hooks")
     out = []
-    for event, groups in hooks.items():
-        for gi, group in enumerate(groups):
-            for hi, hook in enumerate(group.get("hooks", [])):
+    for event, groups in (hooks if isinstance(hooks, dict) else {}).items():
+        for gi, group in enumerate(groups if isinstance(groups, list) else []):
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                continue
+            for hi, hook in enumerate(group["hooks"]):
+                if not isinstance(hook, dict):
+                    continue
                 out.append(Item("hook", f"{event}:{group.get('matcher', '')}", hook.get("command", ""),
                                 "~/.claude/settings.json", {"event": event, "group": gi, "hook": hi}))
     return out

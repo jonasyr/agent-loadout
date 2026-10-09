@@ -146,8 +146,13 @@ def _apply_hooks(hook_verdicts: list[Verdict], bk: Backup) -> list[str]:
     drop = {(v.item.extra["event"], v.item.extra["group"], v.item.extra["hook"]) for v in hook_verdicts}
     hooks = data.get("hooks", {})
     for event in list(hooks):
+        if not isinstance(hooks[event], list):
+            continue
         new_groups = []
         for gi, group in enumerate(hooks[event]):
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                new_groups.append(group)  # malformed: not ours to fix, keep as-is
+                continue
             kept = [h for hi, h in enumerate(group.get("hooks", [])) if (event, gi, hi) not in drop]
             if kept:
                 new_groups.append({**group, "hooks": kept})
@@ -203,6 +208,19 @@ def migrate_claude_md(bk: Backup) -> list[str]:
     return out
 
 
+def _open_secrets_file(path: Path, bk: Backup):
+    """Append handle to secrets.env; a new file is created 0600 from the start and recorded as created."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        bk.save_copy(path, "secrets.env before additions")
+    else:
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        bk.record_created(path, "created secrets.env")
+    if os.name != "nt":
+        os.chmod(path, 0o600)
+    return path.open("a", encoding="utf-8", newline="\n")
+
+
 def fix_secrets(findings: list, bk: Backup) -> list[str]:
     out = []
     claude_json = load_json(paths.claude_json())
@@ -212,37 +230,43 @@ def fix_secrets(findings: list, bk: Backup) -> list[str]:
         if f.fixable:
             fixable.setdefault(f.server, []).append(f)
         else:
-            out.append(f"{f.server}: secret in args, fix manually (or remove the server)")
+            out.append(f"{f.server}: secret in {f.field} ({f.location}): move it to secrets.env by hand")
+    known = secrets.load_env(secrets_path)
     for server, group in fixable.items():
         original = claude_json.get("mcpServers", {}).get(server)
         if original is None:
             out.append(f"{server}: not found in ~/.claude.json, skipped")
             continue
+        if any("\n" in f.value or "\r" in f.value for f in group):
+            out.append(f"{server}: a secret value contains a newline; move it to secrets.env by hand (skipped)")
+            continue
         cfg = json.loads(json.dumps(original))
-        lines, names = [], []
+        new_lines, names = [], []
         for f in group:
             var = secrets.var_name(f.server, f.key)
+            n = 2
+            while var in known and known[var] != f.value:  # same name, different value: never overwrite
+                var = f"{secrets.var_name(f.server, f.key)}_{n}"
+                n += 1
+            if var not in known:
+                known[var] = f.value
+                new_lines.append(f"{var}={secrets.quote(f.value)}\n")
             cfg[f.field][f.key] = cfg[f.field][f.key].replace(f.value, "${" + var + "}")
-            lines.append(f"{var}={f.value}\n")
             names.append(var)
-        secrets_path.parent.mkdir(parents=True, exist_ok=True)
-        if secrets_path.exists():
-            bk.save_copy(secrets_path, "secrets.env before additions")
-            existing = secrets_path.read_text(encoding="utf-8")
-            lines = [ln for ln in lines if ln not in existing.splitlines(keepends=True)]
-            if existing and not existing.endswith("\n"):
-                lines.insert(0, "\n")
-        with secrets_path.open("a", encoding="utf-8") as fh:
-            fh.writelines(lines)
-        if os.name != "nt":
-            os.chmod(secrets_path, 0o600)
+        if new_lines:
+            existing = secrets_path.read_bytes() if secrets_path.exists() else b""
+            with _open_secrets_file(secrets_path, bk) as fh:
+                if existing and not existing.endswith(b"\n"):
+                    fh.write("\n")
+                fh.writelines(new_lines)
         # reverse replay: remove the ${VAR} server first, then re-add the original
         bk.record_command(f"secrets {server} (original)", ["claude", "mcp", "add-json", "-s", "user", server, json.dumps(original)])
         bk.record_command(f"secrets {server} (remove rewritten)", ["claude", "mcp", "remove", "-s", "user", server])
         _claude(["mcp", "remove", "-s", "user", server])
         res = _claude(["mcp", "add-json", "-s", "user", server, json.dumps(cfg)])
         if res != "ok":
-            _claude(["mcp", "add-json", "-s", "user", server, json.dumps(original)])  # never leave the server missing
+            back = _claude(["mcp", "add-json", "-s", "user", server, json.dumps(original)])  # never leave the server missing
+            res += f" (original re-added: {back})"
         out.append(f"{server} -> " + ", ".join("${" + n + "}" for n in names) + ": " + res)
     return out
 
@@ -275,7 +299,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     if interactive is None:
         interactive = ui.is_interactive()
     verdicts = inventory.classify(inventory.collect(with_versions=with_versions))
-    findings = secrets.scan(load_json(paths.claude_json()))
+    findings = secrets.scan_all()
     print(render_plan(verdicts, findings))
     if not apply_changes:
         print("\n(dry run — nothing changed. Re-run with --apply to choose and apply.)")
