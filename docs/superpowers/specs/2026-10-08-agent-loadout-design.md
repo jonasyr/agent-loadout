@@ -81,6 +81,8 @@ personal/
 └── profiles/*.json      optional personal profiles (override kit profiles with the same name)
 ```
 
+Working preferences are defined as data in the kit's `preferences.json` (`id`, `question`, `options`, `default`, `target`, optional `detect`/`generator`). A `me_md` target writes one line per answer into a managed block of `rules/me.md` (`<!-- loadout:preferences:start -->` … `<!-- loadout:preferences:end -->`); a `setting` target writes a dotted key in `settings.json` (`null` removes it; a value equal to the kit default is not stored). Free-text lines outside the block are never touched, except that lines equivalent to a preference move into the block on the first managed write (backed up).
+
 The author's personal layer receives:
 
 - `me.md`: CS student; Linux/Omarchy; Python, TS, Rust, Kotlin; ask before removing; research-backed recommendations with trade-offs; the skill-check rule from the current global CLAUDE.md.
@@ -228,11 +230,12 @@ One engine, two front-ends. Defaults stay as the kit ships them; the wizard only
   - `loadout configure set plugin <id> on|off` → `<personal>/settings.json` `enabledPlugins`. `off` opts out of a kit default.
   - `loadout configure set mcp <catalog-id> on|off` → `<personal>/mcp.json`. The servers listed there are applied as user-scope MCP servers via `claude mcp add-json -s user`. The managed names are kept in a snapshot, so an `off` removes only kit-applied servers.
   - `loadout configure set pref <key> <json-value>` → `<personal>/settings.json`.
+  - `loadout configure set pref-choice <id> <option>` → validated against `preferences.json`, written to the me.md block or `settings.json`. `loadout configure prefs` asks all preference questions; Enter keeps the current or detected answer (managed block, matching me.md lines, personal settings, kit default, then the user's own `~/.claude/settings.json` values via adopt's prefill).
   - `loadout configure show` prints the effective setup: kit default vs personal override.
   - After each change it runs the settings merge and the MCP apply. If the personal layer is a git repo, it offers to commit and push.
 - **Interactive CLI wizard** (`loadout configure`; bootstrap runs it in first-run mode instead of the separate personal wizard):
   1. About you (`me.md`).
-  2. Preferences (effort, thinking, UI).
+  2. Working preferences (`preferences.json`). In first-run mode unanswered questions start at the defaults; without a terminal the defaults are taken silently and the auto mode draft (built from the origin owners the user confirms as their own and the stacks of the repos under their code folder, shown in full, saved only after an explicit yes) is skipped.
   3. Global add-ons, grouped by category: kit defaults (opt out) + profile plugins (opt in globally) + catalog `offer` items, each with its reason and context-cost note.
   4. Done: summary and apply.
 - **Skill `/loadout:configure`**: the same choices, conversationally inside Claude Code. Reads the catalog and the current personal layer, asks what you want ("I mostly do X", "I'd like browser automation everywhere"), recommends, then calls the non-interactive engine commands.

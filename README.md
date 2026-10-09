@@ -24,7 +24,7 @@ Keep the clone where it is: the installed links point into it.
 
 Bootstrap asks a few questions along the way:
 
-- **Personal layer:** paste the git URL of your own personal repo to clone it, or leave empty to create a starter one (it asks four short questions about you).
+- **Personal layer:** paste the git URL of your own personal repo to clone it, or leave empty to create a starter one (it asks four short questions about you, then the [working preferences](#your-personal-layer)).
 - **Preferences and add-ons:** optionally run the configure wizard.
 - **Existing setup:** reviews your current tools (`loadout adopt`): it offers to remove superseded or duplicate tools, disable per-project tools globally, and move plaintext secrets into `secrets.env`, with a backup first and a final "Apply N changes?" question. Binary updates and installs (which run package-manager or installer commands) are never pre-selected; each command is shown and confirmed.
 
@@ -79,7 +79,7 @@ Run `loadout <command> --help` for details.
 | `loadout bootstrap` | Set up or repair this machine (safe to re-run) | `--install` install missing tools, `--yes` accept defaults (never binary updates), `--no-plugins`, `--no-adopt` |
 | `loadout adopt` | Review an existing setup. Dry run unless `--apply`; without a terminal, `--apply` needs `--yes` or `--groups` (otherwise exit code 2) | `--apply`, `--groups remove,migrate`, `--skip NAME,...`, `--yes`, `--no-versions` |
 | `loadout restore DIR` | Undo a backup. Whatever it replaces goes into a new backup, so a restore can be undone too | `--list` (newest first), `--force` (replay an already restored backup) |
-| `loadout configure` | Wizard for preferences and add-ons | `show` (lists each add-on's id); `set plugin ID on\|off`; `set mcp ID-or-server-name on\|off`; `set pref KEY JSON`; `--first-run` (ask the "about you" questions again) |
+| `loadout configure` | Wizard for preferences and add-ons | `show` (lists each add-on's and preference's id); `prefs` (only the working-preference questions); `set plugin ID on\|off`; `set mcp ID-or-server-name on\|off`; `set pref-choice ID OPTION`; `set pref KEY JSON`; `--first-run` (ask the "about you" questions again) |
 | `loadout init [PROFILE...]` | Prepare the current project (AGENTS.md, CLAUDE.md, docs/, .gitignore entries, profiles) | `--yes`, `--no-install`, `--dry-run` |
 | `loadout profile NAME` | Add one profile to the current project | `--no-install` |
 | `loadout check` | Verify this machine | none |
@@ -126,6 +126,8 @@ Your preferences live in `~/.config/loadout/personal` (or wherever `LOADOUT_PERS
 | `settings.json` | Your overrides, e.g. `"effortLevel": "high"` or `"enabledPlugins": {"impeccable@impeccable": false}` |
 | `mcp.json` | Extra MCP servers you want everywhere |
 | `profiles/*.json` | Your own project presets |
+
+**Working preferences** are a fixed set of questions defined in the kit's [`preferences.json`](preferences.json): answer language, commit style, AI attribution in commits/PRs, answer style, destructive actions, effort level, extended thinking, agent push notifications, the auto mode trust environment, and the language of commits and docs. `loadout configure prefs` asks them (Enter keeps the current answer), `loadout configure set pref-choice ID OPTION` sets one, and `loadout configure show` lists them. Answers go only into your personal layer: text answers into a block of `rules/me.md` between `<!-- loadout:preferences:start -->` and `<!-- loadout:preferences:end -->` (everything outside it is yours and never touched), the others into `settings.json`. Existing answers are recognised, including matching lines you already wrote in `me.md` (moved into the block, with a backup) and values in your existing `~/.claude/settings.json`, so re-running changes nothing you already decided. A first run (bootstrap's starter layer, `configure --first-run`) starts unanswered questions at the recommended defaults; without a terminal it takes them silently. The auto mode environment is drafted from the git remotes under your code folder (default `~/Documents/Code`); you pick which owners are yours, see the full draft and must confirm it, and it is skipped without a terminal.
 
 You rarely edit these by hand: `loadout configure` does it for you. **To sync them across machines, make the folder a private git repo**; loadout pulls it daily and offers to commit and push after `loadout configure` (not while a `*.env` file would be committed: secrets belong in `~/.config/loadout/secrets.env`).
 
