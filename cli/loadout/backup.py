@@ -115,18 +115,8 @@ def _exists(path: Path) -> bool:
 
 
 def _mcp_target(cmd: list) -> tuple[str, str] | None:
-    """("remove"|"add-json", server name) for a `claude mcp remove|add-json` command, else None."""
-    if len(cmd) < 3 or cmd[:2] != ["claude", "mcp"] or cmd[2] not in ("remove", "add-json"):
-        return None
-    rest, pos = cmd[3:], []
-    i = 0
-    while i < len(rest):
-        if rest[i] in ("-s", "--scope"):
-            i += 2
-            continue
-        pos.append(rest[i])
-        i += 1
-    return (cmd[2], pos[0]) if pos else None
+    t = runner.mcp_target(cmd)
+    return (t[0], t[2]) if t else None
 
 
 def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, str]:

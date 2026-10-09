@@ -22,17 +22,23 @@ def _setup_personal(servers):
     (root / "mcp.json").write_text(json.dumps({"mcpServers": servers}))
 
 
-def test_manual_commands_have_labelled_posix_and_powershell_forms(tmp_path):
-    cmd = ["claude", "mcp", "add-json", "-s", "user", "srv", '{"env": {"T": "a b"}}']
-    path = runner.write_manual_commands(tmp_path, "mcp srv", [cmd])
-    text = Path(path).read_text(encoding="utf-8")
+def test_manual_commands_have_shell_form_and_windows_json_block(tmp_path):
+    cfg = {"env": {"T": "a&b|c"}, "url": "https://x/?a=1&b=2"}
+    cmds = [["claude", "mcp", "remove", "-s", "user", "srv"],
+            ["claude", "mcp", "add-json", "-s", "user", "srv", json.dumps(cfg)]]
+    text = Path(runner.write_manual_commands(tmp_path, "mcp srv", cmds)).read_text(encoding="utf-8")
     assert "# mcp srv" in text
-    assert "# POSIX sh" in text and "# PowerShell" in text
-    posix = text.split("# POSIX sh")[1].split("# PowerShell")[0]
-    assert "claude mcp add-json -s user srv '{\"env\": {\"T\": \"a b\"}}'" in posix
-    ps = text.split("# PowerShell")[1]
-    # --% (stop-parsing) hands the rest to claude verbatim, with CreateProcess quoting
-    assert 'claude --% mcp add-json -s user srv "{\\"env\\": {\\"T\\": \\"a b\\"}}"' in ps
+    shell, windows = text.split("# macOS / Linux shell:")[1].split("# Windows")
+    assert "claude mcp remove -s user srv" in shell and "claude mcp add-json -s user srv '{" in shell
+    assert "--%" not in text and "claude mcp add-json" not in windows  # no claude.cmd + JSON invocation
+    assert "close Claude Code" in windows and "%USERPROFILE%\\.claude.json" in windows
+    block = windows.split("):\n", 1)[1]
+    assert json.loads("{" + block + "}") == {"srv": cfg}  # the block is valid JSON under mcpServers
+
+
+def test_manual_commands_windows_standalone_remove(tmp_path):
+    text = Path(runner.write_manual_commands(tmp_path, "t", [["claude", "mcp", "remove", "-s", "user", "x"]])).read_text()
+    assert 'delete the "x" entry under "mcpServers"' in text
 
 
 def test_manual_commands_not_reappended_when_identical(tmp_path):
@@ -55,7 +61,7 @@ def test_restore_does_not_remove_when_paired_add_would_be_refused(fake_home, fak
     assert fake_runner.calls == []  # neither the remove nor the add reached claude
     text = (bk.root / "manual-commands.txt").read_text(encoding="utf-8")
     assert "mcp remove -s user s" in text and SECRET in text
-    assert text.count("mcp add-json") == 2  # one block (posix + powershell), not repeated by the add step
+    assert text.count("mcp add-json") == 1 and text.count("# restore") == 1  # one block, not repeated by the add step
     assert SECRET not in "\n".join(lines)
 
 

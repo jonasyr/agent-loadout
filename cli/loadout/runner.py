@@ -1,6 +1,7 @@
 """The single place where loadout runs external commands (tests replace run/have)."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -46,15 +47,57 @@ def shell_line(cmd: list[str]) -> str:
     return shlex.join(cmd)
 
 
-def powershell_line(cmd: list[str]) -> str:
-    """PowerShell: `--%` (stop-parsing) passes the rest verbatim, with CreateProcess quoting."""
-    return f"{cmd[0]} --% {subprocess.list2cmdline(cmd[1:])}" if len(cmd) > 1 else cmd[0]
+def mcp_target(cmd: list) -> tuple[str, str, str] | None:
+    """(op, scope, server name) for `claude mcp remove|add-json [-s scope] name ...`, else None."""
+    if len(cmd) < 3 or list(cmd[:2]) != ["claude", "mcp"] or cmd[2] not in ("remove", "add-json"):
+        return None
+    rest, pos, scope, i = list(cmd[3:]), [], "local", 0
+    while i < len(rest):
+        if rest[i] in ("-s", "--scope") and i + 1 < len(rest):
+            scope = rest[i + 1]
+            i += 2
+            continue
+        pos.append(rest[i])
+        i += 1
+    return (cmd[2], scope, pos[0]) if pos else None
+
+
+WIN_JSON = r"%USERPROFILE%\.claude.json"
+
+
+def _windows_lines(cmds: list[list[str]]) -> list[str]:
+    """No cmd.exe/PowerShell form for claude.cmd + JSON: that goes through the parsing the refusal avoids."""
+    added = {t[2] for c in cmds if (t := mcp_target(c)) and t[0] == "add-json"}
+    out = []
+    for cmd in cmds:
+        t = mcp_target(cmd)
+        if t and t[0] == "remove" and t[2] in added:
+            continue  # the add below replaces the entry
+        if t and t[0] == "remove" and t[1] == "user":
+            out.append(f'# - delete the "{t[2]}" entry under "mcpServers" in {WIN_JSON}')
+            continue
+        if t and t[0] == "add-json" and t[1] == "user":
+            try:
+                cfg = json.loads(cmd[-1])
+            except ValueError:
+                cfg = None
+            if isinstance(cfg, dict):
+                block = json.dumps({t[2]: cfg}, indent=2, ensure_ascii=False).splitlines()[1:-1]
+                out.append(f'# - add this under "mcpServers" in {WIN_JSON} (replacing an existing "{t[2]}" entry):')
+                out += [line[2:] for line in block]
+                continue
+        if any(set(a) & CMD_METACHARS for a in cmd[1:]):
+            out.append("# - (no safe Windows form; use the native claude.exe with the shell form above)")
+        else:
+            out.append(subprocess.list2cmdline(cmd))
+    return out
 
 
 def manual_block(title: str, cmds: list[list[str]]) -> tuple[str, str]:
-    """(title line, body) of a paste-ready block with labelled POSIX sh and PowerShell forms."""
-    body = ("# POSIX sh (bash, zsh, Git Bash):\n" + "".join(shell_line(c) + "\n" for c in cmds)
-            + "# PowerShell:\n" + "".join(powershell_line(c) + "\n" for c in cmds))
+    """(title line, body): a macOS/Linux shell form, and Windows instructions (JSON to put into ~/.claude.json)."""
+    body = ("# macOS / Linux shell:\n" + "".join(shell_line(c) + "\n" for c in cmds)
+            + "# Windows (claude.cmd cannot take JSON safely): close Claude Code, then:\n"
+            + "".join(line + "\n" for line in _windows_lines(cmds)))
     return f"# {title}\n", body
 
 
