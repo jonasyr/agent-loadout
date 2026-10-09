@@ -332,7 +332,7 @@ Run in the project directory; never overwrites.
   - one review pass (`/code-review` or superpowers review, not both);
   - `/security-review` before merging security-relevant changes;
   - UI loop: frontend-design (direction) → build → playwright-cli (render at 320/768/1280 px, exercise flows, read console) → impeccable audit/polish; UI is not done until verified in a browser;
-  - execution recommendation for a finished plan from `/loadout:execution-advisor`, not the planner's default;
+  - after writing a plan, run `/loadout:execution-advisor` in the same turn and ask only its question (it supersedes a planner question already shown);
   - docs-sync at the end of features;
   - profiles for domain tools.
 - **`rtk.md`:** rtk usage (applies only when rtk is installed).
@@ -349,10 +349,10 @@ The SubagentStart hook injects a one-line pointer to the tooling routing. The Se
 | PreToolUse `mcp__plugin_loadout_serena__.*` | `serena-hooks auto-approve --client=claude-code` (it matches on "serena" substring, so plugin-namespaced names work) |
 | PreToolUse `Grep\|Glob` | `codebase-memory-mcp hook-augment` (soft: stderr dropped, always exit 0) |
 | SubagentStart | tooling pointer JSON |
-| PostToolUse `Write\|Edit\|MultiEdit` | `python3 hooks/advisor.py record` (soft): a write to `*/plans/*.md` whose header says "Implementation Plan" and that has a `- [ ]` task is recorded with its session in `~/.claude/.loadout/advisor-pending.json` |
-| Stop | `python3 hooks/advisor.py stop` (soft): blocks once with an instruction to run `/loadout:execution-advisor` when this session has a pending plan whose current hash is neither in `advisor-done.json` nor already nudged; never when `stop_hook_active`; any error allows |
+| PostToolUse `Write\|Edit\|MultiEdit` | `python3 hooks/advisor.py record` (soft): a write to `*/plans/*.md` (not `~/.claude/plans/`, Claude Code plan mode) whose header says "Implementation Plan" and that has a `- [ ]` task is recorded with its session in `~/.claude/.loadout/advisor-pending.json` and marked written since the last Stop |
+| Stop | `python3 hooks/advisor.py stop` (soft): blocks once with an instruction to run `/loadout:execution-advisor` (superseding any execution question already asked) when a plan of this session was written since the last Stop, has no ticked `- [x]` box yet, and its hash is neither in `advisor-done.json` nor already nudged; never when `stop_hook_active`; every Stop clears the written marks; any error allows |
 
-**Execution advisor.** The skill judges each task of a plan (completeness, coupling, risk, interaction/real-machine steps, size, context, parallelism, cost), recommends Inline, SDD or Hybrid with a task → mode → model tier → review table, and asks the user to confirm. It then runs `loadout advisor-mark <plan>`, which stores the plan's hash in `advisor-done.json` (the hash logic lives in the hook script and the CLI loads it). A skill-run CLI call was chosen over a PostToolUse hook on `Skill`, because a `/loadout:execution-advisor` slash command does not go through the Skill tool and the hook would mark the plan when the skill loads, before any evaluation. Ticking checkboxes does not change the hash, so executing a plan does not re-trigger the advisor; any other edit does.
+**Execution advisor.** The skill judges each task of a plan (completeness, coupling, risk, interaction/real-machine steps, size, context, parallelism, cost), recommends Inline, SDD or Hybrid with a task → mode → model tier → review table, and asks the user to confirm. It then runs `loadout advisor-mark <plan>`, which stores the plan's hash in `advisor-done.json` (the hash logic lives in the hook script and the CLI loads it). A skill-run CLI call was chosen over a PostToolUse hook on `Skill`, because a `/loadout:execution-advisor` slash command does not go through the Skill tool and the hook would mark the plan when the skill loads, before any evaluation. Edits outside the agent, later turns without a plan write and plans already being executed (a ticked box) never trigger it; rewriting a plan in a later turn does, once per version. Hybrid runs under one driver, superpowers:executing-plans: delegated rows dispatch SDD's implementer prompt with an explicit model, a task reviewer only where the row says per-task, every task is ledgered in the shared `progress.md`, and one top-tier whole-branch review ends it. `settings.base.json` pre-approves `Bash(loadout advisor-mark:*)`.
 
 ## 11. Error handling
 
