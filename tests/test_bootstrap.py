@@ -20,7 +20,8 @@ def test_personal_clone(fake_home, fake_runner):
     assert ["git", "clone", "--", "git@github.com:me/loadout-personal.git", str(paths.personal_root())] in fake_runner.calls
 
 
-def test_secrets_setup_idempotent(fake_home, fake_runner):
+def test_secrets_setup_idempotent(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")  # rc files; the PowerShell branch is in test_secrets.py
     (fake_home / ".bashrc").write_text("# mine\n")
     b.setup_secrets()
     b.setup_secrets()
@@ -123,6 +124,7 @@ def test_bootstrap_rerun_makes_no_new_backup(fake_home, fake_runner, capsys):
 
 
 def test_secrets_creates_rc_from_shell(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
     monkeypatch.setenv("SHELL", "/bin/zsh")
     b.setup_secrets()
     b.setup_secrets()

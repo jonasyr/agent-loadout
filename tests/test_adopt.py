@@ -257,7 +257,8 @@ def test_yes_never_selects_binary_updates(machine):
     assert "update" not in {v.action for v in chosen}
 
 
-def test_binary_update_shown_and_confirmed_unless_yes_with_groups(machine, fake_runner, capsys):
+def test_binary_update_shown_and_confirmed_unless_yes_with_groups(machine, fake_runner, capsys, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")  # rtk ships a posix-only update command
     asked = []
     out = adopt.apply([_outdated()], backup.Backup(), ask=lambda q: (asked.append(q), "")[1], confirm_cmds=True)
     assert asked and "run it?" in asked[0]
@@ -269,6 +270,7 @@ def test_binary_update_shown_and_confirmed_unless_yes_with_groups(machine, fake_
 
 
 def test_adopt_cli_yes_with_groups_update_runs_without_prompt(machine, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")  # rtk ships a posix-only update command
     monkeypatch.setattr(inventory, "classify", lambda items: [_outdated()])
     rc = adopt.run(True, {"update"}, set(), True, ask=lambda q: (_ for _ in ()).throw(AssertionError(q)),
                    with_versions=False, interactive=False)

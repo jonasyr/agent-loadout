@@ -162,6 +162,7 @@ def test_copy_mode_backs_up_user_dir_before_replacing(fake_home):
     assert again.empty
 
 
+@pytest.mark.skipif(os.name == "nt", reason="link_bin writes shims on Windows instead of linking/copying the file")
 def test_copy_mode_file_backed_up_only_when_not_kit_copy(fake_home, monkeypatch, tmp_path):
     kit = tmp_path / "kit"
     (kit / "bin").mkdir(parents=True)
@@ -305,3 +306,11 @@ def test_cli_restore_exit_codes_and_list(fake_home, fake_runner, capsys):
     rows = [line.split()[0] for line in out.splitlines() if line.startswith(str(paths.backups_root()))]
     assert rows.index(str(bk2.root)) < rows.index(str(bk.root))
     assert "1 step" in out and "restored" in out and "test run" in out
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows-only branch of link_bin")
+def test_link_bin_writes_shims_on_windows(fake_home, monkeypatch):
+    monkeypatch.setattr(paths, "bin_dir", lambda: fake_home / ".local/bin")
+    out = link.link_bin(backup.Backup())
+    assert out and "shims" in out[0]
+    assert (fake_home / ".local/bin/loadout.cmd").exists()
