@@ -7,6 +7,6 @@ description: >-
   error, ask about the ambiguous `--all` instead of deciding it, not rewrite docs before
   the questions are answered, not run the test suite without asking, and not commit.
 tags: [docs-audit, expensive]
-runs: 2
+runs: 3
 context:
   scaffold_script: scaffold.sh

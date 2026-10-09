@@ -273,7 +273,7 @@ Run in the project directory; never overwrites.
 
 - **Mode detection:** *new project* if the repo has no source files (only README/LICENSE/.gitignore/templates); otherwise *existing*.
 - **New project:**
-  - Use `superpowers:brainstorming` to settle what the project becomes (purpose, users, stack, constraints).
+  - Ask the definition questions itself, one at a time (purpose, users, stack, constraints). Do not hand off to `superpowers:brainstorming`; suggest it only for the first feature afterwards.
   - Then write AGENTS.md, `docs/README.md` and `docs/adr/0001-<stack-decision>.md`.
   - Suggest profiles (`loadout profile <name>`) and create the initial directory skeleton the stack calls for.
   - Commit after approval.
@@ -281,7 +281,7 @@ Run in the project directory; never overwrites.
   - Fill or repair AGENTS.md from the code: purpose, commands (verified by running `--help`/dry forms), conventions, map of docs and memories.
   - Offer to move CLAUDE.md content into AGENTS.md.
   - Pick up an existing `.mcp.json` and `.claude/settings.json` without changing them.
-  - Run Serena onboarding under `memory-policy.md` if no memories exist.
+  - Run Serena onboarding under `memory-policy.md` if neither memories nor docs exist.
   - Index with codebase-memory-mcp.
   - If docs or memories already exist, recommend `/loadout:docs-audit`.
   - Show the diff; commit after approval.
@@ -303,7 +303,7 @@ Run in the project directory; never overwrites.
 1. **Inventory:** every doc layer above plus README; write `.loadout/docs-audit/<date>.md` as a resumable checklist (gitignored until done).
 2. **Claim extraction:** commands, paths, symbols, parameters, architecture/behaviour statements, decisions, status claims.
 3. **Verification against current code:**
-   - parallel subagents, one per doc area;
+   - parallel subagents, one per doc area (a small repo, under about 30 claims, is verified inline under the same rules);
    - symbols and structure via codebase-memory/Serena, paths via the filesystem, commands via read-only invocation (`--help`, dry run). Test or build commands run only after asking.
 4. **Classification:** correct, stale, wrong, unclear, contradictory, duplicated, misplaced (wrong layer), missing (significant undocumented code: modules, entry points, config).
 5. **Questions:**
@@ -367,6 +367,7 @@ The SubagentStart hook injects a one-line pointer to the tooling routing. The Se
 - **Fresh-HOME bootstrap test** (no network, `--no-plugins`).
 - **Static checks:** `claude plugin validate --strict` on the marketplace and loadout; all JSON parses; profiles and settings reference only declared marketplaces; catalog schema check.
 - **Hook smoke tests:** each hook with its binary absent from PATH exits 0 with no output (POSIX).
+- **Skill evals** (`claude plugin eval`, paid model calls, run on demand, not in CI): `plugins/loadout/evals/run.sh` only (about $8 per full run). It puts stubbed `loadout`/`playwright-cli`/browser binaries first on PATH and checksums the user's global state before and after. Every scaffold refuses to run outside such a run. Cases cover onboard (new/existing variants), docs-sync, docs-audit (planted errors) and configure. The browser routing case for `tooling.md` is opt-in (`--eval-dir evals-browser`). `tests/test_evals_static.py` checks the suite statically.
 - **CI:** GitHub Actions on ubuntu-latest and windows-latest.
 - **Acceptance on the author's machine:**
   - `/context` before and after;

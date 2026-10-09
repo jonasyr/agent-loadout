@@ -5,6 +5,11 @@
 # on PATH by run.sh; it logs every call to ./.loadout-calls.log.
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 install_rules
+# Belt and braces on top of eval_guard: only ever write a settings.json inside the eval home.
+case "$HOME" in
+  */claude-eval-*/home) ;;
+  *) echo "refusing to write $HOME/.claude/settings.json outside an eval temp home" >&2; exit 70 ;;
+esac
 mkdir -p "$HOME/.claude"
 cat > "$HOME/.claude/settings.json" <<'EOF'
 {

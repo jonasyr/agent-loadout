@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: onboard-existing-docs
+description: >-
+  Existing repo that already has docs/, an accurate AGENTS.md and a Serena memory.
+  /loadout:onboard must state the mode, leave docs and memories alone (no write_memory,
+  no edits under docs/ or .serena/), recommend /loadout:docs-audit, run no dangerous
+  command and not commit.
+tags: [onboard]
+context:
+  scaffold_script: scaffold.sh
