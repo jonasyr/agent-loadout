@@ -31,7 +31,12 @@ def detect_profiles(project: Path) -> list[str]:
             data = json.loads(pkg.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             data = {}
-        deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+        if not isinstance(data, dict):
+            data = {}
+        deps = {}
+        for key in ("dependencies", "devDependencies"):
+            if isinstance(data.get(key), dict):
+                deps.update(data[key])
         if any(name in deps for name in WEB_FRAMEWORKS):
             found.append("web")
     env_example = project / ".env.example"

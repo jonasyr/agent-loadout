@@ -154,3 +154,32 @@ def test_first_run_replace_backs_up_me_md(fake_home, fake_runner, monkeypatch, c
     root = out.split("loadout restore ")[1].split(")")[0].split()[0]
     backup.restore(paths.home() / root if not root.startswith("/") else __import__("pathlib").Path(root))
     assert "precious" in me.read_text()
+
+
+
+# --- configure set/show (R-J) ---
+import pytest
+from loadout.__main__ import main
+
+
+@pytest.mark.parametrize("word,expected", [("ON", True), ("true", True), ("Yes", True), ("off", False), ("FALSE", False), ("no", False)])
+def test_set_plugin_accepts_switch_words(fake_home, fake_runner, word, expected):
+    assert main(["configure", "set", "plugin", "hookify@claude-plugins-official", word]) == 0
+    assert _personal_settings().get("enabledPlugins", {}).get("hookify@claude-plugins-official", False) is expected
+
+
+def test_set_plugin_rejects_other_values(fake_home, fake_runner, capsys):
+    assert main(["configure", "set", "plugin", "superpowers@claude-plugins-official", "1"]) == 1
+    assert "on|off" in capsys.readouterr().err
+    assert _personal_settings() == {}
+
+
+def test_set_mcp_accepts_server_name(fake_home, fake_runner):
+    configure.set_mcp("dbhub", True)
+    assert "dbhub" in json.loads((paths.personal_root() / "mcp.json").read_text())["mcpServers"]
+
+
+def test_show_prints_settable_ids(fake_home):
+    text = configure.show()
+    assert "mcp addon-dbhub-global" in text
+    assert "plugin hookify@claude-plugins-official" in text

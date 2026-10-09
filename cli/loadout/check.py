@@ -47,11 +47,13 @@ def _settings() -> list[CheckResult]:
 def _plugins() -> list[CheckResult]:
     try:
         wanted = [p for p, on in settings_merge.desired_settings().get("enabledPlugins", {}).items() if on]
+        installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
     except InvalidJSON as exc:
-        return [CheckResult("plugins", False, str(exc), "fix the JSON syntax")]
-    installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
+        return [CheckResult("plugins installed", False, str(exc), "fix the JSON syntax", "warn")]
     missing = [p for p in wanted if p not in installed]
-    return [CheckResult("plugins installed", not missing, ", ".join(missing), "loadout bootstrap (or restart Claude Code to auto-install)")]
+    # Claude Code installs enabled plugins from known marketplaces at its next start
+    return [CheckResult("plugins installed", not missing, ", ".join(missing),
+                        "they install automatically at the next Claude Code start (or run loadout bootstrap)", "warn")]
 
 
 def _binaries() -> list[CheckResult]:
@@ -60,7 +62,8 @@ def _binaries() -> list[CheckResult]:
         name = entry["id"]
         ok = runner.have(name)
         severity = "error" if entry.get("required") else "warn"
-        fix = "loadout bootstrap --install" if catalog.platform_cmds(entry, "install") else entry.get("manual", "")
+        fix = ("loadout bootstrap --install" if catalog.platform_cmds(entry, "install")
+               else entry.get("manual") or f"install {name} and make sure it is on PATH")
         out.append(CheckResult(f"binary {name}", ok, "" if ok else "not on PATH", fix, severity))
     return out
 

@@ -52,3 +52,28 @@ def test_check_invalid_settings_json(fake_home, fake_runner):
     s.write_text("{ nope")
     r = _by(check.run_checks())["settings.json"]
     assert not r.ok and "invalid JSON" in r.detail
+
+
+def test_missing_plugins_is_a_warning_with_auto_install_hint(fake_home, fake_runner):
+    (paths.personal_root() / "rules").mkdir(parents=True)
+    link.link_all(backup.Backup())
+    settings_merge.apply_settings()
+    r = _by(check.run_checks())["plugins installed"]
+    assert not r.ok and r.severity == "warn"
+    assert "next Claude Code start" in r.fix
+
+
+def test_invalid_installed_plugins_json_does_not_abort_check(fake_home, fake_runner):
+    p = fake_home / ".claude/plugins/installed_plugins.json"
+    p.parent.mkdir(parents=True)
+    p.write_text("{ broken")
+    results = _by(check.run_checks())
+    assert not results["plugins installed"].ok and "invalid JSON" in results["plugins installed"].detail
+    assert "binary serena" in results
+
+
+def test_every_failing_check_names_a_fix(fake_home, fake_runner):
+    fake_runner.missing.update({"claude", "rust-analyzer", "node", "uv"})
+    for r in check.run_checks():
+        if not r.ok:
+            assert r.fix.strip(), r.name

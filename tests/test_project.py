@@ -119,3 +119,9 @@ def test_init_validates_all_profile_names_first(tmp_path, fake_home, fake_runner
     with pytest.raises(ValueError, match="thesi"):
         project.init(tmp_path / "p", ["web", "thesi"], True, False, False, lambda q: "")
     assert not (tmp_path / "p/.claude/settings.json").exists()
+
+
+def test_detect_tolerates_odd_package_json(tmp_path):
+    for content in ("[]", '{"dependencies": null}', '"x"', "{bad"):
+        (tmp_path / "package.json").write_text(content)
+        assert "web" not in detect.detect_profiles(tmp_path)

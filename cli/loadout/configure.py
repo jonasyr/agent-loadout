@@ -79,10 +79,28 @@ def set_plugin(plugin_id: str, on: bool) -> None:
     save_json(_personal_settings_path(), data)
 
 
+SWITCH = {"on": True, "true": True, "yes": True, "off": False, "false": False, "no": False}
+
+
+def parse_switch(value: str, kind: str = "plugin|mcp") -> bool:
+    try:
+        return SWITCH[value.strip().lower()]
+    except KeyError:
+        raise ValueError(f"usage: loadout configure set {kind} <id> on|off (got '{value}')") from None
+
+
+def _mcp_offer(name: str) -> dict | None:
+    """By catalog id (addon-dbhub-global) or by server name (dbhub)."""
+    offers = [e for e in catalog.load() if "mcp" in e.get("offer", {})]
+    return (next((e for e in offers if e["id"] == name), None)
+            or next((e for e in offers if name in e["offer"]["mcp"]), None))
+
+
 def set_mcp(catalog_id: str, on: bool) -> list[str]:
-    entry = next((e for e in catalog.load() if e["id"] == catalog_id and "mcp" in e.get("offer", {})), None)
+    entry = _mcp_offer(catalog_id)
     if entry is None:
-        raise ValueError(f"no MCP add-on '{catalog_id}' in the catalog")
+        names = ", ".join(f"{e['id']} ({', '.join(e['offer']['mcp'])})" for e in catalog.load() if "mcp" in e.get("offer", {}))
+        raise ValueError(f"no MCP add-on '{catalog_id}' in the catalog (available: {names})")
     path = paths.personal_root() / "mcp.json"
     data = load_json(path)
     servers = data.setdefault("mcpServers", {})
@@ -107,11 +125,11 @@ def set_pref(key: str, raw_json: str) -> None:
 
 
 def show() -> str:
-    lines = []
+    lines = ["Change one with: loadout configure set <plugin|mcp> <id> on|off"]
     for a in addons():
         on = is_on(a)
         source = "default" if on == a.default_on else "personal"
-        lines.append(f"{'on' if on else 'off'} ({source})  [{a.category}] {a.label}")
+        lines.append(f"{'on' if on else 'off'} ({source})  [{a.category}] {a.label}  — id: {a.kind} {a.target}")
     personal = load_json(_personal_settings_path())
     prefs = {k: v for k, v in personal.items() if k not in ("enabledPlugins", "extraKnownMarketplaces")}
     if prefs:

@@ -156,9 +156,9 @@ def _register_configure(sub):
         if not (a.kind and a.name and a.value):
             raise ValueError("usage: loadout configure set plugin|mcp|pref <name> <value>")
         if a.kind == "plugin":
-            configure.set_plugin(a.name, a.value == "on")
+            configure.set_plugin(a.name, configure.parse_switch(a.value, "plugin"))
         elif a.kind == "mcp":
-            for warning in configure.set_mcp(a.name, a.value == "on"):
+            for warning in configure.set_mcp(a.name, configure.parse_switch(a.value, "mcp")):
                 print(f"note: {warning}")
         else:
             configure.set_pref(a.name, a.value)

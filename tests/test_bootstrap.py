@@ -40,18 +40,60 @@ def test_setup_plugins_adds_marketplaces_and_installs_missing(fake_home, fake_ru
     assert ["claude", "plugin", "install", "loadout@agent-loadout", "--scope", "user"] in fake_runner.calls
 
 
+STUBBED = ["claude", "uv", "node", "gh", "serena", "codebase-memory-mcp", "rtk", "playwright-cli",
+           "pyright", "typescript-language-server", "rust-analyzer", "npm", "npx", "curl", "powershell", "pwsh"]
+
+
+def _stub_path(tmp_path):
+    """A PATH with logging stubs for every external tool, plus the real python and git only."""
+    import shutil
+    stub = tmp_path / "stub"
+    stub.mkdir()
+    log = tmp_path / "calls.log"
+    for name in STUBBED:
+        if os.name == "nt":
+            (stub / f"{name}.cmd").write_text(f"@echo off\r\necho {name} %*>>\"{log}\"\r\nexit /b 0\r\n")
+        else:
+            f = stub / name
+            f.write_text(f'#!/bin/sh\necho "{name} $*" >> "{log}"\nexit 0\n')
+            f.chmod(0o755)
+    git = shutil.which("git")
+    if os.name == "nt":
+        path = os.pathsep.join([str(stub), os.path.dirname(git), os.path.dirname(sys.executable)])
+    else:
+        (stub / "git").symlink_to(git)
+        (stub / "python3").symlink_to(sys.executable)
+        path = str(stub)
+    return path, log
+
+
 def test_fresh_home_bootstrap_end_to_end(tmp_path):
+    """Hermetic: temp HOME, no LOADOUT_* variables, stubbed tools, no stdin (so not interactive)."""
     home = tmp_path / "home"
     home.mkdir()
-    env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home)}
-    script = paths.kit_root() / "bin" / "loadout"
-    proc = subprocess.run([sys.executable, str(script), "bootstrap", "--yes", "--no-plugins", "--no-adopt"],
-                          input="\nTester\nDev\nPython\nnone\n", env=env, capture_output=True, text=True, timeout=120)
-    assert (home / ".claude/rules/loadout/tooling.md").exists(), proc.stdout + proc.stderr
+    path, log = _stub_path(tmp_path)
+    env = {"HOME": str(home), "USERPROFILE": str(home), "PATH": path, "LANG": "C.UTF-8"}
+    for key in ("SYSTEMROOT", "SystemRoot", "TEMP", "TMP", "PATHEXT", "COMSPEC"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    kit = paths.kit_root()
+    status_before = subprocess.run(["git", "status", "--porcelain"], cwd=kit, capture_output=True, text=True).stdout
+    proc = subprocess.run([sys.executable, str(kit / "bin" / "loadout"), "bootstrap", "--no-plugins"],
+                          stdin=subprocess.DEVNULL, env=env, capture_output=True, text=True, timeout=120)
+    out = proc.stdout + proc.stderr
+    assert proc.returncode == 0, out
+    assert "non-interactive: skipping adopt" in out and "non-interactive: skipping the configure prompt" in out
+    assert (home / ".claude/rules/loadout/tooling.md").exists(), out
     assert (home / ".claude/rules/personal/me.md").exists()
     settings = json.loads((home / ".claude/settings.json").read_text())
     assert settings["enabledPlugins"]["loadout@agent-loadout"] is True
     assert (home / ".config/loadout/secrets.env").exists()
+    assert "[warn] plugins installed" in out
+    calls = log.read_text() if log.exists() else ""
+    for mutating in ("plugin install", "plugin uninstall", "mcp add", "mcp remove", "self update", "upgrade"):
+        assert mutating not in calls, calls
+    # nothing outside the temp dir changed: the kit checkout is untouched
+    assert subprocess.run(["git", "status", "--porcelain"], cwd=kit, capture_output=True, text=True).stdout == status_before
 
 
 def test_bootstrap_backs_up_existing_settings(fake_home, fake_runner):
