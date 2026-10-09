@@ -341,7 +341,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         print(redact(line))
     remaining = [f for f in findings if f.fixable
                  and f.server not in {v.item.name for v in chosen if v.item.kind == "mcp"}]
-    if remaining and (yes or ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] ")):
+    if remaining and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
         for line in fix_secrets(remaining, bk):
             print(redact(line))
     if not bk.empty:

@@ -308,3 +308,10 @@ def test_migrate_new_me_md_is_undone_by_restore(machine):
     backup.restore(bk.root)
     assert not me.exists()
     assert "Skill Check Rule" in (machine / ".claude/CLAUDE.md").read_text()
+
+
+def test_non_interactive_groups_never_prompts_for_secrets(machine, fake_runner):
+    asked = []
+    adopt.run(True, {"remove"}, set(), False, ask=lambda q: asked.append(q) or "", with_versions=False, interactive=False)
+    assert asked == []
+    assert not paths.secrets_file().exists()
