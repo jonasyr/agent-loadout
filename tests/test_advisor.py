@@ -115,16 +115,50 @@ def test_stop_blocks_once_with_instruction(home, plan):
     assert out["decision"] == "block"
     assert f"A plan was just finished: {plan}." in out["reason"]
     assert "/loadout:execution-advisor" in out["reason"] and "Hybrid" in out["reason"]
+    assert "supersedes any execution question" in out["reason"] and "(Recommended)" in out["reason"]
     assert r.stdout.count("\n") <= 1  # only the block JSON
-    # the hook never blocks twice: stop_hook_active allows, and the same plan version is not nagged again
+    # the hook never blocks twice: stop_hook_active allows, and later stops allow too
     assert _stop(home, active=True).stdout == ""
     assert _stop(home).stdout == ""
 
 
-def test_stop_hook_active_always_allows(home, plan):
+def test_stop_hook_active_always_allows_and_clears_the_mark(home, plan):
     _record(home, plan)
     assert _stop(home, active=True).stdout == ""
-    assert json.loads(_stop(home).stdout)["decision"] == "block"  # nothing was consumed by the allowed stop
+    assert _stop(home).stdout == ""  # every Stop clears "written since last Stop"
+
+
+def test_outside_edit_without_a_write_does_not_block(home, plan):
+    """The plan was nudged; then the user's editor or a git pull changes it. No plan was written this turn."""
+    _record(home, plan)
+    assert json.loads(_stop(home).stdout)["decision"] == "block"
+    plan.write_text(PLAN + "\n### Task 2: Reader\n\n- [ ] **Step 1: Test**\n", encoding="utf-8")
+    assert _stop(home).stdout == ""
+
+
+def test_amending_a_step_mid_execution_does_not_block(home, plan):
+    _record(home, plan)
+    assert json.loads(_stop(home).stdout)["decision"] == "block"
+    plan.write_text(PLAN.replace("- [ ] **Step 1: Write the failing test**", "- [x] **Step 1: Write the failing test (amended)**"),
+                    encoding="utf-8")
+    _record(home, plan, tool="Edit")
+    assert _stop(home).stdout == ""
+
+
+def test_rewriting_the_plan_in_a_later_turn_blocks_once_more(home, plan):
+    _record(home, plan)
+    assert json.loads(_stop(home).stdout)["decision"] == "block"
+    assert _stop(home).stdout == ""  # a turn without a plan write
+    plan.write_text(PLAN + "\n### Task 2: Reader\n\n- [ ] **Step 1: Test**\n", encoding="utf-8")
+    _record(home, plan)
+    assert json.loads(_stop(home).stdout)["decision"] == "block"
+    assert _stop(home).stdout == ""
+
+
+def test_plan_mode_files_are_not_plans(home):
+    """Claude Code's plan mode keeps its plans in ~/.claude/plans/; those were already approved."""
+    _record(home, _write(home / ".claude/plans/happy-otter.md"))
+    assert _pending(home) is None
 
 
 def test_other_session_is_not_blocked(home, plan):
@@ -232,6 +266,13 @@ def test_advisor_mark_records_hash(fake_home_env, plan, capsys):
 def test_advisor_mark_missing_plan_fails(fake_home_env, tmp_path, capsys):
     assert main(["advisor-mark", str(tmp_path / "nope.md")]) == 1
     assert "no such plan" in capsys.readouterr().err
+
+
+def test_advisor_mark_without_hook_script_fails_cleanly(fake_home_env, plan, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LOADOUT_ROOT", str(tmp_path / "not-a-kit"))
+    assert main(["advisor-mark", str(plan)]) == 1
+    err = capsys.readouterr().err
+    assert "advisor hook script not found" in err and "Traceback" not in err
 
 
 def test_advisor_mark_is_hidden_from_help(capsys):

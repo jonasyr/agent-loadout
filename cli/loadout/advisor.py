@@ -12,6 +12,8 @@ from . import paths
 
 def _hook():
     path = paths.kit_root() / "plugins" / "loadout" / "hooks" / "advisor.py"
+    if not path.is_file():
+        raise ValueError(f"advisor hook script not found: {path} (is LOADOUT_ROOT a kit checkout?)")
     spec = importlib.util.spec_from_file_location("loadout_advisor_hook", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
