@@ -10,7 +10,7 @@ from typing import Callable
 from . import catalog, inventory, paths, pkgmgr, runner, secrets, ui
 from .backup import Backup
 from .inventory import Verdict
-from .jsonio import load_json, save_json
+from .jsonio import InvalidJSON, load_json, save_json
 from .secrets import redact
 
 GROUP_ORDER = ["remove", "migrate", "scope-down", "update", "install", "review", "unknown", "keep"]
@@ -31,6 +31,26 @@ VERB = {"remove": "remove", "migrate": "remove", "scope-down": "disable globally
         "install": "install", "review": "remove", "unknown": "remove"}
 MIGRATED_MARKER = "<!-- Global instructions live in"
 Ask = Callable[[str], str]
+
+
+def prefill_settings() -> dict:
+    """The user's own values in ~/.claude/settings.json (minus what the kit applied), used to prefill
+    the preference questions so existing values (effortLevel, attribution, autoMode, ...) stay as they are."""
+    from .settings_merge import get_path, leaves
+
+    try:
+        current = load_json(paths.claude_home() / "settings.json")
+        applied = load_json(paths.state_dir() / "managed-settings.json")
+    except InvalidJSON:
+        return {}
+    own = json.loads(json.dumps(current))
+    for path, value in leaves(applied):
+        if get_path(own, path) == value:
+            node = own
+            for key in path[:-1]:
+                node = node[key]
+            del node[path[-1]]
+    return own
 
 
 def _verb(v: Verdict) -> str:

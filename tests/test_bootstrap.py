@@ -12,7 +12,10 @@ def test_personal_wizard_renders_template(fake_home, fake_runner):
     b.ensure_personal(lambda q: next(answers))
     me = (paths.personal_root() / "rules/me.md").read_text()
     assert "Max" in me and "Python" in me and "{{" not in me
-    assert json.loads((paths.personal_root() / "settings.json").read_text()) == {}
+    assert "<!-- loadout:preferences:start -->" in me  # non-interactive: preference defaults, automode skipped
+    assert json.loads((paths.personal_root() / "settings.json").read_text()) == {
+        "attribution": {"commit": "", "pr": "", "sessionUrl": False}, "effortLevel": "medium",
+        "alwaysThinkingEnabled": True, "agentPushNotifEnabled": True}
 
 
 def test_personal_clone(fake_home, fake_runner):

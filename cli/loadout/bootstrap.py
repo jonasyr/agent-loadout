@@ -68,9 +68,10 @@ def check_prereqs(install: bool, ask: Ask) -> list[str]:
     return missing
 
 
-def ensure_personal(ask: Ask, bk: Backup | None = None) -> tuple[str, bool]:
+def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None = None) -> tuple[str, bool]:
     """Returns (message, ok). ok is False only when a clone was asked for and failed."""
     bk = bk if bk is not None else Backup(description="bootstrap")
+    interactive = ui.is_interactive() if interactive is None else interactive
     root = paths.personal_root()
     if root.exists():
         return f"personal layer: {root}", True
@@ -84,8 +85,9 @@ def ensure_personal(ask: Ask, bk: Backup | None = None) -> tuple[str, bool]:
     root.mkdir(parents=True, exist_ok=True)
     (root / "settings.json").write_text("{}\n", encoding="utf-8")
     bk.record_created(root / "settings.json", "created personal settings.json")
-    from .configure import _about_you
+    from .configure import _about_you, ask_preferences
     _about_you(ask, bk)
+    ask_preferences(ask, fill_defaults=True, interactive=interactive, bk=bk)
     return f"created starter personal layer at {root} (make it a git repo to sync it across machines)", True
 
 
@@ -219,7 +221,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     check_prereqs(install, ask)
     bk = Backup(description="bootstrap")
     _step("Personal layer")
-    message, personal_ok = ensure_personal(ask, bk)
+    message, personal_ok = ensure_personal(ask, bk, interactive)
     print(message)
     _step("Links")
     for line in link.link_all(bk, retry_symlinks=True) + link.link_bin(bk):
@@ -228,7 +230,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         print("\nnon-interactive: skipping the configure prompt (run `loadout configure` later)")
     elif not yes and ui.confirm(ask, "\nCustomize preferences and global add-ons now? [y/N] "):
         from .configure import wizard
-        wizard(ask, first_run=False, setup=False)  # settings, MCP servers and plugins are applied below
+        wizard(ask, first_run=False, setup=False, interactive=interactive)  # settings, MCP servers and plugins are applied below
     _step("Settings")
     settings_path = paths.claude_home() / "settings.json"
     if settings_path.exists() and _settings_would_change():

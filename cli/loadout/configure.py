@@ -6,14 +6,12 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from . import catalog, paths, profiles, runner, scaffold, ui
+from . import catalog, paths, preferences, profiles, runner, scaffold, ui
 from .backup import Backup
 from .jsonio import load_json, save_json
 from .secrets import redact
 
 Ask = Callable[[str], str]
-PREFS = [("effortLevel", "Effort level (low/medium/high)", str),
-         ("alwaysThinkingEnabled", "Always use extended thinking (true/false)", None)]
 
 
 @dataclass
@@ -125,6 +123,14 @@ def set_pref(key: str, raw_json: str) -> None:
     save_json(_personal_settings_path(), data)
 
 
+def set_pref_choice(pid: str, value: str, ask: Ask, interactive: bool) -> list[str]:
+    bk = Backup(description="configure preferences")
+    out = preferences.set_choice(pid, value, ask=ask, interactive=interactive, bk=bk)
+    if not bk.empty:
+        out.append(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+    return out
+
+
 def show() -> str:
     lines = ["Change one with: loadout configure set <plugin|mcp> <id> on|off"]
     for a in addons():
@@ -133,10 +139,13 @@ def show() -> str:
         hint = f" (recommended per project: loadout profile {a.category[8:]})" if a.category.startswith("profile ") else ""
         lines.append(f"{'on' if on else 'off'} ({source})  [{a.category}] {a.label}{hint}  — id: {a.kind} {a.target}")
         lines.append(f"      {a.reason}")
+    lines += preferences.show_lines()
     personal = load_json(_personal_settings_path())
-    prefs = {k: v for k, v in personal.items() if k not in ("enabledPlugins", "extraKnownMarketplaces")}
-    if prefs:
-        lines.append(redact("preferences: " + json.dumps(prefs, ensure_ascii=False)))
+    skip = {"enabledPlugins", "extraKnownMarketplaces"} | preferences.owned_setting_keys()
+    other = {k: v for k, v in personal.items() if k not in skip}
+    if other:
+        lines.append(redact("other personal settings (set with: loadout configure set pref <key> <json>): "
+                            + json.dumps(other, ensure_ascii=False)))
     return "\n".join(lines)
 
 
@@ -169,17 +178,19 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
         print("Restart Claude Code (or run /reload-plugins) to load the changes.")
 
 
-def _about_you(ask: Ask, bk: Backup) -> None:
+def _about_you(ask: Ask, bk: Backup) -> bool:
+    """True when a new me.md was written (its preference answers are then asked with defaults)."""
     me = paths.personal_root() / "rules" / "me.md"
     if me.exists():
         if not ui.confirm(ask, f"{me} already exists. Replace it with a new one? (the current one is backed up) [y/N] "):
             print(f"kept {me}")
-            return
+            return False
     values = {
         "NAME": ask("Your name: ").strip() or "me",
         "ROLE": ask("Your role (e.g. backend developer, CS student): ").strip() or "developer",
         "LANGUAGES": ask("Main languages/stacks: ").strip() or "(not specified)",
-        "PREFERENCES": ask("Working preferences (e.g. concise answers, ask before deleting): ").strip() or "(not specified)",
+        "PREFERENCES": ask("Anything else about how you like to work (the next questions cover language, "
+                           "commits and answer style): ").strip() or "(not specified)",
     }
     template = (paths.kit_root() / "templates/personal/rules/me.md").read_text(encoding="utf-8")
     me.parent.mkdir(parents=True, exist_ok=True)
@@ -188,19 +199,38 @@ def _about_you(ask: Ask, bk: Backup) -> None:
     else:
         bk.record_created(me, "created personal me.md")
     me.write_text(scaffold.render(template, values), encoding="utf-8")
+    return True
 
 
-def wizard(ask: Ask, first_run: bool, setup: bool = True) -> int:
+def ask_preferences(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup) -> None:
+    if interactive:
+        print("\n-- Working preferences (enter = keep the current answer"
+              + ("; new answers start at the recommended default)" if fill_defaults else ")"))
+    for line in preferences.ask_all(ask, fill_defaults=fill_defaults, interactive=interactive, bk=bk):
+        print(f"  {line}")
+    if not interactive and fill_defaults:
+        print("preferences: defaults applied (auto mode skipped); change them with `loadout configure prefs`")
+
+
+def prefs(ask: Ask, interactive: bool | None = None) -> int:
+    """`loadout configure prefs`: only the preference questions, then apply."""
+    interactive = ui.is_interactive() if interactive is None else interactive
+    bk = Backup(description="configure preferences")
+    ask_preferences(ask, fill_defaults=False, interactive=interactive, bk=bk)
+    if not bk.empty:
+        print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+    apply_all(ask)
+    return 0
+
+
+def wizard(ask: Ask, first_run: bool, setup: bool = True, interactive: bool | None = None) -> int:
+    interactive = ui.is_interactive() if interactive is None else interactive
     bk = Backup(description="configure")
+    new_me = False
     if first_run or not (paths.personal_root() / "rules" / "me.md").exists():
         print("\n-- About you (stored in your personal layer, loaded every session)")
-        _about_you(ask, bk)
-    print("\n-- Preferences (enter = keep current)")
-    personal = load_json(_personal_settings_path())
-    for key, label, _ in PREFS:
-        answer = ask(f"{label} [{personal.get(key, 'kit default')}]: ").strip()
-        if answer:
-            set_pref(key, answer if answer in ("true", "false") else json.dumps(answer))
+        new_me = _about_you(ask, bk)
+    ask_preferences(ask, fill_defaults=new_me, interactive=interactive, bk=bk)
     menu = addons()
     while True:
         print("\n-- Global add-ons (toggle by number; enter = done)")

@@ -65,8 +65,8 @@ def test_wizard_toggles_and_applies(fake_home, fake_runner, monkeypatch):
     (paths.personal_root() / "rules/me.md").write_text("me")  # existing profile: wizard skips about-you
     menu = configure.addons()
     idx = [a.key for a in menu].index("plugin:hookify@claude-plugins-official") + 1
-    answers = iter(["", "", str(idx), ""])  # keep effort, keep thinking, toggle hookify, done
-    configure.wizard(lambda q: next(answers), first_run=False)
+    answers = iter([str(idx), ""])  # no terminal: preferences are not asked; toggle hookify, done
+    configure.wizard(lambda q: next(answers), first_run=False, interactive=False)
     assert _personal_settings()["enabledPlugins"]["hookify@claude-plugins-official"] is True
     assert applied == [1]
 

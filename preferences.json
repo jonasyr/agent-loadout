@@ -1,0 +1,313 @@
+{
+  "$comment": "Working preferences asked by `loadout configure prefs`. target.me_md: the line written into the managed block of <personal>/rules/me.md per option ({text} = free text). target.setting: dotted key in <personal>/settings.json; values maps option -> JSON value (null = remove the key). detect: how existing answers are recognised (me_md regexes, case-insensitive; settings rules with equals/present). generator: special handling (automode).",
+  "preferences": [
+    {
+      "id": "answer_language",
+      "question": "Which language should Claude answer in?",
+      "options": [
+        {
+          "value": "match",
+          "label": "the language I write in, English as fallback"
+        },
+        {
+          "value": "english",
+          "label": "always English"
+        },
+        {
+          "value": "german",
+          "label": "always German"
+        },
+        {
+          "value": "other",
+          "label": "another language (free text)",
+          "free_text": true
+        }
+      ],
+      "default": "match",
+      "target": {
+        "me_md": {
+          "match": "- Language: answer in the language I write in; if unsure, use English.",
+          "english": "- Language: always answer in English.",
+          "german": "- Language: always answer in German.",
+          "other": "- Language: always answer in {text}."
+        }
+      },
+      "detect": {
+        "me_md": [
+          {
+            "pattern": "^\\s*[-*]?\\s*language:.*\\b(if i write in|language i write in|same language|that language)\\b",
+            "value": "match"
+          },
+          {
+            "pattern": "^\\s*[-*]?\\s*language:.*\\balways\\b.*\\benglish\\b",
+            "value": "english"
+          },
+          {
+            "pattern": "^\\s*[-*]?\\s*language:.*\\balways\\b.*\\bgerman\\b",
+            "value": "german"
+          }
+        ]
+      }
+    },
+    {
+      "id": "commit_style",
+      "question": "Which commit message style?",
+      "options": [
+        {
+          "value": "conventional",
+          "label": "Conventional Commits"
+        },
+        {
+          "value": "free",
+          "label": "free (follow each repo's style)"
+        }
+      ],
+      "default": "conventional",
+      "target": {
+        "me_md": {
+          "conventional": "- Commits: use Conventional Commits (`type(scope): subject`).",
+          "free": "- Commits: no fixed format; follow the repository's existing style."
+        }
+      },
+      "detect": {
+        "me_md": [
+          {
+            "pattern": "^\\s*[-*]?\\s*commits?\\b.*\\bconventional commits\\b",
+            "value": "conventional"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ai_attribution",
+      "question": "Add AI attribution (Co-Authored-By, PR footer) to commits and PRs?",
+      "options": [
+        {
+          "value": "off",
+          "label": "off"
+        },
+        {
+          "value": "on",
+          "label": "on (Claude Code's default)"
+        }
+      ],
+      "default": "off",
+      "target": {
+        "setting": "attribution",
+        "values": {
+          "off": {
+            "commit": "",
+            "pr": "",
+            "sessionUrl": false
+          },
+          "on": null
+        }
+      },
+      "detect": {
+        "settings": [
+          {
+            "key": "includeCoAuthoredBy",
+            "equals": false,
+            "value": "off"
+          },
+          {
+            "key": "includeCoAuthoredBy",
+            "equals": true,
+            "value": "on"
+          },
+          {
+            "key": "attribution",
+            "present": true,
+            "value": "on"
+          }
+        ]
+      }
+    },
+    {
+      "id": "answer_style",
+      "question": "How should answers be?",
+      "options": [
+        {
+          "value": "concise",
+          "label": "concise"
+        },
+        {
+          "value": "detailed",
+          "label": "detailed"
+        }
+      ],
+      "default": "concise",
+      "target": {
+        "me_md": {
+          "concise": "- Answers: concise; no filler, no recap of what I just said.",
+          "detailed": "- Answers: detailed, with explanations and context."
+        }
+      },
+      "detect": {
+        "me_md": [
+          {
+            "pattern": "^\\s*[-*]?\\s*answers?( style)?:.*\\b(concise|short|brief)\\b",
+            "value": "concise"
+          },
+          {
+            "pattern": "^\\s*[-*]?\\s*answers?( style)?:.*\\b(detailed|thorough)\\b",
+            "value": "detailed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "destructive_actions",
+      "question": "Before deleting, overwriting or removing things?",
+      "options": [
+        {
+          "value": "ask",
+          "label": "always ask first"
+        },
+        {
+          "value": "backup",
+          "label": "just do it, with a backup"
+        }
+      ],
+      "default": "ask",
+      "target": {
+        "me_md": {
+          "ask": "- Destructive actions: always ask before deleting, overwriting or removing anything.",
+          "backup": "- Destructive actions: go ahead without asking, but make a backup first."
+        }
+      },
+      "detect": {
+        "me_md": [
+          {
+            "pattern": "\\bask\\b[^.;]*\\bbefore\\b[^.;]*\\b(remov|delet|replac|overwrit)",
+            "value": "ask"
+          }
+        ]
+      }
+    },
+    {
+      "id": "effort_level",
+      "question": "Default effort level?",
+      "options": [
+        {
+          "value": "low",
+          "label": "low"
+        },
+        {
+          "value": "medium",
+          "label": "medium"
+        },
+        {
+          "value": "high",
+          "label": "high"
+        }
+      ],
+      "default": "medium",
+      "target": {
+        "setting": "effortLevel",
+        "values": {
+          "low": "low",
+          "medium": "medium",
+          "high": "high"
+        }
+      }
+    },
+    {
+      "id": "extended_thinking",
+      "question": "Always use extended thinking?",
+      "options": [
+        {
+          "value": "yes",
+          "label": "yes"
+        },
+        {
+          "value": "no",
+          "label": "no"
+        }
+      ],
+      "default": "yes",
+      "target": {
+        "setting": "alwaysThinkingEnabled",
+        "values": {
+          "yes": true,
+          "no": false
+        }
+      }
+    },
+    {
+      "id": "agent_push_notifications",
+      "question": "Push notifications when an agent needs you?",
+      "options": [
+        {
+          "value": "yes",
+          "label": "yes"
+        },
+        {
+          "value": "no",
+          "label": "no"
+        }
+      ],
+      "default": "yes",
+      "target": {
+        "setting": "agentPushNotifEnabled",
+        "values": {
+          "yes": true,
+          "no": false
+        }
+      }
+    },
+    {
+      "id": "automode_trust",
+      "question": "Draft the auto mode trust environment from your git repos?",
+      "options": [
+        {
+          "value": "generate",
+          "label": "generate a draft (shown in full, saved only after you confirm)"
+        },
+        {
+          "value": "skip",
+          "label": "skip"
+        }
+      ],
+      "default": "generate",
+      "target": {
+        "setting": "autoMode.environment",
+        "values": {}
+      },
+      "generator": "automode"
+    },
+    {
+      "id": "commit_doc_language",
+      "question": "Language of commit messages, code comments and docs?",
+      "options": [
+        {
+          "value": "english",
+          "label": "English"
+        },
+        {
+          "value": "project",
+          "label": "match the project"
+        }
+      ],
+      "default": "english",
+      "target": {
+        "me_md": {
+          "english": "- Commit messages, code comments and docs: English.",
+          "project": "- Commit messages, code comments and docs: match the project's existing language."
+        }
+      },
+      "detect": {
+        "me_md": [
+          {
+            "pattern": "^\\s*[-*]?\\s*commit messages[^:]*:\\s*english\\b",
+            "value": "english"
+          },
+          {
+            "pattern": "^\\s*[-*]?\\s*commit messages[^:]*:\\s*match\\b",
+            "value": "project"
+          }
+        ]
+      }
+    }
+  ]
+}

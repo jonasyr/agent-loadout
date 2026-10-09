@@ -2,4 +2,4 @@
 
 - Role: {{ROLE}}
 - Main languages and stacks: {{LANGUAGES}}
-- Working preferences: {{PREFERENCES}}
+- Other working preferences: {{PREFERENCES}}

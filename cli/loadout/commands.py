@@ -144,13 +144,16 @@ def _register_configure(sub):
                        description="Without arguments: an interactive wizard. Choices go into your personal layer.",
                        epilog="examples:\n"
                               "  loadout configure show\n"
+                              "  loadout configure prefs\n"
+                              "  loadout configure set pref-choice effort_level high\n"
                               "  loadout configure set plugin hookify@claude-plugins-official on\n"
                               "  loadout configure set mcp dbhub on\n"
                               "  loadout configure set pref effortLevel '\"high\"'")
-    p.add_argument("action", nargs="?", choices=["show", "set"], help="show the current state, or set one value")
-    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref"], help="what to set")
-    p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, or preference key (ids: configure show)")
-    p.add_argument("value", nargs="?", help="on|off for plugin/mcp; a JSON value for pref")
+    p.add_argument("action", nargs="?", choices=["show", "set", "prefs"],
+                   help="show the current state, set one value, or answer the working-preference questions")
+    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref"], help="what to set")
+    p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, preference id, or settings key (ids: configure show)")
+    p.add_argument("value", nargs="?", help="on|off for plugin/mcp; an option for pref-choice; a JSON value for pref")
     p.add_argument("--first-run", action="store_true", help="also ask the 'about you' questions again (keeps your me.md unless you agree)")
 
     def run(a):
@@ -159,13 +162,19 @@ def _register_configure(sub):
         if a.action == "show":
             print(configure.show())
             return 0
+        if a.action == "prefs":
+            return configure.prefs(_ask)
         if not (a.kind and a.name and a.value):
-            raise ValueError("usage: loadout configure set plugin|mcp|pref <name> <value>")
+            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref <name> <value>")
         if a.kind == "plugin":
             configure.set_plugin(a.name, configure.parse_switch(a.value, "plugin"))
         elif a.kind == "mcp":
             for warning in configure.set_mcp(a.name, configure.parse_switch(a.value, "mcp")):
                 print(f"note: {warning}")
+        elif a.kind == "pref-choice":
+            from . import ui
+            for line in configure.set_pref_choice(a.name, a.value, _ask, ui.is_interactive()):
+                print(line)
         else:
             configure.set_pref(a.name, a.value)
         configure.apply_all(lambda q: "n")
