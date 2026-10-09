@@ -24,7 +24,7 @@ Use the plan path from the hook message or the user; otherwise the newest file i
 | **Independent, parallelisable tasks** (no shared files or interfaces) | Parallel subagents |
 | **Cost**: SDD = a fresh context per task + a review per task; Inline = one context + one final review | Pick the cheapest option that still covers the risk |
 
-Model tiers: **cheap** (Haiku-class) for transcription and mechanical edits, **standard** (Sonnet-class) for normal implementation, **top** (Opus-class) for design-heavy or risky work and for the final whole-branch review.
+Model tiers: **cheap** (Haiku-class) for transcription and mechanical edits, **standard** (Sonnet-class) for normal implementation, **top** (Opus-class) for design-heavy or risky work and for the final whole-branch review. A tier only applies to delegated work: an inline task runs on the session's model, so write `session` in its Model column. Hence, outside a 1–3 task plan, transcription tasks are cheapest in one cheap-tier subagent (batch several into one) rather than inline on the session model.
 
 ## 3. Verdict
 
@@ -45,7 +45,7 @@ Verdict: Hybrid — <one sentence why>
 
 | Task | Mode | Model | Review | Why |
 |---|---|---|---|---|
-| 1 Schema migration | Inline | top | per-task | migrates user data; needs the user's go-ahead |
+| 1 Schema migration | Inline | session | per-task | migrates user data; needs the user's go-ahead |
 | 2 CSV writer | SDD | cheap | final-only | complete code in plan, independent |
 
 Cost: recommended <low|medium|high> · all-Inline <…> · all-SDD <…>
