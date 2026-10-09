@@ -303,8 +303,10 @@ def test_cli_restore_exit_codes_and_list(fake_home, fake_runner, capsys):
     capsys.readouterr()
     assert main(["restore", "--list"]) == 0
     out = capsys.readouterr().out
-    rows = [line.split()[0] for line in out.splitlines() if line.startswith(str(paths.backups_root()))]
-    assert rows.index(str(bk2.root)) < rows.index(str(bk.root))
+    def short(p):
+        return "~" + str(p)[len(str(fake_home)):]
+    rows = [line.split()[0] for line in out.splitlines() if line.startswith(short(paths.backups_root()))]
+    assert rows.index(short(bk2.root)) < rows.index(short(bk.root))
     assert "1 step" in out and "restored" in out and "test run" in out
 
 

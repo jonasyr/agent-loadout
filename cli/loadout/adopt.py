@@ -46,6 +46,11 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
         lines.append(f"\n{group.upper()} ({len(members)}) — {GROUP_HELP[group]}")
         if any(v.item.kind == "claude-md" for v in members):
             lines.append("  (CLAUDE.md: picking moves its content into your personal layer instead; restorable.)")
+        if group == "keep":
+            bins = [v for v in members if v.item.kind == "binary"]
+            if bins:
+                lines.append("  binaries: " + ", ".join(f"{v.item.name} {v.item.detail}".rstrip() for v in bins))
+            members = [v for v in members if v.item.kind != "binary"]
         for v in members:
             lines.append(redact(f"  [{v.item.kind}] {v.item.name}  {v.item.detail}".rstrip()))
             lines.append(redact(f"      {v.reason}"))
@@ -138,15 +143,8 @@ def _apply_marketplace(v: Verdict, bk: Backup) -> str:
 
 
 def _apply_skill(v: Verdict, bk: Backup) -> str:
-    link = Path(v.item.location)
-    target = None
-    if link.is_symlink():
-        resolved = Path(os.path.normpath(link.parent / os.readlink(link)))
-        if "/.agents/skills/" in resolved.as_posix() and resolved.exists():
-            target = resolved
-    bk.move(link, f"skill {v.item.name}")
-    if target is not None:
-        bk.move(target, f"skill source {target}")
+    # only the ~/.claude/skills entry: a shared ~/.agents/skills source also serves Codex and other agents
+    bk.move(Path(v.item.location), f"skill {v.item.name}")
     return f"skill {v.item.name} moved to backup"
 
 
@@ -263,7 +261,8 @@ def fix_secrets(findings: list, bk: Backup) -> list[str]:
             out.append(f"{f.server}: secret in {f.field} ({f.location}): move it to secrets.env by hand")
     known = secrets.load_env(secrets_path)
     for server, group in fixable.items():
-        original = claude_json.get("mcpServers", {}).get(server)
+        servers = claude_json.get("mcpServers")
+        original = servers.get(server) if isinstance(servers, dict) else None
         if original is None:
             out.append(f"{server}: not found in ~/.claude.json, skipped")
             continue
@@ -312,6 +311,7 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
     selected = [v for v in selected if v.action != "keep"]  # keep never acts, whatever was passed in
     for v in selected:
         kind = v.item.kind
+        n = len(out)
         if kind == "binary" and v.action not in ("install", "update"):
             out.append(f"binary {v.item.name}: nothing to run for '{v.action}'")
         elif kind == "mcp":
@@ -326,6 +326,9 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
             out.append(_apply_binary(v, ask, confirm_cmds))
         elif kind == "claude-md":
             out += migrate_claude_md(bk)
+        entry = catalog.by_id(v.entry_id) if v.action == "scope-down" else None
+        if entry and entry.get("profile") and len(out) > n:
+            out[-1] += f" (enable it per project: loadout profile {entry['profile']})"
     out += _apply_hooks([v for v in selected if v.item.kind == "hook"], bk)
     return out
 

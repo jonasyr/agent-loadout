@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import filecmp
+import hashlib
+import json
 import os
 import shutil
 import sys
@@ -40,6 +42,20 @@ def _is_kit_copy(dest: Path, src: Path) -> bool:
     return dest.is_file() and not dest.is_symlink() and filecmp.cmp(dest, src, shallow=False)
 
 
+def _tree_hashes(root: Path) -> dict[str, str]:
+    return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(root.rglob("*")) if p.is_file() and p.name != SENTINEL}
+
+
+def _copy_edited(dest: Path) -> bool:
+    """True when files in a kit copy differ from what loadout copied (recorded in the sentinel)."""
+    try:
+        recorded = json.loads((dest / SENTINEL).read_text(encoding="utf-8")).get("files")
+    except (OSError, ValueError, AttributeError):
+        return False  # older sentinel without hashes: refreshed as before
+    return isinstance(recorded, dict) and recorded != _tree_hashes(dest)
+
+
 def _replace_with_copy(src: Path, dest: Path) -> None:
     if dest.is_symlink() or dest.is_file():
         dest.unlink()
@@ -47,9 +63,22 @@ def _replace_with_copy(src: Path, dest: Path) -> None:
         shutil.rmtree(dest)
     if src.is_dir():
         shutil.copytree(src, dest)
-        (dest / SENTINEL).write_text("copied by loadout; refreshed on every link run\n", encoding="utf-8")
+        info = {"note": "copied by loadout; refreshed on every link run", "files": _tree_hashes(dest)}
+        (dest / SENTINEL).write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     else:
         shutil.copy2(src, dest)
+
+
+def _symlinks_work() -> bool:
+    probe_dir = paths.state_dir()
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    probe = probe_dir / f".symlink-probe-{os.getpid()}"
+    try:
+        os.symlink(probe_dir, probe, target_is_directory=True)
+    except OSError:
+        return False
+    probe.unlink()
+    return True
 
 
 def _link_one(dest: Path, src: Path, bk: Backup) -> str | None:
@@ -57,8 +86,8 @@ def _link_one(dest: Path, src: Path, bk: Backup) -> str | None:
         return None
     dest.parent.mkdir(parents=True, exist_ok=True)
     if is_copy_mode() and not dest.is_symlink():
-        if dest.exists() and not _is_kit_copy(dest, src):
-            bk.move(dest, f"replaced {dest}", replace=True)
+        if dest.exists() and (not _is_kit_copy(dest, src) or (src.is_dir() and _copy_edited(dest))):
+            bk.move(dest, f"replaced {dest}", replace=True)  # a user dir, or a kit copy edited in place
         _replace_with_copy(src, dest)
         return None  # refresh, not news
     if dest.exists() or dest.is_symlink():
@@ -73,8 +102,13 @@ def _link_one(dest: Path, src: Path, bk: Backup) -> str | None:
         return f"copied {src} -> {dest} (symlinks unavailable)"
 
 
-def link_all(bk: Backup) -> list[str]:
-    return [a for dest, src in LINKS() if (a := _link_one(dest, src, bk))]
+def link_all(bk: Backup, retry_symlinks: bool = False) -> list[str]:
+    """retry_symlinks (bootstrap): leave copy mode when symlinks work again (e.g. Developer Mode on)."""
+    out = []
+    if retry_symlinks and is_copy_mode() and _symlinks_work():
+        _marker().unlink()
+        out.append("symlinks work now: replacing copied rules with links")
+    return out + [a for dest, src in LINKS() if (a := _link_one(dest, src, bk))]
 
 
 def write_windows_shims(target_dir: Path) -> None:

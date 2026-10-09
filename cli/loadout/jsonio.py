@@ -40,6 +40,10 @@ def write_atomic(path: Path, text: str, mode: int | None = None) -> None:
     A symlinked target (dotfile setups) is followed, so the link itself stays in place.
     The existing file mode is kept; `mode` applies only to a new file.
     """
+    write_atomic_bytes(path, text.encode("utf-8"), mode)
+
+
+def write_atomic_bytes(path: Path, data: bytes, mode: int | None = None) -> None:
     path = Path(os.path.realpath(path)) if path.is_symlink() else path
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -48,8 +52,8 @@ def write_atomic(path: Path, text: str, mode: int | None = None) -> None:
         mode = _default_mode()
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(text)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
             fh.flush()
             os.fsync(fh.fileno())
         if os.name != "nt":

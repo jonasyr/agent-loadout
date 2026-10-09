@@ -127,7 +127,7 @@ Your preferences live in `~/.config/loadout/personal` (or wherever `LOADOUT_PERS
 | `mcp.json` | Extra MCP servers you want everywhere |
 | `profiles/*.json` | Your own project presets |
 
-You rarely edit these by hand: `loadout configure` does it for you. **To sync them across machines, make the folder a private git repo**; loadout pulls it daily and offers to commit and push after `loadout configure`.
+You rarely edit these by hand: `loadout configure` does it for you. **To sync them across machines, make the folder a private git repo**; loadout pulls it daily and offers to commit and push after `loadout configure` (not while a `*.env` file would be committed: secrets belong in `~/.config/loadout/secrets.env`).
 
 ## Staying up to date
 
@@ -179,7 +179,7 @@ Secrets loaded by your shell only reach Claude Code started from that shell. On 
 | A plugin or MCP server is missing in Claude Code | Restart Claude Code; then `loadout check` lists what is missing and how to fix it |
 | `invalid JSON in .../settings.json` | Fix the syntax error at the reported position, then run `loadout apply-settings` |
 | "settings drift" warning | Something changed a kit-managed value. Run `loadout apply-settings`, or put your preferred value in your personal `settings.json` |
-| Windows: links were copied instead of linked | Enable Developer Mode (Settings, For developers) and re-run bootstrap; copies still work and are refreshed daily |
+| Windows: links were copied instead of linked | Enable Developer Mode (Settings, For developers) and re-run bootstrap, which switches back to links; copies still work and are refreshed after each daily sync. Edit the source in your personal layer, not the copy: an edited copy is moved into a backup on the next refresh (the session notice names it) |
 | Something went wrong after adopt | `loadout restore <backup path printed by adopt>` (`loadout restore --list` shows all backups) |
 | `adopt --apply` exits with code 2 | It was run without a terminal. Add `--yes` (safe defaults) or `--groups remove,migrate,...` |
 | Windows: "cannot take JSON arguments (Windows .cmd shim)" | The npm-installed `claude.cmd` cannot receive JSON safely, so loadout changes nothing and writes the exact commands to a private `manual-commands.txt` (path printed), each in a POSIX sh form (Git Bash) and a PowerShell form. Paste one form, or install the native `claude.exe` |
@@ -187,7 +187,7 @@ Secrets loaded by your shell only reach Claude Code started from that shell. On 
 
 ## FAQ
 
-**Will it delete my stuff?** No. Anything it removes or replaces is moved into `~/.claude/backups/loadout-<timestamp>`, and `loadout restore` puts it back. Restore itself moves whatever it replaces into a new backup first, and files loadout created (such as a new `me.md` or `secrets.env`) are moved aside, not deleted. Plugins are uninstalled with `--keep-data`. Tools it does not know are left alone.
+**Will it delete my stuff?** No. Anything it removes or replaces is moved into `~/.claude/backups/loadout-<timestamp>`, and `loadout restore` puts it back. Restore itself moves whatever it replaces into a new backup first, and files loadout created (such as a new `me.md` or `secrets.env`) are moved aside, not deleted. Plugins are uninstalled with `--keep-data`. Tools it does not know are left alone. Restore undoes what loadout removed or replaced; it does not take back additions such as the rules links, the secrets line appended to an existing shell rc file or the kit's keys in `settings.json` (see Uninstall for those).
 
 **I already have my own CLAUDE.md, hooks and settings.** They stay. The kit only manages its own keys. `adopt` offers to move your global CLAUDE.md content into your personal layer.
 

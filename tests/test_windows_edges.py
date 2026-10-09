@@ -1,6 +1,7 @@
 """Windows edge cases: paired restore steps, managed tracking, background notices, manual-commands format."""
 import json
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -24,7 +25,7 @@ def _setup_personal(servers):
 def test_manual_commands_have_labelled_posix_and_powershell_forms(tmp_path):
     cmd = ["claude", "mcp", "add-json", "-s", "user", "srv", '{"env": {"T": "a b"}}']
     path = runner.write_manual_commands(tmp_path, "mcp srv", [cmd])
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding="utf-8")
     assert "# mcp srv" in text
     assert "# POSIX sh" in text and "# PowerShell" in text
     posix = text.split("# POSIX sh")[1].split("# PowerShell")[0]

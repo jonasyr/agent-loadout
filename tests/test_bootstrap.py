@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from loadout import bootstrap as b, paths
 
@@ -108,7 +109,7 @@ def test_bootstrap_backs_up_existing_settings(fake_home, fake_runner):
     restore = [s for s in steps if "restore-file" in s["undo"]
                and s["undo"]["restore-file"][1] == str(fake_home / ".claude/settings.json")]
     assert restore
-    assert json.loads(open(restore[0]["undo"]["restore-file"][0]).read()) == {"theme": "dark"}
+    assert json.loads(Path(restore[0]["undo"]["restore-file"][0]).read_text()) == {"theme": "dark"}
 
 
 def test_bootstrap_rerun_makes_no_new_backup(fake_home, fake_runner, capsys):

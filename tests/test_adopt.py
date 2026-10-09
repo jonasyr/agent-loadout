@@ -60,9 +60,9 @@ def test_apply_removes_hooks_and_skills_restorably(machine):
     assert "Stop" not in settings["hooks"]
     assert "my-own-linter" in commands
     assert not (machine / ".claude/skills/gpt-taste").exists()
-    assert not (machine / ".agents/skills/gpt-taste").exists()
+    assert (machine / ".agents/skills/gpt-taste").exists()  # shared source stays for other agents
     backup.restore(bk.root)
-    assert (machine / ".agents/skills/gpt-taste/SKILL.md").exists()
+    assert (machine / ".claude/skills/gpt-taste/SKILL.md").exists()
     restored = json.loads((machine / ".claude/settings.json").read_text())
     assert "Stop" in restored["hooks"]
 

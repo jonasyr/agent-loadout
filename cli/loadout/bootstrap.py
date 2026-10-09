@@ -60,7 +60,9 @@ def check_prereqs(install: bool, ask: Ask) -> list[str]:
             missing.append(name)
     if runner.have("gh"):
         if runner.run(["gh", "auth", "status"], timeout=20).ok:
-            runner.run(["gh", "auth", "setup-git"], timeout=20)
+            res = runner.run(["gh", "auth", "setup-git"], timeout=20)
+            if res.ok:
+                print("git uses your gh login for GitHub (gh auth setup-git; undo: git config --global --unset-all credential.https://github.com.helper)")
         else:
             print("gh is not logged in: run `gh auth login` (needed for private marketplaces)")
     return missing
@@ -116,7 +118,8 @@ def _decode_profile(raw: bytes) -> tuple[str, str]:
         return raw.decode("utf-8"), "utf-8"
     except UnicodeDecodeError:
         enc = locale.getpreferredencoding(False)
-        return raw.decode(enc, errors="replace"), enc
+        # surrogateescape: undecodable bytes survive the round trip unchanged
+        return raw.decode(enc, errors="surrogateescape"), enc
 
 
 def _powershell_profiles() -> tuple[list[Path], list[str]]:
@@ -147,7 +150,11 @@ def _add_block(rc: Path, block: str, bk: Backup | None, windows: bool) -> str | 
                 block = block.replace("\n", "\r\n")
             sep = "" if not text or text.endswith("\n") else ("\r\n" if "\r\n" in text else "\n")
             # encode the whole text again so a UTF-16 profile stays UTF-16 (one BOM, at the start)
-            rc.write_bytes((text + sep + block).encode(enc))
+            data = (text + sep + block).encode(enc, errors="surrogateescape")
+            if bk is not None:
+                bk.save_copy(rc, f"{rc} before adding secrets loading")
+            from .jsonio import write_atomic_bytes
+            write_atomic_bytes(rc, data)
         else:
             if RC_MARKER.encode() in raw:
                 return None
@@ -215,7 +222,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     message, personal_ok = ensure_personal(ask, bk)
     print(message)
     _step("Links")
-    for line in link.link_all(bk) + link.link_bin(bk):
+    for line in link.link_all(bk, retry_symlinks=True) + link.link_bin(bk):
         print(line)
     if not yes and not interactive:
         print("\nnon-interactive: skipping the configure prompt (run `loadout configure` later)")

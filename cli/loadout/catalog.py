@@ -26,6 +26,10 @@ def match(kind: str, name: str, detail: str = "") -> dict | None:
     return None
 
 
+def by_id(entry_id: str) -> dict | None:
+    return next((e for e in load() if e["id"] == entry_id), None)
+
+
 def binaries() -> list[dict]:
     return [e for e in load() if e["kind"] == "binary"]
 

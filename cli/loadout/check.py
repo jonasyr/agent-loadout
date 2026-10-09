@@ -23,7 +23,7 @@ def _links() -> list[CheckResult]:
     for dest, src in link.LINKS():
         name = f"link rules/{dest.name}"
         if link.is_copy_mode():
-            ok = dest.exists()
+            ok = link._points_to(dest, src) or link._is_kit_copy(dest, src)
         else:
             ok = dest.is_symlink() and dest.resolve() == src.resolve()
         out.append(CheckResult(name, ok, "" if ok else f"{dest} does not point to {src}", "loadout bootstrap"))
@@ -48,6 +48,8 @@ def _plugins() -> list[CheckResult]:
     try:
         wanted = [p for p, on in settings_merge.desired_settings().get("enabledPlugins", {}).items() if on]
         installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
+        if not isinstance(installed, dict):
+            raise InvalidJSON("installed_plugins.json: 'plugins' is not an object")
     except InvalidJSON as exc:
         return [CheckResult("plugins installed", False, str(exc), "fix the JSON syntax", "warn")]
     missing = [p for p in wanted if p not in installed]
@@ -94,6 +96,10 @@ def _repos() -> list[CheckResult]:
         out.append(CheckResult(f"{label} repo clean", clean, "" if clean else "uncommitted changes (daily sync paused)",
                                f"commit or discard changes in {root}", "warn"))
     return out
+
+
+def _by_name(results: list[CheckResult]) -> dict[str, CheckResult]:
+    return {r.name: r for r in results}
 
 
 def run_checks() -> list[CheckResult]:

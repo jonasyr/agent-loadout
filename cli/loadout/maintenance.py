@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -58,19 +59,28 @@ def session_start(now: float) -> str | None:
         out = json.dumps({"systemMessage": notice.read_text(encoding="utf-8").strip()})
         notice.unlink()
     if is_due("last-pull", DAY, now) or is_due("last-update-check", WEEK, now):
-        _spawn_background()
+        try:
+            _spawn_background()
+        except Exception:  # the notice above was already taken: still show it
+            pass
     return out
 
 
 def pull_if_clean(root: Path) -> bool:
     if not (root / ".git").exists() and not root.is_dir():
         return False
+    """True only when a pull brought new commits (so settings/MCP need re-applying)."""
     status = runner.run(["git", "-C", str(root), "status", "--porcelain"], timeout=30)
     if not status.ok or status.stdout.strip():
         return False
+    head = ["git", "-C", str(root), "rev-parse", "HEAD"]
+    before = runner.run(head, timeout=30).stdout.strip()
     # a background process has no one to answer a credential prompt (or a GCM login window)
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
-    return runner.run(["git", "-C", str(root), "pull", "--ff-only", "-q"], timeout=120, env=env).ok
+    if not runner.run(["git", "-C", str(root), "pull", "--ff-only", "-q"], timeout=120, env=env).ok:
+        return False
+    after = runner.run(head, timeout=30).stdout.strip()
+    return not (before and before == after)
 
 
 def find_outdated() -> list[tuple[dict, tuple, tuple]]:
@@ -112,7 +122,44 @@ def worth_notifying(outdated: list) -> list:
             if not (e["id"] in refused and (versions.parse_version(refused[e["id"]]) or ()) >= b)]
 
 
+LOCK = "maintenance.lock"
+STALE_LOCK = 3600.0
+
+
+def _acquire_lock() -> bool:
+    """One maintenance run at a time; a lock older than an hour is from a crashed run."""
+    lock = _stamp(LOCK)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(2):
+        try:
+            fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            try:
+                if time.time() - lock.stat().st_mtime < STALE_LOCK:
+                    return False
+                lock.unlink()
+            except OSError:
+                return False
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(str(os.getpid()))
+        return True
+    return False
+
+
 def maintain(now: float) -> None:
+    if not _acquire_lock():
+        return
+    try:
+        _maintain(now)
+    finally:
+        try:
+            _stamp(LOCK).unlink()
+        except OSError:
+            pass
+
+
+def _maintain(now: float) -> None:
     from .settings_merge import apply_settings
 
     if os.environ.get("LOADOUT_NO_AUTO_PULL") == "1":
@@ -129,7 +176,11 @@ def maintain(now: float) -> None:
             except Exception as exc:  # never crash in the background; surface next session
                 notify(f"loadout: could not apply settings after sync: {exc}")
             if link.is_copy_mode():
-                link.link_all(Backup())
+                bk = Backup(description="maintenance: rule copies refreshed after a pull")
+                link.link_all(bk)
+                if not bk.empty:
+                    notify(f"loadout: refreshed the copied rules; your edited copies are in {bk.root} "
+                           f"(undo: loadout restore {bk.root})")
     if is_due("last-update-check", WEEK, now):
         touch("last-update-check", now)
         outdated = worth_notifying(find_outdated())

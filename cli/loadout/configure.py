@@ -9,6 +9,7 @@ from typing import Callable
 from . import catalog, paths, profiles, runner, scaffold, ui
 from .backup import Backup
 from .jsonio import load_json, save_json
+from .secrets import redact
 
 Ask = Callable[[str], str]
 PREFS = [("effortLevel", "Effort level (low/medium/high)", str),
@@ -129,12 +130,13 @@ def show() -> str:
     for a in addons():
         on = is_on(a)
         source = "default" if on == a.default_on else "personal"
-        lines.append(f"{'on' if on else 'off'} ({source})  [{a.category}] {a.label}  — id: {a.kind} {a.target}")
+        hint = f" (recommended per project: loadout profile {a.category[8:]})" if a.category.startswith("profile ") else ""
+        lines.append(f"{'on' if on else 'off'} ({source})  [{a.category}] {a.label}{hint}  — id: {a.kind} {a.target}")
         lines.append(f"      {a.reason}")
     personal = load_json(_personal_settings_path())
     prefs = {k: v for k, v in personal.items() if k not in ("enabledPlugins", "extraKnownMarketplaces")}
     if prefs:
-        lines.append("preferences: " + json.dumps(prefs, ensure_ascii=False))
+        lines.append(redact("preferences: " + json.dumps(prefs, ensure_ascii=False)))
     return "\n".join(lines)
 
 
@@ -154,7 +156,12 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
     root = paths.personal_root()
     if (root / ".git").exists():
         status = runner.run(["git", "-C", str(root), "status", "--porcelain"])
-        if status.stdout.strip() and ask("commit and push your personal layer? [y/N] ").strip().lower() == "y":
+        changed = [line[3:].strip().strip('"') for line in status.stdout.splitlines() if line.strip()]
+        env_files = [p for p in changed if p.rsplit("/", 1)[-1].endswith(".env")]
+        if env_files:
+            print(f"not offering to commit the personal layer: {', '.join(env_files)} would be committed "
+                  f"(secrets belong in {paths.secrets_file()}; add them to {root / '.gitignore'})")
+        elif status.stdout.strip() and ask("commit and push your personal layer? [y/N] ").strip().lower() == "y":
             runner.run(["git", "-C", str(root), "add", "-A"])
             runner.run(["git", "-C", str(root), "commit", "-m", "chore: update loadout preferences"])
             runner.run(["git", "-C", str(root), "push"])
@@ -202,7 +209,8 @@ def wizard(ask: Ask, first_run: bool, setup: bool = True) -> int:
             if a.category != category:
                 category = a.category
                 print(f"  {category}")
-            print(f"   {i:2d}. [{'x' if is_on(a) else ' '}] {a.label} — {a.reason}")
+            per_project = " (recommended per project instead)" if a.category.startswith("profile ") else ""
+            print(f"   {i:2d}. [{'x' if is_on(a) else ' '}] {a.label}{per_project} — {a.reason}")
         answer = ask("toggle: ").strip()
         if not answer:
             break

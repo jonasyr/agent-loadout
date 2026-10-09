@@ -15,8 +15,10 @@ def _register_restore(sub):
         if args.list or not args.backup_dir:
             rows = backup.list_backups()
             print("\n".join(rows) if rows else "no backups yet")
+            if rows:
+                print("\nundo one: loadout restore <path from the first column>")
             if not args.list:
-                print("\nusage: loadout restore DIR")
+                print("usage: loadout restore DIR")
             return 0
         lines, ok, pre = backup.restore(Path(args.backup_dir).expanduser(), force=args.force)
         for line in lines:

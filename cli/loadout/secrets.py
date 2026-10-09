@@ -53,6 +53,7 @@ def looks_secret(key: str, value: str, keyed_arg: bool = False) -> bool:
 _JSON_PAIR = re.compile(r'"(?P<k>[^"\\]*)"(?P<sep>\s*:\s*)"(?P<v>(?:[^"\\]|\\.)*)"')
 _KEY_EQ = re.compile(r"(?P<k>[A-Za-z0-9_.-]+)=(?P<v>[^\s&'\"]+)")
 _FLAG_VALUE = re.compile(r"(?P<k>--?[A-Za-z0-9_-]*(?:key|token|secret|password|auth)[A-Za-z0-9_-]*)(?P<sp>\s+)(?P<v>[^\s-]\S{7,})", re.I)
+_URL_PASSWORD = re.compile(r"(?P<k>\b[a-z][a-z0-9+.-]*://[^\s:/@]+:)(?P<v>[^\s@/]+)(?=@)", re.I)
 _BEARER = re.compile(r"(?P<k>\b(?:Bearer|Basic|token)\s+)(?P<v>[A-Za-z0-9._~+/=-]{8,})")
 
 
@@ -62,6 +63,7 @@ def redact(text: str) -> str:
         return text
     text = _JSON_PAIR.sub(lambda m: f'"{m["k"]}"{m["sep"]}"{MASK}"' if looks_secret(m["k"], m["v"]) else m.group(), text)
     text = _BEARER.sub(lambda m: m["k"] + MASK, text)
+    text = _URL_PASSWORD.sub(lambda m: m["k"] + (m["v"] if m["v"].startswith("${") else MASK), text)
     text = _KEY_EQ.sub(lambda m: f"{m['k']}={MASK}" if looks_secret(m["k"], m["v"], keyed_arg=True) else m.group(), text)
     text = _FLAG_VALUE.sub(lambda m: m["k"] + m["sp"] + MASK, text)
     for pattern in SECRET_PATTERNS:

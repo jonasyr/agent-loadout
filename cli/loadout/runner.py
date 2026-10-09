@@ -83,9 +83,12 @@ def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict 
         from .secrets import redact
         return Result(126, "", "refusing to pass special characters through cmd.exe; run manually: "
                       + redact(" ".join(cmd)))
+    extra = {}
+    if _is_windows():  # no console window per child (maintenance runs detached, without a console)
+        extra["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         proc = subprocess.run([exe, *cmd[1:]], cwd=cwd, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=timeout, env=env)
+                              encoding="utf-8", errors="replace", timeout=timeout, env=env, **extra)
     except subprocess.TimeoutExpired:
         return Result(124, "", f"{cmd[0]}: timed out after {timeout}s")
     return Result(proc.returncode, proc.stdout or "", proc.stderr or "")

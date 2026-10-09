@@ -42,17 +42,23 @@ def _mcp_items() -> list[Item]:
 
 
 def _plugin_items() -> list[Item]:
-    installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
-    return [Item("plugin", pid, entries[0].get("version", ""), "user", {})
-            for pid, entries in installed.items() if any(e.get("scope") == "user" for e in entries)]
+    installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins")
+    out = []
+    for pid, entries in (installed if isinstance(installed, dict) else {}).items():
+        entries = [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+        if any(e.get("scope") == "user" for e in entries):
+            out.append(Item("plugin", pid, str(entries[0].get("version", "")), "user", {}))
+    return out
 
 
 def _marketplace_items() -> list[Item]:
     known = load_json(paths.claude_home() / "plugins" / "known_marketplaces.json")
     out = []
     for name, cfg in known.items():
-        src = cfg.get("source", {})
-        out.append(Item("marketplace", name, src.get("repo") or src.get("url", ""), "user", {"source": src}))
+        if not isinstance(cfg, dict):
+            continue
+        src = cfg.get("source") if isinstance(cfg.get("source"), dict) else {}
+        out.append(Item("marketplace", name, str(src.get("repo") or src.get("url", "")), "user", {"source": src}))
     return out
 
 

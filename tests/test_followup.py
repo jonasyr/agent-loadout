@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -24,7 +25,7 @@ def _mutations(fake_runner):
 
 def _private_text(path):
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600 or os.name == "nt"
-    return open(path, encoding="utf-8").read()
+    return Path(path).read_text(encoding="utf-8")
 
 
 def test_would_refuse_matches_run_guard(windows_cmd):

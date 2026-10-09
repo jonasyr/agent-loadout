@@ -69,11 +69,16 @@ class Backup:
 
     def move(self, path: Path, label: str, replace: bool = False) -> Path:
         dest = self._slot(path)
-        shutil.move(str(path), str(dest))
         undo = {"move": [str(dest), str(path)]}
         if replace:
             undo["replace"] = True
-        self._add(label, undo)
+        self._add(label, undo)  # manifest first: a crash mid-move still leaves the undo record
+        try:
+            shutil.move(str(path), str(dest))
+        except BaseException:
+            self.steps.pop()
+            self._save()
+            raise
         return dest
 
     def save_copy(self, path: Path, label: str) -> Path:
@@ -96,7 +101,12 @@ class Backup:
 
     def _add(self, label: str, undo: dict, **info) -> None:
         self.steps.append({"label": label, "undo": undo, **info})
-        manifest = {"description": self.description, "created_at": time.time(), "steps": self.steps}
+        self._save()
+
+    def _save(self) -> None:
+        if not hasattr(self, "_created_at"):
+            self._created_at = time.time()
+        manifest = {"description": self.description, "created_at": self._created_at, "steps": self.steps}
         save_json(self.root / "manifest.json", manifest, mode=PRIVATE_FILE)
 
 
@@ -238,10 +248,13 @@ def list_backups() -> list[str]:
             continue
         rows.append((data.get("created_at") or manifest.stat().st_mtime, d.name, d, data))
     out = []
+    home = str(paths.home())
     for created, _, d, data in sorted(rows, key=lambda r: (r[0], r[1]), reverse=True):
         n = len(data.get("steps", []))
         state = ("restored " + time.strftime("%Y-%m-%d %H:%M", time.localtime(data["restored_at"]))
                  if data.get("restored_at") else "not restored")
         desc = f"  {data['description']}" if data.get("description") else ""
-        out.append(f"{d}  {n} step{'s' if n != 1 else ''}  {state}{desc}")
+        shown = "~" + str(d)[len(home):] if str(d).startswith(home) else str(d)
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(created))
+        out.append(f"{shown}  {when}  {n} step{'s' if n != 1 else ''}  {state}{desc}")
     return out
