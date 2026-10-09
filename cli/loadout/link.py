@@ -68,7 +68,7 @@ def _link_one(dest: Path, src: Path, bk: Backup) -> str | None:
         return f"linked {dest} -> {src}"
     except OSError:
         _marker().parent.mkdir(parents=True, exist_ok=True)
-        _marker().write_text("symlinks unavailable; files are copied and refreshed by maintenance\n")
+        _marker().write_text("symlinks unavailable; files are copied and refreshed by maintenance\n", encoding="utf-8")
         _replace_with_copy(src, dest)
         return f"copied {src} -> {dest} (symlinks unavailable)"
 

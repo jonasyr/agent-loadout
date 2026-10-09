@@ -23,14 +23,14 @@ def _stamp(name: str) -> Path:
 
 def is_due(name: str, interval: float, now: float) -> bool:
     try:
-        return now - float(_stamp(name).read_text()) >= interval
+        return now - float(_stamp(name).read_text(encoding="utf-8")) >= interval
     except (OSError, ValueError):
         return True
 
 
 def touch(name: str, now: float) -> None:
     _stamp(name).parent.mkdir(parents=True, exist_ok=True)
-    _stamp(name).write_text(str(now))
+    _stamp(name).write_text(str(now), encoding="utf-8")
 
 
 def _spawn_background() -> None:
@@ -89,7 +89,7 @@ def maintain(now: float) -> None:
                 from .personal_mcp import apply_mcp
                 apply_mcp()
             except Exception as exc:  # never crash in the background; surface next session
-                _stamp(NOTICE).write_text(f"loadout: could not apply settings after sync: {exc}")
+                _stamp(NOTICE).write_text(f"loadout: could not apply settings after sync: {exc}", encoding="utf-8")
             if link.is_copy_mode():
                 link.link_all(Backup())
     if is_due("last-update-check", WEEK, now):
@@ -97,7 +97,7 @@ def maintain(now: float) -> None:
         outdated = find_outdated()
         if outdated:
             items = ", ".join(f"{e['id']} {versions.fmt(a)} -> {versions.fmt(b)}" for e, a, b in outdated)
-            _stamp(NOTICE).write_text(f"loadout: updates available for {items} → run `loadout update`")
+            _stamp(NOTICE).write_text(f"loadout: updates available for {items} → run `loadout update`", encoding="utf-8")
 
 
 def update(yes: bool, ask: Callable[[str], str]) -> int:

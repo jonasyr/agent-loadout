@@ -45,6 +45,12 @@ EXTRA_COMMANDS: list = []  # later modules append register(subparsers) functions
 def main(argv: list[str] | None = None) -> int:
     from . import commands  # noqa: F401  (registers the remaining subcommands)
 
+    for stream in (sys.stdout, sys.stderr):  # legacy Windows code pages must not crash on non-ASCII output
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     args = build_parser().parse_args(argv)
     try:
         return int(args.func(args) or 0)

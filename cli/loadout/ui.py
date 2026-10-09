@@ -1,6 +1,7 @@
 """Prompt helpers shared by the interactive commands."""
 from __future__ import annotations
 
+import os
 import sys
 from typing import Callable
 
@@ -11,10 +12,21 @@ GROUP_ANSWERS = {"a": "a", "all": "a", "y": "a", "yes": "a",
                  "p": "p", "pick": "p"}
 
 
+def _windows_console_stdin() -> bool:
+    """Windows reports the NUL device as a tty; only a real console handle has a console mode."""
+    import ctypes
+    import msvcrt
+
+    handle = msvcrt.get_osfhandle(sys.stdin.fileno())
+    return bool(ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(ctypes.c_uint32())))
+
+
 def is_interactive() -> bool:
-    """True when a person can answer prompts. Piped or closed stdin is not interactive."""
+    """True when a person can answer prompts. Piped, closed or NUL stdin is not interactive."""
     try:
-        return sys.stdin is not None and sys.stdin.isatty()
+        if sys.stdin is None or not sys.stdin.isatty():
+            return False
+        return _windows_console_stdin() if os.name == "nt" else True
     except (AttributeError, ValueError, OSError):
         return False
 
