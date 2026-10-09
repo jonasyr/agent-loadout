@@ -120,8 +120,10 @@ def _apply_marketplace(v: Verdict, bk: Backup) -> str:
     origin = src.get("repo") or src.get("url") or src.get("path")
     if not origin:
         return f"marketplace {v.item.name}: skipped (no source to restore from)"
-    bk.record_command(f"marketplace {v.item.name}", ["claude", "plugin", "marketplace", "add", origin])
-    return f"marketplace {v.item.name}: " + _claude(["plugin", "marketplace", "remove", v.item.name])
+    bk.record_command(f"marketplace {v.item.name}", ["claude", "plugin", "marketplace", "add", origin], source=src)
+    extra = {k: val for k, val in src.items() if k not in ("source", "repo", "url", "path")}
+    note = f" (restore re-adds {origin}; also recorded: {json.dumps(extra)})" if extra else ""
+    return f"marketplace {v.item.name}: " + _claude(["plugin", "marketplace", "remove", v.item.name]) + note
 
 
 def _apply_skill(v: Verdict, bk: Backup) -> str:

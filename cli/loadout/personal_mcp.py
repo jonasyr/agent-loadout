@@ -1,10 +1,19 @@
-"""Apply <personal>/mcp.json as user-scope MCP servers; remove only servers the kit applied before."""
+"""Apply <personal>/mcp.json as user-scope MCP servers; touch only servers the kit manages.
+
+managed-mcp.json records what the kit applied successfully. A same-named server the user
+added themselves (not in that snapshot) with a different config is left alone.
+"""
 from __future__ import annotations
 
 import json
 
 from . import paths, runner
 from .jsonio import load_json, save_json
+from .secrets import redact
+
+
+def _add(name: str, cfg: dict) -> runner.Result:
+    return runner.run(["claude", "mcp", "add-json", "-s", "user", name, json.dumps(cfg)])
 
 
 def apply_mcp() -> list[str]:
@@ -12,17 +21,38 @@ def apply_mcp() -> list[str]:
     snap = paths.state_dir() / "managed-mcp.json"
     previous = load_json(snap).get("mcpServers", {})
     current = load_json(paths.claude_json()).get("mcpServers", {})
-    out = []
+    managed, out = {}, []
     for name, cfg in desired.items():
         if current.get(name) == cfg:
+            managed[name] = cfg
+            continue
+        if name in current and name not in previous:
+            out.append(f"mcp {name}: skipped, a server with this name exists and is not managed by loadout "
+                       f"(remove it with `claude mcp remove -s user {name}` to let loadout manage it)")
             continue
         if name in current:
             runner.run(["claude", "mcp", "remove", "-s", "user", name])
-        res = runner.run(["claude", "mcp", "add-json", "-s", "user", name, json.dumps(cfg)])
-        out.append(f"mcp {name}: {'added' if res.ok else 'failed: ' + res.stderr.strip()}")
+        res = _add(name, cfg)
+        if res.ok:
+            managed[name] = cfg
+            out.append(f"mcp {name}: added")
+            continue
+        out.append(redact(f"mcp {name}: failed: {res.stderr.strip()}"))
+        if name in current:  # never leave the user without the server they had
+            back = _add(name, current[name])
+            out.append(f"mcp {name}: previous config {'re-added' if back.ok else 'could not be re-added'}")
+            if back.ok and name in previous:
+                managed[name] = current[name]
     for name, cfg in previous.items():
-        if name not in desired and current.get(name) == cfg:
-            res = runner.run(["claude", "mcp", "remove", "-s", "user", name])
-            out.append(f"mcp {name}: {'removed' if res.ok else 'failed: ' + res.stderr.strip()}")
-    save_json(snap, {"mcpServers": desired})
+        if name in desired:
+            continue
+        if current.get(name) != cfg:
+            continue  # gone already, or changed by the user: no longer ours
+        res = runner.run(["claude", "mcp", "remove", "-s", "user", name])
+        if res.ok:
+            out.append(f"mcp {name}: removed")
+        else:
+            managed[name] = cfg  # still installed, still ours
+            out.append(redact(f"mcp {name}: failed: {res.stderr.strip()}"))
+    save_json(snap, {"mcpServers": managed})
     return out

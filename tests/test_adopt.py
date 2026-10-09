@@ -274,3 +274,13 @@ def test_adopt_cli_yes_with_groups_update_runs_without_prompt(machine, fake_runn
                    with_versions=False, interactive=False)
     assert rc == 0
     assert [c for c in fake_runner.calls if c[:1] != ["claude"]]
+
+
+def test_marketplace_undo_records_full_source(machine, fake_runner):
+    v = [x for x in _verdicts() if x.item.name == "claude-code-templates"][0]
+    v.item.extra["source"]["ref"] = "v2"
+    bk = backup.Backup()
+    adopt.apply([v], bk)
+    step = [s for s in bk.steps if "marketplace" in s["label"]][0]
+    assert step["source"] == {"source": "git", "url": "https://github.com/davila7/claude-code-templates.git", "ref": "v2"}
+    assert step["undo"]["run"][-1] == "https://github.com/davila7/claude-code-templates.git"

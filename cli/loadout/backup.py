@@ -89,12 +89,13 @@ class Backup:
         self._ensure_root()
         self._add(label, {"created": str(path)})
 
-    def record_command(self, label: str, undo_cmd: list[str]) -> None:
+    def record_command(self, label: str, undo_cmd: list[str], **info) -> None:
+        """info: extra facts kept in the manifest for the user (e.g. a marketplace's full source)."""
         self._ensure_root()
-        self._add(label, {"run": undo_cmd})
+        self._add(label, {"run": undo_cmd}, **info)
 
-    def _add(self, label: str, undo: dict) -> None:
-        self.steps.append({"label": label, "undo": undo})
+    def _add(self, label: str, undo: dict, **info) -> None:
+        self.steps.append({"label": label, "undo": undo, **info})
         manifest = {"description": self.description, "created_at": time.time(), "steps": self.steps}
         save_json(self.root / "manifest.json", manifest, mode=PRIVATE_FILE)
 
