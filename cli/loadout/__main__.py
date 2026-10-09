@@ -47,7 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args) or 0)
     except (InvalidJSON, ValueError) as exc:
-        print(f"loadout: {exc}", file=sys.stderr)
+        from .secrets import redact
+        print(f"loadout: {redact(str(exc))}", file=sys.stderr)
         return 1
 
 

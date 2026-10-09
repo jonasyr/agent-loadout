@@ -4,6 +4,7 @@ from __future__ import annotations
 import filecmp
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from . import paths
@@ -78,10 +79,13 @@ def link_all(bk: Backup) -> list[str]:
 
 def write_windows_shims(target_dir: Path) -> None:
     script = paths.kit_root() / "bin" / "loadout"
+    python = Path(sys.executable)
     target_dir.mkdir(parents=True, exist_ok=True)
-    (target_dir / "loadout.cmd").write_text(f'@echo off\r\npython "{script}" %*\r\n', encoding="utf-8")
-    # Git Bash (used for hooks on Windows) runs extensionless scripts
-    (target_dir / "loadout").write_text(f'#!/bin/sh\nexec python "{script.as_posix()}" "$@"\n', encoding="utf-8")
+    # newline="" / "\n": write exactly these bytes; text mode on Windows would turn \n into \r\n
+    (target_dir / "loadout.cmd").write_text(f'@echo off\r\n"{python}" "{script}" %*\r\n', encoding="utf-8", newline="")
+    # Git Bash (used for hooks on Windows) runs extensionless scripts; a CR would break the shebang
+    (target_dir / "loadout").write_text(f'#!/bin/sh\nexec "{python.as_posix()}" "{script.as_posix()}" "$@"\n',
+                                        encoding="utf-8", newline="\n")
 
 
 def link_bin(bk: Backup) -> list[str]:

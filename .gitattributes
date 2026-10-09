@@ -1,0 +1,4 @@
+# Hooks and the Git Bash shim run under bash: a CR breaks the shebang and the last argument.
+*.sh text eol=lf
+bin/loadout text eol=lf
+*.py text eol=lf

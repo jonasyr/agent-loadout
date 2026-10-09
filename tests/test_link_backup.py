@@ -180,3 +180,13 @@ def test_copy_mode_file_backed_up_only_when_not_kit_copy(fake_home, monkeypatch,
     again = backup.Backup()
     link.link_bin(again)
     assert again.empty
+
+
+def test_git_bash_shim_has_lf_only_and_uses_current_python(fake_home):
+    import sys
+    from pathlib import Path
+    link.write_windows_shims(fake_home / ".local/bin")
+    raw = (fake_home / ".local/bin/loadout").read_bytes()
+    assert b"\r" not in raw
+    assert Path(sys.executable).as_posix().encode() in raw
+    assert sys.executable.encode() in (fake_home / ".local/bin/loadout.cmd").read_bytes()

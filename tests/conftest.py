@@ -8,11 +8,13 @@ class FakeRunner:
 
     def __init__(self):
         self.calls = []
+        self.envs = []
         self.responses = {}
         self.missing = set()
 
-    def __call__(self, cmd, cwd=None, timeout=300):
+    def __call__(self, cmd, cwd=None, timeout=300, env=None):
         self.calls.append(list(cmd))
+        self.envs.append(env)
         for prefix, result in self.responses.items():
             if tuple(cmd[: len(prefix)]) == prefix:
                 return result

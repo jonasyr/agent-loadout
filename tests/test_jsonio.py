@@ -48,3 +48,47 @@ def test_paths_follow_home(fake_home):
 def test_personal_root_env_override(fake_home, monkeypatch, tmp_path):
     monkeypatch.setenv("LOADOUT_PERSONAL", str(tmp_path / "p"))
     assert paths.personal_root() == tmp_path / "p"
+
+
+def test_save_json_is_atomic_and_keeps_mode(tmp_path, monkeypatch):
+    import os
+    target = tmp_path / "settings.json"
+    target.write_text("{}\n")
+    if os.name != "nt":
+        target.chmod(0o600)
+    replaced = []
+    real_replace = os.replace
+    monkeypatch.setattr(os, "replace", lambda a, b: (replaced.append((a, b)), real_replace(a, b)))
+    jsonio.save_json(target, {"a": 1})
+    assert replaced and os.path.dirname(replaced[0][0]) == str(tmp_path)
+    assert jsonio.load_json(target) == {"a": 1}
+    assert [p.name for p in tmp_path.iterdir()] == ["settings.json"]  # no temp file left
+    if os.name != "nt":
+        assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_save_json_through_symlink_updates_target(tmp_path):
+    import os
+    if os.name == "nt":
+        pytest.skip("symlinks need privileges on Windows")
+    real = tmp_path / "dotfiles" / "settings.json"
+    real.parent.mkdir()
+    real.write_text("{}\n")
+    link = tmp_path / "settings.json"
+    link.symlink_to(real)
+    jsonio.save_json(link, {"b": 2})
+    assert link.is_symlink()
+    assert jsonio.load_json(real) == {"b": 2}
+
+
+def test_load_json_accepts_utf8_bom(tmp_path):
+    p = tmp_path / "bom.json"
+    p.write_bytes(b"\xef\xbb\xbf{\"a\": 1}")
+    assert jsonio.load_json(p) == {"a": 1}
+
+
+def test_load_json_rejects_non_object(tmp_path):
+    p = tmp_path / "list.json"
+    p.write_text("[]")
+    with pytest.raises(jsonio.InvalidJSON, match="object"):
+        jsonio.load_json(p)
