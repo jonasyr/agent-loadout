@@ -38,6 +38,7 @@
     "microsoft-docs@claude-plugins-official": true
   },
   "env": {
-    "ENABLE_STOP_REVIEW": "0"
+    "ENABLE_STOP_REVIEW": "0",
+    "MCP_TIMEOUT": "60000"
   }
 }
