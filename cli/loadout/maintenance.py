@@ -59,7 +59,9 @@ def pull_if_clean(root: Path) -> bool:
     status = runner.run(["git", "-C", str(root), "status", "--porcelain"], timeout=30)
     if not status.ok or status.stdout.strip():
         return False
-    return runner.run(["git", "-C", str(root), "pull", "--ff-only", "-q"], timeout=120).ok
+    # a background process has no one to answer a credential prompt (or a GCM login window)
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
+    return runner.run(["git", "-C", str(root), "pull", "--ff-only", "-q"], timeout=120, env=env).ok
 
 
 def find_outdated() -> list[tuple[dict, tuple, tuple]]:
@@ -76,7 +78,9 @@ def find_outdated() -> list[tuple[dict, tuple, tuple]]:
 def maintain(now: float) -> None:
     from .settings_merge import apply_settings
 
-    if is_due("last-pull", DAY, now):
+    if os.environ.get("LOADOUT_NO_AUTO_PULL") == "1":
+        pass  # opt-out: no daily kit/personal sync (see README, Security & trust)
+    elif is_due("last-pull", DAY, now):
         touch("last-pull", now)
         pulled = [pull_if_clean(root) for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
         if any(pulled):
@@ -118,6 +122,10 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
             print("  ok" if res.ok else f"  failed: {res.stderr.strip()[:300]}")
     after = load_json(settings_path)
     if after != before:
-        print("an installer modified ~/.claude/settings.json; reverting to the kit-merged version")
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        bk = Backup(description="update: settings.json as modified by an installer")
+        bk.save_copy(settings_path, "settings.json as modified by an installer")
+        print(f"an installer modified ~/.claude/settings.json (keys: {', '.join(changed)}); reverting to the "
+              f"kit-merged version. The installer's version is in {bk.root}")
         save_json(settings_path, before)
     return 0

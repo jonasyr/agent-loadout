@@ -77,3 +77,44 @@ def test_update_reverts_settings_modified_by_installer(fake_home, fake_runner, m
     monkeypatch.setattr(runner, "run", installer)
     assert m.update(yes=True, ask=lambda q: "") == 0
     assert json.loads(s.read_text()) == {"a": 1}
+
+
+def test_update_guard_backs_up_installer_version_and_names_keys(fake_home, fake_runner, monkeypatch, capsys):
+    s = fake_home / ".claude/settings.json"
+    s.parent.mkdir(parents=True)
+    s.write_text('{"a": 1}\n')
+    entry = {"id": "tool", "update": {"posix": [["tool-installer"]], "windows": [["tool-installer"]]}}
+    monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (1, 0, 0), (2, 0, 0))])
+
+    def installer(cmd, cwd=None, timeout=300, env=None):
+        if cmd[0] == "tool-installer":
+            s.write_text('{"a": 2, "hooks": {"X": []}}\n')
+        return runner.Result(0, "", "")
+
+    monkeypatch.setattr(runner, "run", installer)
+    m.update(yes=True, ask=lambda q: "")
+    out = capsys.readouterr().out
+    assert json.loads(s.read_text()) == {"a": 1}
+    assert "a, hooks" in out
+    copies = [p for p in paths.backups_root().rglob("files/*settings.json")]
+    assert copies and json.loads(copies[0].read_text()) == {"a": 2, "hooks": {"X": []}}
+
+
+def test_background_pull_never_prompts(fake_home, fake_runner, tmp_path):
+    m.pull_if_clean(tmp_path)
+    pulls = [(c, e) for c, e in zip(fake_runner.calls, fake_runner.envs) if "pull" in c]
+    assert pulls
+    for _, env in pulls:
+        assert env["GIT_TERMINAL_PROMPT"] == "0" and env["GCM_INTERACTIVE"] == "never"
+
+
+def test_no_auto_pull_env_skips_pull(fake_home, fake_runner, monkeypatch, tmp_path):
+    kit = tmp_path / "kit"
+    (kit / ".git").mkdir(parents=True)
+    monkeypatch.setenv("LOADOUT_ROOT", str(kit))
+    monkeypatch.setenv("LOADOUT_NO_AUTO_PULL", "1")
+    monkeypatch.setattr(m, "find_outdated", lambda: [])
+    pulled = []
+    monkeypatch.setattr(m, "pull_if_clean", lambda root: pulled.append(root) or False)
+    m.maintain(100.0)
+    assert pulled == []
