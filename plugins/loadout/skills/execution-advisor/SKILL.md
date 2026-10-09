@@ -34,7 +34,11 @@ Model tiers: **cheap** (Haiku-class) for transcription and mechanical edits, **s
 
 Interactive and real-machine steps are always Inline, whatever the verdict.
 
-## 4. Output (compact)
+## 4. Record the evaluation
+
+Run `loadout advisor-mark <plan path>` once the verdict is settled, before you write the answer. It records this version of the plan as evaluated, so the Stop hook does not ask again; a changed plan is evaluated again. If the command is missing, skip it.
+
+## 5. Output (compact, in one final message)
 
 ```
 Verdict: Hybrid — <one sentence why>
@@ -49,10 +53,6 @@ Review policy: <e.g. per-task review on tasks 1 and 4, then one Opus whole-branc
 ```
 
 Review is one of `per-task`, `final-only` or `none`. Then ask the user to choose, with the recommended option first and marked **(Recommended)**, followed by the alternatives (e.g. "1. Hybrid as above (Recommended) 2. All Inline 3. All SDD"). Do not start executing before the user answers.
-
-## 5. Record the evaluation
-
-Run `loadout advisor-mark <plan path>` once you have presented the recommendation. It records this version of the plan as evaluated, so the Stop hook does not ask again; a changed plan is evaluated again. If the command is missing, skip it.
 
 ## 6. Running the chosen option
 
