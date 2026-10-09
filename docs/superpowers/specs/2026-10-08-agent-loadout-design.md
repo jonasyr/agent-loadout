@@ -281,7 +281,7 @@ Run in the project directory; never overwrites.
   - Fill or repair AGENTS.md from the code: purpose, commands (verified by running `--help`/dry forms), conventions, map of docs and memories.
   - Offer to move CLAUDE.md content into AGENTS.md.
   - Pick up an existing `.mcp.json` and `.claude/settings.json` without changing them.
-  - Run Serena onboarding under `memory-policy.md` if neither memories nor docs exist.
+  - Run Serena onboarding under `memory-policy.md` if no memories exist (memories link into `docs/` when present, else into AGENTS.md/source).
   - Index with codebase-memory-mcp.
   - If docs or memories already exist, recommend `/loadout:docs-audit`.
   - Show the diff; commit after approval.

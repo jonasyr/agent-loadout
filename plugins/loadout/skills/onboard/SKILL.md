@@ -46,6 +46,6 @@ Stop there. For the first feature, suggest `superpowers:brainstorming`.
    - **CLAUDE.md** with real content and no AGENTS.md: propose moving that content into AGENTS.md and replacing CLAUDE.md with `@AGENTS.md`; do it only after the user agrees.
 4. Leave an existing `.mcp.json` and `.claude/settings.json` unchanged; mention what they configure.
 5. Serena:
-   - **No memories and no docs:** run Serena onboarding, but keep each memory a 1–3 line summary that links to where the facts live (`AGENTS.md`, source files, `docs/` once it exists).
-   - **Memories or docs already exist:** leave them as they are and recommend `/loadout:docs-audit` instead of rewriting them here.
+   - **No memories:** run Serena onboarding; keep each memory a 1–3 line summary linking into `docs/` if it exists, otherwise to `AGENTS.md` or the source files.
+   - **Memories or docs already exist:** leave existing ones as they are and also recommend `/loadout:docs-audit`.
 6. Show the diff and commit after approval (`docs: onboard repository for agents`).
