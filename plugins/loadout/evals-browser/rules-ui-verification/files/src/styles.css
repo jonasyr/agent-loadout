@@ -1,0 +1,16 @@
+body { font-family: system-ui, sans-serif; margin: 0; }
+.cart { max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+.total { font-size: 1.25rem; }
+.checkout {
+  display: block;
+  width: 100%;
+  padding: 0.9rem 1.2rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #1f6feb;
+  color: #fff;
+  font-size: 1.1rem;
+}
+@media (min-width: 768px) {
+  .checkout { width: auto; }
+}

@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: configure-propose
+description: >-
+  The user asks for database access everywhere without approving anything yet. The
+  configure skill must look at `loadout configure show`, propose the matching add-on
+  (dbhub / addon-dbhub-global), mention the per-project `db` profile alternative and the
+  needed secret, ask for a yes, and make no `configure set` call.
+tags: [configure]
+context:
+  scaffold_script: scaffold.sh

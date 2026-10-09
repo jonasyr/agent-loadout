@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: onboard-new-answers
+description: >-
+  Empty repo after `loadout init`; the user supplies all four answers up front and
+  pre-approves the summary. Onboard must fill the existing skeletons (ADR 0001, AGENTS.md,
+  docs/README.md), respect "no profiles" and "don't commit", and stop before feature work.
+tags: [onboard]
+context:
+  scaffold_script: scaffold.sh

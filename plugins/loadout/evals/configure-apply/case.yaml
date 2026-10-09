@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: configure-apply
+description: >-
+  The user wants Chrome DevTools in every project and pre-approves that one change.
+  The configure skill must run `loadout configure show` first, then apply it with
+  `loadout configure set plugin chrome-devtools-mcp@claude-plugins-official on`, mention
+  the context cost and the restart, and never edit ~/.claude/settings.json or
+  ~/.claude.json directly. `loadout` is the logging stub from evals/bin (see run.sh).
+tags: [configure]
+context:
+  scaffold_script: scaffold.sh

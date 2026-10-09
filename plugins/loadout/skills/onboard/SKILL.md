@@ -14,7 +14,7 @@ List tracked files (`git ls-files`; if not a git repo, list the directory).
 - **New project**: no source files; only README, LICENSE, .gitignore, AGENTS.md/CLAUDE.md skeletons or docs skeletons.
 - **Existing project**: anything else.
 
-Say which mode you detected and why, and let the user correct you.
+Begin every report or question you send in this skill until the user confirms the mode with the line `Mode: new project — <why>` or `Mode: existing project — <why>`, so the user can correct you.
 
 ## 2a. New project
 
@@ -38,7 +38,7 @@ Stop there. For the first feature, suggest `superpowers:brainstorming`.
 
 ## 2b. Existing project
 
-1. If the repo is not indexed, index it with codebase-memory-mcp (`index_repository`) and use `get_architecture` for the overview.
+1. Before reading code, call codebase-memory-mcp `index_repository` (skip only if this repo is already indexed), then `get_architecture` for the overview. If the server is unavailable, say so and continue with Read/Grep.
 2. Commands: find how to install, test, lint and run (manifests, Makefile/justfile, CI config). Verify each with a harmless form (`--help`, `--version`, `--collect-only`, dry run). Never run something that deploys, deletes or writes outside the repo.
 3. AGENTS.md:
    - **Missing:** write it.

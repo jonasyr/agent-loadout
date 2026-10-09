@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Stand-in for playwright-cli during evals (run.sh puts it first on PATH). It never starts a
+# browser: it appends each call to ./.browser-calls.log and prints plausible output, so cases
+# grade the tool choice and the calls, not real screenshots.
+printf 'playwright-cli %s\n' "$*" >> "${PWD}/.browser-calls.log" 2>/dev/null || true
+case "${1:-}" in
+  ""|-h|--help|help)
+    cat <<'EOF'
+Usage: playwright-cli <command> [options]
+
+Commands:
+  open <url>                 open a page in a headless browser session
+  resize <width> <height>    set the viewport size
+  screenshot [--filename f]  save a screenshot of the current page to disk
+  snapshot                   save an accessibility snapshot of the page to disk
+  console                    print console messages of the current page
+  click <ref>                click an element from the last snapshot
+  close                      close the browser session
+EOF
+    ;;
+  open) echo "Opened ${2:-about:blank} (session default)" ;;
+  resize) echo "Viewport set to ${2:-?}x${3:-?}" ;;
+  screenshot) f="screenshot-$(date +%s%N).png"; echo "Saved screenshot to .playwright-cli/$f" ;;
+  snapshot) echo "Saved snapshot to .playwright-cli/snapshot.yml (main > heading 'Your cart', paragraph 'Total: 42.00 EUR', button 'Checkout' [ref=e5])" ;;
+  console) echo "No console messages." ;;
+  *) echo "ok" ;;
+esac

@@ -1,0 +1,15 @@
+schema_version: "1.1"
+name: rules-ui-verification
+description: >-
+  Routing check for rules/tooling.md (not a plugin skill): with the rule in context, a
+  request to check a UI change must lead to playwright-cli, reading `playwright-cli --help`
+  first, never to a browser binary, and never to a "looks right" claim without having
+  looked. playwright-cli and chromium/chrome/firefox are logging stubs (evals/run.sh), so
+  grading uses ./.browser-calls.log and the Bash calls; no real browser may start. Real
+  installs load the rule from ~/.claude/rules/loadout/; eval runs don't load user rules, so
+  prompt.md appends rules/tooling.md verbatim (tests/test_evals_static.py keeps the copy in
+  sync). Both arms get the rule, so a delta near zero is expected. Opt-in only:
+  `evals/run.sh --eval-dir evals-browser` (a PATH stub can't stop an absolute browser path).
+tags: [rules, browser]
+context:
+  scaffold_script: scaffold.sh

@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: docs-sync
+description: >-
+  Small uncommitted code change (title limit 120 -> 200). The docs request must route to
+  docs-sync, which updates only the owning layer (docs/reference/cli.md), leaves README,
+  AGENTS.md, memories, ADRs, code and the unrelated stale sentence in architecture.md
+  alone, checks the links in the touched file, and does not commit.
+tags: [docs-sync]
+context:
+  scaffold_script: scaffold.sh
