@@ -184,3 +184,19 @@ def _register_configure(sub):
 
 
 EXTRA_COMMANDS.append(_register_configure)
+
+
+def _register_advisor(sub):
+    from . import advisor
+
+    p = sub.add_parser("advisor-mark")  # internal (called by /loadout:execution-advisor): no help=
+    p.add_argument("plan", help="path of the implementation plan that was evaluated")
+
+    def run(a):
+        print(advisor.mark(a.plan))
+        return 0
+
+    p.set_defaults(func=run)
+
+
+EXTRA_COMMANDS.append(_register_advisor)
