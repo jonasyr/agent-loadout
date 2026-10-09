@@ -137,6 +137,8 @@ You rarely edit these by hand: `loadout configure` does it for you. **To sync th
 | This kit and your personal layer | Pulled at most once a day in the background, only when you have no local changes |
 | Tool binaries | Checked weekly; Claude Code then shows "updates available, run `loadout update`" |
 
+`loadout update` updates a tool through the package manager that installed it: `mise upgrade <tool>` when the binary lives under mise's `installs` directory (also behind a mise shim), `brew upgrade <formula>` when it lives under the Homebrew prefix, otherwise the tool's own updater (`claude update`, `uv self update`, ...). The mise tool name is the catalog id, or `npm:<package>` for mise's npm backend; a catalog entry can override it with `"mise": "<name>"` (and `"brew": "<formula>"`). If the package manager holds an update back (for example mise's `minimum_release_age`), loadout remembers that version and does not notify you again until a newer one appears.
+
 ## Security & trust
 
 loadout is self-updating, so it is worth knowing what runs without asking:

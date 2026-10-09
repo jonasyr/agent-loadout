@@ -18,7 +18,21 @@
         ],
         "npm": "@anthropic-ai/claude-code"
       },
-      "manual": "https://code.claude.com/docs/en/setup"
+      "manual": "https://code.claude.com/docs/en/setup",
+      "update": {
+        "posix": [
+          [
+            "claude",
+            "update"
+          ]
+        ],
+        "windows": [
+          [
+            "claude",
+            "update"
+          ]
+        ]
+      }
     },
     {
       "id": "git",

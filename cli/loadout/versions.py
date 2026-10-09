@@ -14,7 +14,10 @@ def parse_version(text: str) -> tuple | None:
 
 
 def local_version(entry: dict) -> tuple | None:
-    res = runner.run(entry["version"]["cmd"], timeout=20)
+    cmd = entry.get("version", {}).get("cmd")
+    if not cmd:
+        return None
+    res = runner.run(cmd, timeout=20)
     return parse_version(res.stdout + res.stderr) if res.ok else None
 
 

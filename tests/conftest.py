@@ -11,6 +11,8 @@ class FakeRunner:
         self.envs = []
         self.responses = {}
         self.missing = set()
+        self.paths = {}  # binary -> resolved path (runner.which); default: not found, so no package manager
+
 
     def __call__(self, cmd, cwd=None, timeout=300, env=None):
         self.calls.append(list(cmd))
@@ -22,6 +24,9 @@ class FakeRunner:
 
     def have(self, binary):
         return binary not in self.missing
+
+    def which(self, binary):
+        return self.paths.get(binary)
 
 
 @pytest.fixture
@@ -39,6 +44,7 @@ def fake_runner(monkeypatch):
     fake = FakeRunner()
     monkeypatch.setattr(runner, "run", fake)
     monkeypatch.setattr(runner, "have", fake.have)
+    monkeypatch.setattr(runner, "which", fake.which)
     return fake
 
 

@@ -25,6 +25,10 @@ def have(binary: str) -> bool:
     return shutil.which(binary) is not None
 
 
+def which(binary: str) -> str | None:
+    return shutil.which(binary)
+
+
 def _is_windows() -> bool:
     return os.name == "nt"
 

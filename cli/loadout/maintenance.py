@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, link, paths, runner, versions
+from . import catalog, link, paths, pkgmgr, runner, versions
 from .backup import Backup
 from .jsonio import load_json, save_json
 
@@ -83,6 +83,34 @@ def find_outdated() -> list[tuple[dict, tuple, tuple]]:
     return out
 
 
+def _refused_path() -> Path:
+    return paths.state_dir() / "refused-updates.json"
+
+
+def _refused() -> dict:
+    try:
+        data = load_json(_refused_path())
+    except Exception:
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, str)}
+
+
+def _remember_refused(tool: str, latest: tuple | None) -> None:
+    data = _refused()
+    if latest is None:
+        data.pop(tool, None)
+    else:
+        data[tool] = versions.fmt(latest)
+    save_json(_refused_path(), data)
+
+
+def worth_notifying(outdated: list) -> list:
+    """Drop updates a package manager already refused (e.g. mise minimum_release_age) until a newer one appears."""
+    refused = _refused()
+    return [(e, a, b) for e, a, b in outdated
+            if not (e["id"] in refused and (versions.parse_version(refused[e["id"]]) or ()) >= b)]
+
+
 def maintain(now: float) -> None:
     from .settings_merge import apply_settings
 
@@ -103,7 +131,7 @@ def maintain(now: float) -> None:
                 link.link_all(Backup())
     if is_due("last-update-check", WEEK, now):
         touch("last-update-check", now)
-        outdated = find_outdated()
+        outdated = worth_notifying(find_outdated())
         if outdated:
             items = ", ".join(f"{e['id']} {versions.fmt(a)} -> {versions.fmt(b)}" for e, a, b in outdated)
             notify(f"loadout: updates available for {items} → run `loadout update`")
@@ -117,8 +145,8 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
     if not outdated:
         print("all tools up to date")
     for entry, local, latest in outdated:
-        cmds = catalog.platform_cmds(entry, "update")
-        print(f"{entry['id']}: {versions.fmt(local)} -> {versions.fmt(latest)}")
+        cmds, how = pkgmgr.update_plan(entry)
+        print(f"{entry['id']}: {versions.fmt(local)} -> {versions.fmt(latest)}" + (f" (via {how})" if how != "catalog" else ""))
         if not cmds:
             print(f"  no update command for this platform. {entry.get('manual', '')}")
             continue
@@ -129,6 +157,13 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
         for cmd in cmds:
             res = runner.run(cmd, timeout=900)
             print("  ok" if res.ok else f"  failed: {res.stderr.strip()[:300]}")
+        now = versions.local_version(entry)
+        if now is not None and now >= latest:
+            _remember_refused(entry["id"], None)
+        else:
+            _remember_refused(entry["id"], latest)
+            print(f"  still {versions.fmt(now or local)} (the package manager may hold it back, e.g. mise "
+                  f"minimum_release_age); no new notice until a version newer than {versions.fmt(latest)} appears")
     after = load_json(settings_path)
     if after != before:
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))

@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, inventory, paths, runner, secrets, ui
+from . import catalog, inventory, paths, pkgmgr, runner, secrets, ui
 from .backup import Backup
 from .inventory import Verdict
 from .jsonio import load_json, save_json
@@ -182,7 +182,7 @@ def _apply_hooks(hook_verdicts: list[Verdict], bk: Backup) -> list[str]:
 def _apply_binary(v: Verdict, ask: Ask, confirm_cmds: bool) -> str:
     key = "install" if v.action == "install" else "update"
     entry = v.item.extra["entry"]
-    cmds = catalog.platform_cmds(entry, key)
+    cmds = pkgmgr.update_plan(entry)[0] if key == "update" else catalog.platform_cmds(entry, key)
     if not cmds:
         return f"{v.item.name}: no {key} command for this platform. {entry.get('manual', '')}".strip()
     print(f"{v.item.name} {key}:")

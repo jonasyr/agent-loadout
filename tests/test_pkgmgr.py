@@ -1,0 +1,114 @@
+"""Package-manager-aware updates (mise, Homebrew) and remembered refusals."""
+import json
+
+from loadout import catalog, maintenance as m, paths, pkgmgr, runner, versions
+
+MISE = "/home/u/.local/share/mise/installs"
+
+
+def _entry(eid):
+    return next(e for e in catalog.binaries() if e["id"] == eid)
+
+
+def test_mise_install_path_uses_mise_upgrade_with_catalog_id(fake_home, fake_runner):
+    fake_runner.paths["uv"] = f"{MISE}/uv/0.8.23/uv"
+    cmds, how = pkgmgr.update_plan(_entry("uv"))
+    assert (cmds, how) == ([["mise", "upgrade", "uv"]], "mise")
+
+
+def test_mise_npm_backend_from_install_dir(fake_home, fake_runner):
+    fake_runner.paths["pyright"] = f"{MISE}/npm-pyright/1.1.400/bin/pyright"
+    assert pkgmgr.update_plan(_entry("pyright"))[0] == [["mise", "upgrade", "npm:pyright"]]
+
+
+def test_mise_npm_scoped_package_uses_catalog_npm_name(fake_home, fake_runner):
+    fake_runner.paths["playwright-cli"] = f"{MISE}/npm-playwright-cli/0.1.22/bin/playwright-cli"
+    assert pkgmgr.update_plan(_entry("playwright-cli"))[0] == [["mise", "upgrade", "npm:@playwright/cli"]]
+
+
+def test_mise_shim_resolved_with_mise_which(fake_home, fake_runner):
+    fake_runner.paths["uv"] = "/home/u/.local/share/mise/shims/uv"
+    fake_runner.responses[("mise", "which", "uv")] = runner.Result(0, f"{MISE}/uv/0.8.23/uv\n", "")
+    assert pkgmgr.update_plan(_entry("uv"))[0] == [["mise", "upgrade", "uv"]]
+
+
+def test_mise_override_in_entry(fake_home, fake_runner):
+    entry = {**_entry("uv"), "mise": "aqua:astral-sh/uv"}
+    fake_runner.paths["uv"] = f"{MISE}/aqua-astral-sh-uv/0.8.23/uv"
+    assert pkgmgr.update_plan(entry)[0] == [["mise", "upgrade", "aqua:astral-sh/uv"]]
+
+
+def test_windows_mise_path(fake_home, fake_runner):
+    fake_runner.paths["uv"] = r"C:\Users\u\AppData\Local\mise\installs\uv\0.8.23\uv.exe"
+    assert pkgmgr.update_plan(_entry("uv"))[0] == [["mise", "upgrade", "uv"]]
+
+
+def test_brew_prefix_uses_brew_upgrade(fake_home, fake_runner):
+    fake_runner.paths["gh"] = "/opt/homebrew/bin/gh"
+    fake_runner.responses[("brew", "--prefix")] = runner.Result(0, "/opt/homebrew\n", "")
+    assert pkgmgr.update_plan(_entry("gh")) == ([["brew", "upgrade", "gh"]], "brew")
+
+
+def test_brew_cellar_formula_name(fake_home, fake_runner, monkeypatch):
+    fake_runner.paths["uv"] = "/home/linuxbrew/.linuxbrew/bin/uv"
+    monkeypatch.setattr(pkgmgr, "_realpath", lambda p: "/home/linuxbrew/.linuxbrew/Cellar/uv-formula/0.8/bin/uv")
+    assert pkgmgr.update_plan(_entry("uv"))[0] == [["brew", "upgrade", "uv-formula"]]
+
+
+def test_unmanaged_falls_back_to_catalog(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    fake_runner.paths["uv"] = "/home/u/.local/bin/uv"
+    assert pkgmgr.update_plan(_entry("uv")) == ([["uv", "self", "update"]], "catalog")
+
+
+def test_claude_defaults_to_claude_update(fake_home, fake_runner):
+    fake_runner.paths["claude"] = "/home/u/.local/bin/claude"
+    assert pkgmgr.update_plan(_entry("claude"))[0] == [["claude", "update"]]
+
+
+def test_update_uses_package_manager_command(fake_home, fake_runner, monkeypatch, capsys):
+    fake_runner.paths["uv"] = f"{MISE}/uv/0.8.23/uv"
+    monkeypatch.setattr(m, "find_outdated", lambda: [(_entry("uv"), (0, 8, 23), (0, 9, 0))])
+    monkeypatch.setattr(versions, "local_version", lambda e: (0, 9, 0))
+    m.update(yes=True, ask=lambda q: "")
+    assert ["mise", "upgrade", "uv"] in fake_runner.calls
+    assert ["uv", "self", "update"] not in fake_runner.calls
+    assert "via mise" in capsys.readouterr().out
+
+
+def test_refused_update_is_remembered_and_not_renotified(fake_home, fake_runner, monkeypatch, capsys):
+    entry = _entry("uv")
+    fake_runner.paths["uv"] = f"{MISE}/uv/0.8.23/uv"
+    monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (0, 8, 23), (0, 9, 0))])
+    monkeypatch.setattr(versions, "local_version", lambda e: (0, 8, 23))  # mise held it back
+    m.update(yes=True, ask=lambda q: "")
+    assert "still 0.8.23" in capsys.readouterr().out
+    state = json.loads((paths.state_dir() / "refused-updates.json").read_text())
+    assert state == {"uv": "0.9.0"}
+
+    monkeypatch.setattr(m, "pull_if_clean", lambda root: False)
+    m.maintain(100.0)
+    assert not (paths.state_dir() / "pending-notice").exists()
+
+    monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (0, 8, 23), (0, 9, 1))])  # newer than refused
+    m.maintain(100.0 + m.WEEK)
+    assert "uv 0.8.23 -> 0.9.1" in (paths.state_dir() / "pending-notice").read_text()
+
+
+def test_successful_update_clears_refusal(fake_home, fake_runner, monkeypatch):
+    entry = _entry("uv")
+    (paths.state_dir()).mkdir(parents=True)
+    (paths.state_dir() / "refused-updates.json").write_text('{"uv": "0.9.0"}')
+    monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (0, 8, 23), (0, 9, 1))])
+    monkeypatch.setattr(versions, "local_version", lambda e: (0, 9, 1))
+    m.update(yes=True, ask=lambda q: "")
+    assert json.loads((paths.state_dir() / "refused-updates.json").read_text()) == {}
+
+
+def test_adopt_update_group_uses_package_manager(fake_home, fake_runner, monkeypatch):
+    from loadout import adopt, inventory
+    entry = _entry("uv")
+    fake_runner.paths["uv"] = f"{MISE}/uv/0.8.23/uv"
+    item = inventory.Item("binary", "uv", "0.8.23 -> 0.9.0", "PATH", {"entry": entry, "state": "outdated"})
+    out = adopt.apply([adopt.Verdict(item, "update", "", "uv")], __import__("loadout").backup.Backup(), confirm_cmds=False)
+    assert ["mise", "upgrade", "uv"] in fake_runner.calls and "ok" in out[0]
