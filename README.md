@@ -66,6 +66,7 @@ If `loadout: command not found`, see [Troubleshooting](#troubleshooting).
 | Add a domain tool to one repo | `loadout profile thesis` (also: `web`, `db`, `sonar`, `android`) |
 | Fix outdated or wrong docs in a repo | `/loadout:docs-audit` (thorough; asks when something is unclear) |
 | Keep docs current after a feature | `/loadout:docs-sync` |
+| Understand why docs are structured this way | Read [Documentation strategy](docs/documentation-strategy.md) |
 | Update tool binaries | `loadout update` |
 | Re-apply settings after editing your personal layer by hand | `loadout apply-settings` |
 | Check that everything is healthy | `loadout check` |

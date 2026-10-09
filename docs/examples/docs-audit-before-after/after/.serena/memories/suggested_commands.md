@@ -1,0 +1,3 @@
+- Install dev deps: `uv sync --extra dev`
+- Run tests: `uv run pytest`
+- Gotcha: tests use pytest's tmp_path for the database; never point them at ~/.local/share/tasklog.
