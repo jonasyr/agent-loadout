@@ -94,8 +94,12 @@ def _key(dotted: str) -> tuple:
 
 
 def _tilde(path: Path) -> str:
-    home = str(paths.home())
-    return "~" + str(path)[len(home):] if str(path).startswith(home) else str(path)
+    """User-facing path: ~/... with forward slashes on every platform."""
+    try:
+        rel = path.relative_to(paths.home())
+    except ValueError:
+        return path.as_posix()
+    return "~" + ("/" + rel.as_posix() if rel.parts else "")
 
 
 def _norm(line: str) -> str:

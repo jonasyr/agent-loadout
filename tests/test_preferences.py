@@ -442,6 +442,18 @@ def test_automode_draft_shape(fake_home, fake_runner):
     assert "npm" in routine and "cargo" in routine and "gh" in routine
 
 
+def test_automode_paths_use_forward_slashes_for_windows_paths(monkeypatch):
+    from pathlib import PureWindowsPath
+    monkeypatch.setattr(preferences.paths, "home", lambda: PureWindowsPath(r"C:\Users\jonas"))
+    folder = PureWindowsPath(r"C:\Users\jonas\Documents\Code")
+    assert preferences._tilde(folder) == "~/Documents/Code"
+    assert preferences._tilde(PureWindowsPath(r"C:\Users\jonas")) == "~"
+    assert preferences._tilde(PureWindowsPath(r"D:\work\code")) == "D:/work/code"
+    text = "\n".join(preferences.generate_automode(folder, ["github.com/alice"], ({}, ["npm"])))
+    assert "\\" not in text and "~/Documents/Code" in text
+    assert "**Primary use of Claude Code**: software development across my projects in ~/Documents/Code" in text
+
+
 def test_automode_needs_explicit_confirmation(fake_home, fake_runner, capsys):
     _repos(fake_home, fake_runner)
     _layer(me="# About me\n")
