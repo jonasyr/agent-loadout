@@ -180,13 +180,15 @@ def _refuse_if_secret(label: str, text: str) -> None:
 
 
 def _scan_tree(src: Path, label: str) -> None:
+    """Fail closed: every regular file is scanned (binary files too, by their text runs); unreadable files refuse."""
     for f in sorted(src.rglob("*")):
-        if f.is_symlink() or not f.is_file() or f.stat().st_size > 1_000_000:
-            continue
-        data = f.read_bytes()
-        if b"\0" in data:
-            continue
-        _refuse_if_secret(f"{label} ({f.relative_to(src)})", data.decode("utf-8", errors="ignore"))
+        if f.is_symlink() or not f.is_file():
+            continue  # symlinks are copied as links (symlinks=True), never their target's content
+        try:
+            data = f.read_bytes()
+        except OSError:
+            raise Collision(f"{label} ({f.relative_to(src)}) could not be read, so it was not checked for secrets") from None
+        _refuse_if_secret(f"{label} ({f.relative_to(src)})", data.decode("utf-8", errors="ignore").replace("\0", "\n"))
 
 
 def _same_tree(a: Path, b: Path) -> bool:

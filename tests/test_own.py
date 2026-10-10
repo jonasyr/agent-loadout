@@ -301,3 +301,27 @@ def test_global_mcp_unkeyed_url_secret_refused(machine, fake_runner):
     rec = own.record_global(_v("mcp", "db"), backup.Backup())
     assert not rec.ok and "secret" in rec.lines[0]
     assert _personal_empty()
+
+
+def test_skill_scan_fails_closed_on_large_and_binary_files(machine):
+    skill = machine / ".claude/skills/my-skill"
+    (skill / "big.txt").write_text("x" * 1_100_000 + " sk-" + "a" * 30)
+    rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+    (skill / "big.txt").unlink()
+    (skill / "blob.bin").write_bytes(b"\0\1binary sk-" + b"b" * 30)
+    rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
+    assert not rec.ok
+    assert not (paths.personal_root() / "skills/my-skill").exists()
+
+
+def test_skill_scan_refuses_unreadable_file(machine, monkeypatch):
+    import os
+    if os.name == "nt" or os.geteuid() == 0:
+        pytest.skip("permissions")
+    f = machine / ".claude/skills/my-skill/locked.txt"
+    f.write_text("x")
+    f.chmod(0)
+    rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
+    f.chmod(0o600)
+    assert not rec.ok and "could not be read" in rec.lines[0]
