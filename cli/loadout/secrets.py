@@ -1,9 +1,10 @@
 """Detect, redact and store plaintext secrets (MCP configs, settings env, secrets.env)."""
 from __future__ import annotations
 
+import fnmatch
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from urllib.parse import parse_qsl, urlsplit
 
 SECRET_PATTERNS = [
@@ -14,6 +15,30 @@ SECRET_KEY = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|AUTH", re.I)
 HEX_RUN = re.compile(r"[0-9a-fA-F]{32,}")
 B64_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
 MASK = "***"
+
+# Files that must never reach the personal layer (which may be a public git repo), whatever their content.
+PRIVATE_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"})
+PRIVATE_NAMES = ("*.pem", "*.key", "*.p12", "*.pfx", "id_*", ".env", ".env.*", ".netrc", ".npmrc", ".pypirc",
+                 "credentials*", "*.kdbx")
+PRIVATE_HOME = ((".config", "gh"), (".claude.json",))  # relative to the home folder
+
+
+def private_path(path: str | PurePath, home: str | PurePath | None = None) -> bool:
+    """True for a path on the private-file denylist (keys, credentials, cloud and tool logins).
+    With `home`, an absolute path is also checked against the home-relative entries (~/.config/gh, ~/.claude.json)."""
+    p = PurePath(path)
+    if any(part in PRIVATE_DIRS for part in p.parts):
+        return True
+    name = p.name.lower()
+    if any(fnmatch.fnmatchcase(name, pat) for pat in PRIVATE_NAMES):
+        return True
+    if home is not None:
+        try:
+            rel = p.relative_to(PurePath(home)).parts
+        except ValueError:
+            return False
+        return any(rel[:len(entry)] == entry for entry in PRIVATE_HOME)
+    return False
 
 
 @dataclass

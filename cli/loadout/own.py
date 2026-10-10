@@ -233,49 +233,119 @@ def _under(path: Path, root: Path) -> bool:
         return False
 
 
-def _portable_hook(hook: dict, bk) -> tuple[dict, list[str]]:
-    """Copy a local script the hook runs into <personal>/hooks/ and point the command at the linked copy."""
-    if "args" in hook:
-        return hook, ["note: exec form hook (args) recorded as is; it works only where its paths exist"]
+_INTERPRETER = re.compile(r"^(?:sh|bash|zsh|dash|fish|python|python3(?:\.\d+)?|node|deno|bun|ruby|perl|pwsh|powershell)"
+                          r"(?:\.exe)?$", re.I)
+_ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_SCRIPT_EXT = {".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".ts", ".rb", ".pl", ".ps1", ".fish"}
+
+
+def _script_index(tokens: list[str]) -> int | None:
+    """Index of the token that is the hook's script: the first token, or the first one after
+    `env [flags] [VAR=val]` and a known interpreter (and its flags)."""
+    i = 0
+    while i < len(tokens):
+        base = re.split(r"[\\/]", tokens[i])[-1]
+        if base.lower() in ("env", "env.exe"):
+            i += 1
+            while i < len(tokens) and (tokens[i].startswith("-") or _ENV_ASSIGN.match(tokens[i])):
+                i += 1
+            continue
+        if _INTERPRETER.match(base):
+            i += 1
+            while i < len(tokens) and tokens[i].startswith("-"):
+                i += 1
+            if i < len(tokens) and base.lower() in ("deno", "bun") and tokens[i] == "run":
+                i += 1
+            return i if i < len(tokens) else None
+        return i
+    return None
+
+
+def _expand(tok: str) -> Path:
+    return Path(os.path.expandvars(os.path.expanduser(tok)))
+
+
+def _private_token(tok: str) -> Path | None:
+    """The denylisted path a token names (also the value of opt=path), or None. Existence does not matter."""
+    for cand in (tok, tok.split("=", 1)[1] if "=" in tok else ""):
+        if not cand or not ("/" in cand or "\\" in cand or cand.startswith(("~", ".", "$"))):
+            continue
+        p = _expand(cand)
+        home = paths.home()
+        if secrets.private_path(p, home) or (p.is_absolute() and secrets.private_path(p.resolve(), home.resolve())):
+            return p
+    return None
+
+
+def _is_script(p: Path) -> bool:
+    if p.suffix.lower() in _SCRIPT_EXT or os.access(p, os.X_OK):
+        return True
+    try:
+        with p.open("rb") as fh:
+            return fh.read(2) == b"#!"
+    except OSError:
+        return False
+
+
+def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
+    """Copy the local script the hook runs into <personal>/hooks/ and point the command at the linked copy.
+    Only the script itself is copied; a private file named anywhere in the command refuses the hook."""
     cmd = hook.get("command")
+    args = hook.get("args")
+    words = ([cmd] if isinstance(cmd, str) else []) + [a for a in (args if isinstance(args, list) else []) if isinstance(a, str)]
+    if "args" in hook:
+        for tok in words:
+            if (bad := _private_token(tok)) is not None:
+                raise Collision(f"hook {name} refers to a private file ({bad}); not recorded")
+        return hook, ["note: exec form hook (args) recorded as is; it works only where its paths exist"]
     if not isinstance(cmd, str):
         return hook, []
     try:
         tokens = shlex.split(cmd)
     except ValueError:
         return hook, []
-    outside: list[str] = []
     for tok in tokens:
-        p = Path(os.path.expandvars(os.path.expanduser(tok)))
+        if (bad := _private_token(tok)) is not None:
+            raise Collision(f"hook {name} refers to a private file ({bad}); not recorded")
+    script_at = _script_index(tokens)
+    notes: list[str] = []
+    copy: tuple[str, Path] | None = None
+    for i, tok in enumerate(tokens):
+        p = _expand(tok)
         if not p.is_absolute() or not p.is_file():
             continue
         if _under(p, paths.kit_root()) or _under(p, paths.personal_root()):
             continue
+        if script_at is not None and i < script_at:
+            continue  # env / interpreter
         if not _under(p, paths.home()):
-            outside.append(f"note: {tok} is outside your home folder; the hook works only where it exists")
-            continue
-        _refuse_if_secret(f"hook script {p.name}", p.read_text(errors="ignore"))
-        dest = paths.personal_root() / "hooks" / p.name
-        if dest.exists():
-            if not filecmp.cmp(dest, p, shallow=False):
-                raise Collision(f"hook script {p.name} already exists in {dest.parent} with different content")
-        new = f'"$HOME/.claude/hooks/personal/{p.name}"'
-        replaced = False
-        for raw in (f"'{tok}'", f'"{tok}"', tok):
-            if raw in cmd:
-                cmd = cmd.replace(raw, new, 1)
-                replaced = True
-                break
-        if not replaced:
-            return hook, [f"note: could not rewrite the path in the command; edit it in {_personal_settings()}"]
+            notes.append(f"note: {tok} is outside your home folder; the hook works only where it exists")
+        elif i == script_at and _is_script(p) and copy is None:
+            copy = (tok, p)
+        else:
+            notes.append(f"note: {p} is a file under your home folder that is not the hook's script; recorded as is")
+    if copy is None:
         _refuse_if_secret("hook command", cmd)
-        if not dest.exists():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            bk.record_created(dest, f"hook script {p.name} copied into the personal layer")
-            shutil.copy2(p, dest)
-        return {**hook, "command": cmd}, [f"hook script {p.name} copied to {dest} (only this file; copy files it needs next to it by hand)"]
+        return hook, notes
+    tok, p = copy
+    _refuse_if_secret(f"hook script {p.name}", p.read_text(errors="ignore"))
+    dest = paths.personal_root() / "hooks" / p.name
+    if dest.exists() and not filecmp.cmp(dest, p, shallow=False):
+        raise Collision(f"hook script {p.name} already exists in {dest.parent} with different content")
+    new = f'"$HOME/.claude/hooks/personal/{p.name}"'
+    for raw in (f"'{tok}'", f'"{tok}"', tok):
+        if raw in cmd:
+            cmd = cmd.replace(raw, new, 1)
+            break
+    else:
+        return hook, [f"note: could not rewrite the path in the command; edit it in {_personal_settings()}", *notes]
     _refuse_if_secret("hook command", cmd)
-    return hook, outside
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        bk.record_created(dest, f"hook script {p.name} copied into the personal layer")
+        shutil.copy2(p, dest)
+    return {**hook, "command": cmd}, [f"hook script {p.name} copied to {dest} (only this file; copy files it needs "
+                                      f"next to it by hand)", *notes]
 
 
 def _find_hook(data: dict, event: str, matcher: str, command: str) -> tuple[int, int] | None:
@@ -298,7 +368,7 @@ def _hook_group(v: Verdict, bk) -> tuple[str, dict, list[str]]:
         raise Collision(f"hook {v.item.name}: changed in ~/.claude/settings.json since the scan; run adopt again")
     gi, hi = found
     group = data["hooks"][event][gi]
-    hook, notes = _portable_hook(group["hooks"][hi], bk)
+    hook, notes = _portable_hook(group["hooks"][hi], bk, v.item.name)
     base = {k: val for k, val in group.items() if k != "hooks"}
     return event, {**base, "hooks": [hook]}, notes
 

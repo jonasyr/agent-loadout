@@ -489,3 +489,94 @@ def test_ask_choices_invalid_profile_decides_nothing(machine):
     vs = [v for v in own.unmanaged(_verdicts()) if v.item.name == "my-skill"]
     answers = iter(["c", "p", "Bad Name", "../x", "A B"])
     assert own.ask_choices(vs, ask=lambda q: next(answers)) == []
+
+
+# --- security batch A ---------------------------------------------------------------------------
+
+PEM = ("-----BEGIN OPENSSH PRIVATE KEY-----\n"
+       "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n"
+       "QyNTUxOQAAACDx8Hq0rZ3k7yKXbJ9nq4m2Lw5YtqfRzW1a0kVvT3c2ZQAAAJgXr2pLF69q\n"
+       "-----END OPENSSH PRIVATE KEY-----\n")
+
+
+def _set_hook_obj(event, hook):
+    data = _settings()
+    data["hooks"][event] = [{"hooks": [hook]}]
+    (paths.claude_home() / "settings.json").write_text(json.dumps(data))
+
+
+def _personal_text():
+    root = paths.personal_root()
+    if not root.exists():
+        return ""
+    return "".join(f.read_text(errors="ignore") for f in root.rglob("*") if f.is_file() and not f.is_symlink())
+
+
+def test_hook_ssh_key_token_refused_not_copied(machine):
+    key = machine / ".ssh/id_ed25519"
+    key.parent.mkdir()
+    key.write_text(PEM)
+    _set_hook(machine, "Notification", f"ssh -i {key} me@nas notify-send done")
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    assert not rec.ok and "refers to a private file" in rec.lines[0] and str(key) in rec.lines[0]
+    assert "PRIVATE KEY" not in _personal_text() and _personal_empty()
+
+
+def test_hook_private_path_refused_even_if_missing_and_in_option(machine):
+    for cmd in ("aws-notify --file ~/.aws/credentials", "ssh -o IdentityFile=~/.ssh/work host",
+                "deploy --env /srv/app/.env.production", "x --cfg ~/.claude.json", "y ~/.config/gh/hosts.yml"):
+        _set_hook(machine, "Notification", cmd)
+        rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+        assert not rec.ok and "private file" in rec.lines[0], cmd
+    assert _personal_empty()
+
+
+def test_hook_exec_form_private_arg_refused(machine):
+    key = machine / ".ssh/id_rsa"
+    key.parent.mkdir()
+    key.write_text(PEM)
+    _set_hook_obj("Stop", {"type": "command", "command": "ssh", "args": ["-i", str(key), "host"]})
+    rec = own.record_global(_hook("ssh"), backup.Backup())
+    assert not rec.ok and "private file" in rec.lines[0]
+
+
+def test_hook_non_script_file_token_not_copied(machine):
+    cfg = machine / "cfg/settings.toml"
+    cfg.parent.mkdir()
+    cfg.write_text("[x]\n")
+    _set_hook(machine, "Notification", f"my-tool --config {cfg}")
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    assert rec.ok
+    assert any(str(cfg) in line and "not the hook's script" in line for line in rec.lines)
+    assert not (paths.personal_root() / "hooks").exists()
+    got = json.loads((paths.personal_root() / "settings.json").read_text())["hooks"]["Notification"][0]["hooks"][0]["command"]
+    assert got == f"my-tool --config {cfg}"
+
+
+def test_hook_first_token_needs_script_marker(machine):
+    tool = machine / "bin/tool"
+    tool.parent.mkdir()
+    tool.write_text("plain data\n")
+    _set_hook(machine, "Notification", f"{tool} go")
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    assert rec.ok and not (paths.personal_root() / "hooks").exists()
+    assert any("not the hook's script" in line for line in rec.lines)
+    tool.chmod(0o755)
+    _set_hook(machine, "SessionStart", f"{tool} go")
+    rec = own.record_global(_v("hook", "SessionStart:"), backup.Backup())
+    assert rec.ok and (paths.personal_root() / "hooks/tool").exists()
+    assert any("hook script tool copied" in line for line in rec.lines)
+
+
+def test_hook_script_after_env_and_interpreter_flags(machine):
+    script = machine / "bin/x.py"
+    script.parent.mkdir()
+    script.write_text("print(1)\n")
+    data = machine / "bin/data.json"
+    data.write_text("{}")
+    _set_hook(machine, "Notification", f"env -i FOO=1 python3.12 -u {script} {data}")
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    assert rec.ok
+    assert (paths.personal_root() / "hooks/x.py").exists() and not (paths.personal_root() / "hooks/data.json").exists()
+    assert any("hook script x.py copied" in line for line in rec.lines)
+    assert any(str(data) in line and "not the hook's script" in line for line in rec.lines)
