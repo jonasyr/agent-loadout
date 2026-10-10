@@ -26,7 +26,7 @@ flowchart LR
 
 **The personal layer** (`~/.config/loadout/personal`, ideally a private git repo) holds what is yours: `rules/me.md`, `settings.json` overrides, `mcp.json`, your skills, hooks and profiles. It is linked into `~/.claude/rules/personal`, `~/.claude/skills` and `~/.claude/hooks/personal`. See [Personal layer](../reference/personal-layer.md).
 
-**`~/.claude`** is owned by Claude Code and by you. loadout adds links and merges its own keys into `settings.json`. It does not edit `~/.claude/CLAUDE.md`. Your other settings stay.
+**`~/.claude`** is owned by Claude Code and by you. loadout adds links and merges its own keys into `settings.json`. It does not edit `~/.claude/CLAUDE.md`, unless you ask adopt to move its content into your personal layer. Your other settings stay.
 
 **Machine-local state** (`~/.claude/.loadout/`) records what the merge last applied, your `leave` decisions and the maintenance timestamps. It is not synced.
 

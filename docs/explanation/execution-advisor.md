@@ -12,7 +12,7 @@ After a plan is written, someone has to decide how to run it: in the current ses
 | SDD | Every task goes to an implementer subagent and gets its own review (subagent-driven development). |
 | Hybrid | Anything else: some tasks inline, some delegated, some reviewed only at the end. |
 
-Each task gets a row with its mode (Inline or Delegated), a model tier for delegated work (cheap, standard or top), and a review (per-task or final-review-only). The answer also names a cost for the recommended option and for all-Inline and all-SDD, plus a review policy. The user then picks, with the recommended option first.
+Each task gets a row with its mode (Inline or Delegated), a model tier for delegated work (cheap, standard or top), and a review (per-task or final-review-only). The answer also names a cost for the recommended option and for all-Inline and all-SDD, plus a review policy. The user then picks, with the recommended option first. Nothing runs before that answer. Inline and Hybrid both run under superpowers:executing-plans, with one shared `progress.md` ledger; in a Hybrid the delegated rows go to subagents.
 
 The rubric looks at:
 

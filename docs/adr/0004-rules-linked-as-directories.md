@@ -18,6 +18,7 @@ Many users already have a global `~/.claude/CLAUDE.md` with their own instructio
 - The user's global file stays theirs. A `git pull` updates the rules with no file written.
 - Where symlinks are unavailable (Windows without Developer Mode), the folders are copied and the copy is refreshed after a pull (copy mode).
 - A user who deletes the link also drops the rules. `loadout check` reports a missing link.
+- One exception, on request only: `loadout adopt` lists a non-empty `~/.claude/CLAUDE.md` in its `review` group. If the user picks it, its content moves into `<personal>/rules/me.md`, the original goes into the backup, and the file keeps a one-line marker (`adopt.migrate_claude_md`). Linking and merging never write it.
 
 ## In the code
 - `cli/loadout/link.py` (`LINKS`, `link_all`, `_link_one`, `is_copy_mode`)

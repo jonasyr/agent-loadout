@@ -27,10 +27,12 @@ It changes:
 - `~/.config/loadout/`: your personal layer, `secrets.env`, and the machine-local state in `~/.claude/.loadout/`.
 - A secrets-loading line in your shell startup file (or both PowerShell profiles on Windows).
 - `loadout` on your `PATH`.
+- Git's credential helper for `github.com`: when `gh` is logged in, bootstrap runs `gh auth setup-git` so git uses your `gh` login, and prints the undo command (`bootstrap.check_prereqs`).
+- `~/.claude/CLAUDE.md`, only if you pick it in adopt's `review` group (or pass `--groups review`): its content moves into `<personal>/rules/me.md`, the original goes into the backup, and the file keeps a one-line marker (`adopt.migrate_claude_md`).
 
 It does not touch:
 
-- Your `~/.claude/CLAUDE.md`. Rules are linked as a folder instead.
+- Your `~/.claude/CLAUDE.md`, apart from the adopt choice above. Rules are linked as a folder instead.
 - Settings keys it does not manage, unless you ask (`adopt`).
 - Project files, except through `loadout init` and `loadout profile`, which never overwrite a file.
 - Your account, claude.ai connectors or any credentials.
@@ -39,7 +41,7 @@ Anything loadout removes or replaces is moved to a backup first.
 
 ## Backups and restore
 
-Every command that changes your setup writes a backup folder `~/.claude/backups/loadout-<timestamp>` with a manifest of undo steps. `loadout restore <dir>` replays them, and what it replaces goes into a new backup, so a restore can be undone too. Backups can hold old configs and undo commands with secrets in them, so the folders are created readable only by you (0700, files 0600, `backup.PRIVATE_DIR`). Delete old ones when you no longer need them. How to use them, and what restore does not undo, is in [Undo what loadout changed](../how-to/undo-and-restore.md).
+Every command that removes or replaces something writes a backup folder `~/.claude/backups/loadout-<timestamp>` with a manifest of undo steps. `loadout restore <dir>` replays them, and what it replaces goes into a new backup, so a restore can be undone too. Backups can hold old configs and undo commands with secrets in them, so the folders are created readable only by you (0700, files 0600, `backup.PRIVATE_DIR`). Delete old ones when you no longer need them. How to use them, and what restore does not undo, is in [Undo what loadout changed](../how-to/undo-and-restore.md).
 
 ## Secrets
 

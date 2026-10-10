@@ -36,6 +36,8 @@ Whatever restore replaces goes into a new `pre-restore` backup, so a restore can
 - The "# loadout secrets" line that bootstrap appended to an existing shell startup file on Linux and macOS. A startup file that bootstrap created, and a Windows PowerShell profile (a copy is saved first), are covered.
 - Plugins and marketplaces that bootstrap installed. Uninstall them with `claude plugin uninstall ID`.
 - A profile applied to a repo with `loadout profile` or `loadout init`. It writes the repo's committed `.claude/settings.json` and `.mcp.json`; use git there.
+- The routine settings merge. `loadout configure`, `apply-settings` and the daily maintenance write `~/.claude/settings.json` without a backup. They change only the keys and hooks the kit manages (see [Settings merge](../reference/settings-merge.md)); bootstrap and adopt do save `settings.json` before their merge.
+- The git credential helper that bootstrap sets with `gh auth setup-git` when `gh` is logged in. Bootstrap prints the undo command: `git config --global --unset-all credential.https://github.com.helper`.
 - Edits made by `loadout configure`, `apply-settings` and the daily maintenance to the managed-settings snapshot `~/.claude/.loadout/managed-settings.json`. They rewrite it without a backup. See [Limits](../reference/settings-merge.md#limits).
 
 ## The managed-settings snapshot

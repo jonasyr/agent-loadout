@@ -195,7 +195,23 @@ loadout update [--yes]
 |---|---|
 | `--yes` | Run every update command without asking. Each is still printed. |
 
-It first refreshes the plugin marketplaces. A tool is updated through `mise upgrade` when mise manages it, through `brew upgrade` when Homebrew manages it, and otherwise through the update command in its catalog entry. If an installer changed `~/.claude/settings.json`, the kit-merged version is put back and the installer's version goes into a backup. After a run it removes exact duplicates that an installer re-registered.
+It first refreshes the plugin marketplaces (`claude plugin marketplace update`). Then, for each outdated tool, it picks the package manager that installed it (`pkgmgr.update_plan`):
+
+- `mise upgrade <tool>` when the binary lives under mise's `installs` directory, also behind a mise shim. The mise tool name is the catalog id, or `npm:<package>` for mise's npm backend; a catalog entry can override it with `"mise": "<name>"`. For these tools mise itself decides what is outdated (`mise outdated`), so its `minimum_release_age` and pins are respected.
+- `brew upgrade <formula>` when the binary resolves into Homebrew's `Cellar/<formula>/`. Casks and npm packages installed with Homebrew's node are not formulae and keep their own updater.
+- Otherwise the `update` command of the catalog entry (`claude update`, `uv self update`, ...). See [Catalog format](catalog-format.md#install-and-update).
+
+For a tool not managed by mise, if the update command succeeds but installs nothing newer, loadout remembers that version in `~/.claude/.loadout/refused-updates.json` and does not notify again until a newer one appears. A failed update keeps notifying.
+
+If an installer changed `~/.claude/settings.json`, the kit-merged version is put back and the installer's version goes into a backup.
+
+Some installers re-register what the loadout plugin already provides (for example `codebase-memory-mcp update` re-adds its user-scope MCP server and `~/.claude/hooks/cbm-*` scripts). When at least one update command ran and the loadout plugin is enabled, `update` removes only exact duplicates (`maintenance.undo_reregistered`, `duplicates.py`):
+
+- an MCP server with the same name, command, arguments, type and env as the plugin's, and not one of your personal-layer servers;
+- a hook that runs the same command as a plugin hook, or is exactly a legacy `~/.claude/hooks/cbm-*` script;
+- those scripts' files, when no settings hook references them.
+
+They go into a backup, and `update` prints what it undid and how to restore it. Look-alikes (a forked or reconfigured server, your own context7) are only reported; review them with `loadout adopt`. Skills, plugins and marketplaces are never removed automatically.
 
 Exit codes: 0 when finished (a failed update command is printed but does not change the code); 1 when the background maintenance job holds the lock. Try again after a minute.
 
