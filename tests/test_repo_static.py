@@ -146,7 +146,6 @@ def test_no_nested_claude_md():
     assert not nested, f"nested CLAUDE.md files are loaded by Claude Code; rename them CLAUDE.md.example: {nested}"
 
 
-@pytest.mark.xfail(strict=True, reason="AGENTS.md arrives in Task 7")
 def test_claude_md_imports_agents_md():
     assert (ROOT / "CLAUDE.md").read_text(encoding="utf-8").strip() == "@AGENTS.md"
     assert (ROOT / "AGENTS.md").exists()
