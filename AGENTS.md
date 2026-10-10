@@ -30,6 +30,11 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 - `own.py` your own tools; `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates
 - `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker
 
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (architecture, security), `adr/` (decisions 0001-0018), `examples/`.
+Other kit parts:
+
+- `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`, `.mcp.json`)
+- `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
+
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (architecture, security), `adr/` (decisions 0001-0018), `examples/`, and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).
