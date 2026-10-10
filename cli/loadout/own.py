@@ -103,10 +103,15 @@ def _hook_commands(settings: dict) -> set[str]:
 
 
 def personal_index() -> dict[str, dict]:
-    """What the personal layer already holds: {kind: {name: reason}} (hooks keyed by command)."""
+    """What the personal layer already holds: {kind: {name: reason}} (hooks keyed by command).
+    Personal profile members are kept apart under "_profile" and "_disabled" (plugins turned off in
+    ~/.claude/settings.json): a profile only explains an item that is inactive globally."""
     root = paths.personal_root()
     settings = load_json(root / "settings.json")
     index = {k: {} for k in KINDS}
+    index["_profile"] = {k: {} for k in KINDS}
+    enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins")
+    index["_disabled"] = {pid for pid, on in (enabled if isinstance(enabled, dict) else {}).items() if on is False}
     for pid, on in (settings.get("enabledPlugins") or {}).items():
         if on:
             index["plugin"][pid] = PERSONAL_REASON
@@ -125,20 +130,34 @@ def personal_index() -> dict[str, dict]:
     for path in sorted((root / "profiles").glob("*.json")):
         prof, why = load_json(path), f"In your personal profile {path.stem} (`loadout profile {path.stem}`)."
         for pid in prof.get("install") or []:
-            index["plugin"].setdefault(pid, why)
+            index["_profile"]["plugin"].setdefault(pid, why)
         for name in (prof.get("mcp") or {}).get("mcpServers") or {}:
-            index["mcp"].setdefault(name, why)
+            index["_profile"]["mcp"].setdefault(name, why)
         for name in prof.get("skills") or []:
-            index["skill"].setdefault(name, why)
+            index["_profile"]["skill"].setdefault(name, why)
         for cmd in _hook_commands(prof.get("settings") or {}):
-            index["hook"].setdefault(cmd, why)
+            index["_profile"]["hook"].setdefault(cmd, why)
     return index
 
 
-def in_personal_layer(item: Item, index: dict[str, dict]) -> str | None:
-    if item.kind not in index:
+def in_personal_layer(item: Item, index: dict) -> str | None:
+    """Why the personal layer explains this item, or None. Global membership (settings.json, mcp.json,
+    skills/, skills.json, hooks) always counts. Profile membership counts only for a plugin that is disabled
+    globally: an MCP server from ~/.claude.json, a skill in ~/.claude/skills and a hook in settings.json are
+    by definition still active, so a profile does not explain them (a failed removal must stay visible)."""
+    if item.kind not in KINDS:
         return None
-    return index[item.kind].get(item.detail if item.kind == "hook" else item.name)
+    if item.kind == "hook":
+        if not isinstance(item.detail, str):
+            return None
+        key = item.detail
+    else:
+        key = item.name
+    if key in index[item.kind]:
+        return index[item.kind][key]
+    if item.kind == "plugin" and key in index.get("_disabled", ()):
+        return index.get("_profile", {}).get("plugin", {}).get(key)
+    return None
 
 
 def unmanaged(verdicts: list[Verdict], include_left: bool = False) -> list[Verdict]:
@@ -757,6 +776,8 @@ def _mentions(path: Path, needle: str) -> bool:
 def candidate_repos(item: Item) -> list[Path]:
     """Repos Claude Code knows (~/.claude.json projects) whose project config mentions the item. A hint only."""
     needle = item.detail if item.kind == "hook" else item.name
+    if not isinstance(needle, str) or not needle:
+        return []
     try:
         projects = load_json(paths.claude_json()).get("projects")
     except (OSError, InvalidJSON):

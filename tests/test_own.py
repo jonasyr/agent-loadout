@@ -50,6 +50,10 @@ def test_kit_plugin_reason_is_kit_not_personal(machine):
 
 def test_personal_profile_items_are_keep(machine):
     _personal("profiles/mine.json", {"install": ["mystery@somewhere"]})
+    assert _by(_verdicts())[("plugin", "mystery@somewhere")].action == "own"  # still active globally
+    settings = json.loads((paths.claude_home() / "settings.json").read_text())
+    settings["enabledPlugins"] = {"mystery@somewhere": False}
+    (paths.claude_home() / "settings.json").write_text(json.dumps(settings))
     v = _by(_verdicts())[("plugin", "mystery@somewhere")]
     assert v.action == "keep" and "mine" in v.reason
 

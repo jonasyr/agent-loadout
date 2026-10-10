@@ -137,3 +137,59 @@ def test_no_drift_for_a_hook_the_user_already_has_in_a_group(machine):
     _second_machine()
     settings_merge.apply_settings()
     assert not any(d.startswith("hooks") for d in settings_merge.drift())
+
+
+# 4. personal-profile membership only counts for an item that is inactive globally
+
+def test_kit_named_profile_seed_hides_scope_down(machine):
+    before = _get("plugin", "sonarqube@claude-plugins-official")
+    v = _get("mcp", "omarchy-kb")
+    adopt.apply_own([(v, own.Choice("project", "sonar"))], backup.Backup())
+    after = _get("plugin", "sonarqube@claude-plugins-official")
+    assert after.action == before.action == "scope-down", (before.action, after.action, after.reason)
+
+
+def _profile(name, data):
+    p = paths.personal_root() / "profiles" / f"{name}.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data))
+
+
+def test_profile_member_plugin_is_kept_only_when_disabled_globally(machine):
+    _profile("mine", {"install": ["mystery@somewhere"]})
+    assert _get("plugin", "mystery@somewhere").action == "own"  # installed and not disabled: still active
+    s = _settings()
+    s["enabledPlugins"] = {"mystery@somewhere": False}
+    (paths.claude_home() / "settings.json").write_text(json.dumps(s))
+    v = _get("plugin", "mystery@somewhere")
+    assert v.action == "keep" and "personal profile mine" in v.reason
+
+
+def test_profile_member_mcp_server_still_in_user_scope_is_not_kept(machine):
+    _profile("mine", {"mcp": {"mcpServers": {"omarchy-kb": {"command": "x"}}}})
+    assert _get("mcp", "omarchy-kb").action == "own"
+
+
+def test_profile_member_skill_and_hook_still_present_are_not_kept(machine):
+    _profile("mine", {"skills": ["my-skill"], "settings": {"hooks": {"PreToolUse": [
+        {"matcher": "Edit", "hooks": [{"type": "command", "command": "my-own-linter"}]}]}}})
+    assert _get("skill", "my-skill").action == "own"
+    assert _get("hook", "PreToolUse:Edit").action == "own"
+
+
+def test_personal_layer_global_membership_still_keeps(machine):
+    p = paths.personal_root() / "settings.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [
+        {"type": "command", "command": "my-own-linter"}]}]}}))
+    assert _get("hook", "PreToolUse:Edit").action == "keep"
+
+
+def test_hook_with_a_list_command_does_not_crash(machine):
+    s = _settings()
+    s["hooks"]["Stop"].append({"hooks": [{"type": "command", "command": ["a", "b"]}, {"type": "command", "command": 5}]})
+    (paths.claude_home() / "settings.json").write_text(json.dumps(s))
+    _profile("mine", {"settings": {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": ["a"]}]}]}}})
+    hooks = [v for v in _verdicts() if v.item.kind == "hook" and not isinstance(v.item.detail, str)]
+    assert len(hooks) == 2 and all(v.action == "own" for v in hooks)
+    assert own.candidate_repos(hooks[0].item) == []
