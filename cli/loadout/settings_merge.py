@@ -6,7 +6,8 @@ current  = the user's settings.json
 Desired values win; values the kit applied before but no longer wants are removed
 only if the user did not change them; everything else in current is left alone.
 The `hooks` section is merged per hook (event + matcher + command), not per group or list
-item; the rules are in merge_settings. The snapshot records exactly the hooks the kit applied.
+item; the rules are in merge_settings. The snapshot records exactly the hooks the kit applied (`hooks`) and
+tombstones of desired hooks the user deleted (TOMBSTONES).
 """
 from __future__ import annotations
 
@@ -237,18 +238,23 @@ def merge_settings(current: dict, desired: dict, previous: dict) -> dict:
     longer wants is removed only if the user did not change it; list items union.
 
     `hooks` is merged per hook, identified by event + matcher (missing = "") + command (an exec-form hook by
-    command + args). For each identity:
+    command + args). An event whose value in current is not a list is left exactly as it is. For each identity:
 
-    - desired, not in current: if the kit applied it before (it is in the snapshot), the user deleted it, so it
-      is not added again and leaves the snapshot. Otherwise it is added to the first group in current with the
-      same event and matcher, or as a new group (with the desired group's other fields).
-    - desired and in current: never added a second time. Applied before and the desired hook changed since
-      (e.g. timeout): updated in place, wherever it sits. Not applied before: the user's own copy, untouched
-      and not recorded as applied.
+    - desired, with a tombstone (the user deleted the kit's copy earlier): never added again; a copy in current
+      is the user's. The tombstone stays as long as the identity is desired.
+    - desired, not in current, applied before (in the snapshot): the user deleted it (or changed its matcher):
+      not added again, and a tombstone is recorded.
+    - desired, not in current, not applied before: added to the first group in current with the same event and
+      matcher, or as a new group (with the desired group's other fields).
+    - desired and in current: never added a second time. Applied before and unchanged in current: the kit's;
+      updated in place if the desired hook changed (e.g. timeout). Applied before but changed in current (and
+      not equal to desired): the user edited it, so it is theirs from now on: never overwritten or removed, and
+      it leaves the snapshot. Not applied before: the user's own copy, untouched and not recorded.
     - applied before, no longer desired: removed if current still holds it unchanged; a group left empty is
-      removed. A hook the user changed stays.
+      removed. A hook the user changed stays. Its tombstone, if any, goes.
     - in neither desired nor the snapshot: never touched.
-    Duplicate identities in desired collapse (last wins). The snapshot records exactly the applied hooks.
+    Duplicate identities in desired collapse (last wins). The snapshot records exactly the applied hooks and the
+    tombstones.
     """
     return _plan(current, desired, previous)[0]
 
