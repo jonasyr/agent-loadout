@@ -58,6 +58,16 @@ EOF
 
 case "${1:-} ${2:-}" in
   "configure show") addons ;;
+  "configure own")
+    cat <<'EOF2'
+Not managed by loadout (they stay on this machine only). Choose with:
+  loadout configure set own <name> global|project:<profile>|leave|remove
+  [plugin] notes-helper@my-marketplace  1.0.0
+      options: global, project, leave, remove
+  [mcp] my-postgres  npx -y my-postgres-mcp
+      options: global, project, leave, remove
+EOF2
+    ;;
   "configure set")
     case "${3:-}" in
       plugin|mcp)
@@ -68,7 +78,10 @@ case "${1:-} ${2:-}" in
         echo "Restart Claude Code (or run /reload-plugins) to load the changes." ;;
       pref) echo "pref ${4} = ${5:-}" ;;
       pref-choice) echo "${4}: ${5:-}" ;;
-      *) echo "usage: loadout configure set <plugin|mcp|pref-choice|pref> <name> <value>" >&2; exit 2 ;;
+      own)
+        case "${5:-}" in global|leave|remove|project:?*) echo "${4}: recorded (${5})" ;;
+          *) echo "loadout: choice '${5:-}': use global, project:<profile>, leave or remove" >&2; exit 2 ;; esac ;;
+      *) echo "usage: loadout configure set <plugin|mcp|pref-choice|pref|own> <name> <value>" >&2; exit 2 ;;
     esac ;;
   "configure "*) echo "the interactive wizard needs a terminal; use: loadout configure show | set ..." >&2; exit 2 ;;
   "advisor-mark "*) [ -f "${2:-}" ] || { echo "loadout: no such plan: ${2:-}" >&2; exit 1; }
