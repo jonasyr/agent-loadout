@@ -462,3 +462,32 @@ def test_set_own_exit_1_when_mcp_not_removed(machine, monkeypatch):
     from loadout import runner as r
     monkeypatch.setattr(r, "would_refuse", lambda cmd: True)
     assert configure.set_own("omarchy-kb", "remove") == 1
+
+
+# 8. a refused hook leaves nothing in <personal>/hooks/
+
+def test_refused_hook_copies_no_script(machine):
+    (machine / "bin").mkdir()
+    script = machine / "bin/h.sh"
+    script.write_text("#!/bin/sh\necho hi\n")
+    os.chmod(script, 0o755)
+    s = _settings()
+    s["hooks"]["PreToolUse"].append({"matcher": "Write", "hooks": [
+        {"type": "command", "command": str(script), "headers": {"Authorization": "Bearer abcdefghijklmnop"}}]})
+    (paths.claude_home() / "settings.json").write_text(json.dumps(s))
+    rec = own.record_global(_get("hook", "PreToolUse:Write"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+    assert _hooks_dir() == []
+
+
+def test_accepted_hook_still_copies_script(machine):
+    (machine / "bin").mkdir()
+    script = machine / "bin/h.sh"
+    script.write_text("#!/bin/sh\necho hi\n")
+    os.chmod(script, 0o755)
+    s = _settings()
+    s["hooks"]["PreToolUse"].append({"matcher": "Write", "hooks": [{"type": "command", "command": str(script)}]})
+    (paths.claude_home() / "settings.json").write_text(json.dumps(s))
+    rec = own.record_global(_get("hook", "PreToolUse:Write"), backup.Backup())
+    assert rec.ok, rec.lines
+    assert _hooks_dir() == ["h.sh"]

@@ -460,9 +460,11 @@ def _is_script(p: Path) -> bool:
         return False
 
 
-def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
+def _portable_hook(hook: dict, bk, name: str, deferred: list | None = None) -> tuple[dict, list[str]]:
     """Copy the local script the hook runs into <personal>/hooks/ and point the command at the linked copy.
-    Only the script itself is copied; a private file named anywhere in the command refuses the hook."""
+    Only the script itself is copied; a private file named anywhere in the command refuses the hook.
+    With `deferred`, the copy is appended there as a callable instead of run, so the caller can run its own
+    checks first and copy last (a refused hook then leaves nothing in <personal>/hooks/)."""
     cmd = hook.get("command")
     args = hook.get("args")
     words = ([cmd] if isinstance(cmd, str) else []) + [a for a in (args if isinstance(args, list) else []) if isinstance(a, str)]
@@ -519,10 +521,17 @@ def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
         raise Collision(f"hook script {p.name} already exists in {dest.parent} with different content")
     cmd = cmd.replace(raw, f'"$HOME/.claude/hooks/personal/{p.name}"', 1)
     _refuse_if_secret("hook command", cmd)
-    if not dest.exists():
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        bk.record_created(dest, f"hook script {p.name} copied into the personal layer")
-        shutil.copy2(p, dest)
+
+    def copy_script() -> None:
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            bk.record_created(dest, f"hook script {p.name} copied into the personal layer")
+            shutil.copy2(p, dest)
+
+    if deferred is None:
+        copy_script()
+    else:
+        deferred.append(copy_script)
     return {**hook, "command": cmd}, [f"hook script {p.name} copied to {dest} (only this file; copy files it needs "
                                       f"next to it by hand)", *notes]
 
@@ -547,10 +556,13 @@ def _hook_group(v: Verdict, bk) -> tuple[str, dict, list[str]]:
         raise Collision(f"hook {display_name(v.item)}: changed in ~/.claude/settings.json since the scan; run adopt again")
     gi, hi = found
     group = data["hooks"][event][gi]
-    hook, notes = _portable_hook(group["hooks"][hi], bk, display_name(v.item))
+    deferred: list = []
+    hook, notes = _portable_hook(group["hooks"][hi], bk, display_name(v.item), deferred)
     base = {k: val for k, val in group.items() if k != "hooks"}
     out = {**base, "hooks": [hook]}
     _refuse_if_secret(f"hook {display_name(v.item)}", json.dumps(out))  # every branch: exec form, unparsable, other fields
+    for step in deferred:  # scan first, copy last
+        step()
     return event, out, notes
 
 
