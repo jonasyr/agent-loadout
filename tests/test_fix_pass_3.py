@@ -452,3 +452,172 @@ def test_hook_copies_only_its_script(script_home, cmd):
     own._portable_hook({"type": "command", "command": cmd}, backup.Backup(), "x")
     d = paths.personal_root() / "hooks"
     assert (sorted(p.name for p in d.glob("*")) if d.exists() else []) == ACCEPTED[cmd]
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Part 2: line-rule secrets lost after 9b59606 are flagged again; word-like values are not
+
+import importlib.util
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from loadout import secrets
+from test_fix_pass_2 import NOT_SECRET as REQUIRED_NOT_SECRET, SECRET_CORPUS as SECRET_CORPUS_2
+
+RESTORED = [
+    "password: Xk9$mQ2!pLz7", "secret: aB3$dE5fG7hJ", "db_password: 'Zq<8mN2vR4tY'",
+    "apiKey: a1b2c3d4e5f6g7h8", "accessToken: Zx9qQ8wW7eE6rR5t", "clientSecret: Pq8Wm3Zn5Xc7Vb9N",
+    "PGPASSWORD=Xk9mQ2pLz7",
+]
+
+
+@pytest.mark.parametrize("text", RESTORED)
+def test_restored_line_secrets_flagged(text):
+    assert secrets.redact(text) != text
+
+
+WORDS_NOT_SECRET = ["cache-key: node-modules-v18", "cache_key: v2-users-list", "partition_key: tenant_id_2024",
+                    "secret: my-secret-name-2", "auth: github-oauth2-app"]
+
+
+@pytest.mark.parametrize("text", WORDS_NOT_SECRET + REQUIRED_NOT_SECRET)
+def test_word_like_values_not_flagged(text):
+    assert secrets.redact(text) == text
+
+
+@pytest.mark.parametrize("text", ["monkey: Xk9mQ2pLz7wq", "hotkey: Ctrl+Shift+P1",
+                                  "tokenizer: o200k_base", "keystore: release.keystore"])
+def test_key_suffix_without_boundary_not_flagged(text):
+    assert secrets.redact(text) == text
+
+
+@pytest.mark.parametrize("text", ["password: dragon12", "token: abcdefghijklmnopqrs", "token: 1234567890123456",
+                                  "password: P@ss(w0rd)42!", "password: Xk9mQ2pL)z7wq", "private_key_id: 1a2b3c4d5e6f7a8b9c0d",
+                                  "MYSQL_PASSWD=Xk9mQ2pLz7", "userPwd: Xk9mQ2pLz7", "basicAuth: Xk9mQ2pLz7wq"])
+def test_more_line_secrets_flagged(text):
+    assert secrets.redact(text) != text
+
+
+@pytest.mark.parametrize("text", ["password: getpass()", "password: os.getenv(\"DB_PW\")", "token: $(cat ~/.tok)",
+                                  "token: ${TOKEN}", "password: '$DB_PASSWORD'", "secret: import.meta.env.SECRET_X",
+                                  "password: os.environ['DB_PASSWORD']"])
+def test_references_not_flagged(text):
+    assert secrets.redact(text) == text
+
+
+# corpus of the re-review (/tmp/claude-1000/rr3/corpus.py); its "should flag" half
+SECRET_CORPUS_3 = [
+    "password: Xk9$mQ2!pLz7", "password: P@ss(w0rd)42!", "db_password: 'Zq<8mN2vR4tY'", "secret: aB3$dE5fG7hJ",
+    "apiKey: a1b2c3d4e5f6g7h8", "accessToken: Zx9qQ8wW7eE6rR5tT4yY", "clientSecret: Zx9qQ8wW7eE6rR5tT4yY",
+    "  apiKey: 'a1b2c3d4e5f6g7h8',", "const apiKey = 'a1b2c3d4e5f6g7h8';", "api_key = 'a1b2c3d4e5f6g7h8'",
+    "API_KEY='a1b2c3d4e5f6g7h8'", 'API_KEY="a1b2c3d4e5f6g7h8"', "client_secret: 7f3a9c2e1b4d6f8a",
+    "password: correct horse battery staple", "password: Summer2024", "token: abcdefghijklmnopqrs",
+    "aws_secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "credentials: a1b2c3d4e5f6g7h8i9", "private_key_id: 1a2b3c4d5e6f7a8b9c0d", "\"password\" : \"hunter2hunter2\"",
+    "set -x PASSWORD hunter2hunter2", "password=hunter2", "PGPASSWORD=Xk9mQ2pLz7 psql", "mysql -pXk9mQ2pLz7wq",
+    "password: Xk9mQ2pL", "password: ÄÖü12345abc", "token: 1234567890123456", "pin: 482913",
+    "secret: 'Xk9mQ2 pLz7wq'", "auth: Xk9mQ2pLz7wq", "AUTH=Xk9mQ2pLz7wq", "password:Xk9mQ2pLz7wq",
+    "password:\tXk9mQ2pLz7wq", "Password: Xk9mQ2pLz7wq", "- password: Xk9mQ2pLz7wq", "[db]\npassword = Xk9mQ2pLz7wq",
+    "password: \"Xk9mQ2pLz7wq\" # prod", "password: Xk9mQ2pLz7wq;", "secret_token: 0123456789abcdef0123456789abcdef",
+    "password: {{ vault_pw }}Xk9", "password: Xk9mQ2pL)z7wq",
+]
+# its "should NOT flag" half: the reviewer's labelled non-secrets (some were flagged at 9b59606)
+NOT_SECRET_CORPUS_3 = [
+    "auth: required", "auth: none", "token: null", "password: changeme", "password: example-password",
+    "api_key: <your-api-key>", "api_key: ${API_KEY}", "api_key: $API_KEY", "password: '{{ vault_db_password }}'",
+    "key: value", "sort_key: name", "cache_key: v2-users-list", "token: Bearer", "pass: true",
+    "monkey: banana-split-2", "turkey: roasted", "hotkey: ctrl+shift+p", "hotkey: Ctrl+Shift+P1",
+    "auth: oauth2", "auth: github-oauth2-app", "auth_type: api_key", "token_type: bearer",
+    "key: id", "primary_key: id_v2", "partition_key: tenant_id_2024", "auth: basic", "secret: false",
+    "foreign_key: users.id", "key: sha256", "key: ed25519", "token: jwt", "key_algorithm: RS256",
+    "signing_key: HS256", "api_key: sk-" + "x" * 20, "password: hunter2", "password: P@ssw0rd",
+    "tokenizer: o200k_base", "key: Enter", "key: ArrowUp", "shortcut_key: CtrlShiftP12", "auth: v2",
+    "encryption_key: AES256GCM", "cipher_key: aes-256-gcm", "secret: my-secret-name-2", "pass: stage2",
+    "| api_key | string | Your API key |", "Set `api_key: YOUR_KEY` in config.", "The token: it expires in 3600 seconds.",
+    "key: F12", "keymap: vim", "auth: oidc-v2", "key_id: abc123", "secret_name: prod-db-credentials-v2",
+    "pass: lint2format", "password_hash: bcrypt", "token: ${{ secrets.GITHUB_TOKEN }}", "token: ${{secrets.GH}}",
+    "password_policy: min12chars", "api_key: sk_test_xxx", "key: my-key-2024", "cache-key: node-modules-v18",
+    "key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}", "key: v1-deps-{{ checksum \"package-lock.json\" }}",
+    "  key: npm-cache-v2", "  key: Linux-node-18", "keystore: release.keystore", "password_file: secrets/db.txt",
+    "token_url: oauth2/token", "auth: false", "secret: test1234", "key: user1",
+]
+# fix pass 2's extra probes, labelled non-secret there
+NOT_SECRET_PROBES_2 = ["api_key: your-api-key-here", "token: xxxxxxxxxxxx", "password = os.environ['DB_PASSWORD']",
+                       "  auth: required"]
+# Values that ARE secrets but that the labelled non-secret lists treat as placeholders; the regression
+# baseline exempts only the reviewer-labelled non-secrets below.
+EXEMPT = set(REQUIRED_NOT_SECRET) | set(WORDS_NOT_SECRET) | set(NOT_SECRET_CORPUS_3) | set(NOT_SECRET_PROBES_2)
+ALL_INPUTS = list(dict.fromkeys(SECRET_CORPUS_2 + SECRET_CORPUS_3 + NOT_SECRET_CORPUS_3 + NOT_SECRET_PROBES_2
+                                + REQUIRED_NOT_SECRET + WORDS_NOT_SECRET + RESTORED))
+
+
+def _old_redact(rev, tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    try:
+        src = subprocess.run(["git", "-C", str(root), "show", f"{rev}:cli/loadout/secrets.py"],
+                             capture_output=True, text=True, check=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip(f"git history for {rev} not available")
+    path = tmp_path / f"secrets_{rev}.py"
+    path.write_text(src)
+    spec = importlib.util.spec_from_file_location(f"secrets3_{rev}", path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod.redact
+
+
+@pytest.mark.parametrize("rev", ["04cb6b6", "43d0c4f", "9b59606"])
+def test_nothing_flagged_at_an_older_revision_is_unflagged_now(rev, tmp_path):
+    old = _old_redact(rev, tmp_path)
+    lost = [t for t in ALL_INPUTS if t not in EXEMPT and old(t) != t and secrets.redact(t) == t]
+    assert lost == []
+
+
+N = 100_000
+REDOS = {
+    "pw-long-val": "password: " + "aB1" * (N // 3),
+    "pw-long-word": "password: " + "a-" * (N // 2),
+    "pw-long-lower": "password: " + "a" * N,
+    "pw-long-caps": "password: " + "A_" * (N // 2),
+    "key-long-k": "a_" * (N // 2) + "key: aB1aB1aB1",
+    "key-long-dots": ".-_" * (N // 3) + "token: x",
+    "many-pw-lines": "password: aB1$aB1aB1\n" * (N // 22),
+    "many-token-lines": "token abcdefgh1\n" * (N // 16),
+    "token-run": "token " * (N // 6),
+    "token-tab": "token\t" * (N // 6),
+    "quote-key": '"' + "a" * N + '": x',
+    "dash-export": "- export " * (N // 9),
+    "eq-colon": ":=" * (N // 2),
+    "kv-many": "a: b " * (N // 5),
+    "caps-ph": "password: " + "A_B" * (N // 3),
+    "pyq-many": "'a':" * (N // 4),
+    "mixed-lines": ("api_key: Zx9qQ8wW7eE6rR5tT4yY\nauth: required\ncache.key: a.b.c\n") * (N // 70),
+    "url-pw-many": "x://a:b" * (N // 7) + "@",
+    "flag-many": "--token " * (N // 8),
+    # own inputs for the new rules
+    "camel-key": "a" * N + "Key: Xk9mQ2pLz7",
+    "camel-many": "aKey: v\n" * (N // 8),
+    "upper-suffix": "A" * N + "PASSWORD=x",
+    "call-open": "password: f(" + "(" * N,
+    "call-dots": "password: " + "a." * (N // 2) + "(",
+    "words-seg": "password: " + "ab-" * (N // 3),
+    "dollar-mid": "password: " + "a$" * (N // 2),
+    "words-lines": "secret: my-secret-name-2\n" * (N // 25),
+    "id-suffix": "key_id" * (N // 6) + ": x",
+}
+
+
+@pytest.mark.parametrize("name", list(REDOS))
+def test_redact_linear_on_adversarial_input(name):
+    text = REDOS[name]
+    best = None
+    for _ in range(3):
+        t = time.perf_counter()
+        secrets.redact(text)
+        d = time.perf_counter() - t
+        best = d if best is None else min(best, d)
+    assert best < 3.0  # quadratic behaviour takes 20 s+ at this size; 3 s leaves room for slow CI

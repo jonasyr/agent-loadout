@@ -87,11 +87,22 @@ _PY_PAIR = re.compile(r"'(?P<k>[^'\\\n]*)'(?P<sep>\s*:\s*)'(?P<v>(?:[^'\\\n]|\\.
 # (`api_key`, `db.password`, but not `auth_url` or `token_budget`).
 _LINE_PAIR = re.compile(r"^(?P<pre>[ \t]*(?:-[ \t]+)?(?:export[ \t]+)?(?P<q>[\"']?)(?P<k>[A-Za-z0-9_.-]+)(?P=q)"
                         r"[ \t]*[:=][ \t]*)(?P<v>\S+)", re.M)
-_LINE_KEY = re.compile(r"(?:^|[_.-])(?:key|token|secret|passw(?:or)?d|pass|passphrase|pwd|auth)$", re.I)
+# The key ends in a keyword: after a separator or at the start (any case; `api_key`, `db.password`, `Password`),
+# after a lower-to-upper case boundary (`apiKey`, `clientSecret`), or as an upper-case suffix (`PGPASSWORD`;
+# not a bare KEY suffix, so MONKEY/HOTKEY stay out). An `_id` after the keyword counts too (`private_key_id`).
+# `auth_url`, `token_budget` and `monkey` do not match.
+_LINE_KEY = re.compile(r"(?:(?:^|[_.-])(?i:key|token|secret|passw(?:or)?d|pass|passphrase|pwd|auth)"
+                       r"|(?<=[a-z])(?:Key|Token|Secret|Password|Passwd|Pwd|Auth)"
+                       r"|(?:PASSWORD|PASSWD|TOKEN|SECRET))(?:[_.-](?i:id))?$")
 _PLACEHOLDER = re.compile(r"^(?:\$\{.*|\$[A-Za-z_][A-Za-z0-9_]*|<.*)$")
-_NOT_A_VALUE = ("$", "process.env", "settings.", "os.environ", "<", "{{", "(", ")", MASK)
+_CALL = re.compile(r"\w[\w.]*\(.*\)")                                   # getpass(), os.getenv("X")
+_ENV_LOOKUP = re.compile(r"(?:process\.env\.|import\.meta\.env\.|settings\.|os\.environ\b)")
 _CAPS_PLACEHOLDER = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")   # YOUR_API_KEY
 _PLAIN_WORDS = re.compile(r"[a-z]+(?:[-_.][a-z]+)*")               # required, lint-and-format, request.url.path
+# Word-like: one lowercase word of up to 12 letters, or 2+ short segments joined by - _ . where each is a
+# word with up to 3 trailing digits (v18, oauth2) or a number of up to 4 digits (2, 2024).
+_SEGMENT = r"(?:[a-z]{1,12}\d{0,3}|\d{1,4})"
+_WORDS = re.compile(rf"[a-z]{{1,12}}|{_SEGMENT}(?:[-_.]{_SEGMENT})+")
 _PLACEHOLDER_WORDS = frozenset({"required", "optional", "none", "null", "true", "false", "unlimited"})
 
 
@@ -99,21 +110,38 @@ def _path_or_url(value: str) -> bool:
     return value.startswith(("/", "~", "./", "../")) or "://" in value
 
 
+def _reference(value: str) -> bool:
+    """A value that names a secret instead of holding it: starts with `$`, contains `${`, `$(` or a `{{`
+    template, is a call (`getpass()`), or an env lookup (process.env.X, settings.X, os.environ[...])."""
+    return value.startswith("$") or "${" in value or "$(" in value or "{{" in value or MASK in value \
+        or _ENV_LOOKUP.match(value) is not None or _CALL.fullmatch(value) is not None
+
+
+def _words(value: str) -> bool:
+    """Ordinary words rather than a secret: under 20 chars, word-like segments (see _WORDS), mostly letters."""
+    if len(value) >= 20 or not _WORDS.fullmatch(value):
+        return False
+    letters = sum(c.isalpha() for c in value)
+    return letters * 2 >= sum(c.isalnum() for c in value)
+
+
 def _secret_value(value: str) -> bool:
     """A config value that looks like a real secret rather than a word, a path, a URL, a reference or a
-    placeholder. Not secret: under 8 chars, whitespace, a path or URL (a `/` inside base64 does not count),
-    a reference (`$X`, process.env, settings., os.environ, `<...>`, `{{...}}`, a call), ALL_CAPS_PLACEHOLDER,
-    a placeholder word, or lowercase words joined by - _ . under 20 chars. Secret: letters mixed with digits,
-    16+ chars of mixed case, or a 20+ char lowercase run (a passphrase)."""
-    if len(value) < 8 or any(c.isspace() for c in value) or any(x in value for x in _NOT_A_VALUE) \
-            or _path_or_url(value):
+    placeholder. Not secret: under 8 chars, whitespace, a path or URL (starts with / ~ ./ ../ or contains
+    ://), a reference (see _reference), ALL_CAPS_PLACEHOLDER, a placeholder word, or word-like (see _words).
+    Secret: any other lowercase run (a 20+ char passphrase, a 13+ char single word), letters mixed with
+    digits, 12+ digits, or 16+ chars of mixed case. `$`, `<` or `(` inside a value do not make it a reference."""
+    if len(value) < 8 or any(c.isspace() for c in value) or _path_or_url(value) or _reference(value):
         return False
-    if _CAPS_PLACEHOLDER.fullmatch(value) or value.lower() in _PLACEHOLDER_WORDS:
+    if _CAPS_PLACEHOLDER.fullmatch(value) or value.lower() in _PLACEHOLDER_WORDS or _words(value):
         return False
     if _PLAIN_WORDS.fullmatch(value):
-        return len(value) >= 20
+        return True
     letters = any(c.isalpha() for c in value)
-    if letters and any(c.isdigit() for c in value):
+    digits = sum(c.isdigit() for c in value)
+    if letters and digits:
+        return True
+    if not letters and digits >= 12:
         return True
     return len(value) >= 16 and any(c.islower() for c in value) and any(c.isupper() for c in value)
 
