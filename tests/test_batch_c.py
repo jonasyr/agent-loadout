@@ -170,6 +170,7 @@ def test_no_outside_home_note_for_system_programs(machine):
     assert rec.ok and not any("outside your home" in line for line in rec.lines)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="hook commands are POSIX shell (Git Bash on Windows); these tests build unquoted native Windows paths, which the shell would mangle too")
 def test_outside_home_note_for_other_files(machine, tmp_path):
     other = tmp_path / "elsewhere.sh"
     other.write_text("#!/bin/sh\n")

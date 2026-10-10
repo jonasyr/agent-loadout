@@ -243,6 +243,7 @@ A refusal prints `skipped: ...` and changes nothing for that item. Move the secr
 
 #### Known limits
 
+- Windows: Claude Code runs hook commands through Git Bash, so a hook's script path must use forward slashes (`C:/Users/me/x.sh`) or quotes for loadout to recognise and copy the script; an unquoted backslash path is recorded as is (Git Bash would misread it too). Script detection is tested on Linux and macOS.
 - An MCP server is managed by loadout only if it is in `managed-mcp.json` or its config in `~/.claude.json` is identical to the personal one; otherwise loadout leaves your server alone. Recording through adopt seeds `managed-mcp.json`.
 - A profile is copied into a repo when applied. Later changes to the personal profile do not reach repos until you apply it again, and skill copies in a repo can drift from your personal layer.
 - A skill recorded as a pointer to a shared source is linked only on machines where that source exists.

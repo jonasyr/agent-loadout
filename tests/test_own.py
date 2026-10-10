@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -281,6 +282,7 @@ def test_global_hook_gone_before_machine_step_is_not_readded(machine):
     assert "my-own-linter" not in cmds
 
 
+@pytest.mark.skipif(os.name == "nt", reason="hook commands are POSIX shell (Git Bash on Windows); these tests build unquoted native Windows paths, which the shell would mangle too")
 def test_global_hook_unrewritable_path_notes(machine):
     script = machine / "bin/odd.sh"
     script.parent.mkdir()
@@ -560,6 +562,7 @@ def test_hook_exec_form_private_arg_refused(machine):
     assert not rec.ok and "private file" in rec.lines[0]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="hook commands are POSIX shell (Git Bash on Windows); these tests build unquoted native Windows paths, which the shell would mangle too")
 def test_hook_non_script_file_token_not_copied(machine):
     cfg = machine / "cfg/settings.toml"
     cfg.parent.mkdir()
@@ -573,6 +576,7 @@ def test_hook_non_script_file_token_not_copied(machine):
     assert got == f"my-tool --config {cfg}"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="hook commands are POSIX shell (Git Bash on Windows); these tests build unquoted native Windows paths, which the shell would mangle too")
 def test_hook_first_token_needs_script_marker(machine):
     tool = machine / "bin/tool"
     tool.parent.mkdir()
@@ -588,6 +592,7 @@ def test_hook_first_token_needs_script_marker(machine):
     assert any("hook script tool copied" in line for line in rec.lines)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="hook commands are POSIX shell (Git Bash on Windows); these tests build unquoted native Windows paths, which the shell would mangle too")
 def test_hook_script_after_env_and_interpreter_flags(machine):
     script = machine / "bin/x.py"
     script.parent.mkdir()
@@ -731,6 +736,7 @@ def test_skill_utf16_secret_refused(machine, encoding):
     assert not rec.ok and "secret" in rec.lines[0]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="hook commands are POSIX shell (Git Bash on Windows); these tests build unquoted native Windows paths, which the shell would mangle too")
 def test_hook_utf16_script_secret_refused(machine):
     script = machine / "bin/s.ps1"
     script.parent.mkdir()

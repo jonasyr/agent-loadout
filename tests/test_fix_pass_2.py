@@ -483,6 +483,7 @@ def test_refused_hook_copies_no_script(machine):
     assert _hooks_dir() == []
 
 
+@pytest.mark.skipif(os.name == "nt", reason="hook commands are POSIX shell (Git Bash on Windows); these tests build unquoted native Windows paths, which the shell would mangle too")
 def test_accepted_hook_still_copies_script(machine):
     (machine / "bin").mkdir()
     script = machine / "bin/h.sh"
@@ -498,6 +499,7 @@ def test_accepted_hook_still_copies_script(machine):
 
 # 9. the refusal names the expanded private path
 
+@pytest.mark.skipif(os.name == "nt", reason="hook commands are POSIX shell (Git Bash on Windows); these tests build unquoted native Windows paths, which the shell would mangle too")
 @pytest.mark.parametrize("cmd", ['"$HOME"/.ssh/id_rsa', "cat \"${HOME}\"/.ssh/id_rsa", "cat ~/.ssh/id_rsa"])
 def test_refusal_shows_expanded_path(fake_home, fake_runner, cmd):
     with pytest.raises(own.Collision) as exc:
