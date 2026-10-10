@@ -26,7 +26,23 @@ if TYPE_CHECKING:
 KINDS = ("plugin", "marketplace", "mcp", "skill", "hook")
 PERSONAL_REASON = "From your personal layer."
 LEFT_REASON = "Left on this machine (your choice); change it with `loadout configure set own`."
-OWN_REASON = "Not managed by loadout. Choose: global, project, leave or remove."
+
+
+def own_reason(item: Item) -> str:
+    """Why an item is listed under your own tools, naming only the choices that apply to it."""
+    opts = options(item)
+    return f"Not managed by loadout. Choose: {', '.join(opts[:-1])} or {opts[-1]}."
+
+
+def display_name(item: Item) -> str:
+    """The item's name for people: a hook without a matcher reads `Stop (no matcher)`, not `Stop:`."""
+    if item.kind == "hook" and item.name.endswith(":"):
+        return f"{item.name[:-1]} (no matcher)"
+    return item.name
+
+
+def label(item: Item) -> str:
+    return f"{item.kind} {display_name(item)}"
 
 
 def decision_key(item: Item) -> str:
@@ -350,6 +366,7 @@ def _private_token(tok: str) -> Path | None:
     return None
 
 
+_SYSTEM_PREFIXES = tuple(f"{d}/" for d in ("/usr", "/bin", "/sbin", "/opt/homebrew", "/usr/local"))
 _SHELL_SPLIT = re.compile(r"[\s'\"`;|&<>(){}=,]+")
 _SHELL_META = re.compile(r"[$`;&|<>(){}*?\[\]\n\r\\]")
 COMPLEX_NOTE = ("note: complex shell command recorded as is; only simple `<interpreter> <script> args` "
@@ -411,6 +428,8 @@ def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
         if script_at is not None and i < script_at:
             continue  # env / interpreter
         if not _under(p, paths.home()):
+            if str(p).startswith(_SYSTEM_PREFIXES):
+                continue  # an interpreter such as /usr/bin/python3 exists on every machine
             notes.append(f"note: {tok} is outside your home folder; the hook works only where it exists")
         elif i == script_at and _is_script(p) and copy is None:
             copy = (tok, p)
@@ -458,13 +477,13 @@ def _hook_group(v: Verdict, bk) -> tuple[str, dict, list[str]]:
     data = load_json(paths.claude_home() / "settings.json")
     found = _find_hook(data, event, matcher, v.item.detail)
     if found is None:
-        raise Collision(f"hook {v.item.name}: changed in ~/.claude/settings.json since the scan; run adopt again")
+        raise Collision(f"hook {display_name(v.item)}: changed in ~/.claude/settings.json since the scan; run adopt again")
     gi, hi = found
     group = data["hooks"][event][gi]
-    hook, notes = _portable_hook(group["hooks"][hi], bk, v.item.name)
+    hook, notes = _portable_hook(group["hooks"][hi], bk, display_name(v.item))
     base = {k: val for k, val in group.items() if k != "hooks"}
     out = {**base, "hooks": [hook]}
-    _refuse_if_secret(f"hook {v.item.name}", json.dumps(out))  # every branch: exec form, unparsable, other fields
+    _refuse_if_secret(f"hook {display_name(v.item)}", json.dumps(out))  # every branch: exec form, unparsable, other fields
     return event, out, notes
 
 
@@ -491,10 +510,10 @@ def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
         if group not in groups:
             groups.append(group)
 
-    _edit_json(path, bk, f"settings.json before regrouping hook {v.item.name}", change)
+    _edit_json(path, bk, f"settings.json before regrouping hook {display_name(v.item)}", change)
     if gone[0]:
-        return [f"hook {v.item.name}: changed in ~/.claude/settings.json since the scan; left as is"]
-    return [f"hook {v.item.name}: now managed through your personal layer"]
+        return [f"hook {display_name(v.item)}: changed in ~/.claude/settings.json since the scan; left as is"]
+    return [f"hook {display_name(v.item)}: now managed through your personal layer"]
 
 
 def record_global(v: Verdict, bk) -> Recorded:
@@ -520,12 +539,12 @@ def record_global(v: Verdict, bk) -> Recorded:
                 groups = data.setdefault("hooks", {}).setdefault(event, [])
                 if group not in groups:
                     groups.append(group)
-            _edit_json(_personal_settings(), bk, f"personal settings.json before recording hook {item.name}", change)
-            return Recorded(True, [f"hook {item.name}: recorded in {_personal_settings()}", *notes],
+            _edit_json(_personal_settings(), bk, f"personal settings.json before recording hook {display_name(item)}", change)
+            return Recorded(True, [f"hook {display_name(item)}: recorded in {_personal_settings()}", *notes],
                             lambda: _regroup_machine_hook(v, event, group, bk))
     except Collision as exc:
         return Recorded(False, [redact(f"skipped: {exc}")])
-    raise ValueError(f"{item.kind} {item.name}: global is not available for this kind")
+    raise ValueError(f"{label(item)}: global is not available for this kind")
 
 
 def _global_mcp(v: Verdict, bk) -> Recorded:
@@ -629,7 +648,7 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
     if not PROFILE_NAME.match(profile):
         raise ValueError(f"profile name '{profile}': use lowercase letters, digits, - and _")
     if "project" not in options(item):
-        raise ValueError(f"{item.kind} {item.name}: project is not available for this item")
+        raise ValueError(f"{label(item)}: project is not available for this item")
     where = f"personal profile {profile} ({_profile_path(profile)})"
     try:
         if item.kind == "plugin":
@@ -658,10 +677,10 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
             event, group, notes = _hook_group(v, bk)
             _edit_profile(profile, bk, lambda data: _append_once(
                 data.setdefault("settings", {}).setdefault("hooks", {}).setdefault(event, []), group))
-            return Recorded(True, [f"hook {item.name}: recorded in {where}", *notes])
+            return Recorded(True, [f"hook {display_name(item)}: recorded in {where}", *notes])
     except Collision as exc:
         return Recorded(False, [redact(f"skipped: {exc}")])
-    return Recorded(True, [f"{item.kind} {item.name}: recorded in {where}"])
+    return Recorded(True, [f"{label(item)}: recorded in {where}"])
 
 
 CHOICES = ("global", "project", "leave", "remove")
@@ -690,7 +709,8 @@ def parse_spec(spec: str) -> list[tuple[str | None, str, Choice]]:
             continue
         name, sep, choice = part.rpartition("=")
         if not sep or not name.strip():
-            raise ValueError(f"'{part}': use NAME=CHOICE (for example foo@bar=global)")
+            raise ValueError(f"'{part}': use NAME=CHOICE (for example foo@bar=global); names containing ',' "
+                             f"(such as a hook matcher) cannot be given here, use `loadout adopt --apply` in a terminal")
         kind, colon, rest = name.strip().partition(":")
         kind, name = (kind, rest) if colon and kind in KINDS else (None, name.strip())
         out.append((kind, name, parse_choice(choice)))
@@ -760,15 +780,18 @@ def _existing_profiles() -> list[str]:
 def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
     if not verdicts:
         return []
-    first = ask("your own tools: [l]eave all / [c]hoose each (default: decide later): ").strip().lower()
+    first = ask("your own tools: [l]eave all (not asked again on this machine) / [c]hoose each "
+                "(Enter: decide later): ").strip().lower()
     if first in ("l", "leave"):
         return [(v, Choice("leave")) for v in verdicts]
     if first not in ("c", "choose"):
         return []  # empty or unknown: nothing decided, nothing remembered
+    print("  global = personal layer, every machine · project = personal profile, per repo · "
+          "leave = this machine only, not asked again · remove = into the backup (loadout restore)")
     pairs, last_profile = [], ""
     for v in verdicts:
         opts = options(v.item)
-        prompt = f"  {v.item.kind} {v.item.name} — " + " / ".join(f"[{o[0]}]{o[1:]}" for o in opts) + " (default: skip): "
+        prompt = f"  {label(v.item)} — " + " / ".join(f"[{o[0]}]{o[1:]}" for o in opts) + " (Enter: decide later): "
         action = ""
         for _ in range(3):
             answer = ask(prompt).strip().lower()
@@ -785,19 +808,21 @@ def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
         if action == "project":
             profile = ""
             for _ in range(3):
-                answer = ask(f"    profile (existing: {', '.join(_existing_profiles()) or 'none'}; or a new name)"
-                             + (f" [{last_profile}]" if last_profile else "") + ": ").strip().lower() or last_profile
+                existing = f"existing: {', '.join(_existing_profiles()) or 'none'}; or a new name"
+                answer = ask(f"    profile ({existing}" + (f") [{last_profile}]: " if last_profile else "; Enter: skip): ")
+                             ).strip().lower() or last_profile
+                if not answer:
+                    break  # Enter with no previous profile: skip this item
                 if PROFILE_NAME.match(answer):
                     profile = answer
                     break
                 print("    use lowercase letters, digits, - and _")
             if not profile:
                 continue  # no valid profile name: not decided
-            else:
-                note = profile_note(profile)
-                if note:
-                    print("    " + note)
-                last_profile, choice = profile, Choice("project", profile)
+            note = profile_note(profile)
+            if note:
+                print("    " + note)
+            last_profile, choice = profile, Choice("project", profile)
         pairs.append((v, choice))
     return pairs
 

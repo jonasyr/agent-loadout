@@ -282,7 +282,10 @@ def own_lines(include_left: bool) -> list[str]:
     found = own.unmanaged(verdicts, include_left)
     names = own.qualified_names(own.unmanaged(verdicts, True))
     if not found:
-        return ["all your tools are managed by loadout" + ("" if include_left else " (left ones: loadout configure own --all)")]
+        lines = ["Nothing to decide: loadout or your personal layer manages every tool."]
+        if not include_left and any(v.action == "keep" and v.reason == own.LEFT_REASON for v in verdicts):
+            lines.append("Tools you chose to leave on this machine: `loadout configure own --all`")
+        return lines
     lines = ["Not managed by loadout (they stay on this machine only). Choose with:",
              "  loadout configure set own <name> global|project:<profile>|leave|remove"]
     for v in found:
@@ -305,9 +308,12 @@ def set_own(name: str, choice: str) -> int:
     bk = Backup(description="configure own")
     for note in own.profile_notes(pairs):
         print(note)
-    lines, profiles_changed = adopt.apply_own(pairs, bk)
+    changed: list = []
+    lines, profiles_changed = adopt.apply_own(pairs, bk, changed=changed, project_hint=False)
     for line in lines:
         print(redact(line))
+    if changed:
+        print(adopt.RESTART_NOTE)
     for profile in profiles_changed:
         print(f"apply it in a repo: cd <repo> && loadout profile {profile}")
     if not bk.empty:

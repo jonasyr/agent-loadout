@@ -162,7 +162,7 @@ def classify(items: list[Item]) -> list[Verdict]:
             continue
         entry = catalog.match(item.kind, item.name, item.detail)
         if entry is None:
-            out.append(Verdict(item, "own", own.OWN_REASON))
+            out.append(Verdict(item, "own", own.own_reason(item)))
             continue
         status = entry["status"]
         if status == "core":

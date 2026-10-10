@@ -19,7 +19,7 @@ DEFAULT_ALL = {"remove", "migrate", "scope-down"}
 GROUP_HELP = {
     "remove": "uninstall/remove; restorable.",
     "migrate": "remove your copy, because the loadout plugin provides it.",
-    "scope-down": "disable globally; enable per project with `loadout profile X`.",
+    "scope-down": "disable globally; enable per project with `loadout profile X`. Or pick (p), then k to keep one global.",
     "update": "run the tool's update command (each command is shown and confirmed first).",
     "install": "run the tool's install command (each command is shown and confirmed first).",
     "review": "picking removes it; restorable.",
@@ -30,6 +30,7 @@ VERB = {"remove": "remove", "migrate": "remove", "scope-down": "disable globally
         "install": "install", "review": "remove", "own": "remove"}
 MIGRATED_MARKER = "<!-- Global instructions live in"
 Ask = Callable[[str], str]
+RESTART_NOTE = "Restart Claude Code (or run /reload-plugins) to load the changes."
 
 
 def prefill_settings() -> dict:
@@ -75,7 +76,7 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
             lines.append(redact(f"  [{v.item.kind}] {v.item.name}  {v.item.detail}".rstrip()))
             lines.append(redact(f"      {v.reason}"))
             if v.item.kind == "marketplace" and group != "keep":
-                lines.append("      note: plugins from a removed marketplace stay installed unless picked too.")
+                lines.append("      note: if you remove it, its plugins stay installed unless you remove them too.")
     if findings:
         lines.append("\nPLAINTEXT SECRETS (values hidden)")
         for f in findings:
@@ -206,7 +207,7 @@ def _apply_hooks(hook_verdicts: list[Verdict], bk: Backup) -> list[str]:
     if not hooks:
         data.pop("hooks", None)
     save_json(path, data)
-    return [f"hook {v.item.name}: removed ({v.item.detail[:60]})" for v in hook_verdicts]
+    return [f"hook {own.display_name(v.item)}: removed ({v.item.detail[:60]})" for v in hook_verdicts]
 
 
 def _apply_binary(v: Verdict, ask: Ask, confirm_cmds: bool) -> str:
@@ -373,10 +374,13 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         for note in own.profile_notes(own_pairs):
             print(note)
     try:
+        changed: list = []
         lines, new_profiles = apply_own(own_pairs, bk, chosen, ask if interactive else (lambda q: ""),
-                                        confirm_cmds=not (yes and explicit))
+                                        confirm_cmds=not (yes and explicit), changed=changed)
         for line in lines:
             print(redact(line))
+        if changed:
+            print(RESTART_NOTE)
         done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
         remaining = [f for f in findings if f.fixable and f.server not in done]
         if remaining and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
@@ -425,12 +429,19 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
                 print(redact(f"  {repo.resolve()}: failed: {exc}"))
 
 
+def _remove_project_skill(v: Verdict, profile: str, bk: Backup) -> list[str]:
+    bk.move(Path(v.item.location), f"skill {v.item.name} (kept in profile {profile})")
+    return [f"skill {v.item.name}: removed from ~/.claude/skills (kept in profile {profile}; original in the backup)"]
+
+
 def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = lambda q: "",
-              confirm_cmds: bool = True) -> tuple[list[str], dict]:
+              confirm_cmds: bool = True, changed: list | None = None, project_hint: bool = True) -> tuple[list[str], dict]:
     """Record own-tool choices, run every removal (others + converted choices), then the deferred
     machine steps (content-based, so earlier index-based hook removals cannot shift them).
     An item in both `pairs` and `others` is acted on once, by its own choice. One item's I/O error is
-    reported as a 'failed:' line and does not stop the others."""
+    reported as a 'failed:' line and does not stop the others. `changed` gets an entry when something was
+    recorded or removed (the caller then prints RESTART_NOTE); `project_hint=False` leaves out the per-item
+    "enable it per project" line for callers that print their own."""
     from . import link, settings_merge
 
     mine = {own.decision_key(v.item) for v, _ in pairs}
@@ -439,7 +450,7 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
     backed_up = False
 
     def fail(v, exc):
-        out.append(redact(f"{v.item.kind} {v.item.name}: failed: {exc}"))
+        out.append(redact(f"{own.label(v.item)}: failed: {exc}"))
 
     def backup_decisions():
         nonlocal backed_up
@@ -461,7 +472,8 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             except (OSError, InvalidJSON) as exc:
                 fail(v, exc)
                 continue
-            out.append(f"{v.item.kind} {v.item.name}: left on this machine (not asked again; loadout configure own --all)")
+            out.append(f"{own.label(v.item)}: left on this machine (not asked again; change it with "
+                       f"`loadout configure set own NAME …`, list with `loadout configure own --all`)")
             continue
         if choice.action == "remove":
             try:
@@ -484,13 +496,21 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
         except (OSError, InvalidJSON) as exc:
             fail(v, exc)
         personal_changed = True
+        if changed is not None:
+            changed.append(v.item)
         if rec.machine:
             machine.append((v, rec.machine))
         if choice.action == "project":
             recorded_profiles.setdefault(choice.profile, []).append(v.item)
-            removals.append(Verdict(v.item, "scope-down" if v.item.kind == "plugin" else "remove", v.reason))
-            out.append(f"{v.item.kind} {v.item.name}: enable it per project with `loadout profile {choice.profile}`")
+            if v.item.kind == "skill":
+                machine.append((v, lambda v=v, profile=choice.profile: _remove_project_skill(v, profile, bk)))
+            else:
+                removals.append(Verdict(v.item, "scope-down" if v.item.kind == "plugin" else "remove", v.reason))
+            if project_hint:
+                out.append(f"{own.label(v.item)}: enable it per project with `loadout profile {choice.profile}`")
     if removals:
+        if changed is not None:
+            changed.append(removals)
         try:
             out += apply(removals, bk, ask, confirm_cmds)
         except (OSError, InvalidJSON) as exc:

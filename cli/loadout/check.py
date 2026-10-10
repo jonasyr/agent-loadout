@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 from dataclasses import dataclass
 
@@ -71,15 +72,21 @@ def _plugins() -> list[CheckResult]:
                         "they install automatically at the next Claude Code start (or run loadout bootstrap)", "warn")]
 
 
+def _json_fix(exc: InvalidJSON) -> str:
+    """Fix text for an InvalidJSON error; jsonio puts the file in the message as `invalid JSON in <path>: ...`."""
+    m = re.match(r"invalid JSON in (.+?): (?:Expecting|Extra|Invalid|Unterminated|expected)", str(exc))
+    return f"fix the JSON syntax in {m.group(1)}" if m else "fix the JSON syntax in the file named above"
+
+
 def _own() -> list[CheckResult]:
     from . import inventory, own
 
     try:
         n = len(own.unmanaged(inventory.classify(inventory.collect(with_versions=False))))
     except InvalidJSON as exc:
-        return [CheckResult("own tools managed", False, str(exc), "fix the JSON syntax", "warn")]
-    return [CheckResult("own tools managed", n == 0, f"{n} tool(s) not managed by loadout (they stay on this machine only)",
-                        "loadout configure own", "warn")]
+        return [CheckResult("own tools", False, str(exc), _json_fix(exc), "warn")]
+    return [CheckResult("own tools", n == 0, f"{n} tool(s) not managed by loadout (they stay on this machine only)",
+                        "decide with `loadout adopt --apply` or `loadout configure own`", "warn")]
 
 
 def _binaries() -> list[CheckResult]:

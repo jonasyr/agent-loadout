@@ -228,7 +228,8 @@ def test_plan_headers_explain_each_action(machine):
     assert "remove your copy, because the loadout plugin provides it." in text
     assert "disable globally; enable per project with `loadout profile X`." in text
     assert "picking removes it; restorable." in text
-    assert "plugins from a removed marketplace stay installed unless picked" in text
+    assert "if you remove it, its plugins stay installed unless you remove them too." in text
+    assert "pick (p), then k to keep one global" in text
 
 
 def test_plan_redacts_secrets(machine):

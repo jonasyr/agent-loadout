@@ -40,11 +40,13 @@ def _register_adopt(sub):
     p = sub.add_parser("adopt", help="review and migrate the existing Claude Code setup")
     p.add_argument("--apply", action="store_true", help="choose and apply changes (default: dry run)")
     p.add_argument("--groups", help="apply exactly these groups, e.g. remove,migrate (update/install run each command after confirmation unless --yes)")
-    p.add_argument("--skip", default="", help="comma-separated item names to leave alone")
+    p.add_argument("--skip", default="", help="comma-separated item names to skip in this run (nothing is remembered)")
     p.add_argument("--yes", action="store_true", help="no questions: apply --groups, or remove,migrate,scope-down, and move secrets; your own tools stay as they are")
     p.add_argument("--own", metavar="NAME=CHOICE,...",
-                   help="decide for your own tools: global, project:<profile>, leave or remove "
-                        "(e.g. foo@bar=global,my-db=project:db); others stay as they are")
+                   help="Example: my-db=project:mydb,foo@bar=global. Decide for your own tools. "
+                        "Choices: global, project:<profile>, leave, remove; others stay as they are. "
+                        "A hook is named Event:matcher (Stop: has no matcher); add #n when several hooks "
+                        "share a name (names: loadout configure own)")
     p.add_argument("--no-versions", action="store_true", help="skip network version checks")
 
     def run(a):
@@ -155,9 +157,10 @@ def _register_configure(sub):
                               "  loadout configure set own foo@bar global\n"
                               "  loadout configure set pref effortLevel '\"high\"'")
     p.add_argument("action", nargs="?", choices=["show", "set", "prefs", "own"],
-                   help="show the current state, set one value, or answer the working-preference questions")
+                   help="show the current state, set one value, answer the working-preference questions, or list your own tools (own)")
     p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref", "own"], help="what to set")
-    p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, preference id, or settings key (ids: configure show)")
+    p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, preference id, or settings key (ids: configure show), "
+                                      "or one of your own tools (names: configure own)")
     p.add_argument("value", nargs="?", help="on|off for plugin/mcp; an option for pref-choice; a JSON value for pref; global|project:<profile>|leave|remove for own")
     p.add_argument("--all", action="store_true", help="with own: also list the tools you left on this machine")
     p.add_argument("--first-run", action="store_true", help="also ask the 'about you' questions again (keeps your me.md unless you agree)")
