@@ -20,9 +20,11 @@ B64_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
 MASK = "***"
 
 # Files that must never reach the personal layer (which may be a public git repo), whatever their content.
-PRIVATE_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"})
-PRIVATE_NAMES = ("*.pem", "*.key", "*.p12", "*.pfx", "id_*", ".env", ".env.*", ".netrc", ".npmrc", ".pypirc",
-                 "credentials*", "*.kdbx")
+PRIVATE_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".password-store"})
+PRIVATE_NAMES = ("*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_dsa*", "id_ecdsa*", "id_ed25519*", ".env", ".env.*",
+                 ".netrc", ".npmrc", ".pypirc", "credentials", "credentials.json", "credentials.csv", "*.kdbx",
+                 ".git-credentials", ".vault-token")
+PRIVATE_EXEMPT = (".env.example", ".env.sample", ".env.template")  # templates without values
 PRIVATE_HOME = ((".config", "gh"), (".claude.json",))  # relative to the home folder
 
 
@@ -33,7 +35,7 @@ def private_path(path: str | PurePath, home: str | PurePath | None = None) -> bo
     if any(part in PRIVATE_DIRS for part in p.parts):
         return True
     name = p.name.lower()
-    if any(fnmatch.fnmatchcase(name, pat) for pat in PRIVATE_NAMES):
+    if name not in PRIVATE_EXEMPT and any(fnmatch.fnmatchcase(name, pat) for pat in PRIVATE_NAMES):
         return True
     if home is not None:
         try:

@@ -129,7 +129,7 @@ def test_line_rule_still_flags_secrets(text):
 
 def _t(text):
     best = None
-    for _ in range(3):  # best of three: a busy machine must not fail a linear-time check
+    for _ in range(5):  # best of five: a busy machine must not fail a linear-time check
         t = time.perf_counter()
         secrets.redact(text)
         d = time.perf_counter() - t
@@ -224,3 +224,59 @@ def test_utf16_file_with_token_refused(machine, enc):
 def test_harmless_binary_still_recorded(machine):
     rec = _skill_file(machine, "icon.bin", bytes(range(256)) * 20 + b"\0" * 4000)
     assert rec.ok, rec.lines
+
+
+# 4. private filename list
+
+@pytest.mark.parametrize("path", ["scripts/id_generator.py", "docs/credentials.md", ".env.example", ".env.sample",
+                                  ".env.template", "id_card.md", "credentials_guide.txt"])
+def test_private_list_allows_ordinary_files(path):
+    assert not secrets.private_path(path)
+
+
+@pytest.mark.parametrize("path", ["id_rsa", "id_rsa.pub", "keys/id_dsa", "id_ecdsa_sk", "id_ed25519", "credentials",
+                                  "aws/credentials.json", "credentials.csv", ".env", ".env.local", "sub/.env.production",
+                                  ".git-credentials", ".vault-token", ".password-store/github.gpg", "x.pem", ".netrc"])
+def test_private_list_refuses_private_files(path):
+    assert secrets.private_path(path)
+
+
+def test_skill_with_docs_credentials_md_is_recorded(machine):
+    skill = machine / ".claude/skills/my-skill"
+    (skill / "docs").mkdir()
+    (skill / "docs/credentials.md").write_text("How to set up credentials in your CI.\n")
+    (skill / "scripts").mkdir()
+    (skill / "scripts/id_generator.py").write_text("print(1)\n")
+    (skill / ".env.example").write_text("API_KEY=\n")
+    rec = own.record_global(_get("skill", "my-skill"), backup.Backup())
+    assert rec.ok, rec.lines
+
+
+@pytest.mark.parametrize("name", [".git-credentials", ".vault-token"])
+def test_skill_with_new_private_names_refused(machine, name):
+    (machine / ".claude/skills/my-skill" / name).write_text("x\n")
+    rec = own.record_global(_get("skill", "my-skill"), backup.Backup())
+    assert not rec.ok and "private file" in rec.lines[0]
+
+
+from loadout import configure, runner as runner_mod
+
+
+def _git_personal(fake_runner, status):
+    root = paths.personal_root()
+    (root / ".git").mkdir(parents=True)
+    fake_runner.responses[("git", "-C", str(root), "status")] = runner_mod.Result(0, status, "")
+
+
+@pytest.mark.parametrize("status", ["?? .git-credentials\n", "?? skills/x/.vault-token\n", "?? .password-store/a.gpg\n"])
+def test_offer_commit_refuses_new_private_names(fake_home, fake_runner, capsys, status):
+    _git_personal(fake_runner, status)
+    configure.offer_commit(lambda q: pytest.fail("asked"))
+    assert "not offering to commit" in capsys.readouterr().out
+
+
+def test_offer_commit_allows_templates_and_docs(fake_home, fake_runner, capsys):
+    _git_personal(fake_runner, "?? skills/x/.env.example\n?? skills/x/docs/credentials.md\n?? skills/x/scripts/id_generator.py\n")
+    asked = []
+    configure.offer_commit(lambda q: asked.append(q) or "n")
+    assert asked and "not offering" not in capsys.readouterr().out
