@@ -7,6 +7,7 @@ from __future__ import annotations
 import filecmp
 import json
 import os
+import re
 import shlex
 import shutil
 from dataclasses import dataclass, field
@@ -400,3 +401,79 @@ def _global_skill(v: Verdict, bk) -> Recorded:
         return [f"skill {name}: moved to {dest}; ~/.claude/skills/{name} links to it"]
 
     return Recorded(True, [f"skill {name}: recorded in {dest}"], machine)
+
+
+def options(item: Item) -> list[str]:
+    """Choices that apply to this item, in prompt order."""
+    if item.kind == "mcp" and item.location != "~/.claude.json":
+        return ["leave", "remove"]
+    if item.kind == "marketplace" or (item.kind == "skill" and Path(item.location).is_symlink()):
+        return ["global", "leave", "remove"]
+    return ["global", "project", "leave", "remove"]
+
+
+PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+def _profile_path(name: str) -> Path:
+    return paths.personal_root() / "profiles" / f"{name}.json"
+
+
+def profile_note(name: str) -> str | None:
+    kit = paths.kit_root() / "profiles" / f"{name}.json"
+    if kit.exists() and not _profile_path(name).exists():
+        return (f"note: '{name}' is a kit profile; your personal '{name}' starts as a copy of it "
+                f"and replaces it for you")
+    return None
+
+
+def _edit_profile(name: str, bk, change: Callable[[dict], None]) -> None:
+    kit = paths.kit_root() / "profiles" / f"{name}.json"
+    seed = load_json(kit) if kit.exists() else {"description": f"Personal profile {name} (made by loadout adopt)"}
+    _edit_json(_profile_path(name), bk, f"personal profile {name} before adding an item", change, seed=seed)
+
+
+def _append_once(lst: list, value) -> None:
+    if value not in lst:
+        lst.append(value)
+
+
+def record_project(v: Verdict, profile: str, bk) -> Recorded:
+    """Record an item in a personal profile (personal layer only; the machine step is the removal in adopt)."""
+    item = v.item
+    if not PROFILE_NAME.match(profile):
+        raise ValueError(f"profile name '{profile}': use lowercase letters, digits, - and _")
+    if "project" not in options(item):
+        raise ValueError(f"{item.kind} {item.name}: project is not available for this item")
+    where = f"personal profile {profile} ({_profile_path(profile)})"
+    try:
+        if item.kind == "plugin":
+            def change(data):
+                _append_once(data.setdefault("install", []), item.name)
+                settings = data.setdefault("settings", {})
+                settings.setdefault("enabledPlugins", {})[item.name] = True
+                _add_market(settings, item.name.split("@", 1)[1] if "@" in item.name else "")
+            _edit_profile(profile, bk, change)
+        elif item.kind == "mcp":
+            new, lines = _secret_free(item.name, item.extra.get("config", {}))
+            _refuse_if_secret(f"mcp {item.name}", json.dumps(new))
+
+            def change(data):
+                servers = data.setdefault("mcp", {}).setdefault("mcpServers", {})
+                if item.name in servers and servers[item.name] != new:
+                    raise Collision(f"{item.name} already exists in {where} with a different config")
+                servers[item.name] = new
+            _edit_profile(profile, bk, change)
+            secrets.append_env(paths.secrets_file(), lines, bk)
+        elif item.kind == "skill":
+            _copy_tree(Path(item.location), paths.personal_root() / "profiles" / "skills" / item.name, bk,
+                       f"skill {item.name} copied into the personal profiles")
+            _edit_profile(profile, bk, lambda data: _append_once(data.setdefault("skills", []), item.name))
+        elif item.kind == "hook":
+            event, group, notes = _hook_group(v, bk)
+            _edit_profile(profile, bk, lambda data: _append_once(
+                data.setdefault("settings", {}).setdefault("hooks", {}).setdefault(event, []), group))
+            return Recorded(True, [f"hook {item.name}: recorded in {where}", *notes])
+    except Collision as exc:
+        return Recorded(False, [redact(f"skipped: {exc}")])
+    return Recorded(True, [f"{item.kind} {item.name}: recorded in {where}"])

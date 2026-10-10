@@ -325,3 +325,66 @@ def test_skill_scan_refuses_unreadable_file(machine, monkeypatch):
     rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
     f.chmod(0o600)
     assert not rec.ok and "could not be read" in rec.lines[0]
+
+
+def _profile(name):
+    return json.loads((paths.personal_root() / f"profiles/{name}.json").read_text())
+
+
+def test_project_plugin(machine):
+    (machine / ".claude/plugins/known_marketplaces.json").write_text(json.dumps({
+        "somewhere": {"source": {"source": "github", "repo": "me/somewhere"}}}))
+    rec = own.record_project(_v("plugin", "mystery@somewhere"), "mine", backup.Backup())
+    assert rec.ok and rec.machine is None
+    prof = _profile("mine")
+    assert prof["install"] == ["mystery@somewhere"]
+    assert prof["settings"]["enabledPlugins"] == {"mystery@somewhere": True}
+    assert "somewhere" in prof["settings"]["extraKnownMarketplaces"]
+
+
+def test_project_mcp_rewrites_secret(machine):
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["mcpServers"]["mine"] = {"command": "x", "env": {"API_KEY": "k" * 20}}
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+    own.record_project(_v("mcp", "mine"), "mine", backup.Backup())
+    text = (paths.personal_root() / "profiles/mine.json").read_text()
+    assert "${MINE_API_KEY}" in text and "k" * 20 not in text
+
+
+def test_project_skill_goes_to_profile_skills(machine):
+    (machine / ".claude/skills/my-skill/SKILL.md").write_text("mine")
+    own.record_project(_v("skill", "my-skill"), "mine", backup.Backup())
+    assert (paths.personal_root() / "profiles/skills/my-skill/SKILL.md").read_text() == "mine"
+    assert not (paths.personal_root() / "skills/my-skill").exists()   # not linked globally
+    assert _profile("mine")["skills"] == ["my-skill"]
+
+
+def test_project_hook(machine):
+    own.record_project(_v("hook", "PreToolUse:Edit"), "mine", backup.Backup())
+    assert _profile("mine")["settings"]["hooks"]["PreToolUse"] == [
+        {"matcher": "Edit", "hooks": [{"type": "command", "command": "my-own-linter"}]}]
+
+
+def test_project_hook_with_secret_refused_and_nothing_written(machine):
+    _set_hook(machine, "Notification", "curl -H 'Authorization: Bearer abcdefgh12345678' x")
+    rec = own.record_project(_v("hook", "Notification:"), "mine", backup.Backup())
+    assert not rec.ok
+    assert "abcdefgh12345678" not in " ".join(rec.lines)
+    assert not (paths.personal_root() / "profiles/mine.json").exists()
+
+
+def test_project_on_kit_profile_name_starts_from_kit_copy(machine, kit_root):
+    assert own.profile_note("db")
+    own.record_project(_v("hook", "PreToolUse:Edit"), "db", backup.Backup())
+    kit = json.loads((kit_root / "profiles/db.json").read_text())
+    assert _profile("db")["mcp"] == kit["mcp"]
+
+
+def test_project_bad_profile_name(machine):
+    with pytest.raises(ValueError):
+        own.record_project(_v("hook", "PreToolUse:Edit"), "../evil", backup.Backup())
+
+
+def test_project_not_offered_for_marketplace(machine):
+    with pytest.raises(ValueError):
+        own.record_project(_as_own("marketplace", "severity1-marketplace"), "mine", backup.Backup())
