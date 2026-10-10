@@ -87,20 +87,31 @@ _PY_PAIR = re.compile(r"'(?P<k>[^'\\\n]*)'(?P<sep>\s*:\s*)'(?P<v>(?:[^'\\\n]|\\.
 # (`api_key`, `db.password`, but not `auth_url` or `token_budget`).
 _LINE_PAIR = re.compile(r"^(?P<pre>[ \t]*(?:-[ \t]+)?(?:export[ \t]+)?(?P<q>[\"']?)(?P<k>[A-Za-z0-9_.-]+)(?P=q)"
                         r"[ \t]*[:=][ \t]*)(?P<v>\S+)", re.M)
-_LINE_KEY = re.compile(r"(?:^|[_.-])(?:key|token|secret|passw(?:or)?d|pass|pwd|auth)$", re.I)
+_LINE_KEY = re.compile(r"(?:^|[_.-])(?:key|token|secret|passw(?:or)?d|pass|passphrase|pwd|auth)$", re.I)
 _PLACEHOLDER = re.compile(r"^(?:\$\{.*|\$[A-Za-z_][A-Za-z0-9_]*|<.*)$")
-_NOT_A_VALUE = ("$", "/", "process.env", "settings.", "os.environ", "<", "{{", "(", ")", MASK)
+_NOT_A_VALUE = ("$", "process.env", "settings.", "os.environ", "<", "{{", "(", ")", MASK)
 _CAPS_PLACEHOLDER = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")   # YOUR_API_KEY
-_PLAIN_WORDS = re.compile(r"[a-z]+(?:[-_][a-z]+)*")                # required, lint-and-format, user_id_and_date
+_PLAIN_WORDS = re.compile(r"[a-z]+(?:[-_.][a-z]+)*")               # required, lint-and-format, request.url.path
+_PLACEHOLDER_WORDS = frozenset({"required", "optional", "none", "null", "true", "false", "unlimited"})
+
+
+def _path_or_url(value: str) -> bool:
+    return value.startswith(("/", "~", "./", "../")) or "://" in value
 
 
 def _secret_value(value: str) -> bool:
     """A config value that looks like a real secret rather than a word, a path, a URL, a reference or a
-    placeholder: 8+ chars without whitespace that mix letters and digits, or 16+ chars of mixed case."""
-    if len(value) < 8 or any(c.isspace() for c in value) or any(x in value for x in _NOT_A_VALUE):
+    placeholder. Not secret: under 8 chars, whitespace, a path or URL (a `/` inside base64 does not count),
+    a reference (`$X`, process.env, settings., os.environ, `<...>`, `{{...}}`, a call), ALL_CAPS_PLACEHOLDER,
+    a placeholder word, or lowercase words joined by - _ . under 20 chars. Secret: letters mixed with digits,
+    16+ chars of mixed case, or a 20+ char lowercase run (a passphrase)."""
+    if len(value) < 8 or any(c.isspace() for c in value) or any(x in value for x in _NOT_A_VALUE) \
+            or _path_or_url(value):
         return False
-    if _CAPS_PLACEHOLDER.fullmatch(value) or _PLAIN_WORDS.fullmatch(value):
+    if _CAPS_PLACEHOLDER.fullmatch(value) or value.lower() in _PLACEHOLDER_WORDS:
         return False
+    if _PLAIN_WORDS.fullmatch(value):
+        return len(value) >= 20
     letters = any(c.isalpha() for c in value)
     if letters and any(c.isdigit() for c in value):
         return True

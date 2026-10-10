@@ -280,3 +280,58 @@ def test_offer_commit_allows_templates_and_docs(fake_home, fake_runner, capsys):
     asked = []
     configure.offer_commit(lambda q: asked.append(q) or "n")
     assert asked and "not offering" not in capsys.readouterr().out
+
+
+# 2b. regression baseline: every corpus secret flagged at main (04cb6b6) or before the first fix pass (43d0c4f)
+# is still flagged now. The corpus is all real-looking secrets, so all of it must be flagged now.
+
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+_B64 = "aB3/dE+fG7hJ9kL1mN0pQ2rS4tU6vW8x=="
+SECRET_CORPUS = [
+    f"api_key: {_B64}", f"api_key = {_B64}", f'"api_key": "{_B64}"',
+    "password: correcthorsebatterystaple", "passphrase = correcthorsebatterystaple",
+    "token: abc.def.ghi123456", "secret: 'Xy9kLm2Qp8Rs4Tv6'", 'secret: "aB3dE5fG7hJ9kL1m"',
+    "export DB_PASSWORD=Tr0ub4dor3xyz", "export DB_PASSWORD=correcthorsebatterystaple", "DB_PASS=s3cr3tP4ssw0rd",
+    '{"apiKey": "Zx9qQ8wW7eE6rR5tT4yY"}', '{"password": "correcthorsebatterystaple"}', "{'api_key': 'abcdefghijkl1234'}",
+    "postgres://admin:hunter2hunter2@db.example.com/app", "https://user:S3cr3tPass@example.com",
+    "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9abcdef", "Authorization: Basic dXNlcjpwYXNzd29yZA==",
+    "Authorization: token ghp_" + "A1b2" * 9, "Authorization: token 0123456789abcdef0123",
+    "API_KEY=9f8e7d6c5b4a3f2e1d0c9b8a", "GITHUB_TOKEN=Zx9qQ8wW7eE6rR5tT4yY", "--api-key Zx9qQ8wW7eE6rR5tT4yY",
+    "server --token abcdefgh12345", "x -token abcdefgh123", "password: hunter2hunter2", "api_key: 9f8e7d6c5b4a3f2e1d0c",
+    "ghp_" + "a1B2" * 9, "gho_" + "a1B2" * 9, "github_pat_" + "A1" * 20, "sk-" + "a1B2" * 8, "apk_" + "a1B2" * 6,
+    "xoxb-" + "1234567890-abc", "AKIA" + "ABCDEFGHIJKLMNOP", "-----BEGIN RSA PRIVATE KEY-----",
+    "sk_live_" + "a1" * 12, "rk_test_" + "Z" * 20, "glpat-" + "a" * 20, "AIza" + "b" * 35, "npm_" + "a1" * 18,
+    "hf_" + "aB1" * 12, "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+]
+
+
+@pytest.mark.parametrize("text", SECRET_CORPUS)
+def test_corpus_secret_flagged_now(text):
+    assert secrets.redact(text) != text
+
+
+def _old_redact(rev, tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    try:
+        src = subprocess.run(["git", "-C", str(root), "show", f"{rev}:cli/loadout/secrets.py"],
+                             capture_output=True, text=True, check=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip(f"git history for {rev} not available")
+    path = tmp_path / f"secrets_{rev}.py"
+    path.write_text(src)
+    spec = importlib.util.spec_from_file_location(f"secrets_{rev}", path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod.redact
+
+
+@pytest.mark.parametrize("rev", ["04cb6b6", "43d0c4f"])
+def test_nothing_flagged_before_is_unflagged_now(rev, tmp_path):
+    old = _old_redact(rev, tmp_path)
+    lost = [t for t in SECRET_CORPUS if old(t) != t and secrets.redact(t) == t]
+    assert lost == []
