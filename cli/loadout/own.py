@@ -34,6 +34,8 @@ def decision_key(item: Item) -> str:
     if item.kind == "hook":
         digest = hashlib.sha256(str(item.detail).encode("utf-8")).hexdigest()[:16]
         return f"hook:{item.name}:{digest}"
+    if item.kind == "mcp" and item.location == "~/.claude/.mcp.json":
+        return f"mcp:.mcp.json:{item.name}"  # same name as a user-scope server is a different item
     return f"{item.kind}:{item.name}"
 
 
@@ -42,6 +44,8 @@ def _keys(item: Item) -> list[str]:
     keys = [decision_key(item)]
     if item.kind == "hook":
         keys.append(f"hook:{item.name}:{item.detail}")
+    elif item.kind == "mcp" and item.location == "~/.claude/.mcp.json":
+        keys.append(f"mcp:{item.name}")  # written before the location was part of the key
     return keys
 
 
@@ -600,6 +604,12 @@ def profile_note(name: str) -> str | None:
         return (f"note: '{name}' is a kit profile; your personal '{name}' starts as a copy of it "
                 f"and replaces it for you")
     return None
+
+
+def profile_notes(pairs: list) -> list[str]:
+    """The kit-profile notes for the project choices in `pairs` (non-interactive paths print them up front)."""
+    names = dict.fromkeys(c.profile for _, c in pairs if c.action == "project")
+    return [note for name in names if (note := profile_note(name))]
 
 
 def _edit_profile(name: str, bk, change: Callable[[dict], None]) -> None:

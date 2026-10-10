@@ -323,3 +323,85 @@ def test_repo_offer_without_detected_repos_asks_for_paths(machine, monkeypatch):
     applied, asked = _offer(machine, monkeypatch, [""])
     assert asked == ["  repos (comma-separated paths; Enter: none): "]
     assert applied == []
+
+
+# 9. minor fixes
+
+def test_a_failing_removal_does_not_skip_the_machine_steps(machine, monkeypatch):
+    pairs = [(_get("hook", "PreToolUse:Edit"), own.Choice("global")), (_get("skill", "my-skill"), own.Choice("remove"))]
+
+    def boom(*a, **k):
+        raise OSError("boom")
+
+    monkeypatch.setattr(adopt, "apply", boom)
+    out, _ = adopt.apply_own(pairs, backup.Backup())
+    assert any("failed: boom" in line for line in out), out
+    assert (paths.state_dir() / "managed-settings.json").exists()  # apply_settings still ran
+    assert "my-own-linter" in (paths.personal_root() / "settings.json").read_text()
+
+
+def _decision_steps(bk):
+    return [s for s in bk.steps if "own-decisions.json" in json.dumps(s)]
+
+
+def test_remove_without_a_prior_decision_adds_no_decisions_backup_step(machine):
+    bk = backup.Backup()
+    adopt.apply_own([(_get("skill", "my-skill"), own.Choice("remove"))], bk)
+    assert _decision_steps(bk) == []
+
+
+def test_remove_with_a_prior_decision_backs_the_decisions_file_up(machine):
+    own.remember_leave(_get("skill", "my-skill").item)
+    v = next(x for x in inventory.classify(inventory.collect(with_versions=False)) if x.item.name == "my-skill")
+    bk = backup.Backup()
+    adopt.apply_own([(v, own.Choice("remove"))], bk)
+    assert len(_decision_steps(bk)) == 1
+    assert own.decisions() == {}
+
+
+def test_no_backup_line_when_nothing_was_recorded(machine, capsys):
+    from loadout import configure
+    configure.set_own("mystery@somewhere", "global")  # skipped
+    assert "backup:" not in capsys.readouterr().out
+
+
+def test_set_own_prints_the_kit_profile_note(machine, capsys):
+    from loadout import configure
+    assert (paths.kit_root() / "profiles/sonar.json").exists()
+    configure.set_own("omarchy-kb", "project:sonar")
+    assert "is a kit profile" in capsys.readouterr().out
+
+
+def test_adopt_own_spec_prints_the_kit_profile_note(machine, capsys):
+    adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False, own_spec="omarchy-kb=project:sonar")
+    assert "is a kit profile" in capsys.readouterr().out
+
+
+def _dup_mcp(machine):
+    for f in (machine / ".claude.json", machine / ".claude/.mcp.json"):
+        d = json.loads(f.read_text())
+        d["mcpServers"]["dupsrv"] = {"command": "dup"}
+        f.write_text(json.dumps(d))
+
+
+def _dups():
+    return {v.item.location: v for v in _verdicts() if v.item.kind == "mcp" and v.item.name == "dupsrv"}
+
+
+def test_mcp_decision_key_includes_the_location_of_a_claude_mcp_json_server(machine):
+    _dup_mcp(machine)
+    d = _dups()
+    assert len(d) == 2 and all(v.action == "own" for v in d.values())
+    user, local = d["~/.claude.json"], d["~/.claude/.mcp.json"]
+    assert own.decision_key(user.item) == "mcp:dupsrv"
+    assert own.decision_key(local.item) == "mcp:.mcp.json:dupsrv"
+    own.remember_leave(local.item)
+    d = _dups()
+    assert d["~/.claude/.mcp.json"].action == "keep" and d["~/.claude.json"].action == "own"
+
+
+def test_old_mcp_decision_key_is_still_read(machine):
+    _dup_mcp(machine)
+    own._decisions_path().parent.mkdir(parents=True, exist_ok=True)
+    own._decisions_path().write_text(json.dumps({"mcp:dupsrv": "leave"}))
+    assert {v.action for v in _dups().values()} == {"keep"}

@@ -303,6 +303,8 @@ def set_own(name: str, choice: str) -> int:
         print(f"loadout: {exc}", file=sys.stderr)
         return 2
     bk = Backup(description="configure own")
+    for note in own.profile_notes(pairs):
+        print(note)
     lines, profiles_changed = adopt.apply_own(pairs, bk)
     for line in lines:
         print(redact(line))

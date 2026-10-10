@@ -369,6 +369,9 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         print("nothing selected")
         return 0
     bk = Backup(description="adopt")
+    if own_spec is not None:
+        for note in own.profile_notes(own_pairs):
+            print(note)
     try:
         lines, new_profiles = apply_own(own_pairs, bk, chosen, ask if interactive else (lambda q: ""),
                                         confirm_cmds=not (yes and explicit))
@@ -444,6 +447,12 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             own.backup_decisions(bk)
             backed_up = True
 
+    def forget(item):
+        """Drop a remembered decision; back the file up first, and only when there is something to drop."""
+        if own.decided(own.decisions(), item) is not None:
+            backup_decisions()
+            own.forget(item)
+
     for v, choice in pairs:
         if choice.action == "leave":
             try:
@@ -456,8 +465,7 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             continue
         if choice.action == "remove":
             try:
-                backup_decisions()
-                own.forget(v.item)
+                forget(v.item)
             except (OSError, InvalidJSON) as exc:
                 fail(v, exc)
                 continue
@@ -472,8 +480,7 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
         if not rec.ok:
             continue
         try:
-            backup_decisions()
-            own.forget(v.item)
+            forget(v.item)
         except (OSError, InvalidJSON) as exc:
             fail(v, exc)
         personal_changed = True
@@ -484,7 +491,10 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             removals.append(Verdict(v.item, "scope-down" if v.item.kind == "plugin" else "remove", v.reason))
             out.append(f"{v.item.kind} {v.item.name}: enable it per project with `loadout profile {choice.profile}`")
     if removals:
-        out += apply(removals, bk, ask, confirm_cmds)
+        try:
+            out += apply(removals, bk, ask, confirm_cmds)
+        except (OSError, InvalidJSON) as exc:
+            out.append(redact(f"removals: failed: {exc}"))
     for v, step in machine:
         try:
             out += step()
