@@ -570,11 +570,38 @@ def _hook_group(v: Verdict, bk) -> tuple[str, dict, list[str]]:
     return event, out, notes
 
 
+def _replace_hook(groups: list, event: str, old: dict, new: dict) -> bool:
+    """Replace the first hook in `groups` with the identity of `old` by `new` (in place, in its group) and drop
+    any further hooks with that identity or with the identity of `new` (a group left empty goes too).
+    False when no hook with the identity of `old` is there."""
+    def ident(group, hook):
+        return settings_merge.hook_id(event, group, hook)
+
+    found = False
+    for group in groups:
+        if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+            continue
+        targets = {ident(group, old), ident(group, new)}
+        kept = []
+        for hook in group["hooks"]:
+            if ident(group, hook) == ident(group, old) and not found:
+                kept.append(new)
+                found = True
+            elif found and ident(group, hook) in targets:
+                continue
+            else:
+                kept.append(hook)
+        group["hooks"] = kept
+    groups[:] = [g for g in groups if not (isinstance(g, dict) and g.get("hooks") == [])]
+    return found
+
+
 def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
-    """Take the hook out of its group in ~/.claude/settings.json and add it back as exactly `group`,
-    so the list-union merge with the personal layer does not run it twice."""
+    """Replace the hook in ~/.claude/settings.json, in place in its group, by the recorded (portable) hook and
+    record it in the snapshot as applied, so removing it from the personal layer removes it here too."""
     path = paths.claude_home() / "settings.json"
     matcher = v.item.name[len(event) + 1:]
+    hook = group["hooks"][0]
 
     gone = [False]
 
@@ -583,15 +610,9 @@ def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
         if found is None:
             gone[0] = True
             return
-        groups = data["hooks"][event]
         gi, hi = found
-        rest = [h for i, h in enumerate(groups[gi]["hooks"]) if i != hi]
-        if rest:
-            groups[gi] = {**groups[gi], "hooks": rest}
-        else:
-            groups.pop(gi)
-        if group not in groups:
-            groups.append(group)
+        groups = data["hooks"][event]
+        _replace_hook(groups, event, groups[gi]["hooks"][hi], hook)
 
     _edit_json(path, bk, f"settings.json before regrouping hook {display_name(v.item)}", change)
     if gone[0]:
@@ -622,8 +643,9 @@ def record_global(v: Verdict, bk) -> Recorded:
             event, group, notes = _hook_group(v, bk)
             def change(data):
                 groups = data.setdefault("hooks", {}).setdefault(event, [])
-                if group not in groups:
-                    groups.append(group)
+                if _replace_hook(groups, event, group["hooks"][0], group["hooks"][0]):
+                    return  # same identity already in the personal layer: replaced, not a second group
+                groups.append(group)
             _edit_json(_personal_settings(), bk, f"personal settings.json before recording hook {display_name(item)}", change)
             return Recorded(True, [f"hook {display_name(item)}: recorded in {_personal_settings()}", *notes],
                             lambda: _regroup_machine_hook(v, event, group, bk))
