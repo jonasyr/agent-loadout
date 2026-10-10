@@ -185,6 +185,10 @@ def _merge_hooks(current: Any, desired: Any, previous: Any, deleted: Any = None)
                     del result[e]
                 emptied = True
             break
+    for kept, source in ((applied, prev), (tombs, dead)):  # a skipped event keeps its snapshot entries unchanged
+        for hid, value in source.items():
+            if foreign(hid[0]):
+                kept.setdefault(hid, value)
     if not result and (emptied or not isinstance(current, dict) or current):
         return None, applied, tombs
     return result, applied, tombs
@@ -215,6 +219,9 @@ def _plan(current: dict, desired: dict, previous: dict) -> tuple[dict, dict]:
     snapshot = copy.deepcopy(want)
     if "hooks" in current and not isinstance(current["hooks"], dict):
         result["hooks"] = copy.deepcopy(current["hooks"])  # not a hooks section loadout understands: left alone
+        for key in ("hooks", TOMBSTONES):  # and the snapshot keeps what it knew about it, unchanged
+            if isinstance(previous.get(key), dict) and previous[key]:
+                snapshot[key] = copy.deepcopy(previous[key])
     elif "hooks" in current or "hooks" in desired or "hooks" in previous:
         hooks, applied, tombs = _merge_hooks(current.get("hooks"), desired.get("hooks"), previous.get("hooks"),
                                              previous.get(TOMBSTONES))
@@ -239,7 +246,8 @@ def merge_settings(current: dict, desired: dict, previous: dict) -> dict:
     longer wants is removed only if the user did not change it; list items union.
 
     `hooks` is merged per hook, identified by event + matcher (missing = "") + command (an exec-form hook by
-    command + args). An event whose value in current is not a list is left exactly as it is. For each identity:
+    command + args). An event whose value in current is not a list (or a `hooks` value that is not an object) is
+    left exactly as it is, and the snapshot keeps its applied hooks and tombstones unchanged. For each identity:
 
     - desired, with a tombstone (the user deleted the kit's copy earlier): never added again; a copy in current
       is the user's. The tombstone stays as long as the identity is desired.

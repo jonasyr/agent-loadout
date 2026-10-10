@@ -62,3 +62,34 @@ def test_user_duplicate_before_applied_copy_kit_update_hits_loadouts_copy():
     after, snap = _step(cur, new, snap)
     assert _hooks(after) == [mine, {**LINT, "timeout": 3}]
     assert _hooks(snap) == [{**LINT, "timeout": 3}]
+
+
+# S8: a scope the merge skips (a non-list event value, a non-dict `hooks`) keeps its snapshot entries
+def _applied_and_tombstoned():
+    """LINT applied and still in settings.json; OTHER applied and then deleted by the user (a tombstone)."""
+    want = {"hooks": {"Stop": [{"hooks": [LINT, OTHER]}]}}
+    cur, snap = _step({}, want, {})
+    cur = {"hooks": {"Stop": [{"hooks": [LINT]}]}}  # the user deletes OTHER
+    cur, snap = _step(cur, want, snap)
+    assert _hooks(snap) == [LINT] and _hooks({"hooks": snap[sm.TOMBSTONES]}) == [OTHER]
+    return want, cur, snap
+
+
+@pytest.mark.parametrize("skipped", [
+    lambda cur: {"hooks": {**cur["hooks"], "Stop": {"weird": 1}}},  # a non-list event value
+    lambda cur: {"hooks": "not a hooks section"},                   # a non-dict hooks section
+], ids=["non-list-event", "non-dict-hooks"])
+def test_skipped_scope_keeps_applied_hooks_and_tombstones(skipped):
+    want, cur, snap = _applied_and_tombstoned()
+    before = snap
+    odd = skipped(cur)
+    after, snap = _step(odd, want, snap)
+    assert after == odd, "a skipped scope is left exactly as it is"
+    assert snap == before, "the skipped scope's applied hooks and tombstones carry over unchanged"
+    after, snap = _step(odd, want, snap)  # a second merge while it stays skipped
+    assert snap == before
+    after, snap = _step(cur, want, snap)  # a list again
+    assert _hooks(after) == [LINT], "the deleted hook must not be re-added"
+    assert snap == before
+    after, snap = _step(after, {}, snap)  # removed from the personal layer: the applied hook goes
+    assert _hooks(after) == [] and not _hooks(snap) and sm.TOMBSTONES not in snap
