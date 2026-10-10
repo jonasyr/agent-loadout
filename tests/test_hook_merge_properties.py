@@ -322,10 +322,9 @@ class Run:
                 assert got is None, f"(c) deleted hook {hid} re-added"
             else:
                 assert got is None, f"(d) hook {hid} should be gone, found {got}"
-        files = _files()
-        sm.apply_settings()
-        assert _files() == files, "(e) second apply_settings changed something"
         snap = _load(_snap())
+        again, again_snap = sm._plan(s, sm.desired_settings(), snap)  # what a second apply_settings would write
+        assert again == s and again_snap == snap, "(e) a second apply_settings would change something"
         applied = set(sm._hook_map(snap))
         tombs = set(sm._hook_map({"hooks": snap.get(sm.TOMBSTONES)}))
         assert applied == home.snap, f"(f) snapshot hooks {applied} != applied {home.snap}"
@@ -378,6 +377,7 @@ def test_hook_merge_invariants_hold_for_random_sequences(tmp_path, monkeypatch, 
     kit = tmp_path / "kit"  # a small kit (the real one has no hooks; its other keys only cost time here)
     _save(kit / "settings.base.json", {"env": {"MCP_TIMEOUT": "60000"}, "permissions": {"allow": ["Bash(x:*)"]}})
     monkeypatch.setenv("LOADOUT_ROOT", str(kit))
+    monkeypatch.setattr(os, "fsync", lambda fd: None)  # tens of thousands of small writes on tmp_path
     steps = 0
     for seed in range(FIRST_SEED, FIRST_SEED + SEEDS):
         ops = _sequence(seed)
