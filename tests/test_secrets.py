@@ -257,3 +257,12 @@ def test_replace_user_server_cmd_shim_removes_nothing(fake_home, fake_runner, mo
     res = personal_mcp.replace_user_server("srv", {"command": "a"}, {"command": "b"}, backup.Backup())
     assert res.startswith("manual: ")
     assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+
+
+def test_redact_is_linear_on_long_token_runs():
+    import time
+    from loadout import secrets
+    start = time.monotonic()
+    secrets.redact("x" * 200_000)
+    assert time.monotonic() - start < 1.0
+    assert secrets.redact("a.API_KEY=" + "k" * 20) == "a.API_KEY=***"

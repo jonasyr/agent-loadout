@@ -51,7 +51,9 @@ def looks_secret(key: str, value: str, keyed_arg: bool = False) -> bool:
 
 
 _JSON_PAIR = re.compile(r'"(?P<k>[^"\\]*)"(?P<sep>\s*:\s*)"(?P<v>(?:[^"\\]|\\.)*)"')
-_KEY_EQ = re.compile(r"(?P<k>[A-Za-z0-9_.-]+)=(?P<v>[^\s&'\"]+)")
+# The lookbehind starts a match only at a token boundary: same matches (a key is the whole run before "="),
+# but linear time on long runs without "=" (unanchored, it backtracked quadratically).
+_KEY_EQ = re.compile(r"(?<![A-Za-z0-9_.-])(?P<k>[A-Za-z0-9_.-]+)=(?P<v>[^\s&'\"]+)")
 _FLAG_VALUE = re.compile(r"(?P<k>--?[A-Za-z0-9_-]*(?:key|token|secret|password|auth)[A-Za-z0-9_-]*)(?P<sp>\s+)(?P<v>[^\s-]\S{7,})", re.I)
 _URL_PASSWORD = re.compile(r"(?P<k>\b[a-z][a-z0-9+.-]*://[^\s:/@]+:)(?P<v>[^\s@/]+)(?=@)", re.I)
 _BEARER = re.compile(r"(?P<k>\b(?:Bearer|Basic|token)\s+)(?P<v>[A-Za-z0-9._~+/=-]{8,})")
