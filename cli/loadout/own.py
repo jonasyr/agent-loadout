@@ -331,23 +331,84 @@ _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _SCRIPT_EXT = {".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".ts", ".rb", ".pl", ".ps1", ".fish"}
 
 
+# Interpreter flags that take the next token as their value, and flags after which no script file follows
+# (inline code, a module, a split string). The family is the interpreter name without version or .exe.
+_VALUE_FLAGS = {
+    "node": {"-r", "--require", "--import", "--loader", "--experimental-loader", "-C", "--conditions",
+             "--env-file", "--input-type", "--title"},
+    "deno": {"--config", "-c", "--import-map", "--env-file", "--location", "--cert", "--lock"},
+    "bun": {"-r", "--preload", "--config", "-c", "--env-file", "--cwd"},
+    "python": {"-X", "-W", "--check-hash-based-pycs"},
+    "sh": {"-o", "+o", "-O", "+O"},
+    "ruby": {"-r", "-I", "-C", "-E", "--encoding"},
+    "perl": {"-I", "-M", "-m"},
+    "pwsh": {"-ExecutionPolicy", "-WorkingDirectory", "-ConfigurationName", "-OutputFormat", "-InputFormat"},
+    "env": {"-u", "--unset", "-C", "--chdir"},
+}
+_NO_SCRIPT_FLAGS = {
+    "node": {"-e", "--eval", "-p", "--print"},
+    "deno": {"eval"},
+    "bun": {"-e", "--eval", "-p", "--print"},
+    "python": {"-c", "-m"},
+    "sh": {"-c"},
+    "ruby": {"-e"},
+    "perl": {"-e", "-E"},
+    "pwsh": {"-Command", "-c", "-EncodedCommand", "-e"},
+    "env": {"-S", "--split-string"},
+}
+NO_SCRIPT = -1  # _script_index: inline code or an unclear flag; the hook is recorded as is
+
+
+def _family(base: str) -> str:
+    name = re.sub(r"(?:\.exe)$", "", base.lower())
+    if name.startswith("python"):
+        return "python"
+    if name in ("bash", "zsh", "dash", "fish", "sh"):
+        return "sh"
+    return "pwsh" if name == "powershell" else name
+
+
+def _skip_flags(tokens: list[str], i: int, family: str) -> int:
+    """Index after the flags (and their values) starting at i; NO_SCRIPT for inline code."""
+    values, no_script = _VALUE_FLAGS.get(family, set()), _NO_SCRIPT_FLAGS.get(family, set())
+    while i < len(tokens) and (tokens[i].startswith("-") or (family == "sh" and tokens[i].startswith("+"))):
+        flag = tokens[i].split("=", 1)[0]
+        if flag in no_script or (family in ("python", "sh") and flag.startswith("-") and not flag.startswith("--")
+                                 and len(flag) > 2 and flag[-1] in "cm"):  # -c, -m, combined like -ic / -Bm
+            return NO_SCRIPT
+        i += 2 if flag in values and "=" not in tokens[i] else 1
+    return i
+
+
 def _script_index(tokens: list[str]) -> int | None:
     """Index of the token that is the hook's script: the first token, or the first one after
-    `env [flags] [VAR=val]` and a known interpreter (and its flags)."""
+    `env [flags] [VAR=val]` and a known interpreter (and its flags, with the value of flags that take one).
+    NO_SCRIPT when the interpreter runs inline code (-c, -e, -m, env -S), None when no token is left."""
     i = 0
     while i < len(tokens):
         base = re.split(r"[\\/]", tokens[i])[-1]
         if base.lower() in ("env", "env.exe"):
             i += 1
             while i < len(tokens) and (tokens[i].startswith("-") or _ENV_ASSIGN.match(tokens[i])):
-                i += 1
+                if _ENV_ASSIGN.match(tokens[i]):
+                    i += 1
+                    continue
+                nxt = _skip_flags(tokens, i, "env")
+                if nxt == NO_SCRIPT:
+                    return NO_SCRIPT
+                if nxt == i:
+                    break
+                i = nxt
             continue
         if _INTERPRETER.match(base):
-            i += 1
-            while i < len(tokens) and tokens[i].startswith("-"):
-                i += 1
-            if i < len(tokens) and base.lower() in ("deno", "bun") and tokens[i] == "run":
-                i += 1
+            family = _family(base)
+            if family == "deno" and i + 1 < len(tokens) and tokens[i + 1] in _NO_SCRIPT_FLAGS["deno"]:
+                return NO_SCRIPT
+            i = _skip_flags(tokens, i + 1, family)
+            if i != NO_SCRIPT and family in ("deno", "bun") and i < len(tokens) and tokens[i] == "run":
+                i = _skip_flags(tokens, i + 1, family)
+            if i == NO_SCRIPT:
+                return NO_SCRIPT
             return i if i < len(tokens) else None
         return i
     return None
@@ -420,6 +481,9 @@ def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
         if (bad := _private_token(tok)) is not None:
             raise Collision(f"hook {name} refers to a private file ({bad}); not recorded")
     script_at = _script_index(tokens)
+    if script_at == NO_SCRIPT:
+        _refuse_if_secret("hook command", cmd)
+        return hook, [COMPLEX_NOTE]
     notes: list[str] = []
     copy: tuple[str, Path] | None = None
     for i, tok in enumerate(tokens):

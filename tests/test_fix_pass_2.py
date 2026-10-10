@@ -335,3 +335,54 @@ def test_nothing_flagged_before_is_unflagged_now(rev, tmp_path):
     old = _old_redact(rev, tmp_path)
     lost = [t for t in SECRET_CORPUS if old(t) != t and secrets.redact(t) == t]
     assert lost == []
+
+
+# 5. interpreter flags that take a value do not shift script detection
+
+import os
+
+
+@pytest.fixture
+def scripts(fake_home, fake_runner):
+    (fake_home / "bin").mkdir()
+    for name in ("a.js", "h.js", "h.py", "h.sh"):
+        (fake_home / "bin" / name).write_text("x\n")
+    return fake_home
+
+
+def _hooks_dir():
+    d = paths.personal_root() / "hooks"
+    return sorted(p.name for p in d.iterdir()) if d.exists() else []
+
+
+@pytest.mark.parametrize("cmd,script", [
+    ("node --require ~/bin/a.js ~/bin/h.js", "h.js"),
+    ("node -r ~/bin/a.js ~/bin/h.js", "h.js"),
+    ("python3 -X dev ~/bin/h.py", "h.py"),
+    ("python3 -W ignore ~/bin/h.py", "h.py"),
+    ("bash -o pipefail ~/bin/h.sh", "h.sh"),
+    ("env -u FOO bash ~/bin/h.sh", "h.sh"),
+    ("env -u FOO node --require ~/bin/a.js ~/bin/h.js", "h.js"),
+])
+def test_value_flags_skip_their_value(scripts, cmd, script):
+    hook, notes = own._portable_hook({"type": "command", "command": cmd}, backup.Backup(), "x")
+    assert _hooks_dir() == [script], (hook, notes)
+    assert f"$HOME/.claude/hooks/personal/{script}" in hook["command"]
+
+
+@pytest.mark.parametrize("cmd", ["python3 -c 'print(1)' ~/bin/h.py", "node -e 1 ~/bin/h.js", "bash -c ~/bin/h.sh",
+                                 "python3 -m mod ~/bin/h.py", "env -S 'node ~/bin/a.js' ~/bin/h.js"])
+def test_inline_code_flags_record_as_is(scripts, cmd):
+    hook, notes = own._portable_hook({"type": "command", "command": cmd}, backup.Backup(), "x")
+    assert _hooks_dir() == [] and hook["command"] == cmd
+    assert own.COMPLEX_NOTE in notes
+
+
+@pytest.mark.parametrize("cmd,script", [
+    ("deno run --allow-read ~/bin/h.js", "h.js"), ("deno --quiet run -A ~/bin/h.js", "h.js"),
+    ("bun run ~/bin/h.js", "h.js"), ("python3 -u ~/bin/h.py", "h.py"), ("bash -e ~/bin/h.sh", "h.sh"),
+    ("node --require=~/bin/a.js ~/bin/h.js", "h.js"),
+])
+def test_boolean_flags_and_run_still_find_the_script(scripts, cmd, script):
+    hook, notes = own._portable_hook({"type": "command", "command": cmd}, backup.Backup(), "x")
+    assert _hooks_dir() == [script], (hook, notes)
