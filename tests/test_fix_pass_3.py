@@ -645,3 +645,17 @@ def test_skill_with_utf16_tail_refused(machine, enc):
 
 def test_plain_text_without_nul_has_one_view():
     assert own._decode(b"hello\n") == "hello\n"
+
+
+# Part 2b: the line rule fails closed: a value no rule clearly calls a non-secret counts as a secret
+
+@pytest.mark.parametrize("text", ["password: Abcdefghij", "secret: !@#%^&*+=x~", "token: Xk-Mq-Pz-Lw",
+                                  "password: ÄÖÜäöüßÉè", "apiKey: QWERTYUIOPas"])
+def test_line_rule_uncertain_value_counts_as_secret(text):
+    assert secrets.redact(text) != text
+
+
+@pytest.mark.parametrize("text", ["Use the token authentication flow.", "Open the API token Management page.",
+                                  "token: authentication", "The token configuration lives in the repo."])
+def test_prose_after_token_not_flagged(text):
+    assert secrets.redact(text) == text

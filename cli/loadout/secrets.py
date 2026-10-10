@@ -99,10 +99,12 @@ _CALL = re.compile(r"\w[\w.]*\(.*\)")                                   # getpas
 _ENV_LOOKUP = re.compile(r"(?:process\.env\.|import\.meta\.env\.|settings\.|os\.environ\b)")
 _CAPS_PLACEHOLDER = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")   # YOUR_API_KEY
 _PLAIN_WORDS = re.compile(r"[a-z]+(?:[-_.][a-z]+)*")               # required, lint-and-format, request.url.path
-# Word-like: one lowercase word of up to 12 letters, or 2+ short segments joined by - _ . where each is a
-# word with up to 3 trailing digits (v18, oauth2) or a number of up to 4 digits (2, 2024).
-_SEGMENT = r"(?:[a-z]{1,12}\d{0,3}|\d{1,4})"
-_WORDS = re.compile(rf"[a-z]{{1,12}}|{_SEGMENT}(?:[-_.]{_SEGMENT})+")
+# Word-like: one lowercase word of up to 15 letters (authentication), or 2+ short segments joined by - _ .
+# where each is a word of up to 15 letters with up to 3 trailing digits (v18, oauth2) or a number of up to 4
+# digits (2, 2024).
+_SEGMENT = r"(?:[a-z]{1,15}\d{0,3}|\d{1,4})"
+_WORDS = re.compile(rf"[a-z]{{1,15}}|{_SEGMENT}(?:[-_.]{_SEGMENT})+")
+_PROSE_WORD = re.compile(r"[A-Z]?[a-z]{1,15}")  # after a bare `token` in prose: "token Management"
 _PLACEHOLDER_WORDS = frozenset({"required", "optional", "none", "null", "true", "false", "unlimited"})
 
 
@@ -129,21 +131,13 @@ def _secret_value(value: str) -> bool:
     """A config value that looks like a real secret rather than a word, a path, a URL, a reference or a
     placeholder. Not secret: under 8 chars, whitespace, a path or URL (starts with / ~ ./ ../ or contains
     ://), a reference (see _reference), ALL_CAPS_PLACEHOLDER, a placeholder word, or word-like (see _words).
-    Secret: any other lowercase run (a 20+ char passphrase, a 13+ char single word), letters mixed with
-    digits, 12+ digits, or 16+ chars of mixed case. `$`, `<` or `(` inside a value do not make it a reference."""
+    Fails closed: everything else is a secret (a 20+ char passphrase, a 16+ letter single word, letters
+    mixed with digits, digits only, mixed case, symbols). `$`, `<` or `(` inside a value do not make it a reference."""
     if len(value) < 8 or any(c.isspace() for c in value) or _path_or_url(value) or _reference(value):
         return False
     if _CAPS_PLACEHOLDER.fullmatch(value) or value.lower() in _PLACEHOLDER_WORDS or _words(value):
         return False
-    if _PLAIN_WORDS.fullmatch(value):
-        return True
-    letters = any(c.isalpha() for c in value)
-    digits = sum(c.isdigit() for c in value)
-    if letters and digits:
-        return True
-    if not letters and digits >= 12:
-        return True
-    return len(value) >= 16 and any(c.islower() for c in value) and any(c.isupper() for c in value)
+    return True  # fail closed: whatever no rule above clearly calls a non-secret counts as a secret
 
 
 # The lookbehind starts a match only at a token boundary: same matches (a key is the whole run before "="),
@@ -172,7 +166,8 @@ def redact(text: str) -> str:
     text = _JSON_PAIR.sub(lambda m: f'"{m["k"]}"{m["sep"]}"{MASK}"' if looks_secret(m["k"], m["v"]) else m.group(), text)
     text = _PY_PAIR.sub(lambda m: f"'{m['k']}'{m['sep']}'{MASK}'" if looks_secret(m["k"], m["v"]) else m.group(), text)
     text = _LINE_PAIR.sub(_line_pair, text)
-    text = _BEARER.sub(lambda m: m["k"] + MASK if m["w"] != "token" or _secret_value(m["v"]) else m.group(), text)
+    text = _BEARER.sub(lambda m: m["k"] + MASK if m["w"] != "token" or (_secret_value(m["v"]) and not _PROSE_WORD.fullmatch(m["v"]))
+                       else m.group(), text)
     text = _URL_PASSWORD.sub(lambda m: m["k"] + (m["v"] if m["v"].startswith("${") else MASK), text)
     text = _KEY_EQ.sub(lambda m: f"{m['k']}={MASK}" if looks_secret(m["k"], m["v"], keyed_arg=True) else m.group(), text)
     text = _FLAG_VALUE.sub(lambda m: m["k"] + m["sp"] + MASK if _FLAG_WORD.search(m["k"]) else m.group(), text)
