@@ -71,7 +71,7 @@ def high_entropy(value: str) -> bool:
 
 def looks_secret(key: str, value: str, keyed_arg: bool = False) -> bool:
     """keyed_arg: the value came from a KEY=value argument, so the high-entropy test applies too."""
-    if not isinstance(value, str) or "${" in value:
+    if not isinstance(value, str) or "${" in value or _placeholder(value) or (_words(value) and _meta(value)):
         return False
     if _SECRET_ANY.search(value):
         return True
@@ -104,8 +104,21 @@ _PLAIN_WORDS = re.compile(r"[a-z]+(?:[-_.][a-z]+)*")               # required, l
 # digits (2, 2024).
 _SEGMENT = r"(?:[a-z]{1,15}\d{0,3}|\d{1,4})"
 _WORDS = re.compile(rf"[a-z]{{1,15}}|{_SEGMENT}(?:[-_.]{_SEGMENT})+")
+_WORD = re.compile(r"[a-z]{1,15}\d{0,3}")  # rootpass, hunter22: a word under a strict key
 _PROSE_WORD = re.compile(r"[A-Z]?[a-z]{1,15}")  # after a bare `token` in prose: "token Management"
-_PLACEHOLDER_WORDS = frozenset({"required", "optional", "none", "null", "true", "false", "unlimited"})
+_PLACEHOLDER_WORDS = frozenset({"required", "optional", "none", "null", "true", "false", "unlimited", "changeme"})
+_YOUR_PLACEHOLDER = re.compile(r"(?i:your[-_.]\w*[-_.]here)|YOUR_[A-Z0-9_]*")   # your_api_key_here, YOUR_KEY
+# Under a password or secret key a word-like value is a secret (hunter-22, rootpass) unless one of its segments
+# says it is a placeholder or a name (example-password, my-secret-name-2, generate-with-openssl).
+_STRICT_KEY = re.compile(r"(?i:passw(?:or)?d|secret)(?:[_.-](?i:id))?$")
+_META_WORDS = frozenset({"example", "sample", "dummy", "placeholder", "name", "generate", "replace", "change",
+                         "changeme", "your", "here", "secret", "password", "fake"})
+_SEGMENTS = re.compile(r"[a-z]+")
+# Code, not a value: a call or an index (getpass.getpass(...), cfg['x'], tokens[i]), an f-string with a field
+# (f"Bearer {access}"), or a type annotation followed by = (password: Optional[str] = None). Checked on the
+# rest of the line after the separator.
+_CODE = re.compile(r"\w[\w.]*[(\[]|[fF][rR]?([\"'])[^\"'\n]*\{")
+_ANNOTATION = re.compile(r"[A-Za-z_][\w.\[\], |]*?[ \t]=(?!=)")
 
 
 def _path_or_url(value: str) -> bool:
@@ -127,7 +140,15 @@ def _words(value: str) -> bool:
     return letters * 2 >= sum(c.isalnum() for c in value)
 
 
-def _secret_value(value: str) -> bool:
+def _placeholder(value: str) -> bool:
+    return value.lower() in _PLACEHOLDER_WORDS or _YOUR_PLACEHOLDER.fullmatch(value) is not None
+
+
+def _meta(value: str) -> bool:
+    return any(w in _META_WORDS for w in _SEGMENTS.findall(value.lower()))
+
+
+def _secret_value(value: str, strict: bool = False) -> bool:
     """A config value that looks like a real secret rather than a word, a path, a URL, a reference or a
     placeholder. Not secret: under 8 chars, whitespace, a path or URL (starts with / ~ ./ ../ or contains
     ://), a reference (see _reference), ALL_CAPS_PLACEHOLDER, a placeholder word, or word-like (see _words).
@@ -135,8 +156,10 @@ def _secret_value(value: str) -> bool:
     mixed with digits, digits only, mixed case, symbols). `$`, `<` or `(` inside a value do not make it a reference."""
     if len(value) < 8 or any(c.isspace() for c in value) or _path_or_url(value) or _reference(value):
         return False
-    if _CAPS_PLACEHOLDER.fullmatch(value) or value.lower() in _PLACEHOLDER_WORDS or _words(value):
+    if _CAPS_PLACEHOLDER.fullmatch(value) or _placeholder(value):
         return False
+    if _words(value) or (strict and _WORD.fullmatch(value)):
+        return strict and not _meta(value)  # strict (a password or secret key): a word is a secret too
     return True  # fail closed: whatever no rule above clearly calls a non-secret counts as a secret
 
 
@@ -148,29 +171,60 @@ _FLAG_VALUE = re.compile(r"(?<![A-Za-z0-9_-])(?P<k>--?[A-Za-z0-9_-]+)(?P<sp>\s+)
 _FLAG_WORD = re.compile(r"key|token|secret|password|auth", re.I)
 _URL_PASSWORD = re.compile(r"(?P<k>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://[^\s:/@]+:)(?P<v>[^\s@/]+)(?=@)", re.I)
 # Same line only; after a bare `token` the value must look like a secret (".../token\nkey_path: ..." is not one).
+# More shapes: curl -u user:pass, sshpass -p 'pass', a quoted keyword argument or assignment anywhere on a line
+# (Client(api_key='...'), self.secret = '...'); each anchored at a token start with one quantifier per part.
+_USER_PASS = re.compile(r"(?P<k>(?<![\w-])(?:-u|--user)[ \t]+['\"]?[\w.@-]+:)(?P<v>[^\s'\"]+)")
+_SSHPASS = re.compile(r"(?P<k>(?<![\w-])sshpass[ \t]+-p[ \t]*(?P<q>['\"]?))(?P<v>[^\s'\"]+)")
+_KWARG = re.compile(r"(?P<k>(?:(?<![\w.\-])(?P<n>[A-Za-z_]\w*)|\[(?P<sq>['\"])(?P<s>[A-Za-z_]\w*)(?P=sq)\])"
+                    r"[ \t]*=[ \t]*(?P<q>['\"]))(?P<v>[^'\"\n]*)(?P=q)")   # also os.environ['API_KEY'] = '...'
+
 _BEARER = re.compile(r"(?P<k>\b(?P<w>Bearer|Basic|token)[ \t]+)(?P<v>[A-Za-z0-9._~+/=-]{8,})")
+
+
+def _code(rest: str, colon: bool) -> bool:
+    """The text after `key =` / `key:` is code rather than a value (see _CODE, _ANNOTATION)."""
+    return _CODE.match(rest) is not None or (colon and _ANNOTATION.match(rest) is not None)
 
 
 def _line_pair(m: re.Match) -> str:
     value = m["v"].strip("'\",;")
-    if len(value) < 8 or not _LINE_KEY.search(m["k"]) or m["k"].lower() == "key" or _PLACEHOLDER.match(value) \
-            or not _secret_value(value):   # cheapest test first; a bare `key` field is not a secret
+    if len(value) < 8 or not _LINE_KEY.search(m["k"]) or m["k"].lower() == "key" or _PLACEHOLDER.match(value):
+        return m.group()   # cheapest test first; a bare `key` field is not a secret
+    end = m.string.find("\n", m.start("v"))
+    if _code(m.string[m.start("v"):end if end >= 0 else len(m.string)], m["pre"].rstrip()[-1:] == ":"):
+        return m.group()
+    if not _secret_value(value, strict=_STRICT_KEY.search(m["k"]) is not None):
         return m.group()
     return m["pre"] + MASK
+
+
+def _keyed_value(key: str, value: str) -> bool:
+    """`key` names a secret field (as in the line rule) and `value` looks like a secret."""
+    return len(value) >= 8 and _LINE_KEY.search(key) is not None and key.lower() != "key" \
+        and MASK not in value and _secret_value(value, strict=_STRICT_KEY.search(key) is not None)
+
+
+def _pair_secret(key: str, value: str) -> bool:
+    return looks_secret(key, value) or _keyed_value(key, value)
 
 
 def redact(text: str) -> str:
     """Mask anything that looks like a secret before it reaches the console."""
     if not text:
         return text
-    text = _JSON_PAIR.sub(lambda m: f'"{m["k"]}"{m["sep"]}"{MASK}"' if looks_secret(m["k"], m["v"]) else m.group(), text)
-    text = _PY_PAIR.sub(lambda m: f"'{m['k']}'{m['sep']}'{MASK}'" if looks_secret(m["k"], m["v"]) else m.group(), text)
+    text = _JSON_PAIR.sub(lambda m: f'"{m["k"]}"{m["sep"]}"{MASK}"' if _pair_secret(m["k"], m["v"]) else m.group(), text)
+    text = _PY_PAIR.sub(lambda m: f"'{m['k']}'{m['sep']}'{MASK}'" if _pair_secret(m["k"], m["v"]) else m.group(), text)
     text = _LINE_PAIR.sub(_line_pair, text)
+    text = _KWARG.sub(lambda m: m["k"] + MASK + m["q"] if _keyed_value(m["n"] or m["s"], m["v"]) else m.group(), text)
+    text = _USER_PASS.sub(lambda m: m["k"] + MASK if _secret_value(m["v"]) else m.group(), text)
+    text = _SSHPASS.sub(lambda m: m["k"] + MASK if not _reference(m["v"]) and MASK not in m["v"] else m.group(), text)
     text = _BEARER.sub(lambda m: m["k"] + MASK if m["w"] != "token" or (_secret_value(m["v"]) and not _PROSE_WORD.fullmatch(m["v"]))
                        else m.group(), text)
     text = _URL_PASSWORD.sub(lambda m: m["k"] + (m["v"] if m["v"].startswith("${") else MASK), text)
-    text = _KEY_EQ.sub(lambda m: f"{m['k']}={MASK}" if looks_secret(m["k"], m["v"], keyed_arg=True) else m.group(), text)
-    text = _FLAG_VALUE.sub(lambda m: m["k"] + m["sp"] + MASK if _FLAG_WORD.search(m["k"]) else m.group(), text)
+    text = _KEY_EQ.sub(lambda m: f"{m['k']}={MASK}" if looks_secret(m["k"], m["v"], keyed_arg=True)
+                       or (m["k"].startswith("-") and _keyed_value(m["k"].lstrip("-"), m["v"])) else m.group(), text)
+    text = _FLAG_VALUE.sub(lambda m: m["k"] + m["sp"] + MASK if _FLAG_WORD.search(m["k"])
+                           and not m["v"].startswith(("/", "~", "./", "../")) else m.group(), text)
     for pattern in SECRET_PATTERNS:
         text = re.sub(pattern, MASK, text)
     return text
