@@ -81,7 +81,7 @@ Run `loadout <command> --help` for details.
 | `loadout adopt` | Review an existing setup. Dry run unless `--apply`; without a terminal, `--apply` needs `--yes`, `--groups` or `--own` (otherwise exit code 2) | `--apply`, `--groups remove,migrate` (not `own`), `--skip NAME,...` (this run only), `--yes`, `--own NAME=CHOICE,...` (your own tools, see [Your own tools](#your-own-tools)), `--no-versions` |
 | `loadout restore DIR` | Undo a backup. Whatever it replaces goes into a new backup, so a restore can be undone too | `--list` (newest first), `--force` (replay an already restored backup) |
 | `loadout configure` | Wizard for preferences and add-ons | `show` (lists each add-on's and preference's id); `prefs` (only the working-preference questions); `set plugin ID on\|off`; `set mcp ID-or-server-name on\|off`; `set pref-choice ID OPTION`; `set pref KEY JSON`; `--first-run` (ask the "about you" questions again) |
-| `loadout configure own` / `configure set own NAME CHOICE` | List the tools loadout does not manage (`--all` adds the ones you left on this machine), or decide one: `global`, `project:<profile>`, `leave`, `remove`. Exit 2 for bad input, 1 when nothing was recorded | `--all` |
+| `loadout configure own` / `configure set own NAME CHOICE` | List the tools loadout does not manage (`--all` adds the ones you left on this machine), or decide one: `global`, `project:<profile>`, `leave`, `remove`. Exit 2 for bad input, 1 when an item was not recorded, or recorded but not active on this machine (see the `skipped:`/`failed:` line) | `--all` |
 | `loadout init [PROFILE...]` | Prepare the current project (AGENTS.md, CLAUDE.md, docs/, .gitignore entries, profiles) | `--yes`, `--no-install`, `--dry-run` |
 | `loadout profile NAME` | Add one profile to the current project | `--no-install` |
 | `loadout check` | Verify this machine | none |
@@ -141,7 +141,7 @@ Your preferences live in `~/.config/loadout/personal` (or wherever `LOADOUT_PERS
 - A first run (bootstrap's starter layer, `configure --first-run`) starts unanswered questions at the recommended defaults; without a terminal it takes them silently.
 - The auto mode environment is drafted from the git remotes under your code folder (default `~/Documents/Code`). You choose which owners are yours (nothing is preselected when several are equally common), see the full draft, and must confirm it; it replaces an existing personal `autoMode.environment` and is skipped without a terminal.
 
-You rarely edit these by hand: `loadout configure` does it for you. **To sync them across machines, make the folder a private git repo**; loadout pulls it daily and offers to commit and push after `loadout configure` (not while a `*.env` file would be committed: secrets belong in `~/.config/loadout/secrets.env`).
+You rarely edit these by hand: `loadout configure` does it for you. **To sync them across machines, make the folder a private git repo**; loadout pulls it daily and offers to commit and push after `loadout configure` (not while a `*.env` file or another private file, see [Secret guard](#secret-guard), would be committed: secrets belong in `~/.config/loadout/secrets.env`).
 
 ### Your own tools
 
@@ -188,7 +188,7 @@ Exit codes:
 | `adopt --apply --own` | 2 | An unknown or duplicate name, a bad choice, or a name that needs `<kind>:` or `#n`. Nothing changed. |
 | `adopt --apply` | 2 | No terminal and none of `--yes`, `--groups` or `--own`. Nothing changed. |
 | `configure set own` | 2 | The same bad input as above. Nothing changed. |
-| `configure set own`, `adopt --apply --own` | 1 | At least one named item was not recorded: the output has a `skipped:` or `failed:` line with the reason. The other items were applied. |
+| `configure set own`, `adopt --apply --own` | 1 | At least one named item was not recorded, or recorded but not active on this machine (see the `skipped:`/`failed:` line). A removal that did not happen says `skipped (...)` or `not removed`. The other items were applied. |
 
 #### Where each choice writes
 
@@ -201,7 +201,7 @@ Global, in your personal layer:
 | MCP server | `mcp.json`, secrets rewritten to `${VAR}` and moved to `secrets.env` | the server is re-added with the `${VAR}` config and managed by loadout |
 | Skill (folder) | copied to `skills/<name>/` | replaced by a link to the copy; the original goes into the backup |
 | Skill (link to a shared source) | a pointer in `skills.json` | unchanged |
-| Hook | `settings.json`: `hooks`; for a simple command the script is copied to `hooks/` (see [Hooks](#hooks)) | the hook is replaced by the recorded one, so it does not run twice |
+| Hook | `settings.json`: `hooks`; for a simple command the script is copied to `hooks/` (see [Hooks](#hooks)) | the hook is moved into exactly the recorded group and tracked as applied by loadout, so it does not run twice and removing it from the personal layer later removes it here too |
 
 With `project`, the item goes into a personal profile instead (`profiles/<name>.json`; skills into `profiles/skills/<name>/`) and is disabled (plugins) or removed (MCP servers, skills, hooks) from your global setup. A removed skill reads `skill <name>: removed from ~/.claude/skills (kept in profile <p>; original in the backup)`. `loadout profile` copies a profile's skills into a repo and never overwrites an existing one.
 
@@ -228,8 +228,8 @@ Nothing that looks like a secret is written to the personal layer. Every printed
 
 - **MCP servers:** values in `env` and `headers` become `${VAR}` and move to `secrets.env`. A secret in `args`, in the URL (query string or a high-entropy path segment) or in a multi-line value is refused, because it cannot be moved safely.
 - **Marketplaces:** a source URL with credentials or a token is refused.
-- **Hooks and skills:** a hook command, args, script or any skill file that looks secret is refused. All skill files are scanned, binary ones by their text runs, and UTF-16 files are decoded first. An unreadable file refuses too.
-- **Private files:** a skill that contains one of these, and a hook that names one anywhere in its command, is refused: `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube` and `.docker` folders, `~/.config/gh`, `~/.claude.json`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_*`, `.env`, `.env.*`, `.netrc`, `.npmrc`, `.pypirc`, `credentials*` and `*.kdbx`.
+- **Hooks and skills:** a hook command, args, script or any skill file that looks secret is refused. All skill files are scanned, binary ones by their text runs; UTF-16 and mostly-NUL files are scanned both as UTF-16 and as UTF-8. An unreadable file refuses too.
+- **Private files:** a skill that contains one of these, and a hook that names one anywhere in its command, is refused: `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube`, `.docker` and `.password-store` folders, `~/.config/gh`, `~/.claude.json`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*`, `.env`, `.env.*` (except `.env.example`, `.env.sample` and `.env.template`), `.netrc`, `.npmrc`, `.pypirc`, `credentials`, `credentials.json`, `credentials.csv`, `.git-credentials`, `.vault-token` and `*.kdbx`. The commit offer refuses the same files.
 - **Git checkouts:** a skill that contains a `.git` folder or file is refused. Copy it without `.git`.
 
 A refusal prints `skipped: ...` and changes nothing for that item. Move the secret to `secrets.env`, use `${VAR}`, then run it again.
@@ -239,13 +239,14 @@ A refusal prints `skipped: ...` and changes nothing for that item. Move the secr
 - Only a simple command of the form `<interpreter> <script> args` gets its script copied. That is one file, copied to `<personal>/hooks/<file>`, and the command points to `$HOME/.claude/hooks/personal/<file>`. Files the script reads next to it must be copied by hand.
 - A complex shell command (`;`, `&&`, pipes, redirects, `$(...)`, globs and similar), a hook in exec form (`args`), and a path outside your home folder are recorded as they are, with a note. They work only where their paths exist. Files under `/usr`, `/bin`, `/sbin`, `/opt/homebrew` and `/usr/local` (an interpreter, for example) do not trigger the "outside your home folder" note.
 - A hook that refers to a private file is refused.
+- Values of interpreter flags (`node --require X`, `python -X opt`, `bash -o opt`, `env -u VAR`) are not taken for the script; such a file under your home folder gets a note. Inline code (`-c`, `-e`, `-m`, `env -S`) is recorded as is with the complex-command note.
 
 #### Known limits
 
 - An MCP server is managed by loadout only if it is in `managed-mcp.json` or its config in `~/.claude.json` is identical to the personal one; otherwise loadout leaves your server alone. Recording through adopt seeds `managed-mcp.json`.
 - A profile is copied into a repo when applied. Later changes to the personal profile do not reach repos until you apply it again, and skill copies in a repo can drift from your personal layer.
 - A skill recorded as a pointer to a shared source is linked only on machines where that source exists.
-- If `settings.json` already holds a hook with the same command, event and matcher as a recorded one, loadout does not add it a second time and does not manage that copy. Duplicates that are already in `settings.json` are not cleaned up.
+- Hook groups are matched by event, matcher and their commands. If `settings.json` on a machine already holds a hook with the same command, event and matcher as a recorded one that loadout never applied there (another machine, or added by hand), loadout does not add it a second time and does not manage that copy: removing the hook from the personal layer leaves it. On the machine where you recorded it, adopt moves the hook into the recorded group and tracks it, so a later removal from the personal layer removes it there too. A group loadout applied is updated in place when you change another field (such as `timeout`) in the personal layer. Duplicates that are already in `settings.json` are not cleaned up.
 - If removing an item from this machine fails (a `failed:` line), it shows up under your own tools again next time. Fix the cause and choose again.
 - An older loadout stored a leave decision for a `~/.claude/.mcp.json` server under the plain server name, so it also hides a user-scope server of the same name. Deciding the `.mcp.json` server again replaces it, and the user-scope one is then asked about again.
 - Backups made before this version do not hold the managed-settings snapshot. Restoring one after a global hook or plugin choice can let the next settings merge drop the restored value again; check `~/.claude/settings.json` afterwards. Backups made by adopt (own tools) and bootstrap from now on include the snapshot.
