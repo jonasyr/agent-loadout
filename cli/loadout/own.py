@@ -13,6 +13,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
+from urllib.parse import parse_qsl, urlsplit
 
 from . import paths, personal_mcp, secrets
 from .jsonio import InvalidJSON, load_json, save_json
@@ -171,6 +172,12 @@ def _add_market(data: dict, name: str) -> None:
     src = _market_source(name)
     if src is None:
         raise Collision(f"marketplace {name}: no source is known on this machine")
+    _refuse_if_secret(f"marketplace {name}", json.dumps(src))
+    for value in src.values():
+        if isinstance(value, str) and "?" in value:
+            if any(secrets.looks_secret(k, v, keyed_arg=True) for k, v in parse_qsl(urlsplit(value).query)):
+                raise Collision(f"marketplace {name} looks like it contains a secret in its URL; "
+                                f"remove it from the source, then try again")
     markets = data.setdefault("extraKnownMarketplaces", {})
     have = markets.get(name)
     if have is not None and (not isinstance(have, dict) or have.get("source") != src):

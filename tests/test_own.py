@@ -602,3 +602,24 @@ def test_hook_secret_outside_command_checked(machine):
     _set_hook_obj("Stop", {"type": "command", "command": "ok", "headers": {"Authorization": "Bearer " + GHP}})
     rec = own.record_global(_hook("ok"), backup.Backup())
     assert not rec.ok and GHP not in _personal_text()
+
+
+@pytest.mark.parametrize("source", [
+    {"source": "git", "url": "https://jonas:" + GHP + "@github.com/me/private.git"},
+    {"source": "url", "url": "https://h.example/m.json?token=" + "Ab1" * 15},
+    {"source": "url", "url": "https://h.example/m.json?sig=" + "Zq9" * 15},       # query key not secret-named
+])
+@pytest.mark.parametrize("scope", ["global", "project"])
+def test_marketplace_source_secret_refused(machine, source, scope):
+    (machine / ".claude/plugins/known_marketplaces.json").write_text(json.dumps({"somewhere": {"source": source}}))
+    v = _v("plugin", "mystery@somewhere")
+    rec = own.record_global(v, backup.Backup()) if scope == "global" else own.record_project(v, "mine", backup.Backup())
+    assert not rec.ok and "marketplace somewhere" in rec.lines[0]
+    assert _personal_empty()
+
+
+def test_marketplace_item_source_secret_refused(machine):
+    (machine / ".claude/plugins/known_marketplaces.json").write_text(json.dumps({
+        "mine-mkt": {"source": {"source": "git", "url": "https://u:" + GHP + "@github.com/me/m.git"}}}))
+    rec = own.record_global(_as_own("marketplace", "mine-mkt"), backup.Backup())
+    assert not rec.ok and _personal_empty()
