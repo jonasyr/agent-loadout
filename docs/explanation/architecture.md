@@ -67,14 +67,14 @@ Plugins are not part of this loop: Claude Code updates them through the marketpl
 
 ## Why it is built this way
 
-The main decisions, in short. Each has a decision record with the alternatives that were considered.
+The main decisions, in short. Each has a decision record in [`docs/adr/`](../adr/README.md) with the alternatives that were considered.
 
-- **A kit and a personal repo.** The shared part can be updated for everybody while your own part stays yours and syncs through your own git. Without the split, either every user forks the kit or personal settings leak into it.
-- **The kit is a plugin marketplace.** Claude Code already knows how to install, enable and update plugins. loadout reuses that instead of copying files into `~/.claude` itself.
-- **Three-way settings merge.** A plain overwrite would destroy your own settings. A plain merge cannot tell whether you or the kit changed a value. The snapshot makes both safe and lets you delete a kit hook without it coming back.
-- **Rules are linked as folders.** Linking `rules/` leaves `~/.claude/CLAUDE.md` yours, and a pull updates the rules without touching a file you own.
+- **A kit and a personal repo** ([0001](../adr/0001-kit-repo-plus-personal-repo.md)). The shared part can be updated for everybody while your own part stays yours and syncs through your own git. Without the split, either every user forks the kit or personal settings leak into it.
+- **The kit is a plugin marketplace** ([0002](../adr/0002-kit-is-a-plugin-marketplace.md)). Claude Code already knows how to install, enable and update plugins. loadout reuses that instead of copying files into `~/.claude` itself.
+- **Three-way settings merge** ([0003](../adr/0003-three-way-settings-merge.md)). A plain overwrite would destroy your own settings. A plain merge cannot tell whether you or the kit changed a value. The snapshot makes both safe and lets you delete a kit hook without it coming back.
+- **Rules are linked as folders** ([0004](../adr/0004-rules-linked-as-directories.md)). Linking `rules/` leaves `~/.claude/CLAUDE.md` yours, and a pull updates the rules without touching a file you own.
 
-See the decision records for these and for the others (catalog, secrets, scoping, backups, hook merging).
+See the [decision records](../adr/README.md) for these and for the others: catalog ([0005](../adr/0005-catalog-as-source-of-tool-knowledge.md)), secrets ([0006](../adr/0006-secrets-in-secrets-env.md)), scoping ([0007](../adr/0007-tiered-scoping-with-profiles.md)), code intelligence ([0008](../adr/0008-code-intelligence-routed-by-rule.md)), design tooling ([0009](../adr/0009-design-tooling-frontend-design-and-impeccable.md)), documentation ([0010](../adr/0010-docs-as-single-source-of-truth.md)), binary updates ([0011](../adr/0011-tool-binaries-notice-and-deliberate-update.md)) and backups ([0012](../adr/0012-destructive-actions-dry-run-confirm-backup.md)).
 
 ## Other agents (planned)
 

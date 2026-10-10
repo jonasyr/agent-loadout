@@ -40,4 +40,4 @@ Each version of a plan is nudged at most once. Ticking boxes while executing doe
 
 Subagent-driven development is a common default after a plan, and it costs more than it looks: a fresh context per task (which re-reads the repo) plus a review per task. It pays off for risky or independent tasks and for protecting a near-full context. It does not pay off for a short plan with complete code, or for tasks that depend on each other's names and files. The advisor makes the trade-off explicit and cheap to check, and it keeps interactive and real-machine steps in the session where the user can answer.
 
-The decision and the alternatives are in the decision records. The workflow rule that calls the advisor after a plan is `rules/workflow.md`.
+The decision and the alternatives are in [ADR 0014](../adr/0014-execution-advisor-instead-of-default-sdd.md). The workflow rule that calls the advisor after a plan is `rules/workflow.md`.
