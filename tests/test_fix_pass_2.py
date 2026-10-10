@@ -193,3 +193,34 @@ def test_realistic_skill_is_recorded(machine):
     rec = own.record_global(_get("skill", "my-skill"), backup.Backup())
     assert rec.ok, rec.lines
     assert (paths.personal_root() / "skills/my-skill/SKILL.md").exists()
+
+
+# 3. NUL-heavy binary files: scan the UTF-16 and the UTF-8 view
+
+TOKEN = "ghp_" + "A" * 36
+
+
+def _skill_file(machine, name, data):
+    (machine / ".claude/skills/my-skill" / name).write_bytes(data)
+    return own.record_global(_get("skill", "my-skill"), backup.Backup())
+
+
+def test_nul_heavy_binary_with_ascii_token_refused(machine):
+    rec = _skill_file(machine, "blob.bin", b"\0" * 3000 + b"token=ghp_" + b"A" * 36)
+    assert not rec.ok and "secret" in rec.lines[0]
+
+
+def test_odd_offset_ascii_token_in_nul_heavy_file_refused(machine):
+    rec = _skill_file(machine, "blob.bin", b"\0" * 3001 + b"token=ghp_" + b"A" * 36)
+    assert not rec.ok and "secret" in rec.lines[0]
+
+
+@pytest.mark.parametrize("enc", ["utf-16", "utf-16-le", "utf-16-be"])
+def test_utf16_file_with_token_refused(machine, enc):
+    rec = _skill_file(machine, "notes.txt", f"export GITHUB_TOKEN={TOKEN}\n".encode(enc))
+    assert not rec.ok and "secret" in rec.lines[0]
+
+
+def test_harmless_binary_still_recorded(machine):
+    rec = _skill_file(machine, "icon.bin", bytes(range(256)) * 20 + b"\0" * 4000)
+    assert rec.ok, rec.lines

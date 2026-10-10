@@ -266,15 +266,18 @@ def _refuse_if_secret(label: str, text: str) -> None:
 
 
 def _decode(data: bytes) -> str:
-    """Text of a file for the secret scan: UTF-16 with a UTF-16 BOM or when NUL bytes are over 30% of the
-    first 4 KB, else UTF-8 (binary files are scanned by their text runs)."""
+    """Text of a file for the secret scan. Always the UTF-8 view with NUL bytes as line breaks (binary files are
+    scanned by their text runs); plus the UTF-16 view when the file has a UTF-16 BOM or NUL bytes are over 30% of
+    the first 4 KB. Both are scanned, so ASCII embedded in a NUL-heavy binary is not garbled into UTF-16 only."""
+    views = [data.decode("utf-8", errors="ignore").replace("\0", "\n")]
     if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
-        return data.decode("utf-16", errors="ignore")
-    head = data[:4096]
-    if head and head.count(0) / len(head) > 0.3:
-        big_endian = head[0::2].count(0) > head[1::2].count(0)
-        return data.decode("utf-16-be" if big_endian else "utf-16-le", errors="ignore").replace("\0", "\n")
-    return data.decode("utf-8", errors="ignore").replace("\0", "\n")
+        views.append(data.decode("utf-16", errors="ignore"))
+    else:
+        head = data[:4096]
+        if head and head.count(0) / len(head) > 0.3:
+            big_endian = head[0::2].count(0) > head[1::2].count(0)
+            views.append(data.decode("utf-16-be" if big_endian else "utf-16-le", errors="ignore").replace("\0", "\n"))
+    return "\n".join(views)
 
 
 def _scan_tree(src: Path, label: str) -> None:
