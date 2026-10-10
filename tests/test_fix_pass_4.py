@@ -386,3 +386,24 @@ def test_replace_hook_keeps_the_old_command_under_its_own_identity():
     groups = [{"matcher": "Edit", "hooks": [raw]}, {"matcher": "Write", "hooks": [raw, port]}]
     own._replace_hook(groups, "PreToolUse", 0, 0, port)
     assert groups == [{"matcher": "Edit", "hooks": [port]}, {"matcher": "Write", "hooks": [raw, port]}]
+
+
+# Final review R1: adopting a hand re-add of a tombstoned hook must clear the tombstone and track the hook,
+# so removing it from the personal layer later removes it on this machine too (record_applied_hook).
+def test_adopt_hand_readd_of_tombstoned_hook_is_tracked(machine):
+    s = S(); s["hooks"]["PreToolUse"].pop(3); wS(s)  # no hand copy of my-own-linter
+    wP({"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [LINT]}]}})
+    merge(); assert cnt() == 1
+    s = S(); s["hooks"]["PreToolUse"] = [g for g in s["hooks"]["PreToolUse"] if g.get("matcher") != "Edit"]; wS(s)
+    merge(); assert cnt() == 0                                   # deleted by the user: tombstone (still desired)
+    s = S(); s["hooks"]["PreToolUse"].append({"matcher": "Edit", "hooks": [LINT]}); wS(s)  # the user re-adds it
+    merge(); assert cnt() == 1                                   # the user's own copy; the tombstone stays
+    assert SNAP().get(sm.TOMBSTONES), "precondition: tombstone present before the adopt"
+    v = _get("hook", "PreToolUse:Edit")
+    adopt.apply_own([(v, own.Choice("global"))], backup.Backup())  # adopt it: record_applied_hook clears the tombstone
+    assert not SNAP().get(sm.TOMBSTONES), SNAP()
+    merge(); assert cnt() == 1
+    wP({})                                                      # removed from the personal layer again
+    merge()
+    assert cnt() == 0, "adopted hook was not tracked: it stayed after removal from the personal layer"
+    hand_intact()
