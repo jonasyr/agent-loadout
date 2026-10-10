@@ -328,38 +328,81 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
 
 
 def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask, with_versions: bool = True,
-        interactive: bool | None = None) -> int:
+        interactive: bool | None = None, own_spec: str | None = None) -> int:
+    import sys
+
     if interactive is None:
         interactive = ui.is_interactive()
     verdicts = inventory.classify(inventory.collect(with_versions=with_versions))
     findings = secrets.scan_all()
+    try:
+        own_pairs = own.resolve(own.parse_spec(own_spec), verdicts) if own_spec is not None else None
+    except ValueError as exc:
+        print(f"loadout: {exc}", file=sys.stderr)
+        return 2
     print(render_plan(verdicts, findings))
     if not apply_changes:
         print("\n(dry run — nothing changed. Re-run with --apply to choose and apply.)")
         return 0
-    if not interactive and not yes and groups is None:
-        print("\nnon-interactive: re-run with --yes or --groups GROUP,... to apply (nothing changed).")
+    if not interactive and not yes and groups is None and own_pairs is None:
+        print("\nnon-interactive: re-run with --yes, --groups GROUP,... or --own NAME=CHOICE,... to apply (nothing changed).")
         return 2
     explicit = groups is not None
-    chosen = select(verdicts, groups if explicit else (DEFAULT_ALL if yes else None), skip, ask)
-    if chosen and interactive and not yes:
-        if not ui.confirm(ask, f"Apply {len(chosen)} change(s)? [y/N] "):
+    keep_global: list = []
+    if own_pairs is not None and not interactive and not yes and not explicit:
+        chosen = []  # --own alone: only the named items
+    else:
+        chosen = select(verdicts, groups if explicit else (DEFAULT_ALL if yes else None), skip, ask,
+                        keep_global=keep_global if interactive and not yes else None)
+    if own_pairs is None:
+        own_pairs = (own.ask_choices([v for v in own.unmanaged(verdicts) if v.item.name not in skip], ask)
+                     if interactive and not yes else [])
+    own_pairs = own_pairs + [(v, own.Choice("global")) for v in keep_global]
+    acting = [p for p in own_pairs if p[1].action != "leave"]
+    if (chosen or acting) and interactive and not yes:
+        if not ui.confirm(ask, f"Apply {len(chosen) + len(acting)} change(s)? [y/N] "):
             print("nothing changed")
             return 0
-    elif not chosen and not findings:
+    elif not chosen and not own_pairs and not findings:
         print("nothing selected")
         return 0
     bk = Backup(description="adopt")
-    for line in apply(chosen, bk, ask if interactive else (lambda q: ""), confirm_cmds=not (yes and explicit)):
-        print(redact(line))
-    remaining = [f for f in findings if f.fixable
-                 and f.server not in {v.item.name for v in chosen if v.item.kind == "mcp"}]
-    if remaining and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
-        for line in fix_secrets(remaining, bk):
+    try:
+        lines, new_profiles = apply_own(own_pairs, bk, chosen, ask if interactive else (lambda q: ""),
+                                        confirm_cmds=not (yes and explicit))
+        for line in lines:
             print(redact(line))
-    if not bk.empty:
-        print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
+        done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
+        remaining = [f for f in findings if f.fixable and f.server not in done]
+        if remaining and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
+            for line in fix_secrets(remaining, bk):
+                print(redact(line))
+        if interactive and own_spec is None:
+            _offer_profiles(new_profiles, ask)
+        if acting and interactive and own_spec is None:
+            from .configure import offer_commit
+            offer_commit(ask)
+    finally:
+        if not bk.empty:
+            print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
     return 0
+
+
+def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
+    from . import project
+
+    for name, items in new_profiles.items():
+        found = sorted({repo for item in items for repo in own.candidate_repos(item)})
+        print(f"\nprofile {name} is in your personal layer. Apply it to repos now?")
+        if found:
+            print("  detected: " + ", ".join(str(r) for r in found))
+        answer = ask("  repos (comma separated paths, empty = detected, '-' = none): ").strip()
+        repos = found if answer == "" else [] if answer == "-" else [Path(a.strip()).expanduser() for a in answer.split(",") if a.strip()]
+        for repo in repos:
+            if repo.is_dir():
+                project.add_profile(repo, name)
+            else:
+                print(f"  {repo}: not a folder, skipped")
 
 
 def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = lambda q: "",

@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from loadout import adopt, backup, inventory, paths
+from loadout import adopt, backup, inventory, own, paths
 from fixtures import FAKE_DEVIN, author_machine
 
 
@@ -232,7 +232,7 @@ def test_non_interactive_apply_changes_nothing_and_exits_2(machine, fake_runner,
     rc = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False)
     assert rc == 2
     assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
-    assert "non-interactive: re-run with --yes or --groups" in capsys.readouterr().out
+    assert "non-interactive: re-run with --yes, --groups GROUP,... or --own" in capsys.readouterr().out
     assert not paths.backups_root().exists()
 
 
@@ -482,3 +482,74 @@ def test_apply_own_machine_step_error_does_not_stop_later_steps(machine, fake_ru
                                 (vs["my-skill"], own.Choice("global"))], backup.Backup())
     assert any("omarchy-kb: failed: disk gone" in line for line in lines)
     assert ran == ["my-skill"] and applied
+
+
+def test_run_yes_leaves_own_tools(machine, fake_runner):
+    assert adopt.run(True, None, set(), True, ask=lambda q: "", with_versions=False, interactive=False) == 0
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+    assert not own.decisions()   # --yes does not remember "leave" either
+
+
+def test_run_non_interactive_without_flags_exits_2(machine, fake_runner):
+    assert adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False) == 2
+
+
+def test_run_own_spec_non_interactive(machine, fake_runner):
+    code = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False,
+                     own_spec="omarchy-kb=project:mine")
+    assert code == 0
+    assert (paths.personal_root() / "profiles/mine.json").exists()
+    assert ["claude", "mcp", "remove", "-s", "user", "github-server"] not in fake_runner.calls  # other groups untouched
+
+
+@pytest.mark.parametrize("spec", ["nothing=global", "omarchy-kb=leave,omarchy-kb=global"])
+def test_run_own_spec_error_exits_2_before_changes(machine, fake_runner, capsys, spec):
+    code = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False,
+                     own_spec=spec)
+    assert code == 2 and capsys.readouterr().err.startswith("loadout:")
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+    assert not own.decisions()
+
+
+def test_run_prints_backup_even_if_apply_raises(machine, fake_runner, monkeypatch, capsys):
+    def boom(pairs, bk, *a, **kw):
+        bk.save_copy(machine / ".claude/settings.json", "partial work")
+        raise RuntimeError("boom")
+    monkeypatch.setattr(adopt, "apply_own", boom)
+    with pytest.raises(RuntimeError):
+        adopt.run(True, None, set(), True, ask=lambda q: "", with_versions=False, interactive=False)
+    assert "backup:" in capsys.readouterr().out
+
+
+def test_run_interactive_offers_repo_for_new_profile(machine, fake_runner, monkeypatch):
+    from loadout import configure, project
+    repo = machine / "code/app"
+    repo.mkdir(parents=True)
+    (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"omarchy-kb": {}}}))
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["projects"] = {str(repo): {}}
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+    applied = []
+    monkeypatch.setattr(project, "add_profile", lambda path, name, **kw: applied.append((path, name)) or 0)
+    offered = []
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: offered.append(1))
+    script = {"your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y", "repos": ""}
+
+    def ask(q):
+        return next((a for k, a in script.items() if k in q), "")
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    assert applied == [(repo, "mine")]
+    assert offered == [1]
+
+
+def test_run_own_spec_never_offers_repo_or_commit(machine, fake_runner, monkeypatch):
+    from loadout import configure
+    monkeypatch.setattr(adopt, "_offer_profiles", lambda *a: pytest.fail("repo offer"))
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: pytest.fail("commit offer"))
+    adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=True,
+              own_spec="omarchy-kb=project:mine")
+
+
+def test_run_interactive_leave_all_asks_nothing_more(machine, fake_runner):
+    adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=True)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls

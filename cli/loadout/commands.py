@@ -41,13 +41,16 @@ def _register_adopt(sub):
     p.add_argument("--apply", action="store_true", help="choose and apply changes (default: dry run)")
     p.add_argument("--groups", help="apply exactly these groups, e.g. remove,migrate (update/install run each command after confirmation unless --yes)")
     p.add_argument("--skip", default="", help="comma-separated item names to leave alone")
-    p.add_argument("--yes", action="store_true", help="no questions: apply --groups, or remove,migrate,scope-down, and move secrets")
+    p.add_argument("--yes", action="store_true", help="no questions: apply --groups, or remove,migrate,scope-down, and move secrets; your own tools stay as they are")
+    p.add_argument("--own", metavar="NAME=CHOICE,...",
+                   help="decide for your own tools: global, project:<profile>, leave or remove "
+                        "(e.g. foo@bar=global,my-db=project:db); others stay as they are")
     p.add_argument("--no-versions", action="store_true", help="skip network version checks")
 
     def run(a):
         groups = {g.strip() for g in a.groups.split(",") if g.strip()} if a.groups else None
         skip = {s.strip() for s in a.skip.split(",") if s.strip()}
-        return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions)
+        return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions, own_spec=a.own)
 
     p.set_defaults(func=run)
 
