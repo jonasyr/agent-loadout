@@ -443,7 +443,9 @@ def _private_in_raw(text: str) -> Path | None:
     home = str(paths.home())
     expanded = re.sub(r"(?<![\w/])~(?=/|$)", home, text)
     expanded = re.sub(r"\$\{?HOME\}?", home, expanded)
-    for form in (text, expanded):
+    # quotes removed first ("$HOME"/.ssh/x -> /home/u/.ssh/x), so the refusal names the whole expanded path
+    unquoted = re.sub(r"\$\{?HOME\}?", home, re.sub(r"(?<![\w/])~(?=/|$)", home, re.sub(r"[\"']", "", text)))
+    for form in (unquoted, text, expanded):
         for piece in _SHELL_SPLIT.split(form):
             if (bad := _private_token(piece)) is not None:
                 return bad

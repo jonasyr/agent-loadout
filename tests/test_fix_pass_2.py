@@ -491,3 +491,12 @@ def test_accepted_hook_still_copies_script(machine):
     rec = own.record_global(_get("hook", "PreToolUse:Write"), backup.Backup())
     assert rec.ok, rec.lines
     assert _hooks_dir() == ["h.sh"]
+
+
+# 9. the refusal names the expanded private path
+
+@pytest.mark.parametrize("cmd", ['"$HOME"/.ssh/id_rsa', "cat \"${HOME}\"/.ssh/id_rsa", "cat ~/.ssh/id_rsa"])
+def test_refusal_shows_expanded_path(fake_home, fake_runner, cmd):
+    with pytest.raises(own.Collision) as exc:
+        own._portable_hook({"type": "command", "command": cmd}, backup.Backup(), "x")
+    assert f"({fake_home}/.ssh/id_rsa)" in str(exc.value)
