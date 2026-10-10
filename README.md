@@ -188,9 +188,7 @@ Exit codes:
 | `adopt --apply --own` | 2 | An unknown or duplicate name, a bad choice, or a name that needs `<kind>:` or `#n`. Nothing changed. |
 | `adopt --apply` | 2 | No terminal and none of `--yes`, `--groups` or `--own`. Nothing changed. |
 | `configure set own` | 2 | The same bad input as above. Nothing changed. |
-| `configure set own` | 1 | Nothing was recorded for the item: the output has a `skipped:` or `failed:` line with the reason. |
-
-`adopt --own` prints the same `skipped:` and `failed:` lines but exits 0, so read its output.
+| `configure set own`, `adopt --apply --own` | 1 | At least one named item was not recorded: the output has a `skipped:` or `failed:` line with the reason. The other items were applied. |
 
 #### Where each choice writes
 

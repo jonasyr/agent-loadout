@@ -379,6 +379,8 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
                                         confirm_cmds=not (yes and explicit), changed=changed)
         for line in lines:
             print(redact(line))
+        # --own is for scripts: an item that was skipped or failed must not look like success
+        not_recorded = own_spec is not None and any(l.startswith("skipped:") or ": failed:" in l for l in lines)
         if changed:
             print(RESTART_NOTE)
         done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
@@ -394,7 +396,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     finally:
         if not bk.empty:
             print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
-    return 0
+    return 1 if not_recorded else 0
 
 
 def _offer_profiles(new_profiles: dict, ask: Ask) -> None:

@@ -615,3 +615,13 @@ def test_offer_profiles_failure_does_not_stop_next_repo(machine, fake_runner, ca
     out = capsys.readouterr().out
     assert f"{(machine / 'code/a-bad').resolve()}: failed:" in out
     assert f"{(machine / 'code/b-good').resolve()}: profile mine applied" in out
+
+
+def test_run_own_spec_exits_1_when_an_item_was_not_recorded(machine, fake_runner):
+    path = paths.personal_root() / "profiles/mine.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"mcp": {"mcpServers": {"omarchy-kb": {"command": "other"}}}}))
+    # omarchy-kb is in a personal profile but still in user scope, so it is "own"; the profile collides
+    code = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False,
+                     own_spec="omarchy-kb=project:mine")
+    assert code == 1
