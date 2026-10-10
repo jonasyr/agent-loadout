@@ -1,6 +1,6 @@
 import json
 
-from loadout import detect, profiles, project, scaffold
+from loadout import detect, paths, profiles, project, scaffold
 
 
 def test_detect_profiles(tmp_path):
@@ -125,3 +125,25 @@ def test_detect_tolerates_odd_package_json(tmp_path):
     for content in ("[]", '{"dependencies": null}', '"x"', "{bad"):
         (tmp_path / "package.json").write_text(content)
         assert "web" not in detect.detect_profiles(tmp_path)
+
+
+def test_profile_skills_are_copied_and_never_overwritten(fake_home, fake_runner, tmp_path):
+    personal = paths.personal_root()
+    (personal / "profiles/skills/notes").mkdir(parents=True)
+    (personal / "profiles/skills/notes/SKILL.md").write_text("new")
+    (personal / "profiles/mine.json").write_text(json.dumps({"description": "m", "skills": ["notes", "missing"]}))
+    repo = tmp_path / "repo"
+    (repo / ".claude/skills/kept").mkdir(parents=True)
+    project.add_profile(repo, "mine", install=False)
+    assert (repo / ".claude/skills/notes/SKILL.md").read_text() == "new"
+    (repo / ".claude/skills/notes/SKILL.md").write_text("edited")
+    project.add_profile(repo, "mine", install=False)
+    assert (repo / ".claude/skills/notes/SKILL.md").read_text() == "edited"
+
+
+def test_profile_skill_messages(fake_home, tmp_path):
+    personal = paths.personal_root()
+    (personal / "profiles").mkdir(parents=True)
+    (personal / "profiles/mine.json").write_text(json.dumps({"skills": ["missing"]}))
+    msgs = profiles.copy_skills(profiles.load_profile("mine"), tmp_path)
+    assert msgs == ["skill missing: not found in profiles/skills/ (personal layer or kit)"]
