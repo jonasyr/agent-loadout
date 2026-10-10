@@ -569,30 +569,19 @@ def _hook_group(v: Verdict, bk) -> tuple[str, dict, list[str]]:
     return event, out, notes
 
 
-def _replace_hook(groups: list, event: str, old: dict, new: dict) -> bool:
-    """Replace the first hook in `groups` with the identity of `old` by `new` (in place, in its group) and drop
-    any further hooks with that identity or with the identity of `new` (a group left empty goes too).
-    False when no hook with the identity of `old` is there."""
-    def ident(group, hook):
-        return settings_merge.hook_id(event, group, hook)
-
-    found = False
+def _replace_hook(groups: list, event: str, gi: int, hi: int, new: dict) -> None:
+    """Replace exactly the hook at groups[gi]["hooks"][hi] by `new` (in place, in its group) and drop every
+    other hook with the identity of `new`, computed with the target group's matcher (a group left empty goes
+    too). A hook with the same command under another matcher is another identity and is never touched."""
+    target = groups[gi]
+    target["hooks"][hi] = new
+    want = settings_merge.hook_id(event, target, new)
     for group in groups:
         if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
             continue
-        targets = {ident(group, old), ident(group, new)}
-        kept = []
-        for hook in group["hooks"]:
-            if ident(group, hook) == ident(group, old) and not found:
-                kept.append(new)
-                found = True
-            elif found and ident(group, hook) in targets:
-                continue
-            else:
-                kept.append(hook)
-        group["hooks"] = kept
+        group["hooks"] = [hook for i, hook in enumerate(group["hooks"])
+                          if (group is target and i == hi) or settings_merge.hook_id(event, group, hook) != want]
     groups[:] = [g for g in groups if not (isinstance(g, dict) and g.get("hooks") == [])]
-    return found
 
 
 def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
@@ -610,8 +599,7 @@ def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
             gone[0] = True
             return
         gi, hi = found
-        groups = data["hooks"][event]
-        _replace_hook(groups, event, groups[gi]["hooks"][hi], hook)
+        _replace_hook(data["hooks"][event], event, gi, hi, hook)
 
     _edit_json(path, bk, f"settings.json before regrouping hook {display_name(v.item)}", change)
     if gone[0]:
@@ -642,9 +630,14 @@ def record_global(v: Verdict, bk) -> Recorded:
             event, group, notes = _hook_group(v, bk)
             def change(data):
                 groups = data.setdefault("hooks", {}).setdefault(event, [])
-                if _replace_hook(groups, event, group["hooks"][0], group["hooks"][0]):
-                    return  # same identity already in the personal layer: replaced, not a second group
-                groups.append(group)
+                want = settings_merge.hook_id(event, group, group["hooks"][0])
+                slot = next(((gi, hi) for gi, g in enumerate(groups)
+                             if isinstance(g, dict) and isinstance(g.get("hooks"), list)
+                             for hi, h in enumerate(g["hooks"]) if settings_merge.hook_id(event, g, h) == want), None)
+                if slot is not None:  # same identity already in the personal layer: replaced, not a second group
+                    _replace_hook(groups, event, *slot, group["hooks"][0])
+                else:
+                    groups.append(group)
             _edit_json(_personal_settings(), bk, f"personal settings.json before recording hook {display_name(item)}", change)
             return Recorded(True, [f"hook {display_name(item)}: recorded in {_personal_settings()}", *notes],
                             lambda: _regroup_machine_hook(v, event, group, bk))
