@@ -539,12 +539,17 @@ def _portable_hook(hook: dict, bk, name: str, deferred: list | None = None) -> t
                                       f"next to it by hand)", *notes]
 
 
-def _find_hook(data: dict, event: str, matcher: str, command: str) -> tuple[int, int] | None:
+def _find_hook(data: dict, event: str, item: Item) -> tuple[int, int] | None:
+    """(group, hook) index of the first hook in `data` with the identity of the inventory item: its matcher
+    (normalised like settings_merge.hook_id), its command and, for an exec-form hook, its args."""
+    matcher = item.name[len(event) + 1:]
+    exec_form = "args" in item.extra
     for gi, group in enumerate((data.get("hooks") or {}).get(event) or []):
-        if not isinstance(group, dict) or group.get("matcher", "") != matcher:
+        if not isinstance(group, dict) or settings_merge.matcher_of(group) != matcher:
             continue
         for hi, hook in enumerate(group.get("hooks") or []):
-            if isinstance(hook, dict) and hook.get("command") == command:
+            if (isinstance(hook, dict) and hook.get("command") == item.detail and ("args" in hook) == exec_form
+                    and (not exec_form or hook["args"] == item.extra["args"])):
                 return gi, hi
     return None
 
@@ -552,9 +557,8 @@ def _find_hook(data: dict, event: str, matcher: str, command: str) -> tuple[int,
 def _hook_group(v: Verdict, bk) -> tuple[str, dict, list[str]]:
     """(event, single-hook group with a portable command, notes) for a hook verdict."""
     event = v.item.extra["event"]
-    matcher = v.item.name[len(event) + 1:]
     data = load_json(paths.claude_home() / "settings.json")
-    found = _find_hook(data, event, matcher, v.item.detail)
+    found = _find_hook(data, event, v.item)
     if found is None:
         raise Collision(f"hook {display_name(v.item)}: changed in ~/.claude/settings.json since the scan; run adopt again")
     gi, hi = found
@@ -588,13 +592,12 @@ def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
     """Replace the hook in ~/.claude/settings.json, in place in its group, by the recorded (portable) hook and
     record it in the snapshot as applied, so removing it from the personal layer removes it here too."""
     path = paths.claude_home() / "settings.json"
-    matcher = v.item.name[len(event) + 1:]
     hook = group["hooks"][0]
 
     gone = [False]
 
     def change(data):
-        found = _find_hook(data, event, matcher, v.item.detail)
+        found = _find_hook(data, event, v.item)
         if found is None:
             gone[0] = True
             return

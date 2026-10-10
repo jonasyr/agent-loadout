@@ -62,13 +62,19 @@ def _delete_path(d: dict, path: tuple) -> None:
 HookId = tuple  # (event, matcher, kind, value): see hook_id
 
 
+def matcher_of(group: dict) -> str:
+    """A group's matcher as part of a hook identity: a missing or null matcher equals "", a non-string one is
+    its JSON text."""
+    matcher = group.get("matcher", "")
+    return "" if matcher is None else matcher if isinstance(matcher, str) else json.dumps(matcher, sort_keys=True)
+
+
 def hook_id(event: str, group: Any, hook: Any) -> HookId | None:
     """Identity of one hook: event, matcher (a missing matcher equals ""), and its command; an exec-form hook
     (with `args`) is identified by its command plus the args list, any other hook by its whole dict."""
     if not isinstance(group, dict) or not isinstance(hook, dict):
         return None
-    matcher = group.get("matcher", "")
-    matcher = "" if matcher is None else matcher if isinstance(matcher, str) else json.dumps(matcher, sort_keys=True)
+    matcher = matcher_of(group)
     cmd = hook.get("command")
     if "args" in hook:
         return event, matcher, "exec", json.dumps([cmd, hook.get("args")], sort_keys=True)

@@ -93,3 +93,24 @@ def test_skipped_scope_keeps_applied_hooks_and_tombstones(skipped):
     assert snap == before
     after, snap = _step(after, {}, snap)  # removed from the personal layer: the applied hook goes
     assert _hooks(after) == [] and not _hooks(snap) and sm.TOMBSTONES not in snap
+
+
+def _hook_verdicts(name):
+    vs = inventory.classify(inventory.collect(with_versions=False))
+    return [v for v in vs if v.item.kind == "hook" and v.item.name == name]
+
+
+# exec-form hooks are found by identity (command plus args), not by command alone
+def test_adopting_the_second_exec_hook_records_the_second_one(machine):
+    A = {"type": "command", "command": "node", "args": ["/a.js"]}
+    B = {"type": "command", "command": "node", "args": ["/b.js"]}
+    s = S(); s["hooks"]["SubagentStop"] = [{"matcher": "x", "hooks": [A, B]}]; wS(s)
+    vs = _hook_verdicts("SubagentStop:x")
+    assert [v.item.detail for v in vs] == ["node", "node"], "displayed names and details stay as they were"
+    second = next(v for v in vs if v.item.extra.get("args") == ["/b.js"])
+    not_done: list = []
+    lines, _ = adopt.apply_own([(second, own.Choice("global"))], backup.Backup(), not_done=not_done)
+    assert not not_done, lines
+    assert _hooks(P()) == [B], "the second exec hook must be recorded, not the first"
+    assert [h for g in S()["hooks"]["SubagentStop"] for h in g["hooks"]] == [A, B]
+    assert B in _hooks(SNAP()) and A not in _hooks(SNAP()), "the second one is tracked as applied"

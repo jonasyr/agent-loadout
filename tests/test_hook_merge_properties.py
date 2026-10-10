@@ -247,7 +247,8 @@ class Run:
             hid = rnd.choice(users)
             event, matcher = hid[0], hid[1]
             hook = home.user_dict[hid]
-            item = Item("hook", f"{event}:{matcher}", hook["command"], "~/.claude/settings.json", {"event": event})
+            extra = {"event": event, **({"args": hook["args"]} if "args" in hook else {})}  # as inventory._hook_items
+            item = Item("hook", f"{event}:{matcher}", hook["command"], "~/.claude/settings.json", extra)
             before = (home.state(), _files())
             bk = self.bk()
             rec = own.record_global(Verdict(item, "own", "test"), bk)

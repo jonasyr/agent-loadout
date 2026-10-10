@@ -84,8 +84,11 @@ def _hook_items() -> list[Item]:
             for hi, hook in enumerate(group["hooks"]):
                 if not isinstance(hook, dict):
                     continue
+                extra = {"event": event, "group": gi, "hook": hi}
+                if "args" in hook:  # an exec-form hook: its identity is its command plus args
+                    extra["args"] = hook["args"]
                 out.append(Item("hook", f"{event}:{group.get('matcher', '')}", hook.get("command", ""),
-                                "~/.claude/settings.json", {"event": event, "group": gi, "hook": hi}))
+                                "~/.claude/settings.json", extra))
     return out
 
 
