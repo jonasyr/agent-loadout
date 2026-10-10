@@ -187,6 +187,10 @@ def _add_market(data: dict, name: str) -> None:
 
 def _secret_free(name: str, cfg: dict) -> tuple[dict, list[str]]:
     """The config with secrets as ${VAR}, plus the secrets.env lines to append. Refuses unfixable secrets."""
+    url = cfg.get("url")
+    if isinstance(url, str) and any(secrets.high_entropy(seg) for seg in urlsplit(url).path.split("/")):
+        raise Collision(f"mcp {name}: its URL path looks like it contains a token; "
+                        f"move it to {paths.secrets_file()} by hand first")
     found = secrets.scan({"mcpServers": {name: cfg}})
     blocked = [f for f in found if not f.fixable or "\n" in f.value or "\r" in f.value]
     if blocked:
@@ -201,16 +205,34 @@ def _refuse_if_secret(label: str, text: str) -> None:
         raise Collision(f"{label} looks like it contains a secret; move it to secrets.env and use ${{VAR}}, then try again")
 
 
+def _decode(data: bytes) -> str:
+    """Text of a file for the secret scan: UTF-16 with a UTF-16 BOM or when NUL bytes are over 30% of the
+    first 4 KB, else UTF-8 (binary files are scanned by their text runs)."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return data.decode("utf-16", errors="ignore")
+    head = data[:4096]
+    if head and head.count(0) / len(head) > 0.3:
+        big_endian = head[0::2].count(0) > head[1::2].count(0)
+        return data.decode("utf-16-be" if big_endian else "utf-16-le", errors="ignore").replace("\0", "\n")
+    return data.decode("utf-8", errors="ignore").replace("\0", "\n")
+
+
 def _scan_tree(src: Path, label: str) -> None:
-    """Fail closed: every regular file is scanned (binary files too, by their text runs); unreadable files refuse."""
+    """Fail closed: every regular file is scanned (binary files too, by their text runs); unreadable files,
+    private files (keys, credentials) and git checkouts refuse."""
     for f in sorted(src.rglob("*")):
+        rel = f.relative_to(src)
+        if ".git" in rel.parts:
+            raise Collision(f"skill {src.name} contains a git checkout (.git); copy it without .git first")
+        if secrets.private_path(rel):
+            raise Collision(f"skill {src.name} contains a private file ({rel}); not recorded")
         if f.is_symlink() or not f.is_file():
             continue  # symlinks are copied as links (symlinks=True), never their target's content
         try:
             data = f.read_bytes()
         except OSError:
-            raise Collision(f"{label} ({f.relative_to(src)}) could not be read, so it was not checked for secrets") from None
-        _refuse_if_secret(f"{label} ({f.relative_to(src)})", data.decode("utf-8", errors="ignore").replace("\0", "\n"))
+            raise Collision(f"{label} ({rel}) could not be read, so it was not checked for secrets") from None
+        _refuse_if_secret(f"{label} ({rel})", _decode(data))
 
 
 def _same_tree(a: Path, b: Path) -> bool:
@@ -361,7 +383,7 @@ def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
     if _SHELL_META.search(cmd.replace(raw, "", 1)):
         _refuse_if_secret("hook command", cmd)
         return hook, [COMPLEX_NOTE]
-    _refuse_if_secret(f"hook script {p.name}", p.read_text(errors="ignore"))
+    _refuse_if_secret(f"hook script {p.name}", _decode(p.read_bytes()))
     dest = paths.personal_root() / "hooks" / p.name
     if dest.exists() and not filecmp.cmp(dest, p, shallow=False):
         raise Collision(f"hook script {p.name} already exists in {dest.parent} with different content")

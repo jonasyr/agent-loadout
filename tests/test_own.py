@@ -672,3 +672,60 @@ def test_hook_simple_command_still_copied(machine, cmd, want):
     assert rec.ok and (paths.personal_root() / "hooks/x.sh").exists()
     got = json.loads((paths.personal_root() / "settings.json").read_text())["hooks"]["Notification"][0]["hooks"][0]["command"]
     assert got == want
+
+
+@pytest.mark.parametrize("fname,content", [
+    ("deploy.pem", PEM), (".netrc", "machine h login u password x"), ("sub/.env", "A=1"), ("id_ed25519", "x"),
+    (".aws/config", "[default]"), ("vault.kdbx", "x"), ("credentials.json", "{}"),
+])
+def test_skill_private_file_refused(machine, fname, content):
+    f = machine / ".claude/skills/my-skill" / fname
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(content)
+    rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
+    assert not rec.ok and "private file" in rec.lines[0]
+    assert not (paths.personal_root() / "skills/my-skill").exists()
+
+
+def test_skill_yaml_secret_refused(machine):
+    (machine / ".claude/skills/my-skill/config.yaml").write_text("api_key: Zx9" + "q" * 30 + "\npassword: hunter2hunter2\n")
+    rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0] and "hunter2" not in _personal_text()
+
+
+@pytest.mark.parametrize("as_dir", [True, False])
+def test_skill_git_checkout_refused(machine, as_dir):
+    git = machine / ".claude/skills/my-skill/.git"
+    if as_dir:
+        (git / "objects").mkdir(parents=True)
+    else:
+        git.write_text("gitdir: /elsewhere\n")
+    rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
+    assert not rec.ok and "skill my-skill contains a git checkout (.git); copy it without .git first" in rec.lines[0]
+
+
+@pytest.mark.parametrize("encoding", ["utf-16", "utf-16-le", "utf-16-be"])
+def test_skill_utf16_secret_refused(machine, encoding):
+    (machine / ".claude/skills/my-skill/setup.ps1").write_bytes(('$env:GH="' + GHP + '"\r\n').encode(encoding))
+    rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+
+
+def test_hook_utf16_script_secret_refused(machine):
+    script = machine / "bin/s.ps1"
+    script.parent.mkdir()
+    script.write_bytes(('$env:GH="' + GHP + '"\r\n').encode("utf-16"))
+    _set_hook(machine, "Notification", f"pwsh -File {script}")
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0] and _personal_empty()
+
+
+@pytest.mark.parametrize("scope", ["global", "project"])
+def test_mcp_url_path_token_refused(machine, fake_runner, scope):
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["mcpServers"]["zz"] = {"type": "http", "url": "https://mcp.example.com/u/0123456789abcdef0123456789abcdef/sse"}
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+    v = _as_own("mcp", "zz")
+    rec = own.record_global(v, backup.Backup()) if scope == "global" else own.record_project(v, "mine", backup.Backup())
+    assert not rec.ok and "0123456789abcdef" not in " ".join(rec.lines)
+    assert "0123456789abcdef0123456789abcdef" not in _personal_text()
