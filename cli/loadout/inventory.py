@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from . import catalog, paths, runner, versions
+from . import catalog, paths, runner, settings_merge, versions
 from .jsonio import load_json
 
 
@@ -84,10 +84,10 @@ def _hook_items() -> list[Item]:
             for hi, hook in enumerate(group["hooks"]):
                 if not isinstance(hook, dict):
                     continue
-                extra = {"event": event, "group": gi, "hook": hi}
+                extra = {"event": event, "group": gi, "hook": hi}  # a null matcher is named like a missing one
                 if "args" in hook:  # an exec-form hook: its identity is its command plus args
                     extra["args"] = hook["args"]
-                out.append(Item("hook", f"{event}:{group.get('matcher', '')}", hook.get("command", ""),
+                out.append(Item("hook", f"{event}:{settings_merge.matcher_of(group)}", hook.get("command", ""),
                                 "~/.claude/settings.json", extra))
     return out
 

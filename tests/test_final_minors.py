@@ -114,3 +114,29 @@ def test_adopting_the_second_exec_hook_records_the_second_one(machine):
     assert _hooks(P()) == [B], "the second exec hook must be recorded, not the first"
     assert [h for g in S()["hooks"]["SubagentStop"] for h in g["hooks"]] == [A, B]
     assert B in _hooks(SNAP()) and A not in _hooks(SNAP()), "the second one is tracked as applied"
+
+
+def _merge():
+    bk = backup.Backup()
+    sm.backup_snapshot(bk)
+    sm.apply_settings()
+    first = S(), SNAP()
+    sm.apply_settings()
+    assert (S(), SNAP()) == first, "a second merge changed something"
+
+
+# a group with "matcher": null reads like a missing matcher: name `Stop:`, adoptable, merged without a duplicate
+def test_null_matcher_hook_is_named_without_matcher_and_can_be_adopted(machine):
+    s = S(); s["hooks"]["SubagentStop"] = [{"matcher": None, "hooks": [LINT]}]; wS(s)
+    assert not _hook_verdicts("SubagentStop:None")
+    v, = _hook_verdicts("SubagentStop:")
+    assert own.display_name(v.item) == "SubagentStop (no matcher)"
+    not_done: list = []
+    lines, _ = adopt.apply_own([(v, own.Choice("global"))], backup.Backup(), not_done=not_done)
+    assert not not_done, lines
+    assert _hooks(P()) == [LINT]
+    _merge()
+    assert [h for g in S()["hooks"]["SubagentStop"] for h in g["hooks"]] == [LINT], "no duplicate after the merge"
+    assert LINT in _hooks(SNAP())
+    wP({}); _merge()
+    assert "SubagentStop" not in S()["hooks"], "tracked: removing it from the personal layer removes it here"
