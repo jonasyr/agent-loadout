@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: execution-advisor-hybrid
+description: >-
+  A seven-task plan: Tasks 1-4 are coupled and risky (in-place migration of the user's
+  database, a new Store API the later tasks call, an irreversible purge, an importer that
+  must not half-import), Tasks 5-7 are independent text edits with the complete content
+  given. The advisor must give the risky tasks a per-task review and handle the mechanical
+  tasks cheaply (inline with only the final review, or delegated to the cheap tier), never
+  with a per-task review, the top tier or SDD by default.
+tags: [execution-advisor]
+context:
+  scaffold_script: scaffold.sh

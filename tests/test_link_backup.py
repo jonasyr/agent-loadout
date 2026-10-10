@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 
@@ -316,3 +317,21 @@ def test_link_bin_writes_shims_on_windows(fake_home, monkeypatch):
     out = link.link_bin(backup.Backup())
     assert out and "shims" in out[0]
     assert (fake_home / ".local/bin/loadout.cmd").exists()
+
+
+def test_links_personal_skills_pointers_and_hooks(fake_home):
+    from loadout import backup, link, paths
+    personal = paths.personal_root()
+    (personal / "rules").mkdir(parents=True)
+    (personal / "skills/notes").mkdir(parents=True)
+    (personal / "skills/notes/SKILL.md").write_text("x")
+    (personal / "hooks").mkdir()
+    shared = fake_home / "shared/omarchy"
+    shared.mkdir(parents=True)
+    (personal / "skills.json").write_text(json.dumps({"omarchy": str(shared), "gone": str(fake_home / "nope")}))
+    link.link_all(backup.Backup())
+    skills = fake_home / ".claude/skills"
+    assert (skills / "notes/SKILL.md").read_text() == "x"
+    assert (skills / "omarchy").resolve() == shared.resolve()
+    assert not (skills / "gone").exists()
+    assert (fake_home / ".claude/hooks/personal").resolve() == (personal / "hooks").resolve()

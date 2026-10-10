@@ -26,3 +26,9 @@ def test_hidden_commands_still_parse(fake_home, monkeypatch):
 def test_configure_help_shows_examples(capsys):
     out = _help(["configure", "--help"], capsys)
     assert "loadout configure set plugin" in out and "--first-run" in out
+
+
+def test_adopt_help_mentions_own(capsys):
+    out = _help(["adopt", "--help"], capsys)
+    flat = " ".join(out.split())
+    assert "--own" in flat and "your own tools stay as they are" in flat

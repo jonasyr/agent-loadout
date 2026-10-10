@@ -26,7 +26,7 @@ Bootstrap asks a few questions along the way:
 
 - **Personal layer:** paste the git URL of your own personal repo to clone it, or leave empty to create a starter one (it asks four short questions about you, then the [working preferences](#your-personal-layer)).
 - **Preferences and add-ons:** optionally run the configure wizard.
-- **Existing setup:** reviews your current tools (`loadout adopt`): it offers to remove superseded or duplicate tools, disable per-project tools globally, and move plaintext secrets into `secrets.env`, with a backup first and a final "Apply N changes?" question. Binary updates and installs (which run package-manager or installer commands) are never pre-selected; each command is shown and confirmed.
+- **Existing setup:** reviews your current tools (`loadout adopt`): it offers to remove superseded or duplicate tools, disable per-project tools globally, and move plaintext secrets into `secrets.env`, and asks what to do with tools loadout does not manage: record them globally (they follow you to every machine), put them in a personal profile for some repos, leave them on this machine, or remove them. Without an answer they stay as they are. A backup comes first, and a final "Apply N changes?" question. Binary updates and installs (which run package-manager or installer commands) are never pre-selected; each command is shown and confirmed.
 
 Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input) bootstrap never changes your existing setup: it skips adopt and the configure prompt and tells you so. Pass `--yes` to accept the safe defaults instead.
 
@@ -66,7 +66,7 @@ If `loadout: command not found`, see [Troubleshooting](#troubleshooting).
 | Add a domain tool to one repo | `loadout profile thesis` (also: `web`, `db`, `sonar`, `android`) |
 | Fix outdated or wrong docs in a repo | `/loadout:docs-audit` (thorough; asks when something is unclear) |
 | Keep docs current after a feature | `/loadout:docs-sync` |
-| Understand why docs are structured this way | Read [Documentation strategy](docs/documentation-strategy.md) |
+| Decide how to run a finished plan (inline, subagents or a mix) | `/loadout:execution-advisor` (offered automatically after a plan is written) |
 | Update tool binaries | `loadout update` |
 | Re-apply settings after editing your personal layer by hand | `loadout apply-settings` |
 | Check that everything is healthy | `loadout check` |
@@ -78,9 +78,10 @@ Run `loadout <command> --help` for details.
 | Command | What it does | Options |
 |---|---|---|
 | `loadout bootstrap` | Set up or repair this machine (safe to re-run) | `--install` install missing tools, `--yes` accept defaults (never binary updates), `--no-plugins`, `--no-adopt` |
-| `loadout adopt` | Review an existing setup. Dry run unless `--apply`; without a terminal, `--apply` needs `--yes` or `--groups` (otherwise exit code 2) | `--apply`, `--groups remove,migrate`, `--skip NAME,...`, `--yes`, `--no-versions` |
+| `loadout adopt` | Review an existing setup. Dry run unless `--apply`; without a terminal, `--apply` needs `--yes`, `--groups` or `--own` (otherwise exit code 2) | `--apply`, `--groups remove,migrate` (not `own`), `--skip NAME,...` (this run only), `--yes`, `--own NAME=CHOICE,...` (your own tools, see [Your own tools](#your-own-tools)), `--no-versions` |
 | `loadout restore DIR` | Undo a backup. Whatever it replaces goes into a new backup, so a restore can be undone too | `--list` (newest first), `--force` (replay an already restored backup) |
 | `loadout configure` | Wizard for preferences and add-ons | `show` (lists each add-on's and preference's id); `prefs` (only the working-preference questions); `set plugin ID on\|off`; `set mcp ID-or-server-name on\|off`; `set pref-choice ID OPTION`; `set pref KEY JSON`; `--first-run` (ask the "about you" questions again) |
+| `loadout configure own` / `configure set own NAME CHOICE` | List the tools loadout does not manage (`--all` adds the ones you left on this machine), or decide one: `global`, `project:<profile>`, `leave`, `remove`. Exit 2 for bad input, 1 when an item was not recorded, or recorded but not active on this machine (see the `skipped:`/`failed:` line) | `--all` |
 | `loadout init [PROFILE...]` | Prepare the current project (AGENTS.md, CLAUDE.md, docs/, .gitignore entries, profiles) | `--yes`, `--no-install`, `--dry-run` |
 | `loadout profile NAME` | Add one profile to the current project | `--no-install` |
 | `loadout check` | Verify this machine | none |
@@ -93,13 +94,15 @@ Run `loadout <command> --help` for details.
 
 | Plugin | What it does for you |
 |---|---|
-| loadout | Code-navigation servers (Serena, codebase-memory), tool hooks, the onboard/configure/docs skills, update notices |
+| loadout | Code-navigation servers (Serena, codebase-memory), tool hooks, the onboard/configure/docs/execution-advisor skills, update notices |
 | superpowers | A disciplined workflow: brainstorm, plan, test-driven build, verify |
 | frontend-design, impeccable | Distinctive UI, then audit and polish it |
 | security-guidance | Warns about security mistakes while code is written, and reviews each `git commit`. The per-turn Opus diff review is off by default (`ENABLE_STOP_REVIEW=0`, to save usage) — set it to `"1"` under `env` in your personal settings.json to turn it on |
 | pyright-lsp, typescript-lsp, rust-analyzer-lsp | Claude sees type errors right after each edit |
 | context7, microsoft-docs | Up-to-date library documentation instead of outdated training data |
 | commit-commands, claude-md-management | Commits and PRs; keeping CLAUDE.md/AGENTS.md healthy |
+
+**After a plan.** When superpowers writes an implementation plan (`docs/superpowers/plans/*.md`), Claude runs `/loadout:execution-advisor` in the same turn instead of asking the planner's own execution question; if it forgets, a plugin hook asks it once for that plan, and the advisor's answer then explicitly replaces the planner's. The advisor judges each task (complete code in the plan, coupling, risk, steps that need you, size, context, cost) and recommends Inline, subagent-driven or a Hybrid with a per-task table of mode, model tier and review, instead of defaulting to subagents, with a cost class and review policy. You confirm before anything runs. Hybrid runs under superpowers:executing-plans, with delegated tasks dispatched to subagents and one shared `progress.md` ledger.
 
 **Command-line tools** (installed by `--install` where possible): `serena`, `codebase-memory-mcp`, `playwright-cli` (Claude checks UIs in a real browser), `rtk` (shrinks noisy command output to save tokens), and the language servers `pyright`, `typescript-language-server`, `rust-analyzer`.
 
@@ -126,11 +129,138 @@ Your preferences live in `~/.config/loadout/personal` (or wherever `LOADOUT_PERS
 | `rules/me.md` | Who you are and how you like to work; loaded in every session |
 | `settings.json` | Your overrides, e.g. `"effortLevel": "high"` or `"enabledPlugins": {"impeccable@impeccable": false}` |
 | `mcp.json` | Extra MCP servers you want everywhere |
+| `skills/<name>/`, `skills.json`, `hooks/` | Skills and hook scripts you recorded as global (see [Your own tools](#your-own-tools)) |
 | `profiles/*.json` | Your own project presets |
+| `profiles/skills/<name>/` | Skills used by your profiles; copied into a repo by `loadout profile` |
 
-**Working preferences** are a fixed set of questions defined in the kit's [`preferences.json`](preferences.json): answer language, commit style, AI attribution in commits/PRs, answer style, destructive actions, effort level, extended thinking, agent push notifications, the auto mode trust environment, and the language of commits and docs. `loadout configure prefs` asks them (Enter keeps the current answer), `loadout configure set pref-choice ID OPTION` sets one, and `loadout configure show` lists them. Answers go only into your personal layer: text answers into a block of `rules/me.md` between `<!-- loadout:preferences:start -->` and `<!-- loadout:preferences:end -->` (everything outside it is yours and never touched), the others into `settings.json`. Existing answers are recognised, including matching lines you already wrote in `me.md` (moved into the block, with a backup) and values in your existing `~/.claude/settings.json`, so re-running changes nothing you already decided. A first run (bootstrap's starter layer, `configure --first-run`) starts unanswered questions at the recommended defaults; without a terminal it takes them silently. The auto mode environment is drafted from the git remotes under your code folder (default `~/Documents/Code`); you pick which owners are yours, see the full draft and must confirm it, and it is skipped without a terminal.
+**Working preferences** are a fixed set of questions defined in the kit's [`preferences.json`](preferences.json): answer language, commit style, AI attribution in commits/PRs, answer style, destructive actions, effort level, extended thinking, agent push notifications, the auto mode trust environment, and the language of commits and docs. `loadout configure prefs` asks them (Enter keeps the current answer), `loadout configure set pref-choice ID OPTION` sets one, and `loadout configure show` lists them.
 
-You rarely edit these by hand: `loadout configure` does it for you. **To sync them across machines, make the folder a private git repo**; loadout pulls it daily and offers to commit and push after `loadout configure` (not while a `*.env` file would be committed: secrets belong in `~/.config/loadout/secrets.env`).
+- Answers go only into your personal layer: text answers as lines in a block of `rules/me.md` between `<!-- loadout:preferences:start -->` and `<!-- loadout:preferences:end -->`, the others into `settings.json` (AI attribution goes into both).
+- Your own lines in `me.md` are read to recognise answers you already gave (e.g. a "Language: …" line), but never moved or rewritten. When you change an answer that one of your lines also states, loadout names that line and, in a terminal, offers to remove it (with a backup). Only a line that is exactly one of the kit's own preference lines moves into the block, and only when the block is written anyway.
+- Values in your existing `~/.claude/settings.json` count as answers too, so re-running changes nothing you already decided. If something there, a legacy `includeCoAuthoredBy`, or one of your `me.md` lines (e.g. "never add Co-Authored-By") still contradicts a choice, loadout names it instead of claiming success.
+- A first run (bootstrap's starter layer, `configure --first-run`) starts unanswered questions at the recommended defaults; without a terminal it takes them silently.
+- The auto mode environment is drafted from the git remotes under your code folder (default `~/Documents/Code`). You choose which owners are yours (nothing is preselected when several are equally common), see the full draft, and must confirm it; it replaces an existing personal `autoMode.environment` and is skipped without a terminal.
+
+You rarely edit these by hand: `loadout configure` does it for you. **To sync them across machines, make the folder a private git repo**; loadout pulls it daily and offers to commit and push after `loadout configure` (not while a `*.env` file or another private file, see [Secret guard](#secret-guard), would be committed: secrets belong in `~/.config/loadout/secrets.env`).
+
+### Your own tools
+
+`loadout adopt` looks at every user-scope plugin, marketplace, MCP server (`~/.claude.json`, `~/.claude/.mcp.json`), skill (`~/.claude/skills`) and hook (`~/.claude/settings.json`). What the catalog does not know is listed under **YOUR OWN TOOLS**. Items already in your personal layer show as keep, and so does a plugin that a personal profile holds while it is disabled globally. Project-level config is not inspected.
+
+#### Choices
+
+| Choice | Meaning |
+|---|---|
+| `global` | Record it in your personal layer, so it follows you to every machine. |
+| `project:<profile>` | Disable or remove it on this machine and write it into a personal profile (`profiles/<profile>.json`). Apply that profile to a repo with `loadout profile <profile>`. |
+| `leave` | Stay as is, on this machine only. Not asked again here. |
+| `remove` | Remove it. It goes into a backup and `loadout restore` brings it back. |
+
+Nothing changes without an answer. In a terminal adopt asks once, `your own tools: [l]eave all / [c]hoose each`. Enter decides nothing. After `c` it asks per item, and Enter (or three invalid answers) skips that item. Only an explicit `leave` is remembered, in `~/.claude/.loadout/own-decisions.json`, which is local to this machine. `--yes` and runs without a terminal decide nothing and remember nothing. `--skip NAME,...` skips items for one run and remembers nothing.
+
+Catalog plugins that adopt would disable globally accept `global` ("keep global"): pick the group (`p`), then `k` for that plugin. Not every choice fits every item: marketplaces and skills that are links to a shared source cannot go into a profile, and servers in `~/.claude/.mcp.json` can only be left or removed. The prompt and `loadout configure own` list only what applies.
+
+A profile name that matches a kit profile (for example `db`) starts as a copy of that kit profile and replaces it for you. Later changes to the kit profile no longer reach you. Adopt prints a note when this happens.
+
+After `project` choices, interactive adopt offers to apply the profile to repos. The default is none. It suggests repos known to Claude Code (`~/.claude.json`) whose project config mentions the item, or you type paths. Applying a profile is the same as running `loadout profile` in that repo: it writes the repo's committed `.claude/settings.json` and `.mcp.json`, and `loadout restore` does not undo it. `--own` never applies profiles to repos.
+
+When something was recorded or removed, adopt and `configure set own` end with "Restart Claude Code (or run /reload-plugins) to load the changes."
+
+**Be asked again about a left item.** Choose another answer with `loadout configure set own NAME CHOICE`, or delete its entry (or the whole file) in `~/.claude/.loadout/own-decisions.json`. `loadout configure own --all` lists the left items too.
+
+#### Without a terminal
+
+```bash
+loadout adopt --apply --own "foo@bar=global,my-db=project:mydb,notes=leave"
+loadout configure set own foo@bar global
+```
+
+Items not named stay as they are. `--groups own` is refused (exit code 1); use `--own`. Names are as `loadout configure own` prints them:
+
+- If a name matches several kinds, write `<kind>:<name>`.
+- A hook is `<Event>:<matcher>`, and `Stop:` when it has no matcher. When several hooks share that name, add `#n` (`PreToolUse:Bash#2`), counted in the order `loadout configure own --all` lists them. Result lines show a hook without matcher as `hook Stop (no matcher)`.
+- A name containing a comma (a hook matcher such as `Bash,Edit`) cannot be given here. Choose it in the interactive prompt.
+
+Exit codes:
+
+| Command | Code | Meaning |
+|---|---|---|
+| `adopt --apply --own` | 2 | An unknown or duplicate name, a bad choice, or a name that needs `<kind>:` or `#n`. Nothing changed. |
+| `adopt --apply` | 2 | No terminal and none of `--yes`, `--groups` or `--own`. Nothing changed. |
+| `configure set own` | 2 | The same bad input as above. Nothing changed. |
+| `configure set own`, `adopt --apply --own` | 1 | At least one named item was not recorded, or recorded but not active on this machine (see the `skipped:`/`failed:` line). A removal that did not happen says `skipped (...)` or `not removed`. The other items were applied. |
+
+#### Where each choice writes
+
+Global, in your personal layer:
+
+| Kind | Personal layer | This machine |
+|---|---|---|
+| Plugin | `settings.json`: `enabledPlugins`, plus the marketplace in `extraKnownMarketplaces` | unchanged |
+| Marketplace | `settings.json`: `extraKnownMarketplaces` | unchanged |
+| MCP server | `mcp.json`, secrets rewritten to `${VAR}` and moved to `secrets.env` | the server is re-added with the `${VAR}` config and managed by loadout |
+| Skill (folder) | copied to `skills/<name>/` | replaced by a link to the copy; the original goes into the backup |
+| Skill (link to a shared source) | a pointer in `skills.json` | unchanged |
+| Hook | `settings.json`: `hooks`; for a simple command the script is copied to `hooks/` (see [Hooks](#hooks)) | exactly that hook is replaced in place, in its group, by the recorded hook and tracked as applied by loadout (also a hook you re-added by hand after deleting it, whose remembered deletion is cleared), so it does not run twice and removing it from the personal layer later removes it here too. A hook with the same identity already in the personal layer is replaced in its slot, not added a second time |
+
+With `project`, the item goes into a personal profile instead (`profiles/<name>.json`; skills into `profiles/skills/<name>/`) and is disabled (plugins) or removed (MCP servers, skills, hooks) from your global setup. A removed skill reads `skill <name>: removed from ~/.claude/skills (kept in profile <p>; original in the backup)`. `loadout profile` copies a profile's skills into a repo and never overwrites an existing one.
+
+#### Sync to other machines
+
+`global` and `project` choices reach another machine only when your personal layer is a git repo and you commit and push. The other machine pulls it daily (see [Staying up to date](#staying-up-to-date)).
+
+- Interactive adopt offers this at the end, when you chose anything other than `leave`. It shows the changes (the `git status --short` layout) and asks `commit and push your personal layer? [y/N]`. It refuses, without asking, when a private file would be committed.
+- After `--own` or `configure set own` nothing is committed. Run it yourself:
+
+```bash
+cd ~/.config/loadout/personal      # or $LOADOUT_PERSONAL
+git status --short
+git add -A && git commit -m "chore: record own tools" && git push
+```
+
+`leave` decisions stay on the machine where you made them.
+
+On the second machine, after the daily pull, loadout links the pulled skills and hook scripts by itself (`~/.claude/skills/<name>`, `~/.claude/hooks/personal`) and merges the hooks. Plugins install at the next Claude Code start. Pulling is skipped while the personal layer has uncommitted changes, or when `LOADOUT_NO_AUTO_PULL=1` is set.
+
+#### Secret guard
+
+Nothing that looks like a secret is written to the personal layer. Every printed line is redacted too.
+
+- **MCP servers:** values in `env` and `headers` become `${VAR}` and move to `secrets.env`. A secret in `args`, in the URL (query string or a high-entropy path segment) or in a multi-line value is refused, because it cannot be moved safely.
+- **Marketplaces:** a source URL with credentials or a token is refused.
+- **Hooks and skills:** a hook command, args, script or any skill file that looks secret is refused. All skill files are scanned, binary ones by their text runs; a file with a UTF-16 byte-order mark or any NUL byte is scanned as UTF-8 and as UTF-16 (LE and BE). An unreadable file refuses too.
+- **Private files:** a skill that contains one of these, and a hook that names one anywhere in its command, is refused: `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube`, `.docker` and `.password-store` folders, `~/.config/gh`, `~/.claude.json`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*`, `.env`, `.env.*` (except `.env.example`, `.env.sample` and `.env.template`), `.netrc`, `.npmrc`, `.pypirc`, `credentials`, `credentials.json`, `credentials.csv`, `.git-credentials`, `.vault-token` and `*.kdbx`. The commit offer refuses the same files.
+- **Git checkouts:** a skill that contains a `.git` folder or file is refused. Copy it without `.git`.
+
+A refusal prints `skipped: ...` and changes nothing for that item. Move the secret to `secrets.env`, use `${VAR}`, then run it again.
+
+#### Hooks
+
+- Only a simple command of the form `<interpreter> <script> args` gets its script copied. That is one file, copied to `<personal>/hooks/<file>`, and the command points to `$HOME/.claude/hooks/personal/<file>`. Files the script reads next to it must be copied by hand.
+- A complex shell command (`;`, `&&`, pipes, redirects, `$(...)`, globs and similar), a hook in exec form (`args`), and a path outside your home folder are recorded as they are, with a note. They work only where their paths exist. Files under `/usr`, `/bin`, `/sbin`, `/opt/homebrew` and `/usr/local` (an interpreter, for example) do not trigger the "outside your home folder" note.
+- A hook that refers to a private file is refused.
+- Values of interpreter flags (`node --require X`, `python -X opt`, `bash -o opt`, `env -u VAR`) are not taken for the script; such a file under your home folder gets a note. Inline code (`-c`, `-e`, `-m`, `env -S`) is recorded as is with the complex-command note.
+
+#### Known limits
+
+- Windows: Claude Code runs hook commands through Git Bash, so a hook's script path must use forward slashes (`C:/Users/me/x.sh`) or quotes for loadout to recognise and copy the script; an unquoted backslash path is recorded as is (Git Bash would misread it too). Script detection is tested on Linux and macOS.
+- An MCP server is managed by loadout only if it is in `managed-mcp.json` or its config in `~/.claude.json` is identical to the personal one; otherwise loadout leaves your server alone. Recording through adopt seeds `managed-mcp.json`.
+- A profile is copied into a repo when applied. Later changes to the personal profile do not reach repos until you apply it again, and skill copies in a repo can drift from your personal layer.
+- A skill recorded as a pointer to a shared source is linked only on machines where that source exists.
+- Hooks are merged one hook at a time, not per group. A hook's identity is its event, its matcher (no matcher is the same as `""`) and its command (for a hook in exec form: command plus `args`). For each identity:
+  - In the personal layer but not in `settings.json`: added to the first group with the same event and matcher, or as a new group.
+  - You deleted a hook loadout applied: it stays deleted for as long as it is in the personal layer. loadout remembers the deletion in its snapshot (`loadoutDeletedHooks` in `~/.claude/.loadout/managed-settings.json`) and does not add it back, also not after a later change in the personal layer. Once the hook leaves the personal layer, the deletion is forgotten; if it comes back later, it is added again. Changing the matcher of an applied hook (say `Edit` to `Edit|Write`) counts as deleting it and adding your own hook. If you add the same hook again by hand, that copy is yours.
+  - In both: never added twice. If loadout applied it, you did not touch it in `settings.json`, and it changed in the personal layer (such as `timeout`), it is updated in place, wherever it sits. If loadout never applied it there (another machine, or added by hand), it is your own copy: loadout leaves it alone and a removal from the personal layer keeps it.
+  - **Once you edit a hook loadout applied, it is yours.** loadout no longer updates it when the personal layer changes, and does not remove it when it leaves the personal layer; it drops the hook from its snapshot. (An edit that makes the hook equal to the personal layer's version counts as in sync, not as yours.)
+  - Applied by loadout, unchanged, and gone from the personal layer: removed; a group left empty goes too.
+  - Hooks loadout never applied are never touched, and an event whose value is not a list is left exactly as it is. Two personal-layer entries with the same identity count once (the last wins).
+- On the machine where you recorded a hook, adopt replaces exactly that hook in place and tracks it as applied (clearing a remembered deletion of it), so a later removal from the personal layer removes it there too. Other copies with the same identity are dropped; the same command under another matcher is another hook and stays. Duplicates elsewhere in `settings.json` are not cleaned up.
+- If removing an item from this machine fails (a `failed:` line), it shows up under your own tools again next time. Fix the cause and choose again.
+- An older loadout stored a leave decision for a `~/.claude/.mcp.json` server under the plain server name, so it also hides a user-scope server of the same name. Deciding the `.mcp.json` server again replaces it, and the user-scope one is then asked about again.
+- Backups made before this version do not hold the managed-settings snapshot. Restoring one after a global hook or plugin choice can let the next settings merge drop the restored value again; check `~/.claude/settings.json` afterwards. Backups made by adopt (own tools) and bootstrap from now on include the snapshot.
+- `configure`, `apply-settings` and the daily maintenance rewrite that snapshot without a backup.
+- Scanning a skill takes roughly 2 seconds per MB, so very large skill files slow the run down.
+- Hooks in project settings files and `leave` decisions on other machines are out of scope.
 
 ## Staying up to date
 
@@ -171,7 +301,7 @@ DATABASE_URL='postgres://readonly:password@localhost/app'
 
 Write values in single quotes; a `'` inside a value is written as `'\''`. That way the shell never runs or mangles part of a value. Bootstrap adds a line to your shell startup file (the one for your `$SHELL`, plus an existing `.bashrc`/`.zshrc`; on Windows both the Windows PowerShell and PowerShell 7 profiles) that loads this file. MCP configs reference values as `${DATABASE_URL}`.
 
-`loadout adopt` finds keys sitting in plain text and never prints them. Secrets in user-scope MCP servers in `~/.claude.json` can be moved to `secrets.env` automatically; it also reports (for you to move by hand) secrets in project-scoped servers, `~/.claude/.mcp.json`, your personal `mcp.json`, the `env` block of `~/.claude/settings.json`, and URL query strings.
+`loadout adopt` finds keys sitting in plain text and never prints them. Secrets in user-scope MCP servers in `~/.claude.json` can be moved to `secrets.env` automatically; it also reports (for you to move by hand) secrets in project-scoped servers, `~/.claude/.mcp.json`, your personal `mcp.json`, the `env` block of `~/.claude/settings.json`, and URL query strings. Recording your own tools into the personal layer applies a stricter guard, see [Secret guard](#secret-guard).
 
 Secrets loaded by your shell only reach Claude Code started from that shell. On Windows, if PowerShell's execution policy is `Restricted`, profiles do not run; bootstrap prints the command to allow them (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`) but does not change it.
 
@@ -186,15 +316,21 @@ Secrets loaded by your shell only reach Claude Code started from that shell. On 
 | "settings drift" warning | Something changed a kit-managed value. Run `loadout apply-settings`, or put your preferred value in your personal `settings.json` |
 | Windows: links were copied instead of linked | Enable Developer Mode (Settings, For developers) and re-run bootstrap, which switches back to links; copies still work and are refreshed after each daily sync. Edit the source in your personal layer, not the copy: an edited copy is moved into a backup on the next refresh (the session notice names it) |
 | Something went wrong after adopt | `loadout restore <backup path printed by adopt>` (`loadout restore --list` shows all backups) |
-| `adopt --apply` exits with code 2 | It was run without a terminal. Add `--yes` (safe defaults) or `--groups remove,migrate,...` |
+| `adopt --apply` exits with code 2 | Either it was run without a terminal: add `--yes` (safe defaults), `--groups remove,migrate,...` or `--own NAME=CHOICE,...`. Or the `--own` input was wrong: the message names the problem and nothing changed |
+| `loadout: no unmanaged item named 'X' (see: loadout configure own --all)` | Use the name exactly as `loadout configure own --all` prints it. A hook is `Event:matcher` (`Stop:` without matcher) |
+| `hook 'X' matches N hooks; pick one: ...` or `'X' matches several kinds` | Add `#n` to the hook name as the message shows, or write `<kind>:<name>` |
+| `loadout configure set own` exits with code 1 and prints `skipped:` or `failed:` | Nothing was recorded for that item. The line says why. Typical causes: a secret or private file (see [Secret guard](#secret-guard)), a name that already exists in your personal layer with different content, or a file that could not be written. Fix it and run the command again |
+| I left a tool and want to be asked about it again | `loadout configure own --all` lists the left ones. Decide again with `loadout configure set own NAME CHOICE`, or delete its entry in `~/.claude/.loadout/own-decisions.json` to be asked again |
+| `loadout check` warns "own tools" | Some tools are not managed by loadout. Decide with `loadout adopt --apply` or `loadout configure own` |
+| A global skill or hook script is missing on another machine | Commit and push the personal layer on the first machine. The other machine links them after its daily pull (or `loadout bootstrap`) |
 | Windows: "cannot take JSON arguments (Windows .cmd shim)" | The npm-installed `claude.cmd` cannot receive JSON safely, so loadout changes nothing. Best fix: install the native `claude.exe` and re-run. Otherwise open the private `manual-commands.txt` (path printed): with Claude Code closed, add the JSON block it shows under `"mcpServers"` in `%USERPROFILE%\.claude.json` (the file also has the macOS/Linux shell form) |
 | A required tool is missing | Re-run `./bootstrap.sh --install`; `loadout check` shows manual install steps for what it cannot install |
 
 ## FAQ
 
-**Will it delete my stuff?** No. Anything it removes or replaces is moved into `~/.claude/backups/loadout-<timestamp>`, and `loadout restore` puts it back. Restore itself moves whatever it replaces into a new backup first, and files loadout created (such as a new `me.md` or `secrets.env`) are moved aside, not deleted. Plugins are uninstalled with `--keep-data`. Tools it does not know are left alone. Restore undoes what loadout removed or replaced; it does not take back additions such as the rules links, the secrets line appended to an existing shell rc file or the kit's keys in `settings.json` (see Uninstall for those).
+**Will it delete my stuff?** No. Anything it removes or replaces is moved into `~/.claude/backups/loadout-<timestamp>`, and `loadout restore` puts it back. Restore itself moves whatever it replaces into a new backup first, and files loadout created (such as a new `me.md` or `secrets.env`) are moved aside, not deleted. Plugins are uninstalled with `--keep-data`. Tools it does not know are left alone unless you choose otherwise under [Your own tools](#your-own-tools). Restore undoes what loadout removed or replaced; it does not take back additions such as the rules links, the secrets line appended to an existing shell rc file or the kit's keys in `settings.json` (see Uninstall for those).
 
-**I already have my own CLAUDE.md, hooks and settings.** They stay. The kit only manages its own keys. `adopt` offers to move your global CLAUDE.md content into your personal layer.
+**I already have my own CLAUDE.md, hooks and settings.** They stay. The kit only manages its own keys. `adopt` offers to move your global CLAUDE.md content into your personal layer. Plugins, MCP servers, skills and hooks loadout doesn't know are listed under [Your own tools](#your-own-tools); you decide per item, and nothing happens without an answer.
 
 **Does it cost many tokens?** It is built to cost fewer: heavy tools are per-project, and rtk compresses command output. Check with `/context` in Claude Code.
 
@@ -214,6 +350,11 @@ Windows: delete `loadout` and `loadout.cmd` in `%USERPROFILE%\.local\bin`, and d
 MCP servers from your personal `mcp.json` were added with `claude mcp add-json -s user`; remove them with `claude mcp remove -s user NAME` if you no longer want them. Plugins that bootstrap installed stay installed; uninstall them with `claude plugin uninstall ID` if you want.
 
 Your `~/.claude/settings.json` keeps the merged values. Remove the kit's `enabledPlugins` and `extraKnownMarketplaces` entries if you want, or restore an older backup from `~/.claude/backups/`. You can also delete the "# loadout secrets" block that bootstrap added to your shell startup file. Your personal layer and `secrets.env` under `~/.config/loadout/` are never touched; delete them yourself if you want them gone.
+
+If you recorded own tools as global, do this first:
+
+- Global skills live in `<personal layer>/skills/`, and `~/.claude/skills/<name>` links to them. Replace each link with a copy before you delete the personal layer, for example `cp -rL ~/.claude/skills/<name> ~/.claude/skills/<name>.copy && rm ~/.claude/skills/<name> && mv ~/.claude/skills/<name>.copy ~/.claude/skills/<name>`.
+- Remove `~/.claude/hooks/personal` (a link to `<personal layer>/hooks/`) and the hooks in `~/.claude/settings.json` whose command uses it.
 
 ## Contributing / development
 

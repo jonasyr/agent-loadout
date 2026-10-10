@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 from dataclasses import dataclass
 
@@ -21,13 +22,26 @@ class CheckResult:
 def _links() -> list[CheckResult]:
     out = []
     for dest, src in link.LINKS():
-        name = f"link rules/{dest.name}"
+        if not src.exists() and dest.parent.name != "rules":
+            continue  # optional personal-layer source (hooks/, skills): nothing to link
+        name = f"link {dest.parent.name}/{dest.name}"
         if link.is_copy_mode():
             ok = link._points_to(dest, src) or link._is_kit_copy(dest, src)
         else:
             ok = dest.is_symlink() and dest.resolve() == src.resolve()
         out.append(CheckResult(name, ok, "" if ok else f"{dest} does not point to {src}", "loadout bootstrap"))
     return out
+
+
+def _skills_json() -> list[CheckResult]:
+    path = paths.personal_root() / "skills.json"
+    if not path.exists():
+        return []
+    try:
+        load_json(path)
+    except InvalidJSON as exc:
+        return [CheckResult("skills.json", False, str(exc), f"fix the JSON syntax in {path}", "warn")]
+    return [CheckResult("skills.json", True)]
 
 
 def _settings() -> list[CheckResult]:
@@ -56,6 +70,23 @@ def _plugins() -> list[CheckResult]:
     # Claude Code installs enabled plugins from known marketplaces at its next start
     return [CheckResult("plugins installed", not missing, ", ".join(missing),
                         "they install automatically at the next Claude Code start (or run loadout bootstrap)", "warn")]
+
+
+def _json_fix(exc: InvalidJSON) -> str:
+    """Fix text for an InvalidJSON error; jsonio puts the file in the message as `invalid JSON in <path>: ...`."""
+    m = re.match(r"invalid JSON in (.+?): (?:Expecting|Extra|Invalid|Unterminated|expected)", str(exc))
+    return f"fix the JSON syntax in {m.group(1)}" if m else "fix the JSON syntax in the file named above"
+
+
+def _own() -> list[CheckResult]:
+    from . import inventory, own
+
+    try:
+        n = len(own.unmanaged(inventory.classify(inventory.collect(with_versions=False))))
+    except InvalidJSON as exc:
+        return [CheckResult("own tools", False, str(exc), _json_fix(exc), "warn")]
+    return [CheckResult("own tools", n == 0, f"{n} tool(s) not managed by loadout (they stay on this machine only)",
+                        "decide with `loadout adopt --apply` or `loadout configure own`", "warn")]
 
 
 def _binaries() -> list[CheckResult]:
@@ -99,7 +130,7 @@ def _repos() -> list[CheckResult]:
 
 
 def run_checks() -> list[CheckResult]:
-    return [*_links(), *_settings(), *_plugins(), *_binaries(), *_gh(), *_secrets(), *_repos()]
+    return [*_links(), *_skills_json(), *_settings(), *_plugins(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

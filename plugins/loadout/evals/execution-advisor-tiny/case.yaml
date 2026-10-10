@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: execution-advisor-tiny
+description: >-
+  A two-task plan that already contains the complete code. Asked "subagents or inline?",
+  the execution-advisor skill must recommend Inline (no task delegated), present it as the
+  recommended option and ask before executing, record the evaluation with
+  `loadout advisor-mark` (logging stub), and not start implementing or spawn subagents.
+tags: [execution-advisor]
+context:
+  scaffold_script: scaffold.sh

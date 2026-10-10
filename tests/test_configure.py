@@ -183,3 +183,58 @@ def test_show_prints_settable_ids(fake_home):
     text = configure.show()
     assert "mcp addon-dbhub-global" in text
     assert "plugin hookify@claude-plugins-official" in text
+
+
+def test_configure_own_lists_and_set_own(fake_home, fake_runner, capsys):
+    from fixtures import author_machine
+    author_machine(fake_home)
+    text = "\n".join(configure.own_lines(False))
+    assert "mystery@somewhere" in text and "options: global, project, leave, remove" in text
+    assert configure.set_own("my-skill", "leave") == 0
+    assert "my-skill" not in "\n".join(configure.own_lines(False))
+    assert "my-skill" in "\n".join(configure.own_lines(True))
+    assert configure.set_own("nothing", "leave") == 2
+    assert configure.set_own("mystery@somewhere", "keep") == 2
+
+
+def test_cli_configure_own(fake_home, fake_runner, capsys):
+    from fixtures import author_machine
+    from loadout.__main__ import main
+    author_machine(fake_home)
+    assert main(["configure", "own"]) == 0
+    assert "options:" in capsys.readouterr().out
+    assert main(["configure", "set", "own", "nothing", "leave"]) == 2
+
+
+import pytest
+
+
+def _git_personal(fake_runner, status):
+    root = paths.personal_root()
+    (root / ".git").mkdir(parents=True)
+    fake_runner.responses[("git", "-C", str(root), "status")] = runner.Result(0, status, "")
+    return root
+
+
+def _pushed(fake_runner):
+    return [c for c in fake_runner.calls if c[-1] == "push" or "commit" in c]
+
+
+@pytest.mark.parametrize("status", [
+    " M settings.json\n?? hooks/id_ed25519\n", "?? skills/x/deploy.pem\n", "A  .ssh/config\n", "?? prod.env\n",
+    "?? skills/x/.env.local\n", 'R  old.txt -> skills/x/credentials.json\n', '?? "skills/x/sub dir/.netrc"\n',
+])
+def test_offer_commit_refuses_private_files_without_asking(fake_home, fake_runner, capsys, status):
+    _git_personal(fake_runner, status)
+    configure.offer_commit(lambda q: pytest.fail("asked"))
+    out = capsys.readouterr().out
+    assert "not offering to commit" in out and _pushed(fake_runner) == []
+
+
+def test_offer_commit_prints_status_then_asks(fake_home, fake_runner, capsys):
+    _git_personal(fake_runner, " M settings.json\n?? hooks/notify.sh\n")
+    asked = []
+    configure.offer_commit(lambda q: asked.append(q) or "n")
+    out = capsys.readouterr().out
+    assert "M settings.json" in out and "hooks/notify.sh" in out and asked
+    assert _pushed(fake_runner) == []

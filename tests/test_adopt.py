@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from loadout import adopt, backup, inventory, paths
+from loadout import adopt, backup, inventory, own, paths
 from fixtures import FAKE_DEVIN, author_machine
 
 
@@ -33,7 +33,7 @@ def test_select_interactive_defaults(machine):
     chosen = adopt.select(_verdicts() + [_outdated()], None, set(), ask=lambda q: "")
     actions = {v.action for v in chosen}
     assert actions <= {"remove", "migrate", "scope-down"}
-    assert "unknown" not in actions and "update" not in actions
+    assert "own" not in actions and "update" not in actions
 
 
 def test_apply_runs_cli_and_records_undo(machine, fake_runner):
@@ -122,15 +122,24 @@ def test_unselected_unknown_hook_survives(machine):
     assert "my-own-linter" in json.dumps(settings)
 
 
-def test_groups_unknown_removes_and_restores(machine, fake_runner):
-    chosen = adopt.select(_verdicts(), {"unknown"}, set(), ask=lambda q: "")
+def test_own_remove_by_name_removes_and_restores(machine, fake_runner):
+    pairs = own.resolve(own.parse_spec("omarchy-kb=remove,PreToolUse:Edit=remove"), _verdicts())
     bk = backup.Backup()
-    adopt.apply(chosen, bk)
+    adopt.apply_own(pairs, bk)
     assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
     assert "my-own-linter" not in (machine / ".claude/settings.json").read_text()
     backup.restore(bk.root)
     assert "my-own-linter" in (machine / ".claude/settings.json").read_text()
     assert any(c[:6] == ["claude", "mcp", "add-json", "-s", "user", "omarchy-kb"] for c in fake_runner.calls)
+
+
+def test_groups_own_is_refused(machine, fake_runner, capsys):
+    with pytest.raises(ValueError, match=r"group 'own': decide per item with --own NAME=CHOICE,\.\.\. \(see loadout configure own\)"):
+        adopt.select(_verdicts(), {"own"}, set(), ask=lambda q: "")
+    from loadout.__main__ import main
+    assert main(["adopt", "--apply", "--yes", "--groups", "own", "--no-versions"]) == 1
+    assert "group 'own'" in capsys.readouterr().err
+    assert [c for c in fake_runner.calls if c[:2] == ["claude", "mcp"]] == []
 
 
 def test_keep_never_acts(machine, fake_runner):
@@ -194,7 +203,8 @@ def _outdated(action="update"):
 @pytest.mark.parametrize("word", ["a", "all", "y", "YES", "Yes"])
 def test_group_prompt_accepts_yes_words(machine, word):
     chosen = adopt.select(_verdicts(), None, set(), ask=lambda q: word if "[a]ll" in q else "")
-    assert {v.action for v in chosen} >= {"remove", "unknown"}
+    assert {v.action for v in chosen} >= {"remove"}
+    assert "own" not in {v.action for v in chosen}  # own items are chosen via own.ask_choices
 
 
 def test_group_prompt_reasks_on_invalid_answer(machine, capsys):
@@ -208,7 +218,7 @@ def test_group_prompts_name_the_action(machine):
     questions = []
     adopt.select(_verdicts(), None, set(), ask=lambda q: (questions.append(q), "p" if "[a]ll" in q else "")[1])
     text = "\n".join(questions)
-    assert "remove mcp omarchy-kb? [y/N]" in text
+    assert "remove skill gpt-taste? [y/N]" in text
     assert "disable globally plugin sonarqube@claude-plugins-official? [y/N]" in text
 
 
@@ -218,7 +228,8 @@ def test_plan_headers_explain_each_action(machine):
     assert "remove your copy, because the loadout plugin provides it." in text
     assert "disable globally; enable per project with `loadout profile X`." in text
     assert "picking removes it; restorable." in text
-    assert "plugins from a removed marketplace stay installed unless picked" in text
+    assert "if you remove it, its plugins stay installed unless you remove them too." in text
+    assert "pick (p), then k to keep one global" in text
 
 
 def test_plan_redacts_secrets(machine):
@@ -231,7 +242,7 @@ def test_non_interactive_apply_changes_nothing_and_exits_2(machine, fake_runner,
     rc = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False)
     assert rc == 2
     assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
-    assert "non-interactive: re-run with --yes or --groups" in capsys.readouterr().out
+    assert "non-interactive: re-run with --yes, --groups GROUP,... or --own" in capsys.readouterr().out
     assert not paths.backups_root().exists()
 
 
@@ -317,3 +328,300 @@ def test_non_interactive_groups_never_prompts_for_secrets(machine, fake_runner):
     adopt.run(True, {"remove"}, set(), False, ask=lambda q: asked.append(q) or "", with_versions=False, interactive=False)
     assert asked == []
     assert not paths.secrets_file().exists()
+
+
+from loadout import own
+
+
+def _own_pairs(spec):
+    return own.resolve(own.parse_spec(spec), _verdicts())
+
+
+def test_apply_own_project_disables_and_removes(machine, fake_runner):
+    (machine / ".claude/plugins/known_marketplaces.json").write_text(json.dumps({
+        "somewhere": {"source": {"source": "github", "repo": "me/somewhere"}}}))
+    bk = backup.Backup()
+    lines, profiles = adopt.apply_own(_own_pairs("mystery@somewhere=project:mine,omarchy-kb=project:mine"), bk)
+    assert ["claude", "plugin", "disable", "mystery@somewhere", "--scope", "user"] in fake_runner.calls
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
+    assert set(profiles) == {"mine"}
+    assert any("loadout profile mine" in line for line in lines)
+
+
+def test_apply_own_leave_and_remove(machine, fake_runner):
+    adopt.apply_own(_own_pairs("my-skill=leave,omarchy-kb=remove"), backup.Backup())
+    assert own.is_left([v for v in _verdicts() if v.item.name == "my-skill"][0].item)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
+
+
+def test_apply_own_two_hooks_one_group(machine):
+    data = json.loads((machine / ".claude/settings.json").read_text())
+    data["hooks"]["PreToolUse"][3]["hooks"].append({"type": "command", "command": "second-linter"})
+    (machine / ".claude/settings.json").write_text(json.dumps(data))
+    pairs = [(v, own.Choice("global") if v.item.detail == "my-own-linter" else own.Choice("remove"))
+             for v in own.unmanaged(_verdicts()) if v.item.kind == "hook"]
+    adopt.apply_own(pairs, backup.Backup())
+    commands = [h["command"] for g in json.loads((machine / ".claude/settings.json").read_text())["hooks"]["PreToolUse"]
+                for h in g["hooks"]]
+    assert commands.count("my-own-linter") == 1 and "second-linter" not in commands
+    assert "rtk hook claude" in commands
+
+
+def test_rerun_asks_nothing(machine, fake_runner):
+    (machine / ".claude/plugins/known_marketplaces.json").write_text(json.dumps({
+        "somewhere": {"source": {"source": "github", "repo": "me/somewhere"}}}))
+    pairs = [(v, own.Choice("global") if "global" in own.options(v.item) else own.Choice("leave"))
+             for v in own.unmanaged(_verdicts())]
+    adopt.apply_own(pairs, backup.Backup())
+    assert own.unmanaged(_verdicts()) == []
+
+
+def test_select_pick_keep_global(machine):
+    keep = []
+    answers = iter(["p", "k", "n"])
+    adopt.select([v for v in _verdicts() if v.action == "scope-down" and v.item.kind == "plugin"], None, set(),
+                 ask=lambda q: next(answers, ""), keep_global=keep)
+    assert len(keep) == 1 and keep[0].item.kind == "plugin"
+
+
+def test_apply_own_collision_skips_machine_step(machine, fake_runner):
+    path = paths.personal_root() / "profiles/mine.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"mcp": {"mcpServers": {"omarchy-kb": {"command": "other"}}}}))
+    # omarchy-kb is now "keep" (in a personal profile); wrap it as own to exercise the collision path
+    v = [x for x in _verdicts() if x.item.name == "omarchy-kb"][0]
+    lines, _ = adopt.apply_own([(inventory.Verdict(v.item, "own", ""), own.Choice("project", "mine"))], backup.Backup())
+    assert any(line.startswith("skipped:") for line in lines)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+
+
+def test_apply_own_overlap_with_others_acts_once(machine, fake_runner):
+    v = [x for x in _verdicts() if x.item.name == "omarchy-kb"][0]
+    adopt.apply_own([(v, own.Choice("leave"))], backup.Backup(), others=[inventory.Verdict(v.item, "remove", "")])
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+    adopt.apply_own([(v, own.Choice("remove"))], backup.Backup(), others=[inventory.Verdict(v.item, "remove", "")])
+    assert fake_runner.calls.count(["claude", "mcp", "remove", "-s", "user", "omarchy-kb"]) == 1
+
+
+def test_apply_own_record_error_keeps_other_items(machine, fake_runner):
+    vs = {x.item.name: x for x in _verdicts()}
+    path = paths.personal_root() / "profiles/mine.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{corrupt")
+    pairs = [(vs["omarchy-kb"], own.Choice("project", "mine")), (vs["my-skill"], own.Choice("global"))]
+    lines, _ = adopt.apply_own(pairs, backup.Backup())
+    assert any("omarchy-kb: failed:" in line for line in lines)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+    assert (paths.personal_root() / "skills/my-skill").exists()
+
+
+def test_apply_own_unreadable_skill_is_a_collision_and_continues(machine, fake_runner):
+    import os
+    if os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0):
+        pytest.skip("permissions not enforced")
+    vs = {x.item.name: x for x in _verdicts()}
+    skill = machine / ".claude/skills/my-skill"
+    files = [f for f in skill.rglob("*") if f.is_file()]
+    for f in files:
+        f.chmod(0)
+    try:
+        lines, _ = adopt.apply_own([(vs["my-skill"], own.Choice("global")),
+                                    (vs["omarchy-kb"], own.Choice("remove"))], backup.Backup())
+    finally:
+        for f in files:
+            f.chmod(0o644)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
+    assert any("my-skill" in line for line in lines)
+
+
+def test_apply_own_backs_up_settings(machine, fake_runner):
+    settings = machine / ".claude/settings.json"
+    original = settings.read_text()
+    bk = backup.Backup()
+    v = [x for x in _verdicts() if x.item.kind == "plugin" and x.action == "scope-down"][0]
+    adopt.apply_own([(v, own.Choice("global"))], bk)
+    backup.restore(bk.root, force=True)
+    assert settings.read_text() == original
+
+
+def test_apply_own_leave_is_restorable(machine):
+    v = [x for x in _verdicts() if x.item.name == "my-skill"][0]
+    bk = backup.Backup()
+    adopt.apply_own([(v, own.Choice("leave"))], bk)
+    assert own.decisions()
+    backup.restore(bk.root, force=True)
+    assert not own.decisions()
+
+
+def test_apply_own_record_exception_is_reported_and_isolated(machine, fake_runner, monkeypatch):
+    vs = {x.item.name: x for x in _verdicts()}
+    real = own.record_global
+
+    def flaky(v, bk):
+        if v.item.name == "omarchy-kb":
+            raise PermissionError(f"denied token={FAKE_PAT}")
+        return real(v, bk)
+
+    from fixtures import FAKE_PAT
+    monkeypatch.setattr(own, "record_global", flaky)
+    lines, _ = adopt.apply_own([(vs["omarchy-kb"], own.Choice("global")),
+                                (vs["my-skill"], own.Choice("global"))], backup.Backup())
+    failed = [line for line in lines if "omarchy-kb: failed:" in line]
+    assert failed and FAKE_PAT not in failed[0]
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+    assert (paths.personal_root() / "skills/my-skill").exists()
+
+
+def test_apply_own_machine_step_error_does_not_stop_later_steps(machine, fake_runner, monkeypatch):
+    from loadout import settings_merge
+    vs = {x.item.name: x for x in _verdicts()}
+    ran = []
+
+    def fake_record(v, bk):
+        def step():
+            if v.item.name == "omarchy-kb":
+                raise OSError("disk gone")
+            ran.append(v.item.name)
+            return [f"{v.item.name}: machine step ran"]
+        return own.Recorded(True, [], step)
+
+    applied = []
+    monkeypatch.setattr(own, "record_global", fake_record)
+    monkeypatch.setattr(settings_merge, "apply_settings", lambda: applied.append(1) or ({}, {}))
+    lines, _ = adopt.apply_own([(vs["omarchy-kb"], own.Choice("global")),
+                                (vs["my-skill"], own.Choice("global"))], backup.Backup())
+    assert any("omarchy-kb: failed: disk gone" in line for line in lines)
+    assert ran == ["my-skill"] and applied
+
+
+def test_run_yes_leaves_own_tools(machine, fake_runner):
+    assert adopt.run(True, None, set(), True, ask=lambda q: "", with_versions=False, interactive=False) == 0
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+    assert not own.decisions()   # --yes does not remember "leave" either
+
+
+def test_run_non_interactive_without_flags_exits_2(machine, fake_runner):
+    assert adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False) == 2
+
+
+def test_run_own_spec_non_interactive(machine, fake_runner):
+    code = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False,
+                     own_spec="omarchy-kb=project:mine")
+    assert code == 0
+    assert (paths.personal_root() / "profiles/mine.json").exists()
+    assert ["claude", "mcp", "remove", "-s", "user", "github-server"] not in fake_runner.calls  # other groups untouched
+
+
+@pytest.mark.parametrize("spec", ["nothing=global", "omarchy-kb=leave,omarchy-kb=global"])
+def test_run_own_spec_error_exits_2_before_changes(machine, fake_runner, capsys, spec):
+    code = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False,
+                     own_spec=spec)
+    assert code == 2 and capsys.readouterr().err.startswith("loadout:")
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+    assert not own.decisions()
+
+
+def test_run_prints_backup_even_if_apply_raises(machine, fake_runner, monkeypatch, capsys):
+    def boom(pairs, bk, *a, **kw):
+        bk.save_copy(machine / ".claude/settings.json", "partial work")
+        raise RuntimeError("boom")
+    monkeypatch.setattr(adopt, "apply_own", boom)
+    with pytest.raises(RuntimeError):
+        adopt.run(True, None, set(), True, ask=lambda q: "", with_versions=False, interactive=False)
+    assert "backup:" in capsys.readouterr().out
+
+
+def test_run_interactive_offers_repo_for_new_profile(machine, fake_runner, monkeypatch):
+    from loadout import configure, project
+    repo = machine / "code/app"
+    repo.mkdir(parents=True)
+    (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"omarchy-kb": {}}}))
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["projects"] = {str(repo): {}}
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+    applied = []
+    monkeypatch.setattr(project, "add_profile", lambda path, name, **kw: applied.append((path, name)) or 0)
+    offered = []
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: offered.append(1))
+    script = {"your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y", "these repos": "y"}
+
+    def ask(q):
+        return next((a for k, a in script.items() if k in q), "")
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    assert applied == [(repo, "mine")]
+    assert offered == [1]
+
+
+def _scripted(script, asked):
+    def ask(q):
+        asked.append(q)
+        return next((a for k, a in script.items() if k in q), "")
+    return ask
+
+
+def test_run_own_spec_never_offers_repo_or_commit(machine, fake_runner, monkeypatch, capsys):
+    from loadout import configure
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: pytest.fail("commit offer"))
+    asked = []
+    ask = _scripted({"item(s)": "n", "Apply": "y"}, asked)
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True,
+              own_spec="omarchy-kb=project:mine")
+    assert any("Apply" in q for q in asked) and not any("repos" in q for q in asked)
+    assert "enable it per project with `loadout profile mine`" in capsys.readouterr().out
+    assert (paths.personal_root() / "profiles/mine.json").exists()
+
+
+def test_run_interactive_leave_all_asks_nothing_more(machine, fake_runner, monkeypatch, capsys):
+    from loadout import configure
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: pytest.fail("commit offer"))
+    asked = []
+    ask = _scripted({"item(s)": "n", "your own tools": "l"}, asked)
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    assert "left on this machine" in capsys.readouterr().out
+    assert own.decisions()
+    assert not any("Apply" in q or "repos" in q for q in asked)
+
+
+def test_run_interactive_enter_on_own_prompt_changes_nothing(machine, fake_runner, capsys):
+    asked = []
+    adopt.run(True, None, set(), False, ask=_scripted({"item(s)": "n"}, asked), with_versions=False, interactive=True)
+    assert not own.decisions()
+    assert "backup:" not in capsys.readouterr().out
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+
+
+def test_run_declined_confirm_remembers_nothing(machine, fake_runner):
+    asked = []
+    ask = _scripted({"item(s)": "n", "your own tools": "c", " — ": "g", "Apply": "n"}, asked)
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    assert any("Apply" in q for q in asked)
+    assert not own.decisions()
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+
+
+def test_offer_profiles_failure_does_not_stop_next_repo(machine, fake_runner, capsys):
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["projects"] = {}
+    for name in ("a-bad", "b-good"):
+        repo = machine / "code" / name
+        (repo / ".claude").mkdir(parents=True)
+        (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"omarchy-kb": {}}}))
+        cfg["projects"][str(repo)] = {}
+    (machine / "code/a-bad/.mcp.json").write_text('{"mcpServers": {"omarchy-kb": ')  # malformed, still mentions it
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+    ask = _scripted({"item(s)": "n", "your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y",
+                       "these repos": "y"}, [])
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    out = capsys.readouterr().out
+    assert f"{(machine / 'code/a-bad').resolve()}: failed:" in out
+    assert f"{(machine / 'code/b-good').resolve()}: profile mine applied" in out
+
+
+def test_run_own_spec_exits_1_when_an_item_was_not_recorded(machine, fake_runner):
+    path = paths.personal_root() / "profiles/mine.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"mcp": {"mcpServers": {"omarchy-kb": {"command": "other"}}}}))
+    # omarchy-kb is in a personal profile but still in user scope, so it is "own"; the profile collides
+    code = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False,
+                     own_spec="omarchy-kb=project:mine")
+    assert code == 1

@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: configure-own
+description: >-
+  The user asks what to do with tools they installed themselves. The configure skill
+  must run `loadout configure own`, explain global / project / leave / remove, propose
+  global for the notes plugin and a per-project profile for the Postgres server, ask for
+  a yes, and make no `configure set` call.
+tags: [configure]
+context:
+  scaffold_script: scaffold.sh

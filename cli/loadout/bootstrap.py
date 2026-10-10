@@ -208,12 +208,6 @@ def setup_secrets(bk: Backup | None = None) -> list[str]:
     return out
 
 
-def _settings_would_change() -> bool:
-    current = load_json(paths.claude_home() / "settings.json")
-    previous = load_json(paths.state_dir() / "managed-settings.json")
-    return settings_merge.merge_settings(current, settings_merge.desired_settings(), previous) != current
-
-
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
     if interactive is None:
         interactive = ui.is_interactive()
@@ -221,7 +215,10 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     check_prereqs(install, ask)
     bk = Backup(description="bootstrap")
     _step("Personal layer")
+    fresh = not paths.personal_root().exists()
     message, personal_ok = ensure_personal(ask, bk, interactive)
+    # a starter layer was just created and its preference questions asked (a clone has .git)
+    starter = fresh and personal_ok and paths.personal_root().exists() and not (paths.personal_root() / ".git").exists()
     print(message)
     _step("Links")
     for line in link.link_all(bk, retry_symlinks=True) + link.link_bin(bk):
@@ -230,11 +227,12 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         print("\nnon-interactive: skipping the configure prompt (run `loadout configure` later)")
     elif not yes and ui.confirm(ask, "\nCustomize preferences and global add-ons now? [y/N] "):
         from .configure import wizard
-        wizard(ask, first_run=False, setup=False, interactive=interactive)  # settings, MCP servers and plugins are applied below
+        wizard(ask, first_run=False, setup=False, interactive=interactive, preferences_asked=starter)  # settings, MCP servers and plugins are applied below
     _step("Settings")
     settings_path = paths.claude_home() / "settings.json"
-    if settings_path.exists() and _settings_would_change():
+    if settings_path.exists() and settings_merge.would_change():
         bk.save_copy(settings_path, "settings.json before loadout merge")
+    settings_merge.backup_snapshot(bk)
     before, after = settings_merge.apply_settings()
     print("settings updated" if before != after else "settings already up to date")
     from .personal_mcp import apply_mcp
