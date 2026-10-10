@@ -19,13 +19,13 @@ Options after the script go to `claude plugin eval`. The useful ones:
 | `--runs N` | Runs per case (the default comes from the case, usually 3). |
 | `-j N` | Run up to N agent runs at once. They share one rate limit. |
 | `--keep-temp` | Keep the scaffold directories, to see what the agent saw. |
-| `--max-cost-usd USD` | Stop when the cost ceiling is reached. |
+| `--max-cost-usd USD` | Stop when the estimated cost (at API prices) reaches the ceiling. |
 
 Results land in `plugins/loadout/evals/results/<timestamp>/`, which git ignores. The HTML report is not published (`run.sh` passes `--no-publish`).
 
 ## What it costs
 
-The runs are real model calls with your own Claude credential, so they use your plan's usage. A full run is expensive: an earlier estimate was about $8 at API prices. Run one case with `--case` while you iterate.
+The runs are real model calls with your own Claude credential: on a subscription they count against your plan's usage limits, with an API key they are billed. A full run is every case three times, so run one case with `--case` while you iterate.
 
 ## Never run `claude plugin eval` on the plugin directly
 

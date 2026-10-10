@@ -4,9 +4,9 @@ Use this page if you work on Windows. WSL 2 is the recommended setup for loadout
 
 loadout does not detect WSL yet and `loadout check` has no WSL checks. Everything below is a manual step.
 
-Anthropic supports both native Windows and WSL 2 for Claude Code and does not name a preferred one ([setup](https://code.claude.com/docs/en/setup.md)). loadout recommends WSL 2 for these reasons:
+Anthropic supports both native Windows and WSL 2 for Claude Code and does not name a preferred one ([setup](https://code.claude.com/docs/en/setup)). loadout recommends WSL 2 for these reasons:
 
-- **The sandbox works only on WSL 2.** It uses bubblewrap ([sandboxing](https://code.claude.com/docs/en/sandboxing.md)).
+- **The sandbox.** On Windows, the sandbox works only inside WSL 2: native Windows runs commands unsandboxed and WSL 1 is not supported ([sandboxing](https://code.claude.com/docs/en/sandboxing)).
 - **You get the Linux toolchain.** The install commands are the same as on Linux.
 - **No Git Bash.** On native Windows, Claude Code runs hooks through Git Bash, so hook script paths need forward slashes or quotes. In WSL they are normal Linux paths.
 
@@ -19,7 +19,7 @@ wsl -l -v
 wsl --set-version <distro> 2
 ```
 
-WSL 1 has a regression where Claude Code's native binary fails with `Exec format error` ([troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install.md)).
+WSL 1 has a regression where Claude Code's native binary fails with `Exec format error` ([troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install)).
 
 ## 2. Install loadout inside WSL
 
@@ -33,17 +33,17 @@ cd ~/agent-loadout
 
 Keep the clone in the Linux home, as above: the installed links point into it. Then restart Claude Code and run `loadout check`.
 
-## 3. Keep one Claude Code install
+## 3. Know which install loadout configures
 
-Claude Code reads its config from the Linux home (`~/.claude`). A Windows-native install uses `%USERPROFILE%\.claude` and does not share config with a WSL install. The Claude Code docs advise keeping only one of the two ([setup](https://code.claude.com/docs/en/setup.md)). loadout configures the one it runs in. If you use both, you must set up both, and your personal layer in each home is separate until you sync it through git (see [Sync](../reference/personal-layer.md#sync)).
+A Windows-native install uses `%USERPROFILE%\.claude` and a WSL install uses the Linux `~/.claude`; they do not share configuration. loadout configures the one it runs in. If you use both, you must set up both, and your personal layer in each home is separate until you sync it through git (see [Sync](../reference/personal-layer.md#sync)).
 
 ## 4. Keep repos in the Linux filesystem
 
-Work in `~/`, for example `~/code/app`, not under `/mnt/c`. Projects on `/mnt/c` are slow, and search there can be incomplete ([troubleshooting](https://code.claude.com/docs/en/troubleshooting.md)).
+Work in `~/`, for example `~/code/app`, not under `/mnt/c`. Projects on `/mnt/c` are slow, and search there can be incomplete ([troubleshooting](https://code.claude.com/docs/en/troubleshooting)).
 
 ## 5. Check that the tools are Linux binaries
 
-WSL imports the Windows `PATH`. `claude`, `node` or `uv` can then resolve to a Windows program under `/mnt/c`, which fails in odd ways. Check each one:
+WSL imports the Windows `PATH`. `claude`, `node` or `uv` can then resolve to a Windows program under `/mnt/c`, which fails in odd ways ([troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install#npm-install-errors-in-wsl)). Check each one:
 
 ```bash
 which claude node uv
@@ -59,15 +59,15 @@ Sandboxing needs bubblewrap and socat:
 sudo apt-get install bubblewrap socat
 ```
 
-On Ubuntu 24.04 and later, bubblewrap may also need an AppArmor profile; see [sandboxing](https://code.claude.com/docs/en/sandboxing.md).
+On Ubuntu 24.04 and later, bubblewrap may also need an AppArmor profile; see [sandboxing](https://code.claude.com/docs/en/sandboxing).
 
 ## Problems
 
 | Symptom | Fix |
 |---|---|
-| Login in WSL 2 does not open a browser or never completes | Paste the login code by hand, or set `BROWSER` to a Windows browser, for example `BROWSER="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"`, or use `claude auth login`. See [troubleshooting](https://code.claude.com/docs/en/troubleshooting.md). |
+| Login in WSL 2 does not open a browser or never completes | Paste the login code by hand, or set `BROWSER` to a Windows browser, for example `BROWSER="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"`, or use `claude auth login`. See [troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install#oauth-login-fails-in-wsl2-ssh-or-containers). |
 | `Exec format error` when starting `claude` | You are on WSL 1. Upgrade as in step 1. |
-| The JetBrains plugin does not connect | With WSL 2 in NAT networking mode, add a Windows firewall rule or set `networkingMode=mirrored` in `.wslconfig`. See [troubleshooting](https://code.claude.com/docs/en/troubleshooting.md). |
+| The JetBrains plugin does not connect | With WSL 2 in NAT networking mode, add a Windows firewall rule or set `networkingMode=mirrored` in `.wslconfig`. See [JetBrains](https://code.claude.com/docs/en/jetbrains#wsl-configuration). |
 | Searches miss files, or commands are slow | The repo is under `/mnt/c`. Move it into the Linux home. |
 | `claude` or `node` behaves oddly | Step 5: it resolves to a Windows binary. |
 

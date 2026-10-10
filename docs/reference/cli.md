@@ -30,7 +30,9 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt]
 | `--no-plugins` | Skip adding marketplaces and installing plugins (offline or CI). |
 | `--no-adopt` | Skip reviewing the existing setup. |
 
-Without a terminal and without `--yes`, bootstrap skips the configure prompt and the adopt step and says so.
+Without a terminal and without `--yes`, bootstrap skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates a starter personal layer with default preferences if none exists, merges settings, applies personal MCP servers and sets up plugins.
+
+`--install` runs the catalog's install commands without a further prompt, including `curl … | sh` installers. See [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
 
 Exit codes:
 
@@ -62,7 +64,7 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | 0 | Dry run, or applied. |
-| 1 | `--own` was given and at least one named item was not recorded, or recorded but not active on this machine. The other items were applied. Also: an unknown group name in `--groups`, or `--groups own`. |
+| 1 | `--own` was given and at least one named item was not recorded, or recorded but not active on this machine (see the `skipped:` or `failed:` line; a removal that did not happen says `skipped (...)` or `not removed`). The other items were applied. Also: an unknown group name in `--groups`, or `--groups own`. |
 | 2 | `--own` had bad input (an unknown or duplicate name, a bad choice, or a name that needs `<kind>:` or `#n`), or `--apply` was run without a terminal and without any of `--yes`, `--groups` and `--own`. Nothing changed. |
 
 ## loadout configure
@@ -115,7 +117,7 @@ The preference ids and options are in [preferences-format](preferences-format.md
 
 ## loadout init
 
-Prepare the current project: `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries and profiles. Never overwrites a file.
+Prepare the current project: `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries and profiles. It never overwrites an existing scaffold file. Profiles merge into the repo's `.claude/settings.json` and `.mcp.json` (the profile's value wins on the same key), without a backup.
 
 ```
 loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
@@ -126,7 +128,7 @@ loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
 | `PROFILE ...` | Profiles to apply. Default: suggest profiles from the project and ask. |
 | `--yes` | No questions: run `git init` if needed and apply the suggested profiles. |
 | `--no-install` | Do not install the profiles' plugins or run their commands. |
-| `--dry-run` | Show what would change, change nothing. |
+| `--dry-run` | Change nothing. Print the profile's description, the skills it would copy, the plugins and commands it would run and the files and `.gitignore` entries `init` would create. It does not show the settings or `.mcp.json` diff. |
 
 Without a terminal, no `PROFILE` and no `--yes`, no profile is applied. If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
 

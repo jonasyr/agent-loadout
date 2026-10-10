@@ -6,6 +6,9 @@ If you recorded own tools as global, do the last section first.
 
 ## Remove the kit
 
+1. Remove `loadout@agent-loadout` from `enabledPlugins` and `agent-loadout` from `extraKnownMarketplaces` in `~/.claude/settings.json` (and in your personal `settings.json` if you keep it). Otherwise Claude Code clones the marketplace and installs the plugin again at its next start.
+2. Uninstall the plugin and remove the links and state.
+
 On Linux, macOS and WSL:
 
 ```bash
@@ -23,7 +26,8 @@ You can then delete the clone (`~/agent-loadout`).
 
 - **MCP servers** from your personal `mcp.json` were added with `claude mcp add-json -s user`. Remove them with `claude mcp remove -s user NAME` if you no longer want them.
 - **Plugins** that bootstrap installed stay installed. Uninstall each with `claude plugin uninstall ID` if you want.
-- **`~/.claude/settings.json`** keeps the merged values. Remove the kit's `enabledPlugins` and `extraKnownMarketplaces` entries if you want, or restore an older backup from `~/.claude/backups/`.
+- **`~/.claude/settings.json`** keeps the other merged values (the other plugins, `env`, `permissions`). Remove them if you want, or restore an older backup from `~/.claude/backups/`.
+- **Git's credential helper for GitHub**, if bootstrap ran `gh auth setup-git`. Remove it with `git config --global --unset-all credential.https://github.com.helper`.
 - **The shell startup file** keeps the "# loadout secrets" block that bootstrap added. Delete it if you want.
 - **Your personal layer and `secrets.env`** under `~/.config/loadout/` are never touched. Delete them yourself if you want them gone.
 - **Backups** in `~/.claude/backups/` stay. They can hold old configs with secrets, so delete them when you no longer need them.

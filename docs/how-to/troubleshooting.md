@@ -8,7 +8,8 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 |---|---|
 | `loadout: command not found` | Add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal. |
 | `npm error code EACCES` when installing pyright / typescript-language-server / playwright-cli | Your global npm prefix is root-owned (for example `/usr`). Either `npm config set prefix ~/.local` (then re-run `loadout bootstrap --install`), or install them with your version manager, for example `mise use -g npm:pyright npm:typescript-language-server`. |
-| A required tool is missing | Re-run `./bootstrap.sh --install`. `loadout check` shows manual install steps for what it cannot install. |
+| A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example codebase-memory-mcp on native Windows. |
+| No session notices, or the daily sync never runs | `loadout` must be on the `PATH` that Claude Code's hooks see. The plugin's hook runner exits 0 silently when the command is missing (`plugins/loadout/hooks/run.sh`). Add `~/.local/bin` to the `PATH` of the environment Claude Code starts from, then restart it. |
 | A plugin or MCP server is missing in Claude Code | Restart Claude Code. Then `loadout check` lists what is missing and how to fix it. Enabled plugins install at the next Claude Code start. |
 
 ## Settings
@@ -29,7 +30,7 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 
 | Symptom | Fix |
 |---|---|
-| `adopt --apply` exits with code 2 | Either it was run without a terminal: add `--yes` (safe defaults), `--groups remove,migrate,...` or `--own NAME=CHOICE,...`. Or the `--own` input was wrong: the message names the problem and nothing changed. |
+| `adopt --apply` exits with code 2 | Either it was run without a terminal: add `--yes` (adopt's default groups remove, migrate and scope-down, plus moving plaintext secrets, without asking), `--groups remove,migrate,...` or `--own NAME=CHOICE,...`. Or the `--own` input was wrong: the message names the problem and nothing changed. |
 | `loadout: no unmanaged item named 'X' (see: loadout configure own --all)` | Use the name exactly as `loadout configure own --all` prints it. A hook is `Event:matcher` (`Stop:` without matcher). |
 | `hook 'X' matches N hooks; pick one: ...` or `'X' matches several kinds` | Add `#n` to the hook name as the message shows, or write `<kind>:<name>`. See [hook names](../reference/hooks.md#naming-hooks-of-your-own-tools). |
 | `loadout configure set own` exits with code 1 and prints `skipped:` or `failed:` | Nothing was recorded for that item. The line says why. Typical causes: a secret or private file (see [Secret guard](your-own-tools.md#secret-guard)), a name that already exists in your personal layer with different content, or a file that could not be written. Fix it and run the command again. |
@@ -43,7 +44,7 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 |---|---|
 | Links were copied instead of linked | Enable Developer Mode (Settings, For developers) and re-run bootstrap, which switches back to links. Copies still work and are refreshed after each daily sync. Edit the source in your personal layer, not the copy: an edited copy is moved into a backup on the next refresh (the session notice names it). See [Links and copies](../reference/personal-layer.md#links-and-copies). |
 | "cannot take JSON arguments (Windows .cmd shim)" | The npm-installed `claude.cmd` cannot receive JSON safely, so loadout changes nothing for that server. Best fix: install the native `claude.exe` and re-run. Otherwise open the private `manual-commands.txt` (path printed): with Claude Code closed, add the JSON block it shows under `"mcpServers"` in `%USERPROFILE%\.claude.json` (the file also has the macOS/Linux shell form). |
-| Secrets in `secrets.env` are not seen | PowerShell's execution policy is `Restricted`, so profiles do not run. Bootstrap prints the command to allow them (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`) but does not change it. |
+| `.\bootstrap.ps1` is refused ("running scripts is disabled on this system"), or secrets in `secrets.env` are not seen | PowerShell's default execution policy on Windows clients is `Restricted`: no script runs, neither `bootstrap.ps1` nor your PowerShell profiles, where bootstrap writes the secrets loader. Run bootstrap with `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`, which bypasses the policy for that one process. For the profiles, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. Bootstrap detects `Restricted` and prints that command, but does not change the policy itself (`bootstrap.POLICY_NOTE`). |
 | A hook script is not found | Claude Code runs hook commands through Git Bash. Use forward slashes (`C:/Users/me/x.sh`) or quotes. |
 
 ## Secrets

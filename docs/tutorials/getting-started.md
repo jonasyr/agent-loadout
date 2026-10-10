@@ -5,8 +5,8 @@ This tutorial takes you from nothing to a first Claude Code session with loadout
 ## Requirements
 
 - Linux, macOS or Windows.
-- Python 3.10 or newer. `bootstrap.sh` and `bootstrap.ps1` need it before anything else runs.
-- Claude Code, git, Node.js, uv and the GitHub CLI (`gh`). `loadout bootstrap --install` installs what it can. What it cannot install is listed with instructions.
+- You need Claude Code, git, Python 3.10+, Node.js and gh; `--install` adds uv and the rest of the tools where it has an install command for your platform. What it cannot install is listed with instructions. Python must be there first: `bootstrap.sh` and `bootstrap.ps1` need it before anything else runs.
+- `--install` runs the installers without a further prompt, some of them `curl … | sh` scripts. See [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
 - On native Windows, Git for Windows (Git Bash). Claude Code runs hooks through it.
 
 ## Linux and macOS
@@ -27,7 +27,7 @@ Go on with [What bootstrap asks](#what-bootstrap-asks).
 
 Choose one path first. Do not mix the two.
 
-- **WSL 2 (recommended).** Open a WSL terminal, not PowerShell, and follow the Linux steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) for the checks that matter there (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages).
+- **WSL 2 (recommended).** Open a WSL terminal, not PowerShell, and follow the Linux steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) for the manual checks (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages).
 - **Native Windows.** Use PowerShell and the steps below. Native Windows needs Git for Windows.
 
 ### Native Windows
@@ -38,11 +38,13 @@ Choose one path first. Do not mix the two.
    ```powershell
    git clone https://github.com/jonasyr/agent-loadout $HOME\agent-loadout
    cd $HOME\agent-loadout
-   .\bootstrap.ps1 --install
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install
    ```
 
-3. Bootstrap writes the secrets loader into both your Windows PowerShell and PowerShell 7 profiles. If PowerShell's execution policy is `Restricted`, profiles do not run. Bootstrap prints the command that allows them (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`) and does not run it.
-4. Without Developer Mode, Windows cannot create the links, and loadout copies files instead. Enable Developer Mode and re-run bootstrap to switch back to links. See [Troubleshooting](../how-to/troubleshooting.md).
+   If you plan to keep secrets in `secrets.env`, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` first. Then this command and your profiles both run. Why: [Troubleshooting, Windows](../how-to/troubleshooting.md#windows).
+3. Bootstrap writes the secrets loader into both your Windows PowerShell and PowerShell 7 profiles.
+4. Install codebase-memory-mcp by hand from its release archive (the `manual` hint names it); until then `loadout check` shows FAIL and bootstrap exits with 1. It has no Windows install command.
+5. Without Developer Mode, Windows cannot create the links, and loadout copies files instead. Enable Developer Mode and re-run bootstrap to switch back to links. See [Troubleshooting](../how-to/troubleshooting.md).
 
 Go on with [What bootstrap asks](#what-bootstrap-asks).
 
@@ -54,9 +56,9 @@ Bootstrap is safe to re-run. It works in steps and prints a heading for each. It
 2. **Preferences and add-ons.** `Customize preferences and global add-ons now? [y/N]` starts the configure wizard. You can run it later with `loadout configure`. See [Set your working preferences](../how-to/set-preferences.md).
 3. **Your existing setup.** If Claude Code already has plugins, MCP servers, skills or hooks, `loadout adopt` reviews them. It offers to remove superseded or duplicate tools, to disable per-project tools globally, and to move plaintext secrets into `secrets.env`. For tools loadout does not manage, it asks whether to record them globally, put them in a personal profile, leave them, or remove them. Nothing changes without your answer. See [Handle your own tools](../how-to/your-own-tools.md).
 
-Whatever bootstrap removes or replaces goes into a backup first. The end of the output names it and shows the undo command. See [Undo what loadout changed](../how-to/undo-and-restore.md).
+Items you own that bootstrap removes or replaces go into a backup first. The end of the output names it and shows the undo command. See [Undo what loadout changed](../how-to/undo-and-restore.md).
 
-Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input) bootstrap skips the configure prompt and the adopt step and says so. It still links files, merges settings, applies your MCP servers and sets up plugins. Pass `--yes` to accept the safe defaults instead. The flags are in the [CLI reference](../reference/cli.md#loadout-bootstrap).
+Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input) bootstrap skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates a starter personal layer with default preferences if none exists, merges settings, applies your MCP servers and sets up plugins. Pass `--yes` to apply adopt's default groups (remove, migrate, scope-down) plus moving plaintext secrets, without asking. The flags are in the [CLI reference](../reference/cli.md#loadout-bootstrap).
 
 ## Verify
 
@@ -77,7 +79,7 @@ cd my-project
 loadout init
 ```
 
-`loadout init` creates `AGENTS.md`, `CLAUDE.md`, a `docs/` folder and `.gitignore` entries, and suggests profiles for domain tools. It never overwrites a file. Add `--dry-run` to see the changes first. Then open Claude Code in the repo and run:
+`loadout init` creates `AGENTS.md`, `CLAUDE.md`, a `docs/` folder and `.gitignore` entries, and suggests profiles for domain tools. It never overwrites an existing scaffold file; profiles merge into `.claude/settings.json` and `.mcp.json`. Add `--dry-run` for a preview (it does not show the settings diff). Then open Claude Code in the repo and run:
 
 ```
 /loadout:onboard
@@ -89,12 +91,7 @@ The skill reads the project and fills in the documentation. To add a profile lat
 
 After setup you do not have to run anything to stay current.
 
-- **At each session start** Claude Code runs a loadout hook. It shows any queued notice (for example "updates available") and starts the background job if it is due.
-- **Once a day** the background job pulls the kit and your personal layer with `git pull --ff-only`, only when the checkout has no local changes. After a pull that brought commits it re-merges settings, applies your personal MCP servers and relinks skills and hook scripts.
-- **Once a week** it checks tool versions. If something is outdated, the next session shows `run loadout update`. Tool binaries are never updated without your confirmation.
-- **Plugins** are updated by Claude Code itself.
-
-How this fits together is in [Architecture](../explanation/architecture.md). What runs without asking, and how to opt out, is in [Security and trust](../explanation/security-and-trust.md).
+Claude Code updates the plugins, a session hook pulls the kit and your personal layer once a day, and a weekly check tells you when tool binaries have updates (`loadout update` applies them after asking). How this works: [The daily sync](../explanation/architecture.md#the-daily-sync). What runs without asking, and how to opt out, is in [Security and trust](../explanation/security-and-trust.md).
 
 ## Next
 

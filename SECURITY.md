@@ -4,23 +4,23 @@ loadout changes your Claude Code configuration and keeps itself current, so it s
 
 ## What runs automatically
 
-- **Plugin updates.** Claude Code updates plugins from marketplaces with `"autoUpdate": true`: the kit's own and the third-party ones in `settings.base.json`. A plugin can ship hooks, so an update can run new code in your next session.
-- **A daily pull.** A session hook starts a background job that runs `git pull --ff-only` on the kit and your personal layer, at most once a day and only when the checkout has no local changes. After a pull with new commits it re-merges settings, applies your personal MCP servers and relinks skills and hook scripts. `LOADOUT_NO_AUTO_PULL=1` turns it off.
-- **A weekly version check.** It only queues a notice. Tool binaries are updated only when you run `loadout update`, which shows each command and asks.
+- **Plugin updates.** Claude Code updates plugins from `claude-plugins-official` (on by default) and from the marketplaces `settings.base.json` sets to `autoUpdate: true` (agent-loadout, impeccable, academic-research-skills). A plugin can ship hooks, so an update can run new code in your next session.
+- **A daily pull and a weekly version check.** A background job pulls the kit and your personal layer and re-applies them; the weekly check only queues a notice. How it works and how to turn it off: [The daily sync](docs/explanation/architecture.md#the-daily-sync).
+- **Only when you ask: `bootstrap --install`.** It runs the catalog's install commands without a further prompt, including `curl … | sh` installers from the upstream default branch. Tool binaries are otherwise updated only by `loadout update`, which shows each command and asks.
 
 Whoever can push to the kit repo, or to your personal layer, reaches every machine that follows it. For a team, use a fork you control. See [The trust boundary](docs/explanation/security-and-trust.md#the-trust-boundary).
 
 ## What loadout touches
 
-The kit-managed keys in `~/.claude/settings.json`, links under `~/.claude`, user-scope MCP servers and plugins through the `claude` CLI, `~/.config/loadout/`, one line in your shell startup file, `loadout` on your `PATH`, and git's credential helper for `github.com` when `gh` is logged in. It does not touch your account, claude.ai connectors or credentials. The complete list, including what it leaves alone: [What loadout touches](docs/explanation/security-and-trust.md#what-loadout-touches).
+The kit-managed keys in `~/.claude/settings.json`, links under `~/.claude`, user-scope MCP servers and plugins through the `claude` CLI, `~/.config/loadout/`, a two-line secrets-loading block in each existing `.bashrc` and `.zshrc` plus the startup file of your `$SHELL` (both PowerShell profiles on Windows), a `loadout` link in `~/.local/bin` (your `PATH` is not edited), and git's credential helper for `github.com` when `gh` is logged in. The plugin's hooks and the kit's settings also pre-approve some tool calls (see [Permissions](docs/explanation/security-and-trust.md#what-loadout-touches)). It does not read or change your Claude login or claude.ai connectors. The complete list, including what it leaves alone: [What loadout touches](docs/explanation/security-and-trust.md#what-loadout-touches).
 
 ## Where secrets go
 
-Secrets belong in `~/.config/loadout/secrets.env`, which bootstrap creates readable only by you, outside your personal layer. Configs refer to them as `${VAR}`. `loadout adopt` finds plaintext keys and never prints them, and recording your own tools into the personal layer refuses anything that looks like a secret or a private file. See [Secrets](docs/explanation/security-and-trust.md#secrets).
+Secrets belong in `~/.config/loadout/secrets.env`, which bootstrap creates readable only by you, outside your personal layer. Configs refer to them as `${VAR}`. `loadout adopt` finds plaintext keys and masks what its patterns recognise when it prints, and recording your own tools into the personal layer refuses anything that looks like a secret or a private file. Values you set with `loadout configure set pref` are not checked. See [Secrets](docs/explanation/security-and-trust.md#secrets).
 
 ## Backups
 
-Before loadout removes or replaces something, it moves the old item into `~/.claude/backups/loadout-<timestamp>` with a manifest of undo steps, and `loadout restore` replays them. Backups can contain old configs and secrets, so they are created readable only by you (0700, files 0600). Delete old ones when you no longer need them. What restore does not undo: [Undo what loadout changed](docs/how-to/undo-and-restore.md#what-restore-does-not-undo).
+Items you own that loadout removes or replaces go into a private backup under `~/.claude/backups/`, which can hold old configs and secrets; the routine sync of kit-managed state is not backed up. Details, file modes and what restore does not undo: [Undo what loadout changed](docs/how-to/undo-and-restore.md).
 
 ## Reporting a vulnerability
 
@@ -33,4 +33,4 @@ Include what you found, how to reproduce it, and which commit you tested. You wi
 
 ## Supported versions
 
-Only the current `main` branch is supported. loadout updates itself from `main`, so fixes reach users through the daily pull and plugin auto-update.
+Only the current `main` branch is supported. loadout pulls the branch your clone tracks (`main` by default), so fixes reach users through the daily pull and plugin auto-update.

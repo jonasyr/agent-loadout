@@ -18,7 +18,7 @@ The kit ships `thesis`, `web`, `db`, `sonar` and `android`. Yours live in `<pers
    ```
 
    Pin MCP server versions. A profile name that matches a kit profile replaces it for you; nothing is merged.
-2. **Preview it in a repo.** In the repo, run `loadout init --dry-run NAME`. It shows what would change and changes nothing.
+2. **Preview it in a repo.** In the repo, run `loadout init --dry-run NAME`. It prints the profile's description, the skills it would copy, the plugins and commands it would run and the files `init` would create, and changes nothing. It does not show the settings diff.
 3. **Apply it.** In the repo, run:
 
    ```bash

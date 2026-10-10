@@ -47,7 +47,7 @@ In this order:
 
 The repo's `.claude/settings.json` and `.mcp.json` are normal project files that you commit. `loadout restore` does not undo them.
 
-`loadout init --dry-run` prints what would change and changes nothing.
+`loadout init --dry-run` prints the profile's description, the skills it would copy, the plugins and commands it would run and the files `init` would create, and changes nothing. It does not show the settings diff.
 
 ### Skills
 
