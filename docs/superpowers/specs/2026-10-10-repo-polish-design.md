@@ -37,7 +37,8 @@ docs/
 │                              · execution-advisor
 ├── adr/                       README index + 0001-… one per decision
 ├── examples/docs-audit-before-after/   from the docs branch; nested CLAUDE.md → CLAUDE.md.example
-└── internal/                  superpowers specs + plans, with a README: working documents, not user docs
+└── superpowers/               stays here (the superpowers skills write specs/plans here and the execution
+                               advisor watches docs/superpowers/plans/); gets a README: working documents, not user docs
 .serena/memories/              4–6 notes: summary + links into docs/
 ```
 
@@ -110,7 +111,7 @@ The final list may merge or split an entry when the sources show it was one deci
 
 ## 7. Automated checks (tests/test_repo_static.py)
 
-- Every relative link in every tracked `*.md` (outside `docs/internal/`) resolves to an existing file (and anchor, where present).
+- Every relative link in every tracked `*.md` (outside `docs/superpowers/`) resolves to an existing file (and anchor, where present).
 - No `CLAUDE.md` outside the repo root (examples use `CLAUDE.md.example`).
 - `CLAUDE.md` contains exactly `@AGENTS.md`.
 
