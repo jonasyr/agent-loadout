@@ -95,3 +95,101 @@ def test_machine_a_restore_puts_snapshot_back(machine):
     backup.restore(bk.root)
     assert not snap_path.exists() or "my-own-linter" not in snap_path.read_text()
     assert "my-own-linter" in json.dumps(_settings()["hooks"])
+
+
+# 2. line rule: keyword must end the key, value must look like a secret
+
+import time
+
+from loadout import secrets
+
+NOT_SECRET = [
+    "auth: required", "token_budget: unlimited", "primary_key: user_id_and_date", "sort-key: created_at_desc",
+    "cache.key: request.url.path",
+    "auth_url: https://example.com/oauth/authorize", "token_endpoint: https://example.com/token",
+    "key_path: ~/.ssh/id_rsa.pub", "  - pass: lint-and-format",
+    "api_key: YOUR_API_KEY", "password: process.env.DB_PASSWORD", "secret_key = settings.SECRET_KEY",
+    'TOKEN_FILE="$HOME/.config/x"', 'AUTH_HEADER="Authorization: Bearer $TOKEN"', "passwd_file=/etc/passwd",
+]
+IS_SECRET = [
+    "password: hunter2hunter2", "api_key: 9f8e7d6c5b4a3f2e1d0c", "DB_PASS=s3cr3tP4ssw0rd",
+    "token: ghp_" + "A1b2" * 9, 'secret: "aB3dE5fG7hJ9kL1m"',
+]
+
+
+@pytest.mark.parametrize("text", NOT_SECRET)
+def test_line_rule_leaves_ordinary_config(text):
+    assert secrets.redact(text) == text
+
+
+@pytest.mark.parametrize("text", IS_SECRET)
+def test_line_rule_still_flags_secrets(text):
+    assert secrets.redact(text) != text
+
+
+def _t(text):
+    best = None
+    for _ in range(3):  # best of three: a busy machine must not fail a linear-time check
+        t = time.perf_counter()
+        secrets.redact(text)
+        d = time.perf_counter() - t
+        best = d if best is None else min(best, d)
+    return best
+
+
+@pytest.mark.parametrize("make", [
+    lambda: "password: x\n" * (100_000 // 12),
+    lambda: ("password: " + "aB1" * 30 + "\n") * (100_000 // 101),
+    lambda: "a_" * 50_000 + "key: v",
+    lambda: "-" * 100_000,
+    lambda: "key." * 25_000 + ": x",
+    lambda: '"a":' * 25_000,
+    lambda: ("password: " + "x" * 20 + "\n") * (100_000 // 31),
+], ids=["password-x-lines", "secret-lines", "long-key", "dashes", "dotted-key", "json-many", "key-colon-lines"])
+def test_line_rule_linear(make):
+    assert _t(make()) < 0.5
+
+
+SKILL_MD = """---
+name: api-helper
+description: Calls the example API with auth handled by the environment
+---
+# Config examples
+
+```yaml
+auth: required
+token_budget: unlimited
+primary_key: user_id_and_date
+sort-key: created_at_desc
+cache.key: request.url.path
+auth_url: https://example.com/oauth/authorize
+token_endpoint: https://example.com/token
+key_path: ~/.ssh/id_rsa.pub
+steps:
+  - pass: lint-and-format
+api_key: YOUR_API_KEY
+```
+
+```js
+const password = process.env.DB_PASSWORD
+password: process.env.DB_PASSWORD
+```
+
+```python
+secret_key = settings.SECRET_KEY
+```
+
+```sh
+TOKEN_FILE="$HOME/.config/x"
+AUTH_HEADER="Authorization: Bearer $TOKEN"
+passwd_file=/etc/passwd
+```
+"""
+
+
+def test_realistic_skill_is_recorded(machine):
+    skill = machine / ".claude/skills/my-skill"
+    (skill / "SKILL.md").write_text(SKILL_MD)
+    rec = own.record_global(_get("skill", "my-skill"), backup.Backup())
+    assert rec.ok, rec.lines
+    assert (paths.personal_root() / "skills/my-skill/SKILL.md").exists()

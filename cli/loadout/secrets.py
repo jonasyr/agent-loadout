@@ -13,6 +13,7 @@ SECRET_PATTERNS = [
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----", r"[sr]k_(?:live|test)_[A-Za-z0-9]{16,}", r"glpat-[\w-]{20,}",
     r"AIza[\w-]{35}", r"npm_[A-Za-z0-9]{36}", r"hf_[A-Za-z0-9]{30,}", r"eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,}",
 ]
+_SECRET_ANY = re.compile("|".join(f"(?:{p})" for p in SECRET_PATTERNS))  # one compiled search per value
 SECRET_KEY = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|AUTH", re.I)
 HEX_RUN = re.compile(r"[0-9a-fA-F]{32,}")
 B64_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
@@ -70,7 +71,7 @@ def looks_secret(key: str, value: str, keyed_arg: bool = False) -> bool:
     """keyed_arg: the value came from a KEY=value argument, so the high-entropy test applies too."""
     if not isinstance(value, str) or "${" in value:
         return False
-    if any(re.search(p, value) for p in SECRET_PATTERNS):
+    if _SECRET_ANY.search(value):
         return True
     if SECRET_KEY.search(key) and len(value) >= 12:
         return True
@@ -80,11 +81,30 @@ def looks_secret(key: str, value: str, keyed_arg: bool = False) -> bool:
 _JSON_PAIR = re.compile(r'"(?P<k>[^"\\]*)"(?P<sep>\s*:\s*)"(?P<v>(?:[^"\\]|\\.)*)"')
 _PY_PAIR = re.compile(r"'(?P<k>[^'\\\n]*)'(?P<sep>\s*:\s*)'(?P<v>(?:[^'\\\n]|\\.)*)'")  # Python dicts
 # YAML / INI / env line: `key: value` or `key = value`, anchored per line with one quantifier for the key
-# (linear); the key words are checked in redact(). A keyword must end the key or be followed by _ . -
+# (linear); the key and value are checked in _line_pair(). The keyword must be the key's LAST segment
+# (`api_key`, `db.password`, but not `auth_url` or `token_budget`).
 _LINE_PAIR = re.compile(r"^(?P<pre>[ \t]*(?:-[ \t]+)?(?:export[ \t]+)?(?P<q>[\"']?)(?P<k>[A-Za-z0-9_.-]+)(?P=q)"
                         r"[ \t]*[:=][ \t]*)(?P<v>\S+)", re.M)
-_LINE_KEY = re.compile(r"(?:key|token|secret|passw(?:or)?d|pass|auth)(?=$|[_.-])", re.I)
+_LINE_KEY = re.compile(r"(?:^|[_.-])(?:key|token|secret|passw(?:or)?d|pass|pwd|auth)$", re.I)
 _PLACEHOLDER = re.compile(r"^(?:\$\{.*|\$[A-Za-z_][A-Za-z0-9_]*|<.*)$")
+_NOT_A_VALUE = ("$", "/", "process.env", "settings.", "os.environ", "<", "{{", "(", ")", MASK)
+_CAPS_PLACEHOLDER = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")   # YOUR_API_KEY
+_PLAIN_WORDS = re.compile(r"[a-z]+(?:[-_][a-z]+)*")                # required, lint-and-format, user_id_and_date
+
+
+def _secret_value(value: str) -> bool:
+    """A config value that looks like a real secret rather than a word, a path, a URL, a reference or a
+    placeholder: 8+ chars without whitespace that mix letters and digits, or 16+ chars of mixed case."""
+    if len(value) < 8 or any(c.isspace() for c in value) or any(x in value for x in _NOT_A_VALUE):
+        return False
+    if _CAPS_PLACEHOLDER.fullmatch(value) or _PLAIN_WORDS.fullmatch(value):
+        return False
+    letters = any(c.isalpha() for c in value)
+    if letters and any(c.isdigit() for c in value):
+        return True
+    return len(value) >= 16 and any(c.islower() for c in value) and any(c.isupper() for c in value)
+
+
 # The lookbehind starts a match only at a token boundary: same matches (a key is the whole run before "="),
 # but linear time on long runs without "=" (unanchored, it backtracked quadratically).
 _KEY_EQ = re.compile(r"(?<![A-Za-z0-9_.-])(?P<k>[A-Za-z0-9_.-]+)=(?P<v>[^\s&'\"]+)")
@@ -92,13 +112,14 @@ _KEY_EQ = re.compile(r"(?<![A-Za-z0-9_.-])(?P<k>[A-Za-z0-9_.-]+)=(?P<v>[^\s&'\"]
 _FLAG_VALUE = re.compile(r"(?<![A-Za-z0-9_-])(?P<k>--?[A-Za-z0-9_-]+)(?P<sp>\s+)(?P<v>[^\s-]\S{7,})")
 _FLAG_WORD = re.compile(r"key|token|secret|password|auth", re.I)
 _URL_PASSWORD = re.compile(r"(?P<k>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://[^\s:/@]+:)(?P<v>[^\s@/]+)(?=@)", re.I)
-_BEARER = re.compile(r"(?P<k>\b(?:Bearer|Basic|token)\s+)(?P<v>[A-Za-z0-9._~+/=-]{8,})")
+# Same line only; after a bare `token` the value must look like a secret (".../token\nkey_path: ..." is not one).
+_BEARER = re.compile(r"(?P<k>\b(?P<w>Bearer|Basic|token)[ \t]+)(?P<v>[A-Za-z0-9._~+/=-]{8,})")
 
 
 def _line_pair(m: re.Match) -> str:
     value = m["v"].strip("'\",;")
     if len(value) < 8 or not _LINE_KEY.search(m["k"]) or m["k"].lower() == "key" or _PLACEHOLDER.match(value) \
-            or MASK in value or "(" in value or ")" in value:   # a bare `key` field and code (calls) are not secrets
+            or not _secret_value(value):   # cheapest test first; a bare `key` field is not a secret
         return m.group()
     return m["pre"] + MASK
 
@@ -110,7 +131,7 @@ def redact(text: str) -> str:
     text = _JSON_PAIR.sub(lambda m: f'"{m["k"]}"{m["sep"]}"{MASK}"' if looks_secret(m["k"], m["v"]) else m.group(), text)
     text = _PY_PAIR.sub(lambda m: f"'{m['k']}'{m['sep']}'{MASK}'" if looks_secret(m["k"], m["v"]) else m.group(), text)
     text = _LINE_PAIR.sub(_line_pair, text)
-    text = _BEARER.sub(lambda m: m["k"] + MASK, text)
+    text = _BEARER.sub(lambda m: m["k"] + MASK if m["w"] != "token" or _secret_value(m["v"]) else m.group(), text)
     text = _URL_PASSWORD.sub(lambda m: m["k"] + (m["v"] if m["v"].startswith("${") else MASK), text)
     text = _KEY_EQ.sub(lambda m: f"{m['k']}={MASK}" if looks_secret(m["k"], m["v"], keyed_arg=True) else m.group(), text)
     text = _FLAG_VALUE.sub(lambda m: m["k"] + m["sp"] + MASK if _FLAG_WORD.search(m["k"]) else m.group(), text)
