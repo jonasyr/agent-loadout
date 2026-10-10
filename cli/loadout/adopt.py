@@ -87,7 +87,9 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
 def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask: Ask,
            keep_global: list | None = None) -> list[Verdict]:
     if groups is not None:
-        valid = set(GROUP_ORDER) - {"keep"}
+        valid = set(GROUP_ORDER) - {"keep", "own"}
+        if "own" in groups:
+            raise ValueError("group 'own': decide per item with --own NAME=CHOICE,... (see loadout configure own)")
         for g in sorted(groups - valid):
             raise ValueError(f"unknown group '{g}' (valid: {', '.join(x for x in GROUP_ORDER if x in valid)})")
         return [v for v in verdicts if v.action in groups and v.item.name not in skip]

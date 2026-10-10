@@ -122,15 +122,24 @@ def test_unselected_unknown_hook_survives(machine):
     assert "my-own-linter" in json.dumps(settings)
 
 
-def test_groups_own_removes_and_restores(machine, fake_runner):
-    chosen = adopt.select(_verdicts(), {"own"}, set(), ask=lambda q: "")
+def test_own_remove_by_name_removes_and_restores(machine, fake_runner):
+    pairs = own.resolve(own.parse_spec("omarchy-kb=remove,PreToolUse:Edit=remove"), _verdicts())
     bk = backup.Backup()
-    adopt.apply(chosen, bk)
+    adopt.apply_own(pairs, bk)
     assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
     assert "my-own-linter" not in (machine / ".claude/settings.json").read_text()
     backup.restore(bk.root)
     assert "my-own-linter" in (machine / ".claude/settings.json").read_text()
     assert any(c[:6] == ["claude", "mcp", "add-json", "-s", "user", "omarchy-kb"] for c in fake_runner.calls)
+
+
+def test_groups_own_is_refused(machine, fake_runner, capsys):
+    with pytest.raises(ValueError, match=r"group 'own': decide per item with --own NAME=CHOICE,\.\.\. \(see loadout configure own\)"):
+        adopt.select(_verdicts(), {"own"}, set(), ask=lambda q: "")
+    from loadout.__main__ import main
+    assert main(["adopt", "--apply", "--yes", "--groups", "own", "--no-versions"]) == 1
+    assert "group 'own'" in capsys.readouterr().err
+    assert [c for c in fake_runner.calls if c[:2] == ["claude", "mcp"]] == []
 
 
 def test_keep_never_acts(machine, fake_runner):
