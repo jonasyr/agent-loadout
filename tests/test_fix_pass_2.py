@@ -368,6 +368,8 @@ def test_value_flags_skip_their_value(scripts, cmd, script):
     hook, notes = own._portable_hook({"type": "command", "command": cmd}, backup.Backup(), "x")
     assert _hooks_dir() == [script], (hook, notes)
     assert f"$HOME/.claude/hooks/personal/{script}" in hook["command"]
+    if "a.js" in cmd:
+        assert any("a.js is a file under your home folder" in n for n in notes), notes
 
 
 @pytest.mark.parametrize("cmd", ["python3 -c 'print(1)' ~/bin/h.py", "node -e 1 ~/bin/h.js", "bash -c ~/bin/h.sh",

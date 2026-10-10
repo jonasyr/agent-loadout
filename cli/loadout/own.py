@@ -497,6 +497,8 @@ def _portable_hook(hook: dict, bk, name: str, deferred: list | None = None) -> t
         if _under(p, paths.kit_root()) or _under(p, paths.personal_root()):
             continue
         if script_at is not None and i < script_at:
+            if _under(p, paths.home()):  # the value of an interpreter flag, such as node --require ~/x.js
+                notes.append(f"note: {p} is a file under your home folder that is not the hook's script; recorded as is")
             continue  # env / interpreter
         if not _under(p, paths.home()):
             if str(p).startswith(_SYSTEM_PREFIXES):
