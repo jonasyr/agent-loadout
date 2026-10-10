@@ -405,7 +405,7 @@ def test_apply_own_record_error_keeps_other_items(machine, fake_runner):
     assert (paths.personal_root() / "skills/my-skill").exists()
 
 
-def test_apply_own_unreadable_skill_reports_and_continues(machine, fake_runner):
+def test_apply_own_unreadable_skill_is_a_collision_and_continues(machine, fake_runner):
     import os
     if os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0):
         pytest.skip("permissions not enforced")
@@ -441,3 +441,44 @@ def test_apply_own_leave_is_restorable(machine):
     assert own.decisions()
     backup.restore(bk.root, force=True)
     assert not own.decisions()
+
+
+def test_apply_own_record_exception_is_reported_and_isolated(machine, fake_runner, monkeypatch):
+    vs = {x.item.name: x for x in _verdicts()}
+    real = own.record_global
+
+    def flaky(v, bk):
+        if v.item.name == "omarchy-kb":
+            raise PermissionError(f"denied token={FAKE_PAT}")
+        return real(v, bk)
+
+    from fixtures import FAKE_PAT
+    monkeypatch.setattr(own, "record_global", flaky)
+    lines, _ = adopt.apply_own([(vs["omarchy-kb"], own.Choice("global")),
+                                (vs["my-skill"], own.Choice("global"))], backup.Backup())
+    failed = [line for line in lines if "omarchy-kb: failed:" in line]
+    assert failed and FAKE_PAT not in failed[0]
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+    assert (paths.personal_root() / "skills/my-skill").exists()
+
+
+def test_apply_own_machine_step_error_does_not_stop_later_steps(machine, fake_runner, monkeypatch):
+    from loadout import settings_merge
+    vs = {x.item.name: x for x in _verdicts()}
+    ran = []
+
+    def fake_record(v, bk):
+        def step():
+            if v.item.name == "omarchy-kb":
+                raise OSError("disk gone")
+            ran.append(v.item.name)
+            return [f"{v.item.name}: machine step ran"]
+        return own.Recorded(True, [], step)
+
+    applied = []
+    monkeypatch.setattr(own, "record_global", fake_record)
+    monkeypatch.setattr(settings_merge, "apply_settings", lambda: applied.append(1) or ({}, {}))
+    lines, _ = adopt.apply_own([(vs["omarchy-kb"], own.Choice("global")),
+                                (vs["my-skill"], own.Choice("global"))], backup.Backup())
+    assert any("omarchy-kb: failed: disk gone" in line for line in lines)
+    assert ran == ["my-skill"] and applied
