@@ -370,7 +370,9 @@ def _hook_group(v: Verdict, bk) -> tuple[str, dict, list[str]]:
     group = data["hooks"][event][gi]
     hook, notes = _portable_hook(group["hooks"][hi], bk, v.item.name)
     base = {k: val for k, val in group.items() if k != "hooks"}
-    return event, {**base, "hooks": [hook]}, notes
+    out = {**base, "hooks": [hook]}
+    _refuse_if_secret(f"hook {v.item.name}", json.dumps(out))  # every branch: exec form, unparsable, other fields
+    return event, out, notes
 
 
 def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:

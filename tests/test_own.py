@@ -580,3 +580,25 @@ def test_hook_script_after_env_and_interpreter_flags(machine):
     assert (paths.personal_root() / "hooks/x.py").exists() and not (paths.personal_root() / "hooks/data.json").exists()
     assert any("hook script x.py copied" in line for line in rec.lines)
     assert any(str(data) in line and "not the hook's script" in line for line in rec.lines)
+
+
+GHP = "ghp_" + "a" * 36
+
+
+@pytest.mark.parametrize("hook", [
+    {"type": "command", "command": "curl", "args": ["-H", "Authorization: Bearer " + GHP, "https://x"]},
+    {"type": "command", "command": "curl -H 'Authorization: Bearer " + GHP + " https://x"},   # shlex cannot parse
+])
+@pytest.mark.parametrize("scope", ["global", "project"])
+def test_hook_secret_checked_on_every_branch(machine, hook, scope):
+    _set_hook_obj("Stop", hook)
+    v = _hook(hook["command"])
+    rec = own.record_global(v, backup.Backup()) if scope == "global" else own.record_project(v, "mine", backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+    assert GHP not in _personal_text() and GHP not in " ".join(rec.lines)
+
+
+def test_hook_secret_outside_command_checked(machine):
+    _set_hook_obj("Stop", {"type": "command", "command": "ok", "headers": {"Authorization": "Bearer " + GHP}})
+    rec = own.record_global(_hook("ok"), backup.Backup())
+    assert not rec.ok and GHP not in _personal_text()
