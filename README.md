@@ -46,9 +46,9 @@ cd $HOME\agent-loadout
 powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install
 ```
 
-If you plan to keep secrets in `secrets.env`, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` first. Then this command and your profiles both run.
+If you plan to keep secrets in `secrets.env`, also run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`: `Bypass` only lets this one command run, `RemoteSigned` lets your PowerShell profiles (and with them the secrets loader) run.
 
-Keep the clone where it is: the installed links point into it. Bootstrap walks you through three steps (your personal layer, preferences, your existing setup), and, if it replaced anything, names the backup and the undo command. Then restart Claude Code and run the read-only health check (if `loadout` is not found, add `~/.local/bin` to your `PATH`):
+Keep the clone where it is: the installed links point into it. Bootstrap walks you through three steps (your personal layer, preferences, your existing setup), and, if it replaced anything, names the backup and the undo command. Then restart Claude Code and run the read-only health check (if `loadout` is not found, add `~/.local/bin` to your `PATH`; on Windows `%USERPROFILE%\.local\bin`):
 
 ```bash
 loadout check

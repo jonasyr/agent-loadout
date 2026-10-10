@@ -41,9 +41,9 @@ Choose one path first. Do not mix the two.
    powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install
    ```
 
-   If you plan to keep secrets in `secrets.env`, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` first. Then this command and your profiles both run. Why: [Troubleshooting, Windows](../how-to/troubleshooting.md#windows).
+   If you plan to keep secrets in `secrets.env`, also run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`: `Bypass` only lets this one command run, `RemoteSigned` lets your PowerShell profiles (and with them the secrets loader) run. Why: [Troubleshooting, Windows](../how-to/troubleshooting.md#windows).
 3. Bootstrap writes the secrets loader into both your Windows PowerShell and PowerShell 7 profiles.
-4. Install codebase-memory-mcp by hand from its release archive (the `manual` hint names it); until then `loadout check` shows FAIL and bootstrap exits with 1. It has no Windows install command.
+4. Install codebase-memory-mcp by hand from its release archive (the `manual` hint names it); until then `loadout check` shows FAIL and bootstrap exits with 1. It has no Windows install command. The optional rtk has none either; install it the same way if you want it.
 5. Without Developer Mode, Windows cannot create the links, and loadout copies files instead. Enable Developer Mode and re-run bootstrap to switch back to links. See [Troubleshooting](../how-to/troubleshooting.md).
 
 Go on with [What bootstrap asks](#what-bootstrap-asks).
