@@ -64,3 +64,25 @@ def test_bootstrap_backs_up_the_settings_snapshot(fake_home, fake_runner):
     assert snap.exists()
     steps = [s for m in paths.backups_root().rglob("manifest.json") for s in json.loads(m.read_text())["steps"]]
     assert any(str(snap) in json.dumps(s["undo"]) for s in steps), steps
+
+
+# 2. maintenance links after a pull in every mode
+
+def test_maintain_links_pulled_skills_and_hook_scripts_in_symlink_mode(fake_home, fake_runner, monkeypatch):
+    from loadout import maintenance as m
+
+    personal = paths.personal_root()
+    (personal / ".git").mkdir(parents=True)
+    (personal / "hooks").mkdir()
+    (personal / "hooks/x.sh").write_text("#!/bin/sh\n")
+    (personal / "skills/foo").mkdir(parents=True)
+    (personal / "skills/foo/SKILL.md").write_text("x")
+    (personal / "settings.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+        {"type": "command", "command": '"$HOME/.claude/hooks/personal/x.sh"'}]}]}}))
+    monkeypatch.setattr(m, "pull_if_clean", lambda root: True)
+    monkeypatch.setattr(m, "find_outdated", lambda: [])
+    monkeypatch.setattr(m, "notify", lambda text: None)
+    m._maintain(100.0)
+    assert (paths.claude_home() / "skills/foo").is_symlink()
+    assert (paths.claude_home() / "hooks/personal").is_symlink()
+    assert (paths.claude_home() / "hooks/personal/x.sh").exists()

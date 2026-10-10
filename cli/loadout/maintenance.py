@@ -222,12 +222,14 @@ def _maintain(now: float) -> None:
                     notify(f"loadout: {line}")
             except Exception as exc:  # never crash in the background; surface next session
                 notify(f"loadout: could not apply settings after sync: {exc}")
-            if link.is_copy_mode():
-                bk = Backup(description="maintenance: rule copies refreshed after a pull")
-                link.link_all(bk)
+            try:
+                bk = Backup(description="maintenance: links refreshed after a pull")
+                link.link_all(bk)  # every mode: pulled skills and hook scripts must be linked for merged hooks to run
                 if not bk.empty:
-                    notify(f"loadout: refreshed the copied rules; your edited copies are in {bk.root} "
+                    notify(f"loadout: refreshed links and copies; replaced or edited ones are in {bk.root} "
                            f"(undo: loadout restore {bk.root})")
+            except Exception as exc:  # never crash in the background; surface next session
+                notify(f"loadout: could not link after sync: {exc}")
     _touch_lock()
     if is_due("last-update-check", WEEK, now):
         touch("last-update-check", now)
