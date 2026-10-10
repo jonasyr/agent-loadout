@@ -363,7 +363,7 @@ def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
     args = hook.get("args")
     words = ([cmd] if isinstance(cmd, str) else []) + [a for a in (args if isinstance(args, list) else []) if isinstance(a, str)]
     for tok in words:
-        if (bad := _private_token(tok) or _private_in_raw(tok)) is not None:
+        if (bad := _private_in_raw(tok)) is not None:
             raise Collision(f"hook {name} refers to a private file ({bad}); not recorded")
     if "args" in hook:
         return hook, ["note: exec form hook (args) recorded as is; it works only where its paths exist"]

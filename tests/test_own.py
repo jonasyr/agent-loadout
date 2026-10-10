@@ -534,7 +534,7 @@ def test_hook_ssh_key_token_refused_not_copied(machine):
     key.write_text(PEM)
     _set_hook(machine, "Notification", f"ssh -i {key} me@nas notify-send done")
     rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
-    assert not rec.ok and "refers to a private file" in rec.lines[0] and str(key) in rec.lines[0]
+    assert not rec.ok and f"refers to a private file ({key}); not recorded" in rec.lines[0]
     assert "PRIVATE KEY" not in _personal_text() and _personal_empty()
 
 
