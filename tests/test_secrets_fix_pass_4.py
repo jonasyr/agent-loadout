@@ -43,7 +43,7 @@ SECRETS_4 = [
     "secret: Tr0ub4dor&3", "password: Sunshine99", "password: s3cr3t-p4ss", "password: hunter-22",
     "password: correct-horse-battery", "password: dragon.monkey.42", "password: mypassword123",
     "password: letmein2024", "token: a1b2-c3d4-e5f6-g7h8", "auth_token: 550e8400-e29b-41d4-a716-446655440000",
-    "webhook_secret: whsec_abcdefghijklmnop", "slack_token: xoxp-1234567890-abcdefghij",
+    "webhook_secret: whsec_abcdefghijklmnop", "slack_token: xox" + "p-1234567890-abcdefghij",
     "DATABASE_PASSWORD=Pa55w0rd!!", "STRIPE_SECRET=sk_live_" + "a" * 24, "JWT_SECRET=supersecretjwtkey",
     "JWT_SECRET=mysupersecretvalue", "SESSION_SECRET=keyboard-cat-2", "REDIS_PASSWORD=foobared1",
     "OPENAI_API_KEY=" + "sk-" + "A1b2" * 6, "MYSQL_ROOT_PASSWORD=rootpass", "MYSQL_ROOT_PASSWORD=r00tpassw0rd",
