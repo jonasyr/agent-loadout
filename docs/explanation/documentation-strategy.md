@@ -34,7 +34,7 @@ The fix is old and boring: treat documentation like code. Write it in plain text
 | `.serena/memories/` (committed) | Agent working notes: per topic a 1–3 line summary plus a link into `docs/`; gotchas; "to do X, touch these files"; current status | Never the only home of a fact a human would need |
 | Claude Code auto memory (`~/.claude/projects/…`) | Temporary or machine-specific notes | Never project facts; it is machine-local and not shared |
 
-This is the kit's [docs policy](../rules/docs-policy.md) and [memory policy](../rules/memory-policy.md); both are loaded into every Claude Code session on a machine set up with loadout.
+This is the kit's [docs policy](../../rules/docs-policy.md) and [memory policy](../../rules/memory-policy.md); both are loaded into every Claude Code session on a machine set up with loadout.
 
 Two details matter:
 
@@ -149,7 +149,7 @@ No tutorials folder appears, because this repo had no tutorial content. The audi
 
 ### A worked example
 
-The kit's eval for docs-audit builds a small CLI repo, `tasklog`, with eight planted errors and one genuinely ambiguous item. The [full before/after example](examples/docs-audit-before-after/README.md) (a **simulated example based on the kit's eval fixture**) shows every file, the claim table and the question asked. Three excerpts:
+The kit's eval for docs-audit builds a small CLI repo, `tasklog`, with eight planted errors and one genuinely ambiguous item. The [full before/after example](../examples/docs-audit-before-after/README.md) (a **simulated example based on the kit's eval fixture**) shows every file, the claim table and the question asked. Three excerpts:
 
 **AGENTS.md commands: plausible versus verified.**
 

@@ -2,6 +2,8 @@ import json
 import re
 import subprocess
 
+import pytest
+
 from loadout import paths
 
 ROOT = paths.kit_root()
@@ -93,3 +95,58 @@ def test_no_secrets_in_tracked_files():
 def test_advisor_mark_is_preapproved():
     """The execution-advisor skill runs it on every evaluation; it must not prompt each time."""
     assert "Bash(loadout advisor-mark:*)" in _json("settings.base.json")["permissions"]["allow"]
+
+
+_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+
+
+def _tracked_markdown():
+    out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*.md", "**/*.md"], capture_output=True, text=True, check=True)
+    files = sorted({ROOT / f for f in out.stdout.split()})
+    # working documents; eval fixtures and the example's "before" tree contain planted errors, including broken links
+    skip = ("docs/superpowers/", "plugins/loadout/evals/")
+    return [
+        f for f in files
+        if not f.relative_to(ROOT).as_posix().startswith(skip) and "/before/" not in f.relative_to(ROOT).as_posix()
+    ]
+
+
+def _anchors(path):
+    """GitHub-style heading anchors of a Markdown file."""
+    out = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"#{1,6}\s+(.*)", line)
+        if m:
+            slug = re.sub(r"[^\w\- ]", "", m.group(1).strip().lower()).replace(" ", "-")
+            out.add(slug)
+    return out
+
+
+def test_relative_links_resolve():
+    broken = []
+    for md in _tracked_markdown():
+        text = re.sub(r"```.*?```", "", md.read_text(encoding="utf-8"), flags=re.S)  # ignore code blocks
+        for target in _LINK.findall(text):
+            if re.match(r"[a-z]+:", target) or target.startswith("#") and not target[1:]:
+                continue
+            path_part, _, anchor = target.partition("#")
+            dest = (md.parent / path_part).resolve() if path_part else md
+            if not dest.exists():
+                broken.append(f"{md.relative_to(ROOT)} -> {target}")
+            elif anchor and dest.suffix == ".md" and anchor.lower() not in _anchors(dest):
+                broken.append(f"{md.relative_to(ROOT)} -> {target} (no such heading)")
+    assert not broken, "\n".join(broken)
+
+
+def test_no_nested_claude_md():
+    out = subprocess.run(["git", "-C", str(ROOT), "ls-files"], capture_output=True, text=True, check=True)
+    # eval fixtures and templates/project need the real name: the evals and `loadout init` read it
+    allowed = ("plugins/loadout/evals/", "templates/")
+    nested = [f for f in out.stdout.split() if f.endswith("CLAUDE.md") and f != "CLAUDE.md" and not f.startswith(allowed)]
+    assert not nested, f"nested CLAUDE.md files are loaded by Claude Code; rename them CLAUDE.md.example: {nested}"
+
+
+@pytest.mark.xfail(strict=True, reason="AGENTS.md arrives in Task 7")
+def test_claude_md_imports_agents_md():
+    assert (ROOT / "CLAUDE.md").read_text(encoding="utf-8").strip() == "@AGENTS.md"
+    assert (ROOT / "AGENTS.md").exists()

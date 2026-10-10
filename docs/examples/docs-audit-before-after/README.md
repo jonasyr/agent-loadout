@@ -2,7 +2,9 @@
 
 > **Simulated example based on the kit's eval fixture.** `before/` is the exact documentation of the `tasklog` repo that the `/loadout:docs-audit` eval builds ([`scaffold.sh`](../../../plugins/loadout/evals/docs-audit/scaffold.sh), source code in [`fixtures/tasklog`](../../../plugins/loadout/evals/fixtures/tasklog)). The eval checks that the audit flags eight planted errors and asks about one ambiguous item. `after/` is a hand-written illustration of what the rewrite phase produces once that question is answered; it is not a recorded model output. The user's answer below is also simulated.
 
-Back to [Documentation strategy](../../documentation-strategy.md).
+Back to [Documentation strategy](../../explanation/documentation-strategy.md).
+
+The example's `CLAUDE.md` files are named `CLAUDE.md.example`. Claude Code loads nested `CLAUDE.md` files when it reads a folder, so real ones would leak the example into sessions in this repo.
 
 ## The repo
 
@@ -42,7 +44,7 @@ Simulated answer: **1**. That answer is a decision, so it becomes [`after/docs/a
 
 | Before | After | Why |
 |---|---|---|
-| `docs/configuration.md` (env var plus a Dropbox example) | `docs/reference/configuration.md` and `docs/how-to/use-a-synced-folder.md` | Facts to look up and steps to follow are different [Diátaxis](../../documentation-strategy.md#diátaxis-four-kinds-of-docs) types |
+| `docs/configuration.md` (env var plus a Dropbox example) | `docs/reference/configuration.md` and `docs/how-to/use-a-synced-folder.md` | Facts to look up and steps to follow are different [Diátaxis](../../explanation/documentation-strategy.md#diátaxis-four-kinds-of-docs) types |
 | `docs/architecture.md` | `docs/explanation/architecture.md` | It explains structure; it is not a lookup table |
 | "Archiving keeps the row and sets `archived = 1`" (one sentence in architecture.md) | `docs/adr/0001-archive-is-a-soft-delete.md` | A design decision with consequences gets an ADR |
 | CLI table in `project_overview.md` (memory) | Links to `docs/reference/cli.md` | One home per fact; the copy had already drifted (200 vs 120) |
