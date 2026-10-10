@@ -147,3 +147,34 @@ def test_profile_skill_messages(fake_home, tmp_path):
     (personal / "profiles/mine.json").write_text(json.dumps({"skills": ["missing"]}))
     msgs = profiles.copy_skills(profiles.load_profile("mine"), tmp_path)
     assert msgs == ["skill missing: not found in profiles/skills/ (personal layer or kit)"]
+
+
+def _mine_with_skill(skills=("notes",)):
+    personal = paths.personal_root()
+    (personal / "profiles/skills/notes").mkdir(parents=True)
+    (personal / "profiles/skills/notes/SKILL.md").write_text("new")
+    (personal / "profiles/mine.json").write_text(json.dumps({"skills": list(skills)}))
+    return profiles.load_profile("mine")
+
+
+def test_copy_skills_refuses_symlinked_claude_dir_outside_repo(fake_home, tmp_path):
+    prof = _mine_with_skill()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    for link in (".claude", ".claude/skills"):
+        repo = tmp_path / f"repo{len(link)}"
+        repo.mkdir()
+        if link == ".claude/skills":
+            (repo / ".claude").mkdir()
+        (repo / link).symlink_to(elsewhere)
+        msgs = profiles.copy_skills(prof, repo)
+        assert len(msgs) == 1 and "outside" in msgs[0], msgs
+        assert not any(elsewhere.rglob("SKILL.md"))
+
+
+def test_copy_skills_refuses_path_like_names(fake_home, tmp_path):
+    prof = _mine_with_skill(skills=("../evil", "a/b", "..", "notes"))
+    msgs = profiles.copy_skills(prof, tmp_path / "repo")
+    assert [m for m in msgs if "not a plain name" in m] and len(msgs) == 4
+    assert msgs[-1].startswith("copied skill notes")
+    assert not (tmp_path / "repo/.claude/evil").exists()

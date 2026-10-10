@@ -75,8 +75,16 @@ def _skill_source(name: str) -> Path | None:
 def copy_skills(profile: Profile, project: Path, dry_run: bool = False) -> list[str]:
     """Copy the profile's skills into the repo. An existing skill folder is never overwritten."""
     out = []
+    skills_dir = project / ".claude" / "skills"
+    try:
+        skills_dir.resolve().relative_to(project.resolve())
+    except ValueError:
+        return [f"skills not copied: {skills_dir} points outside {project} (a symlinked .claude or .claude/skills)"]
     for name in profile.skills:
-        src, dest = _skill_source(name), project / ".claude" / "skills" / name
+        if not isinstance(name, str) or not name or Path(name).name != name or name in (".", ".."):
+            out.append(f"skill {name}: not a plain name, skipped")
+            continue
+        src, dest = _skill_source(name), skills_dir / name
         if src is None:
             out.append(f"skill {name}: not found in profiles/skills/ (personal layer or kit)")
         elif dest.exists() or dest.is_symlink():
