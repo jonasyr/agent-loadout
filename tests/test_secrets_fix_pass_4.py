@@ -198,3 +198,27 @@ def test_redact_linear_on_adversarial_input(name):
         d = time.perf_counter() - t
         best = d if best is None else min(best, d)
     assert best < 3.0  # the target is under 0.5 s (see the fix pass 4 report); 3 s leaves room for slow CI
+
+
+@pytest.mark.parametrize("line", ["password: Summer(2024)!x", "password: P4ss[w0rd]!",
+                                  "secret = Xk9(mQ2)pLz7", "api_key: abc[1]def9Zq"])
+def test_values_that_only_start_like_code_are_still_secrets(line):
+    from loadout import secrets
+    assert secrets.redact(line) != line, line
+
+
+@pytest.mark.parametrize("line", ['api_key = os.getenv("API_KEY", "")', "password = getpass.getpass('Password: ')",
+                                  "token = tokens[i]", "api_key = cfg['api_key']", "secret = load_secret(name, default),",
+                                  "token = jwt.encode(payload, key)  # sign", "auth = HTTPBasicAuth(user, pw);"])
+def test_closed_calls_and_indexes_are_code(line):
+    from loadout import secrets
+    assert secrets.redact(line) == line, line
+
+
+def test_long_call_chains_are_linear_and_do_not_recurse():
+    import time
+    from loadout import secrets
+    line = "token = a.b(1)" + ".c(2)" * 20000
+    start = time.monotonic()
+    assert secrets.redact(line) == line  # a closed chain is code
+    assert time.monotonic() - start < 3.0

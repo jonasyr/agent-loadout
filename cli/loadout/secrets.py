@@ -181,9 +181,46 @@ _KWARG = re.compile(r"(?P<k>(?:(?<![\w.\-])(?P<n>[A-Za-z_]\w*)|\[(?P<sq>['\"])(?
 _BEARER = re.compile(r"(?P<k>\b(?P<w>Bearer|Basic|token)[ \t]+)(?P<v>[A-Za-z0-9._~+/=-]{8,})")
 
 
+_CHAIN = re.compile(r"[ \t]*(?:\.\w+\(|\[)")
+_TAIL_OK = re.compile(r"[ \t]*(?:$|[,;)]|#|//)")
+
+
+def _closes_at_end(text: str, start: int) -> bool:
+    """The bracket at text[start] closes and the value ends there: only `,` `;` `)` a comment, or a chained
+    `.name(...)` / `[...]` may follow. `Summer(2024)!x` is a value, `getenv("X", "")` is code.
+    One linear scan, no recursion and no slicing (long call chains stay cheap)."""
+    depth, quote, i, n = 0, "", start, len(text)
+    while i < n:
+        c = text[i]
+        if quote:
+            if c == "\\":
+                i += 1
+            elif c == quote:
+                quote = ""
+        elif c in "\"'":
+            quote = c
+        elif c in "([":
+            depth += 1
+        elif c in ")]":
+            depth -= 1
+            if depth == 0:
+                if _TAIL_OK.match(text, i + 1):
+                    return True
+                chained = _CHAIN.match(text, i + 1)
+                if not chained:
+                    return False
+                i = chained.end() - 1  # continue at the chained call's opening bracket
+                continue
+        i += 1
+    return False
+
+
 def _code(rest: str, colon: bool) -> bool:
     """The text after `key =` / `key:` is code rather than a value (see _CODE, _ANNOTATION)."""
-    return _CODE.match(rest) is not None or (colon and _ANNOTATION.match(rest) is not None)
+    m = _CODE.match(rest)
+    if m and (m.group(1) is not None or _closes_at_end(rest, m.end() - 1)):
+        return True
+    return colon and _ANNOTATION.match(rest) is not None
 
 
 def _line_pair(m: re.Match) -> str:
