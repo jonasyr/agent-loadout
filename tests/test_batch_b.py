@@ -245,3 +245,81 @@ def test_set_own_exits_1_when_the_record_is_skipped(machine, capsys):
 def test_set_own_exits_0_when_recorded(machine):
     from loadout import configure
     assert configure.set_own("my-skill", "leave") == 0
+
+
+# 8. repo offer
+
+def _repo_with_local_settings_only(machine):
+    repo = machine / "code/localonly"
+    (repo / ".claude").mkdir(parents=True)
+    (repo / ".claude/settings.local.json").write_text(json.dumps({"x": "omarchy-kb"}))
+    return repo
+
+
+def _known_repos(machine, *repos):
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["projects"] = {str(r): {} for r in repos}
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+
+
+def _offer(machine, monkeypatch, answers):
+    from loadout import project
+    applied, asked = [], []
+    monkeypatch.setattr(project, "add_profile", lambda repo, name: applied.append((repo, name)))
+    it = iter(answers)
+
+    def ask(q):
+        asked.append(q)
+        return next(it)
+
+    item = _get("mcp", "omarchy-kb").item
+    adopt._offer_profiles({"mine": [item]}, ask)
+    return applied, asked
+
+
+def test_settings_local_json_is_not_evidence(machine):
+    repo = _repo_with_local_settings_only(machine)
+    _known_repos(machine, repo)
+    assert own.candidate_repos(_get("mcp", "omarchy-kb").item) == []
+
+
+def test_repo_offer_y_means_the_detected_repos(machine, monkeypatch, capsys):
+    repo = machine / "code/app"
+    repo.mkdir(parents=True)
+    (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"omarchy-kb": {}}}))
+    _known_repos(machine, repo)
+    applied, asked = _offer(machine, monkeypatch, ["y"])
+    assert asked == ["  apply to these repos? [y/N/paths]: "]
+    assert [r for r, _ in applied] == [repo]
+    out = capsys.readouterr().out
+    assert out.count("is not undone by loadout restore") == 1
+    assert "(applying writes the repo's committed .claude/settings.json / .mcp.json and is not undone by loadout restore)" in out
+
+
+@pytest.mark.parametrize("answer", ["", "n", "N"])
+def test_repo_offer_enter_or_n_means_none(machine, monkeypatch, answer):
+    repo = machine / "code/app"
+    repo.mkdir(parents=True)
+    (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"omarchy-kb": {}}}))
+    _known_repos(machine, repo)
+    applied, _ = _offer(machine, monkeypatch, [answer])
+    assert applied == []
+
+
+def test_repo_offer_anything_else_is_paths(machine, monkeypatch):
+    a, c = machine / "code/a", machine / "code/c"
+    a.mkdir(parents=True)
+    c.mkdir(parents=True)
+    repo = machine / "code/app"
+    repo.mkdir()
+    (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"omarchy-kb": {}}}))
+    _known_repos(machine, repo)
+    applied, _ = _offer(machine, monkeypatch, [f"{a}, {c}"])
+    assert [r for r, _ in applied] == [a, c]
+
+
+def test_repo_offer_without_detected_repos_asks_for_paths(machine, monkeypatch):
+    _known_repos(machine)
+    applied, asked = _offer(machine, monkeypatch, [""])
+    assert asked == ["  repos (comma-separated paths; Enter: none): "]
+    assert applied == []

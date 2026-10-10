@@ -542,7 +542,7 @@ def test_run_interactive_offers_repo_for_new_profile(machine, fake_runner, monke
     monkeypatch.setattr(project, "add_profile", lambda path, name, **kw: applied.append((path, name)) or 0)
     offered = []
     monkeypatch.setattr(configure, "offer_commit", lambda ask: offered.append(1))
-    script = {"your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y", "repos": ""}
+    script = {"your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y", "these repos": "y"}
 
     def ask(q):
         return next((a for k, a in script.items() if k in q), "")
@@ -608,7 +608,8 @@ def test_offer_profiles_failure_does_not_stop_next_repo(machine, fake_runner, ca
         cfg["projects"][str(repo)] = {}
     (machine / "code/a-bad/.mcp.json").write_text('{"mcpServers": {"omarchy-kb": ')  # malformed, still mentions it
     (machine / ".claude.json").write_text(json.dumps(cfg))
-    ask = _scripted({"item(s)": "n", "your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y"}, [])
+    ask = _scripted({"item(s)": "n", "your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y",
+                       "these repos": "y"}, [])
     adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
     out = capsys.readouterr().out
     assert f"{(machine / 'code/a-bad').resolve()}: failed:" in out

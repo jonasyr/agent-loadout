@@ -393,13 +393,24 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
 def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
     from . import project
 
+    if new_profiles:
+        print("\n(applying writes the repo's committed .claude/settings.json / .mcp.json "
+              "and is not undone by loadout restore)")
     for name, items in new_profiles.items():
         found = sorted({repo for item in items for repo in own.candidate_repos(item)})
         print(f"\nprofile {name} is in your personal layer. Apply it to repos now?")
         if found:
             print("  detected: " + ", ".join(str(r) for r in found))
-        answer = ask("  repos (comma separated paths, empty = detected, '-' = none): ").strip()
-        repos = found if answer == "" else [] if answer == "-" else [Path(a.strip()).expanduser() for a in answer.split(",") if a.strip()]
+            answer = ask("  apply to these repos? [y/N/paths]: ").strip()
+            if answer.lower() in ("", "n", "no"):
+                repos = []
+            elif answer.lower() in ("y", "yes"):
+                repos = found
+            else:
+                repos = [Path(a.strip()).expanduser() for a in answer.split(",") if a.strip()]
+        else:
+            answer = ask("  repos (comma-separated paths; Enter: none): ").strip()
+            repos = [Path(a.strip()).expanduser() for a in answer.split(",") if a.strip()]
         for repo in repos:
             if not repo.is_dir():
                 print(f"  {repo.resolve()}: not a folder, skipped")

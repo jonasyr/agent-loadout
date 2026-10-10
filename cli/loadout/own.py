@@ -817,7 +817,7 @@ def candidate_repos(item: Item) -> list[Path]:
         except OSError:
             continue
         in_cfg = isinstance(cfg, dict) and needle in json.dumps(cfg.get("mcpServers") or {})
-        files = [repo / ".mcp.json", repo / ".claude/settings.json", repo / ".claude/settings.local.json"]
+        files = [repo / ".mcp.json", repo / ".claude/settings.json"]  # committed files only, not settings.local.json
         if in_cfg or any(_mentions(f, needle) for f in files):
             out.append(repo)
     return out
