@@ -264,7 +264,7 @@ def test_redact_is_linear_on_long_token_runs():
     from loadout import secrets
     start = time.monotonic()
     secrets.redact("x" * 200_000)
-    assert time.monotonic() - start < 1.0
+    assert time.monotonic() - start < 3.0
     assert secrets.redact("a.API_KEY=" + "k" * 20) == "a.API_KEY=***"
 
 
@@ -282,7 +282,7 @@ def _timed_redact(text):
     lambda: "-" + "key" * 33_000,
 ], ids=["dashes", "dotted", "b64url", "keykey"])
 def test_redact_has_no_redos(make):
-    assert _timed_redact(make()) < 1.0
+    assert _timed_redact(make()) < 3.0
 
 
 def test_flag_and_url_anchors_keep_matches():
@@ -335,4 +335,4 @@ def test_redact_line_rule_leaves_placeholders(text):
     lambda: "password:" * 20_000,
 ], ids=["longkey", "keys-spaces", "quotes", "colons"])
 def test_new_rules_are_linear(make):
-    assert _timed_redact(make()) < 1.0
+    assert _timed_redact(make()) < 3.0

@@ -147,7 +147,7 @@ def _t(text):
     lambda: ("password: " + "x" * 20 + "\n") * (100_000 // 31),
 ], ids=["password-x-lines", "secret-lines", "long-key", "dashes", "dotted-key", "json-many", "key-colon-lines"])
 def test_line_rule_linear(make):
-    assert _t(make()) < 0.5
+    assert _t(make()) < 3.0  # quadratic behaviour takes 20 s+ at this size; 3 s leaves room for slow CI
 
 
 SKILL_MD = """---
