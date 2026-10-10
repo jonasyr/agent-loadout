@@ -24,7 +24,7 @@ For each of the user's own items, adopt (and later `loadout configure`) asks one
 | **[l]eave** | Stay as is, machine-only and unmanaged; not asked again on this machine. |
 | **[r]emove** | Remove it, restorable (today's behaviour). |
 
-Default everywhere is **leave**: `--yes`, non-interactive runs and an empty answer change nothing (the user's ask-before-removing rule).
+Default everywhere is **decide later**: `--yes`, non-interactive runs, an empty answer and three invalid answers change nothing and remember nothing. Only an explicit `l`/leave is remembered. (The user's ask-before-removing rule.)
 
 Catalog `scope-down` plugins gain an explicit "keep global" answer (interactive pick), which is the same as **global** for that plugin.
 
@@ -83,17 +83,17 @@ YOUR OWN TOOLS (3) — not managed by loadout; they stay only on this machine un
   [mcp]    my-db    npx -y my-db-mcp
   [skill]  notes    ~/.claude/skills/notes
 
-your own tools: [l]eave all / [c]hoose each (default leave): c
-  plugin foo@bar — [g]lobal / [p]roject / [l]eave / [r]emove (default l): g
-  mcp my-db     — [g]lobal / [p]roject / [l]eave / [r]emove (default l): p
+your own tools: [l]eave all / [c]hoose each (default: decide later): c
+  plugin foo@bar — [g]lobal / [p]roject / [l]eave / [r]emove (default: skip): g
+  mcp my-db     — [g]lobal / [p]roject / [l]eave / [r]emove (default: skip): p
     profile (existing: android, db, sonar, thesis, web; or a new name) [db]: mydb
-  skill notes   — [g]lobal / [p]roject / [l]eave / [r]emove (default l): l
+  skill notes   — [g]lobal / [p]roject / [l]eave / [r]emove (default: skip): l
 Apply 2 change(s)? [y/N]
 ```
 
-Choices that do not apply to an item are left out of its prompt: project for a marketplace or a shared-source skill; global and project for a server in `~/.claude/.mcp.json` (only user-scope servers in `~/.claude.json` can be recorded).
+An empty answer, or three invalid answers for one item, skips that item (not decided, not remembered); an unrecognised answer to the first question decides nothing for all items. Choices that do not apply to an item are left out of its prompt: project for a marketplace or a shared-source skill; global and project for a server in `~/.claude/.mcp.json` (only user-scope servers in `~/.claude.json` can be recorded).
 
-**Non-interactive.** `loadout adopt --apply --own "foo@bar=global,my-db=project:mydb,notes=leave"`. Items not named stay untouched. `--own` works with or without `--yes`; `--yes` alone leaves own tools alone. `loadout configure set own NAME CHOICE` takes the same `CHOICE` syntax (`global`, `project:<profile>`, `leave`, `remove`). If a name matches items of more than one kind, it must be qualified as `<kind>:<name>`.
+**Non-interactive.** `loadout adopt --apply --own "foo@bar=global,my-db=project:mydb,notes=leave"`. Items not named stay untouched. `--own` works with or without `--yes`; `--yes` alone leaves own tools alone. `loadout configure set own NAME CHOICE` takes the same `CHOICE` syntax (`global`, `project:<profile>`, `leave`, `remove`). If a name matches items of more than one kind, it must be qualified as `<kind>:<name>`. A name listed twice is an error (exit 2). Catalog scope-down plugins accept only `global`.
 
 ## 5. Errors, undo, safety
 
@@ -101,7 +101,7 @@ Choices that do not apply to an item are left out of its prompt: project for a m
 - **Backup:** one `Backup("adopt")` for the whole run. Changed files are saved with `save_copy` first, new personal-layer files are recorded with `record_created`, moved skills and scripts go through `move`, and CLI changes are recorded with `record_command`. `loadout restore` replays everything.
 - **Collisions are never overwritten:** a personal `mcp.json` server with the same name and a different config, an existing `<personal>/skills/<name>` or `hooks/<file>` with different content, or a profile that already lists the item differently → "skipped: <name> already exists in <file> with a different config"; the item is untouched.
 - **Windows `.cmd` shim:** when `runner.would_refuse` says `claude` cannot take the JSON argument, write the manual commands file as `_apply_mcp` does and remove nothing.
-- **Secrets:** every printed line is redacted. `secrets.env` is created 0600 via the existing helper. A secret that cannot be fixed automatically (newline in the value, URL query string) blocks global and project for that server: "move the secret by hand first".
+- **Secrets:** nothing that looks like a secret is written to the personal layer. Recording refuses MCP configs with unfixable secrets and any hook command, hook script or skill file that still looks secret after the `${VAR}` rewrite ("move it to secrets.env and use ${VAR}, then try again"); all skill files are scanned and an unreadable file refuses. Every printed line is redacted. `secrets.env` is created 0600 via the existing helper. A secret that cannot be fixed automatically (newline in the value, URL query string) blocks global and project for that server: "move the secret by hand first".
 - **Validation first:** an unknown name or choice in `--own` or `set own` exits with code 2 before anything changes.
 - **Idempotent:** a second run classifies recorded items as `keep` and asks nothing.
 
@@ -112,7 +112,8 @@ Choices that do not apply to an item are left out of its prompt: project for a m
 - A profile is copied into a repo when applied; later changes to the personal profile do not reach repos until it is applied again. Skill copies in a repo can drift from the personal layer.
 - A skill recorded as a pointer to a shared source is linked only on machines where that source exists.
 - A hook whose command points outside `$HOME`, or a hook in exec form (`args`), is recorded as is and only works where that path exists.
-- For a hook script, only the script file is copied; files it reads next to it must be copied into `<personal>/hooks/` by hand.
+- For a hook script, only the script file is copied, also behind an interpreter (`/bin/sh ~/x.sh`); files it reads next to it must be copied into `<personal>/hooks/` by hand.
+- A hook matcher that contains `,` cannot be named in `--own` (the spec splits on commas).
 
 ## 7. Tests
 
