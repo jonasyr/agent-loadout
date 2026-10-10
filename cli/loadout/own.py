@@ -284,6 +284,25 @@ def _private_token(tok: str) -> Path | None:
     return None
 
 
+_SHELL_SPLIT = re.compile(r"[\s'\"`;|&<>(){}=,]+")
+_SHELL_META = re.compile(r"[$`;&|<>(){}*?\[\]\n\r\\]")
+COMPLEX_NOTE = ("note: complex shell command recorded as is; only simple `<interpreter> <script> args` "
+                "commands get their script copied")
+
+
+def _private_in_raw(text: str) -> Path | None:
+    """A denylisted path anywhere in the raw text, as written and with ~ and $HOME expanded. Claude Code runs the
+    command through `sh -c`, so this does not rely on shlex seeing the same words as the shell."""
+    home = str(paths.home())
+    expanded = re.sub(r"(?<![\w/])~(?=/|$)", home, text)
+    expanded = re.sub(r"\$\{?HOME\}?", home, expanded)
+    for form in (text, expanded):
+        for piece in _SHELL_SPLIT.split(form):
+            if (bad := _private_token(piece)) is not None:
+                return bad
+    return None
+
+
 def _is_script(p: Path) -> bool:
     if p.suffix.lower() in _SCRIPT_EXT or os.access(p, os.X_OK):
         return True
@@ -300,10 +319,10 @@ def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
     cmd = hook.get("command")
     args = hook.get("args")
     words = ([cmd] if isinstance(cmd, str) else []) + [a for a in (args if isinstance(args, list) else []) if isinstance(a, str)]
+    for tok in words:
+        if (bad := _private_token(tok) or _private_in_raw(tok)) is not None:
+            raise Collision(f"hook {name} refers to a private file ({bad}); not recorded")
     if "args" in hook:
-        for tok in words:
-            if (bad := _private_token(tok)) is not None:
-                raise Collision(f"hook {name} refers to a private file ({bad}); not recorded")
         return hook, ["note: exec form hook (args) recorded as is; it works only where its paths exist"]
     if not isinstance(cmd, str):
         return hook, []
@@ -333,19 +352,20 @@ def _portable_hook(hook: dict, bk, name: str) -> tuple[dict, list[str]]:
             notes.append(f"note: {p} is a file under your home folder that is not the hook's script; recorded as is")
     if copy is None:
         _refuse_if_secret("hook command", cmd)
-        return hook, notes
+        return hook, [COMPLEX_NOTE] if _SHELL_META.search(cmd) else notes
     tok, p = copy
+    raw = next((r for r in (f"'{tok}'", f'"{tok}"', tok) if r in cmd), None)
+    if raw is None:
+        _refuse_if_secret("hook command", cmd)
+        return hook, [f"note: could not rewrite the path in the command; edit it in {_personal_settings()}", *notes]
+    if _SHELL_META.search(cmd.replace(raw, "", 1)):
+        _refuse_if_secret("hook command", cmd)
+        return hook, [COMPLEX_NOTE]
     _refuse_if_secret(f"hook script {p.name}", p.read_text(errors="ignore"))
     dest = paths.personal_root() / "hooks" / p.name
     if dest.exists() and not filecmp.cmp(dest, p, shallow=False):
         raise Collision(f"hook script {p.name} already exists in {dest.parent} with different content")
-    new = f'"$HOME/.claude/hooks/personal/{p.name}"'
-    for raw in (f"'{tok}'", f'"{tok}"', tok):
-        if raw in cmd:
-            cmd = cmd.replace(raw, new, 1)
-            break
-    else:
-        return hook, [f"note: could not rewrite the path in the command; edit it in {_personal_settings()}", *notes]
+    cmd = cmd.replace(raw, f'"$HOME/.claude/hooks/personal/{p.name}"', 1)
     _refuse_if_secret("hook command", cmd)
     if not dest.exists():
         dest.parent.mkdir(parents=True, exist_ok=True)
