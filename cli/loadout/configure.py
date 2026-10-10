@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from . import catalog, paths, preferences, profiles, runner, scaffold, ui
+from . import catalog, paths, preferences, profiles, runner, scaffold, secrets, ui
 from .backup import Backup
 from .jsonio import load_json, save_json
 from .secrets import redact
@@ -152,12 +152,17 @@ def show() -> str:
 def offer_commit(ask: Ask) -> None:
     root = paths.personal_root()
     if (root / ".git").exists():
-        status = runner.run(["git", "-C", str(root), "status", "--porcelain", "-uall"])  # -uall: files inside new dirs
-        changed = [line[3:].strip().strip('"') for line in status.stdout.splitlines() if line.strip()]
-        env_files = [p for p in changed if p.rsplit("/", 1)[-1].endswith(".env")]
-        if env_files:
-            print(f"not offering to commit the personal layer: {', '.join(env_files)} would be committed "
-                  f"(secrets belong in {paths.secrets_file()}; add them to {root / '.gitignore'})")
+        # porcelain v1 is the --short format with a stable layout; -uall lists files inside new dirs
+        status = runner.run(["git", "-C", str(root), "status", "--porcelain", "-uall"])
+        if status.stdout.strip():
+            print(f"changes in your personal layer ({root}):")
+            print(status.stdout.rstrip("\n"))
+        changed = [line[3:].split(" -> ")[-1].strip().strip('"') for line in status.stdout.splitlines() if line.strip()]
+        private = [p for p in changed if p.rsplit("/", 1)[-1].endswith(".env") or secrets.private_path(p)]
+        if private:
+            print(f"not offering to commit the personal layer: {', '.join(private)} would be committed "
+                  f"(keys and secrets never belong there; secrets go in {paths.secrets_file()}; "
+                  f"remove them or add them to {root / '.gitignore'})")
         elif status.stdout.strip() and ask("commit and push your personal layer? [y/N] ").strip().lower() == "y":
             runner.run(["git", "-C", str(root), "add", "-A"])
             runner.run(["git", "-C", str(root), "commit", "-m", "chore: update loadout preferences"])
