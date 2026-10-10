@@ -621,3 +621,27 @@ def test_redact_linear_on_adversarial_input(name):
         d = time.perf_counter() - t
         best = d if best is None else min(best, d)
     assert best < 3.0  # quadratic behaviour takes 20 s+ at this size; 3 s leaves room for slow CI
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Part 3: UTF-16 views whenever the file has a NUL byte
+
+TOKEN16 = "token=ghp_" + "A1b2" * 9
+
+
+@pytest.mark.parametrize("enc", ["utf-16-le", "utf-16-be"])
+@pytest.mark.parametrize("pad", [b"A" * 5000, b"A" * 5001], ids=["even", "odd"])
+def test_utf16_tail_after_ascii_head_is_scanned(enc, pad):
+    data = pad + TOKEN16.encode(enc)
+    assert secrets.redact(own._decode(data)) != own._decode(data)
+
+
+@pytest.mark.parametrize("enc", ["utf-16-le", "utf-16-be"])
+def test_skill_with_utf16_tail_refused(machine, enc):
+    (machine / ".claude/skills/my-skill/blob.bin").write_bytes(b"A" * 5000 + TOKEN16.encode(enc))
+    rec = own.record_global(_get("skill", "my-skill"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+
+
+def test_plain_text_without_nul_has_one_view():
+    assert own._decode(b"hello\n") == "hello\n"

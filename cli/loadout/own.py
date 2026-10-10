@@ -267,16 +267,15 @@ def _refuse_if_secret(label: str, text: str) -> None:
 
 def _decode(data: bytes) -> str:
     """Text of a file for the secret scan. Always the UTF-8 view with NUL bytes as line breaks (binary files are
-    scanned by their text runs); plus the UTF-16 view when the file has a UTF-16 BOM or NUL bytes are over 30% of
-    the first 4 KB. Both are scanned, so ASCII embedded in a NUL-heavy binary is not garbled into UTF-16 only."""
+    scanned by their text runs); plus the UTF-16 view when the file has a UTF-16 BOM, and the UTF-16-LE and
+    UTF-16-BE views (at even and odd offsets) whenever the file contains any NUL byte, so UTF-16 text after an
+    ASCII head is scanned too. All views are scanned, so ASCII in a NUL-heavy binary is not lost to UTF-16."""
     views = [data.decode("utf-8", errors="ignore").replace("\0", "\n")]
     if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
         views.append(data.decode("utf-16", errors="ignore"))
-    else:
-        head = data[:4096]
-        if head and head.count(0) / len(head) > 0.3:
-            big_endian = head[0::2].count(0) > head[1::2].count(0)
-            views.append(data.decode("utf-16-be" if big_endian else "utf-16-le", errors="ignore").replace("\0", "\n"))
+    if b"\0" in data:
+        views += [data[start:].decode(enc, errors="ignore").replace("\0", "\n")
+                  for enc in ("utf-16-le", "utf-16-be") for start in (0, 1)]
     return "\n".join(views)
 
 
