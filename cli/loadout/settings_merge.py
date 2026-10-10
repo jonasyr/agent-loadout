@@ -18,6 +18,8 @@ from . import paths
 from .jsonio import deep_merge, load_json, save_json
 
 MISSING = object()
+# Snapshot key for the tombstones: desired hooks the kit applied and the user then deleted (see merge_settings).
+TOMBSTONES = "loadoutDeletedHooks"
 
 
 def leaves(d: dict, prefix: tuple = ()) -> Iterator[tuple[tuple, Any]]:
@@ -118,33 +120,46 @@ def _snapshot_hooks(applied: dict) -> dict:
     return out
 
 
-def _merge_hooks(current: Any, desired: Any, previous: Any) -> tuple[dict | None, dict]:
-    """Per-hook three-way merge of the `hooks` sections. Returns (the merged hooks section, or None when it is
-    left empty and should be dropped; {identity: (hook, group fields)} of the hooks the kit applied)."""
+def _merge_hooks(current: Any, desired: Any, previous: Any, deleted: Any = None) -> tuple[dict | None, dict, dict]:
+    """Per-hook three-way merge of the `hooks` sections. `deleted` holds the tombstones of the previous merge.
+    Returns (the merged hooks section, or None when it is left empty and should be dropped; {identity: (hook,
+    group fields)} of the hooks the kit applied; the same for the tombstones to keep)."""
     result = copy.deepcopy(current) if isinstance(current, dict) else {}
     want = _hook_map({"hooks": desired})
     prev = _hook_map({"hooks": previous})
-    applied = {}
+    dead = _hook_map({"hooks": deleted})
+    applied: dict = {}
+    tombs: dict = {}
 
     def where(hid):
         return [(event, gi, hi) for event, gi, hi, _, _, h in _iter_hooks({"hooks": result}) if h == hid]
 
+    def foreign(event):  # an event value loadout does not understand: never touched
+        return event in result and not isinstance(result[event], list)
+
     for hid, (hook, base) in want.items():
         event = hid[0]
+        if foreign(event):
+            continue
+        if hid in dead:  # the user deleted the kit's copy: never re-added; a copy in current is the user's
+            tombs[hid] = dead[hid]
+            continue
         found = where(hid)
         if found:
             if hid not in prev:
                 continue  # the user's own copy: untouched and not recorded
-            if hook != prev[hid][0]:  # the kit changed it: update in place, wherever it sits
-                e, gi, hi = found[0]
+            e, gi, hi = found[0]
+            now = result[e][gi]["hooks"][hi]
+            if now != prev[hid][0] and now != hook:
+                continue  # the user edited the kit's hook: theirs from now on, and it leaves the snapshot
+            if hook != now:  # the kit changed it: update in place, wherever it sits
                 result[e][gi]["hooks"][hi] = copy.deepcopy(hook)
             applied[hid] = (hook, base)
             continue
-        if hid in prev:
-            continue  # applied before and deleted by the user: respect that
-        groups = result.get(event)
-        if not isinstance(groups, list):
-            groups = result[event] = []
+        if hid in prev:  # applied before and deleted by the user: keep a tombstone while it stays desired
+            tombs[hid] = prev[hid]
+            continue
+        groups = result.setdefault(event, [])
         target = next((g for g in groups if isinstance(g, dict) and isinstance(g.get("hooks"), list)
                        and hook_id(event, g, hook) == hid), None)
         if target is not None:
@@ -155,7 +170,7 @@ def _merge_hooks(current: Any, desired: Any, previous: Any) -> tuple[dict | None
 
     emptied = False
     for hid, (hook, _) in prev.items():
-        if hid in want:
+        if hid in want or hid in dead:
             continue
         for e, gi, hi in where(hid):
             group = result[e][gi]
@@ -169,14 +184,14 @@ def _merge_hooks(current: Any, desired: Any, previous: Any) -> tuple[dict | None
                 emptied = True
             break
     if not result and (emptied or not isinstance(current, dict) or current):
-        return None, applied
-    return result, applied
+        return None, applied, tombs
+    return result, applied, tombs
 
 
 def _plan(current: dict, desired: dict, previous: dict) -> tuple[dict, dict]:
     """(merged settings, snapshot). Non-hook keys: the plain three-way merge; `hooks`: per hook."""
     def strip(d):
-        return {k: v for k, v in d.items() if k != "hooks"} if isinstance(d, dict) else {}
+        return {k: v for k, v in d.items() if k not in ("hooks", TOMBSTONES)} if isinstance(d, dict) else {}
 
     cur, want, prev = strip(current), strip(desired), strip(previous)
     result = deep_merge(cur, want)
@@ -199,11 +214,14 @@ def _plan(current: dict, desired: dict, previous: dict) -> tuple[dict, dict]:
     if "hooks" in current and not isinstance(current["hooks"], dict):
         result["hooks"] = copy.deepcopy(current["hooks"])  # not a hooks section loadout understands: left alone
     elif "hooks" in current or "hooks" in desired or "hooks" in previous:
-        hooks, applied = _merge_hooks(current.get("hooks"), desired.get("hooks"), previous.get("hooks"))
+        hooks, applied, tombs = _merge_hooks(current.get("hooks"), desired.get("hooks"), previous.get("hooks"),
+                                             previous.get(TOMBSTONES))
         if hooks is not None:
             result["hooks"] = hooks
         if applied:
             snapshot["hooks"] = _snapshot_hooks(applied)
+        if tombs:
+            snapshot[TOMBSTONES] = _snapshot_hooks(tombs)
     return result, snapshot
 
 
@@ -268,7 +286,8 @@ def record_applied_hook(event: str, group: dict, bk) -> None:
     applied = _hook_map(data)
     added = {hid: (hook, _base(group)) for hook in group.get("hooks") or []
              if (hid := hook_id(event, group, hook)) is not None}
-    if all(applied.get(hid, (None,))[0] == hook for hid, (hook, _) in added.items()):
+    tombs = _hook_map({"hooks": data.get(TOMBSTONES)})
+    if all(applied.get(hid, (None,))[0] == hook and hid not in tombs for hid, (hook, _) in added.items()):
         return
     if snap.exists():
         bk.save_copy(snap, "managed-settings.json before recording a hook")
@@ -276,6 +295,11 @@ def record_applied_hook(event: str, group: dict, bk) -> None:
         bk.record_created(snap, "managed-settings.json (created when recording a hook)")
     applied.update(added)
     data["hooks"] = _snapshot_hooks(applied)
+    tombs = {hid: v for hid, v in _hook_map({"hooks": data.get(TOMBSTONES)}).items() if hid not in added}
+    if tombs:
+        data[TOMBSTONES] = _snapshot_hooks(tombs)
+    else:
+        data.pop(TOMBSTONES, None)
     save_json(snap, data)
 
 
@@ -300,7 +324,8 @@ def drift() -> list[str]:
     current = load_json(_target())
     desired, previous = desired_settings(), load_json(_snapshot())
     out = []
-    for path, value in leaves({k: v for k, v in effective_desired(current, desired, previous).items() if k != "hooks"}):
+    for path, value in leaves({k: v for k, v in effective_desired(current, desired, previous).items()
+                               if k not in ("hooks", TOMBSTONES)}):
         now = get_path(current, path)
         if isinstance(value, list) and isinstance(now, list):
             if all(x in now for x in value):
