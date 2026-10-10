@@ -81,11 +81,28 @@ EOF2
       own)
         case "${5:-}" in global|leave|remove|project:?*) ;;
           *) echo "loadout: choice '${5:-}': use global, project:<profile>, leave or remove" >&2; exit 2 ;; esac
+        P=~/.config/loadout/personal
         case "${4:-}" in
-          notes-helper@my-marketplace|plugin:notes-helper@my-marketplace) echo "plugin notes-helper@my-marketplace: recorded in ~/.config/loadout/personal/settings.json" ;;
-          my-postgres|mcp:my-postgres) echo "mcp my-postgres: recorded in ~/.config/loadout/personal/mcp.json" ;;
+          notes-helper@my-marketplace|plugin:notes-helper@my-marketplace) item="plugin notes-helper@my-marketplace"
+            rec="recorded in $P/settings.json (other machines install it at the next Claude Code start)"
+            gone="plugin notes-helper@my-marketplace disabled globally: ok"
+            removed="plugin notes-helper@my-marketplace uninstalled: ok" ;;
+          my-postgres|mcp:my-postgres) item="mcp my-postgres"
+            rec="recorded in $P/mcp.json"; gone="mcp my-postgres: ok"; removed="mcp my-postgres: ok" ;;
           *) echo "loadout: no unmanaged item named '${4:-}' (see: loadout configure own --all)" >&2; exit 2 ;;
-        esac ;;
+        esac
+        # Same lines the real `loadout configure set own` prints (checked against set_own in a fake HOME).
+        case "${5}" in
+          global) echo "${item}: ${rec}" ;;
+          project:*) p="${5#project:}"
+            echo "${item}: recorded in personal profile ${p} ($P/profiles/${p}.json)"
+            echo "${gone}" ;;
+          leave) echo "${item}: left on this machine (not asked again; change it with \`loadout configure set own NAME …\`, list with \`loadout configure own --all\`)" ;;
+          remove) echo "${removed}" ;;
+        esac
+        [ "${5}" = leave ] || echo "Restart Claude Code (or run /reload-plugins) to load the changes."
+        case "${5}" in project:*) echo "apply it in a repo: cd <repo> && loadout profile ${5#project:}" ;; esac
+        ;;
       *) echo "usage: loadout configure set <plugin|mcp|pref-choice|pref|own> <name> <value>" >&2; exit 2 ;;
     esac ;;
   "configure "*) echo "the interactive wizard needs a terminal; use: loadout configure show | set ..." >&2; exit 2 ;;

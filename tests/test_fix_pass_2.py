@@ -386,3 +386,33 @@ def test_inline_code_flags_record_as_is(scripts, cmd):
 def test_boolean_flags_and_run_still_find_the_script(scripts, cmd, script):
     hook, notes = own._portable_hook({"type": "command", "command": cmd}, backup.Backup(), "x")
     assert _hooks_dir() == [script], (hook, notes)
+
+
+# 6. the eval stub prints what the real `loadout configure set own` prints
+
+STUB = Path(__file__).resolve().parents[1] / "plugins/loadout/evals/bin/loadout"
+
+
+def _stub_machine(home):
+    def w(rel, data):
+        p = home / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(data))
+    w(".claude.json", {"mcpServers": {"my-postgres": {"command": "npx", "args": ["-y", "my-postgres-mcp"]}}})
+    w(".claude/plugins/installed_plugins.json",
+      {"version": 2, "plugins": {"notes-helper@my-marketplace": [{"scope": "user", "version": "1.0.0"}]}})
+    w(".claude/plugins/known_marketplaces.json", {"my-marketplace": {"source": {"source": "github", "repo": "me/m"}}})
+    w(".claude/settings.json", {"enabledPlugins": {"notes-helper@my-marketplace": True}})
+
+
+@pytest.mark.parametrize("name", ["notes-helper@my-marketplace", "my-postgres"])
+@pytest.mark.parametrize("choice", ["global", "project:mine", "leave", "remove"])
+def test_eval_stub_matches_real_set_own(fake_home, fake_runner, capsys, tmp_path, name, choice):
+    from loadout import configure as cfg
+    _stub_machine(fake_home)
+    cfg.set_own(name, choice)
+    real = [l for l in capsys.readouterr().out.splitlines() if not l.startswith(("linked ", "backup: "))]
+    env = {**os.environ, "HOME": str(fake_home)}
+    stub = subprocess.run(["bash", str(STUB), "configure", "set", "own", name, choice], cwd=tmp_path, env=env,
+                          capture_output=True, text=True, timeout=30).stdout.splitlines()
+    assert stub == real
