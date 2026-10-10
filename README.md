@@ -78,10 +78,10 @@ Run `loadout <command> --help` for details.
 | Command | What it does | Options |
 |---|---|---|
 | `loadout bootstrap` | Set up or repair this machine (safe to re-run) | `--install` install missing tools, `--yes` accept defaults (never binary updates), `--no-plugins`, `--no-adopt` |
-| `loadout adopt` | Review an existing setup. Dry run unless `--apply`; without a terminal, `--apply` needs `--yes` or `--groups` (otherwise exit code 2) | `--apply`, `--groups remove,migrate`, `--skip NAME,...`, `--yes`, `--own NAME=CHOICE,...`, `--no-versions` |
+| `loadout adopt` | Review an existing setup. Dry run unless `--apply`; without a terminal, `--apply` needs `--yes`, `--groups` or `--own` (otherwise exit code 2) | `--apply`, `--groups remove,migrate` (not `own`), `--skip NAME,...` (this run only), `--yes`, `--own NAME=CHOICE,...` (your own tools, see [Your own tools](#your-own-tools)), `--no-versions` |
 | `loadout restore DIR` | Undo a backup. Whatever it replaces goes into a new backup, so a restore can be undone too | `--list` (newest first), `--force` (replay an already restored backup) |
 | `loadout configure` | Wizard for preferences and add-ons | `show` (lists each add-on's and preference's id); `prefs` (only the working-preference questions); `set plugin ID on\|off`; `set mcp ID-or-server-name on\|off`; `set pref-choice ID OPTION`; `set pref KEY JSON`; `--first-run` (ask the "about you" questions again) |
-| `loadout configure own` / `configure set own NAME CHOICE` | List the tools loadout does not manage (`--all` adds the ones you left on this machine), or decide one: `global`, `project:<profile>`, `leave`, `remove` | `--all` |
+| `loadout configure own` / `configure set own NAME CHOICE` | List the tools loadout does not manage (`--all` adds the ones you left on this machine), or decide one: `global`, `project:<profile>`, `leave`, `remove`. Exit 2 for bad input, 1 when nothing was recorded | `--all` |
 | `loadout init [PROFILE...]` | Prepare the current project (AGENTS.md, CLAUDE.md, docs/, .gitignore entries, profiles) | `--yes`, `--no-install`, `--dry-run` |
 | `loadout profile NAME` | Add one profile to the current project | `--no-install` |
 | `loadout check` | Verify this machine | none |
@@ -145,20 +145,56 @@ You rarely edit these by hand: `loadout configure` does it for you. **To sync th
 
 ### Your own tools
 
-`loadout adopt` lists every plugin, marketplace, MCP server, skill and hook that is not in the catalog under **YOUR OWN TOOLS**. Items already in your personal layer or in a personal profile show as keep. For each item you choose:
+`loadout adopt` looks at every user-scope plugin, marketplace, MCP server (`~/.claude.json`, `~/.claude/.mcp.json`), skill (`~/.claude/skills`) and hook (`~/.claude/settings.json`). What the catalog does not know is listed under **YOUR OWN TOOLS**. Items already in your personal layer show as keep, and so does a plugin that a personal profile holds while it is disabled globally. Project-level config is not inspected.
+
+#### Choices
 
 | Choice | Meaning |
 |---|---|
 | `global` | Record it in your personal layer, so it follows you to every machine. |
-| `project:<profile>` | Disable it globally and write it into a personal profile; adopt then offers to apply that profile to repos. |
+| `project:<profile>` | Disable or remove it on this machine and write it into a personal profile (`profiles/<profile>.json`). Apply that profile to a repo with `loadout profile <profile>`. |
 | `leave` | Stay as is, on this machine only. Not asked again here. |
 | `remove` | Remove it. It goes into a backup and `loadout restore` brings it back. |
 
-Nothing changes without an answer. An empty answer, three invalid answers, `--yes` and runs without a terminal decide nothing and remember nothing; only an explicit `leave` is remembered (in `~/.claude/.loadout/own-decisions.json`, local to this machine). Catalog plugins that adopt would disable globally accept `global` ("keep global"). Not every choice fits every item: marketplaces and skills that are links to a shared source cannot go into a profile, and servers outside `~/.claude.json` cannot be recorded.
+Nothing changes without an answer. In a terminal adopt asks once, `your own tools: [l]eave all / [c]hoose each`. Enter decides nothing. After `c` it asks per item, and Enter (or three invalid answers) skips that item. Only an explicit `leave` is remembered, in `~/.claude/.loadout/own-decisions.json`, which is local to this machine. `--yes` and runs without a terminal decide nothing and remember nothing. `--skip NAME,...` skips items for one run and remembers nothing.
 
-Without a terminal: `loadout adopt --apply --own "foo@bar=global,my-db=project:mydb,notes=leave"`. Items not named stay as they are. If a name matches several kinds, write `<kind>:<name>`. A name listed twice, an unknown name or a bad choice exits with code 2 before anything changes. `loadout configure own` lists the items later; `loadout configure set own NAME CHOICE` decides one. `loadout check` warns "N tool(s) not managed by loadout" and checks `skills.json`.
+Catalog plugins that adopt would disable globally accept `global` ("keep global"): pick the group (`p`), then `k` for that plugin. Not every choice fits every item: marketplaces and skills that are links to a shared source cannot go into a profile, and servers in `~/.claude/.mcp.json` can only be left or removed. The prompt and `loadout configure own` list only what applies.
 
-Where each choice writes (global, in your personal layer):
+A profile name that matches a kit profile (for example `db`) starts as a copy of that kit profile and replaces it for you. Later changes to the kit profile no longer reach you. Adopt prints a note when this happens.
+
+After `project` choices, interactive adopt offers to apply the profile to repos. The default is none. It suggests repos known to Claude Code (`~/.claude.json`) whose project config mentions the item, or you type paths. Applying a profile is the same as running `loadout profile` in that repo: it writes the repo's committed `.claude/settings.json` and `.mcp.json`, and `loadout restore` does not undo it. `--own` never applies profiles to repos.
+
+When something was recorded or removed, adopt and `configure set own` end with "Restart Claude Code (or run /reload-plugins) to load the changes."
+
+**Be asked again about a left item.** Choose another answer with `loadout configure set own NAME CHOICE`, or delete its entry (or the whole file) in `~/.claude/.loadout/own-decisions.json`. `loadout configure own --all` lists the left items too.
+
+#### Without a terminal
+
+```bash
+loadout adopt --apply --own "foo@bar=global,my-db=project:mydb,notes=leave"
+loadout configure set own foo@bar global
+```
+
+Items not named stay as they are. `--groups own` is refused (exit code 1); use `--own`. Names are as `loadout configure own` prints them:
+
+- If a name matches several kinds, write `<kind>:<name>`.
+- A hook is `<Event>:<matcher>`, and `Stop:` when it has no matcher. When several hooks share that name, add `#n` (`PreToolUse:Bash#2`), counted in the order `loadout configure own --all` lists them. Result lines show a hook without matcher as `hook Stop (no matcher)`.
+- A name containing a comma (a hook matcher such as `Bash,Edit`) cannot be given here. Choose it in the interactive prompt.
+
+Exit codes:
+
+| Command | Code | Meaning |
+|---|---|---|
+| `adopt --apply --own` | 2 | An unknown or duplicate name, a bad choice, or a name that needs `<kind>:` or `#n`. Nothing changed. |
+| `adopt --apply` | 2 | No terminal and none of `--yes`, `--groups` or `--own`. Nothing changed. |
+| `configure set own` | 2 | The same bad input as above. Nothing changed. |
+| `configure set own` | 1 | Nothing was recorded for the item: the output has a `skipped:` or `failed:` line with the reason. |
+
+`adopt --own` prints the same `skipped:` and `failed:` lines but exits 0, so read its output.
+
+#### Where each choice writes
+
+Global, in your personal layer:
 
 | Kind | Personal layer | This machine |
 |---|---|---|
@@ -167,21 +203,57 @@ Where each choice writes (global, in your personal layer):
 | MCP server | `mcp.json`, secrets rewritten to `${VAR}` and moved to `secrets.env` | the server is re-added with the `${VAR}` config and managed by loadout |
 | Skill (folder) | copied to `skills/<name>/` | replaced by a link to the copy; the original goes into the backup |
 | Skill (link to a shared source) | a pointer in `skills.json` | unchanged |
-| Hook | `settings.json`: `hooks`; a local script under `$HOME` is copied to `hooks/` and the command points to `$HOME/.claude/hooks/personal/<file>` | the hook is replaced by the recorded one, so it does not run twice |
+| Hook | `settings.json`: `hooks`; for a simple command the script is copied to `hooks/` (see [Hooks](#hooks)) | the hook is replaced by the recorded one, so it does not run twice |
 
-With `project`, the item goes into a personal profile instead (`profiles/<name>.json`; skills into `profiles/skills/<name>/`) and is disabled or removed from your global setup. `loadout profile` copies a profile's skills into a repo and never overwrites an existing one.
+With `project`, the item goes into a personal profile instead (`profiles/<name>.json`; skills into `profiles/skills/<name>/`) and is disabled (plugins) or removed (MCP servers, skills, hooks) from your global setup. A removed skill reads `skill <name>: removed from ~/.claude/skills (kept in profile <p>; original in the backup)`. `loadout profile` copies a profile's skills into a repo and never overwrites an existing one.
 
-Secrets: nothing that looks like a secret is written to the personal layer. Recording refuses an MCP server whose secret sits in `args`, the URL or a multi-line value, and any hook command, hook script or skill file that still looks secret after the `${VAR}` rewrite. Move the secret to `secrets.env`, use `${VAR}`, then try again. Every file of a skill is scanned; an unreadable file refuses too.
+#### Sync to other machines
 
-**Known limits**
+`global` and `project` choices reach another machine only when your personal layer is a git repo and you commit and push. The other machine pulls it daily (see [Staying up to date](#staying-up-to-date)).
+
+- Interactive adopt offers this at the end, when you chose anything other than `leave`. It shows the changes (the `git status --short` layout) and asks `commit and push your personal layer? [y/N]`. It refuses, without asking, when a private file would be committed.
+- After `--own` or `configure set own` nothing is committed. Run it yourself:
+
+```bash
+cd ~/.config/loadout/personal      # or $LOADOUT_PERSONAL
+git status --short
+git add -A && git commit -m "chore: record own tools" && git push
+```
+
+`leave` decisions stay on the machine where you made them.
+
+On the second machine, after the daily pull, loadout links the pulled skills and hook scripts by itself (`~/.claude/skills/<name>`, `~/.claude/hooks/personal`) and merges the hooks. Plugins install at the next Claude Code start. Pulling is skipped while the personal layer has uncommitted changes, or when `LOADOUT_NO_AUTO_PULL=1` is set.
+
+#### Secret guard
+
+Nothing that looks like a secret is written to the personal layer. Every printed line is redacted too.
+
+- **MCP servers:** values in `env` and `headers` become `${VAR}` and move to `secrets.env`. A secret in `args`, in the URL (query string or a high-entropy path segment) or in a multi-line value is refused, because it cannot be moved safely.
+- **Marketplaces:** a source URL with credentials or a token is refused.
+- **Hooks and skills:** a hook command, args, script or any skill file that looks secret is refused. All skill files are scanned, binary ones by their text runs, and UTF-16 files are decoded first. An unreadable file refuses too.
+- **Private files:** a skill that contains one of these, and a hook that names one anywhere in its command, is refused: `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube` and `.docker` folders, `~/.config/gh`, `~/.claude.json`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_*`, `.env`, `.env.*`, `.netrc`, `.npmrc`, `.pypirc`, `credentials*` and `*.kdbx`.
+- **Git checkouts:** a skill that contains a `.git` folder or file is refused. Copy it without `.git`.
+
+A refusal prints `skipped: ...` and changes nothing for that item. Move the secret to `secrets.env`, use `${VAR}`, then run it again.
+
+#### Hooks
+
+- Only a simple command of the form `<interpreter> <script> args` gets its script copied. That is one file, copied to `<personal>/hooks/<file>`, and the command points to `$HOME/.claude/hooks/personal/<file>`. Files the script reads next to it must be copied by hand.
+- A complex shell command (`;`, `&&`, pipes, redirects, `$(...)`, globs and similar), a hook in exec form (`args`), and a path outside your home folder are recorded as they are, with a note. They work only where their paths exist. Files under `/usr`, `/bin`, `/sbin`, `/opt/homebrew` and `/usr/local` (an interpreter, for example) do not trigger the "outside your home folder" note.
+- A hook that refers to a private file is refused.
+
+#### Known limits
 
 - An MCP server is managed by loadout only if it is in `managed-mcp.json` or its config in `~/.claude.json` is identical to the personal one; otherwise loadout leaves your server alone. Recording through adopt seeds `managed-mcp.json`.
-- A plugin recorded on one machine reaches another through the daily pull of your personal layer. Claude Code then installs it at its next start, in the background; it is active after `/reload-plugins` or a new session. loadout does not install it itself. `LOADOUT_NO_AUTO_PULL=1` stops the pull, and with it this.
 - A profile is copied into a repo when applied. Later changes to the personal profile do not reach repos until you apply it again, and skill copies in a repo can drift from your personal layer.
 - A skill recorded as a pointer to a shared source is linked only on machines where that source exists.
-- A hook whose command points outside `$HOME`, or a hook in exec form (`args`), is recorded as it is and only works where that path exists. Adopt prints a note.
-- For a hook script only the script file is copied, even behind an interpreter (`/bin/sh ~/x.sh`). Files it reads next to it must be copied into `hooks/` by hand.
-- A hook matcher that contains a comma cannot be named in `--own`; use the interactive prompt.
+- If `settings.json` already holds a hook with the same command, event and matcher as a recorded one, loadout does not add it a second time and does not manage that copy. Duplicates that are already in `settings.json` are not cleaned up.
+- If removing an item from this machine fails (a `failed:` line), it shows up under your own tools again next time. Fix the cause and choose again.
+- An older loadout stored a leave decision for a `~/.claude/.mcp.json` server under the plain server name, so it also hides a user-scope server of the same name. Deciding the `.mcp.json` server again replaces it, and the user-scope one is then asked about again.
+- Backups made before this version do not hold the managed-settings snapshot. Restoring one after a global hook or plugin choice can let the next settings merge drop the restored value again; check `~/.claude/settings.json` afterwards. Backups made by adopt (own tools) and bootstrap from now on include the snapshot.
+- `configure`, `apply-settings` and the daily maintenance rewrite that snapshot without a backup.
+- Scanning a skill takes roughly 2 seconds per MB, so very large skill files slow the run down.
+- Hooks in project settings files and `leave` decisions on other machines are out of scope.
 
 ## Staying up to date
 
@@ -222,7 +294,7 @@ DATABASE_URL='postgres://readonly:password@localhost/app'
 
 Write values in single quotes; a `'` inside a value is written as `'\''`. That way the shell never runs or mangles part of a value. Bootstrap adds a line to your shell startup file (the one for your `$SHELL`, plus an existing `.bashrc`/`.zshrc`; on Windows both the Windows PowerShell and PowerShell 7 profiles) that loads this file. MCP configs reference values as `${DATABASE_URL}`.
 
-`loadout adopt` finds keys sitting in plain text and never prints them. Secrets in user-scope MCP servers in `~/.claude.json` can be moved to `secrets.env` automatically; it also reports (for you to move by hand) secrets in project-scoped servers, `~/.claude/.mcp.json`, your personal `mcp.json`, the `env` block of `~/.claude/settings.json`, and URL query strings.
+`loadout adopt` finds keys sitting in plain text and never prints them. Secrets in user-scope MCP servers in `~/.claude.json` can be moved to `secrets.env` automatically; it also reports (for you to move by hand) secrets in project-scoped servers, `~/.claude/.mcp.json`, your personal `mcp.json`, the `env` block of `~/.claude/settings.json`, and URL query strings. Recording your own tools into the personal layer applies a stricter guard, see [Secret guard](#secret-guard).
 
 Secrets loaded by your shell only reach Claude Code started from that shell. On Windows, if PowerShell's execution policy is `Restricted`, profiles do not run; bootstrap prints the command to allow them (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`) but does not change it.
 
@@ -237,15 +309,21 @@ Secrets loaded by your shell only reach Claude Code started from that shell. On 
 | "settings drift" warning | Something changed a kit-managed value. Run `loadout apply-settings`, or put your preferred value in your personal `settings.json` |
 | Windows: links were copied instead of linked | Enable Developer Mode (Settings, For developers) and re-run bootstrap, which switches back to links; copies still work and are refreshed after each daily sync. Edit the source in your personal layer, not the copy: an edited copy is moved into a backup on the next refresh (the session notice names it) |
 | Something went wrong after adopt | `loadout restore <backup path printed by adopt>` (`loadout restore --list` shows all backups) |
-| `adopt --apply` exits with code 2 | It was run without a terminal. Add `--yes` (safe defaults) or `--groups remove,migrate,...` |
+| `adopt --apply` exits with code 2 | Either it was run without a terminal: add `--yes` (safe defaults), `--groups remove,migrate,...` or `--own NAME=CHOICE,...`. Or the `--own` input was wrong: the message names the problem and nothing changed |
+| `loadout: no unmanaged item named 'X' (see: loadout configure own --all)` | Use the name exactly as `loadout configure own --all` prints it. A hook is `Event:matcher` (`Stop:` without matcher) |
+| `hook 'X' matches N hooks; pick one: ...` or `'X' matches several kinds` | Add `#n` to the hook name as the message shows, or write `<kind>:<name>` |
+| `loadout configure set own` exits with code 1 and prints `skipped:` or `failed:` | Nothing was recorded for that item. The line says why. Typical causes: a secret or private file (see [Secret guard](#secret-guard)), a name that already exists in your personal layer with different content, or a file that could not be written. Fix it and run the command again |
+| I left a tool and want to be asked about it again | `loadout configure own --all` lists the left ones. Decide again with `loadout configure set own NAME CHOICE`, or delete its entry in `~/.claude/.loadout/own-decisions.json` to be asked again |
+| `loadout check` warns "own tools" | Some tools are not managed by loadout. Decide with `loadout adopt --apply` or `loadout configure own` |
+| A global skill or hook script is missing on another machine | Commit and push the personal layer on the first machine. The other machine links them after its daily pull (or `loadout bootstrap`) |
 | Windows: "cannot take JSON arguments (Windows .cmd shim)" | The npm-installed `claude.cmd` cannot receive JSON safely, so loadout changes nothing. Best fix: install the native `claude.exe` and re-run. Otherwise open the private `manual-commands.txt` (path printed): with Claude Code closed, add the JSON block it shows under `"mcpServers"` in `%USERPROFILE%\.claude.json` (the file also has the macOS/Linux shell form) |
 | A required tool is missing | Re-run `./bootstrap.sh --install`; `loadout check` shows manual install steps for what it cannot install |
 
 ## FAQ
 
-**Will it delete my stuff?** No. Anything it removes or replaces is moved into `~/.claude/backups/loadout-<timestamp>`, and `loadout restore` puts it back. Restore itself moves whatever it replaces into a new backup first, and files loadout created (such as a new `me.md` or `secrets.env`) are moved aside, not deleted. Plugins are uninstalled with `--keep-data`. Tools it does not know are left alone. Restore undoes what loadout removed or replaced; it does not take back additions such as the rules links, the secrets line appended to an existing shell rc file or the kit's keys in `settings.json` (see Uninstall for those).
+**Will it delete my stuff?** No. Anything it removes or replaces is moved into `~/.claude/backups/loadout-<timestamp>`, and `loadout restore` puts it back. Restore itself moves whatever it replaces into a new backup first, and files loadout created (such as a new `me.md` or `secrets.env`) are moved aside, not deleted. Plugins are uninstalled with `--keep-data`. Tools it does not know are left alone unless you choose otherwise under [Your own tools](#your-own-tools). Restore undoes what loadout removed or replaced; it does not take back additions such as the rules links, the secrets line appended to an existing shell rc file or the kit's keys in `settings.json` (see Uninstall for those).
 
-**I already have my own CLAUDE.md, hooks and settings.** They stay. The kit only manages its own keys. `adopt` offers to move your global CLAUDE.md content into your personal layer. Plugins, MCP servers, skills and hooks loadout doesn't know are listed under *Your own tools*; you decide per item.
+**I already have my own CLAUDE.md, hooks and settings.** They stay. The kit only manages its own keys. `adopt` offers to move your global CLAUDE.md content into your personal layer. Plugins, MCP servers, skills and hooks loadout doesn't know are listed under [Your own tools](#your-own-tools); you decide per item, and nothing happens without an answer.
 
 **Does it cost many tokens?** It is built to cost fewer: heavy tools are per-project, and rtk compresses command output. Check with `/context` in Claude Code.
 
@@ -265,6 +343,11 @@ Windows: delete `loadout` and `loadout.cmd` in `%USERPROFILE%\.local\bin`, and d
 MCP servers from your personal `mcp.json` were added with `claude mcp add-json -s user`; remove them with `claude mcp remove -s user NAME` if you no longer want them. Plugins that bootstrap installed stay installed; uninstall them with `claude plugin uninstall ID` if you want.
 
 Your `~/.claude/settings.json` keeps the merged values. Remove the kit's `enabledPlugins` and `extraKnownMarketplaces` entries if you want, or restore an older backup from `~/.claude/backups/`. You can also delete the "# loadout secrets" block that bootstrap added to your shell startup file. Your personal layer and `secrets.env` under `~/.config/loadout/` are never touched; delete them yourself if you want them gone.
+
+If you recorded own tools as global, do this first:
+
+- Global skills live in `<personal layer>/skills/`, and `~/.claude/skills/<name>` links to them. Replace each link with a copy before you delete the personal layer, for example `cp -rL ~/.claude/skills/<name> ~/.claude/skills/<name>.copy && rm ~/.claude/skills/<name> && mv ~/.claude/skills/<name>.copy ~/.claude/skills/<name>`.
+- Remove `~/.claude/hooks/personal` (a link to `<personal layer>/hooks/`) and the hooks in `~/.claude/settings.json` whose command uses it.
 
 ## Contributing / development
 

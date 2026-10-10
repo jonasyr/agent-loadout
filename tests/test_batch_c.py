@@ -176,3 +176,20 @@ def test_outside_home_note_for_other_files(machine, tmp_path):
     _set_hook(str(other))
     rec = own.record_global(_get("hook", "Notification:"), backup.Backup())
     assert any("outside your home" in line for line in rec.lines)
+
+
+def _stub(tmp_path, *args):
+    import subprocess
+    from pathlib import Path
+    stub = Path(__file__).resolve().parent.parent / "plugins/loadout/evals/bin/loadout"
+    return subprocess.run(["bash", str(stub), *args], cwd=tmp_path, capture_output=True, text=True)
+
+
+def test_eval_stub_set_own_matches_the_real_cli(tmp_path):
+    ok = _stub(tmp_path, "configure", "set", "own", "notes-helper@my-marketplace", "global")
+    assert ok.returncode == 0 and ok.stdout.startswith("plugin notes-helper@my-marketplace: recorded in ")
+    ok = _stub(tmp_path, "configure", "set", "own", "mcp:my-postgres", "project:db")
+    assert ok.returncode == 0 and ok.stdout.startswith("mcp my-postgres: recorded in ")
+    bad = _stub(tmp_path, "configure", "set", "own", "nothing", "leave")
+    assert bad.returncode == 2
+    assert bad.stderr.strip() == "loadout: no unmanaged item named 'nothing' (see: loadout configure own --all)"

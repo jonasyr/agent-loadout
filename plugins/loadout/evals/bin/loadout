@@ -79,8 +79,13 @@ EOF2
       pref) echo "pref ${4} = ${5:-}" ;;
       pref-choice) echo "${4}: ${5:-}" ;;
       own)
-        case "${5:-}" in global|leave|remove|project:?*) echo "${4}: recorded (${5})" ;;
-          *) echo "loadout: choice '${5:-}': use global, project:<profile>, leave or remove" >&2; exit 2 ;; esac ;;
+        case "${5:-}" in global|leave|remove|project:?*) ;;
+          *) echo "loadout: choice '${5:-}': use global, project:<profile>, leave or remove" >&2; exit 2 ;; esac
+        case "${4:-}" in
+          notes-helper@my-marketplace|plugin:notes-helper@my-marketplace) echo "plugin notes-helper@my-marketplace: recorded in ~/.config/loadout/personal/settings.json" ;;
+          my-postgres|mcp:my-postgres) echo "mcp my-postgres: recorded in ~/.config/loadout/personal/mcp.json" ;;
+          *) echo "loadout: no unmanaged item named '${4:-}' (see: loadout configure own --all)" >&2; exit 2 ;;
+        esac ;;
       *) echo "usage: loadout configure set <plugin|mcp|pref-choice|pref|own> <name> <value>" >&2; exit 2 ;;
     esac ;;
   "configure "*) echo "the interactive wizard needs a terminal; use: loadout configure show | set ..." >&2; exit 2 ;;
