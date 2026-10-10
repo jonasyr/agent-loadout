@@ -687,14 +687,40 @@ def parse_spec(spec: str) -> list[tuple[str | None, str, Choice]]:
     return out
 
 
+def qualified_names(pool: list[Verdict]) -> dict[int, str]:
+    """{id(item): name} where a hook name shared by several hooks gets `#n` (1-based, in the order `pool`
+    lists them, which is the order `loadout configure own` shows)."""
+    count: dict[str, int] = {}
+    for v in pool:
+        if v.item.kind == "hook":
+            count[v.item.name] = count.get(v.item.name, 0) + 1
+    seen: dict[str, int] = {}
+    out = {}
+    for v in pool:
+        name = v.item.name
+        if v.item.kind == "hook" and count[name] > 1:
+            seen[name] = seen.get(name, 0) + 1
+            name = f"{name}#{seen[name]}"
+        out[id(v.item)] = name
+    return out
+
+
 def resolve(entries: list[tuple[str | None, str, Choice]], verdicts: list[Verdict]) -> list[tuple[Verdict, Choice]]:
     """Match names to unmanaged (or left) items; scope-down plugins accept only global. Raises ValueError."""
     own_items = unmanaged(verdicts, include_left=True)
     scope_down = [v for v in verdicts if v.action == "scope-down" and v.item.kind == "plugin"]
     pairs, seen = [], set()
+    qualified = qualified_names(own_items)
     for kind, name, choice in entries:
         pool = own_items + (scope_down if choice.action == "global" else [])
         matches = [v for v in pool if v.item.name == name and (kind is None or v.item.kind == kind)]
+        if not matches:  # `Event:matcher#n` names one of several hooks with the same name
+            matches = [v for v in own_items if qualified[id(v.item)] == name and v.item.kind == "hook"
+                       and kind in (None, "hook")]
+        shared = [v for v in matches if v.item.kind == "hook" and qualified[id(v.item)] != v.item.name]
+        if shared and any(v.item.name == name for v in shared):
+            raise ValueError(f"hook '{name}' matches {len(shared)} hooks; pick one: "
+                             + ", ".join(f"{qualified[id(v.item)]} ({redact(str(v.item.detail))[:40]})" for v in shared))
         if not matches and choice.action != "global":
             if any(v.item.name == name and (kind is None or v.item.kind == kind) for v in scope_down):
                 raise ValueError(f"{name}: only global is available for this catalog plugin (keep it global)")

@@ -193,3 +193,42 @@ def test_hook_with_a_list_command_does_not_crash(machine):
     hooks = [v for v in _verdicts() if v.item.kind == "hook" and not isinstance(v.item.detail, str)]
     assert len(hooks) == 2 and all(v.action == "own" for v in hooks)
     assert own.candidate_repos(hooks[0].item) == []
+
+
+# 5. a hook name shared by several hooks needs a #n qualifier
+
+def _two_edit_hooks():
+    p = paths.claude_home() / "settings.json"
+    s = json.loads(p.read_text())
+    s["hooks"]["PreToolUse"][3]["hooks"].append({"type": "command", "command": "keep-me"})
+    p.write_text(json.dumps(s))
+    return _verdicts()
+
+
+def test_one_hook_name_hits_all_hooks_of_matcher(machine):
+    vs = _two_edit_hooks()
+    with pytest.raises(ValueError) as exc:
+        own.resolve(own.parse_spec("PreToolUse:Edit=remove"), vs)
+    assert "PreToolUse:Edit#1" in str(exc.value) and "PreToolUse:Edit#2" in str(exc.value)
+
+
+def test_hook_qualifier_picks_one_hook(machine):
+    vs = _two_edit_hooks()
+    pairs = own.resolve(own.parse_spec("PreToolUse:Edit#2=remove"), vs)
+    assert [v.item.detail for v, _ in pairs] == ["keep-me"]
+    pairs = own.resolve(own.parse_spec("hook:PreToolUse:Edit#1=leave"), vs)
+    assert [v.item.detail for v, _ in pairs] == ["my-own-linter"]
+    with pytest.raises(ValueError):
+        own.resolve(own.parse_spec("PreToolUse:Edit#3=remove"), vs)
+
+
+def test_unshared_hook_name_still_needs_no_qualifier(machine):
+    pairs = own.resolve(own.parse_spec("PreToolUse:Edit=remove"), _verdicts())
+    assert [v.item.detail for v, _ in pairs] == ["my-own-linter"]
+
+
+def test_configure_own_lists_numbered_names_for_shared_hooks(machine):
+    from loadout import configure
+    _two_edit_hooks()
+    text = "\n".join(configure.own_lines(False))
+    assert "PreToolUse:Edit#1" in text and "PreToolUse:Edit#2" in text

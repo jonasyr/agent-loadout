@@ -278,13 +278,15 @@ def _own_verdicts():
 def own_lines(include_left: bool) -> list[str]:
     from . import own
 
-    found = own.unmanaged(_own_verdicts(), include_left)
+    verdicts = _own_verdicts()
+    found = own.unmanaged(verdicts, include_left)
+    names = own.qualified_names(own.unmanaged(verdicts, True))
     if not found:
         return ["all your tools are managed by loadout" + ("" if include_left else " (left ones: loadout configure own --all)")]
     lines = ["Not managed by loadout (they stay on this machine only). Choose with:",
              "  loadout configure set own <name> global|project:<profile>|leave|remove"]
     for v in found:
-        lines.append(redact(f"  [{v.item.kind}] {v.item.name}  {v.item.detail}".rstrip()))
+        lines.append(redact(f"  [{v.item.kind}] {names.get(id(v.item), v.item.name)}  {v.item.detail}".rstrip()))
         left = "  (left on this machine)" if own.is_left(v.item) else ""
         lines.append(f"      options: {', '.join(own.options(v.item))}{left}")
     return lines
