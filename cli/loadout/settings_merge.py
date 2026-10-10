@@ -149,7 +149,8 @@ def _merge_hooks(current: Any, desired: Any, previous: Any, deleted: Any = None)
         if found:
             if hid not in prev:
                 continue  # the user's own copy: untouched and not recorded
-            e, gi, hi = found[0]
+            # the kit's copy is the one equal to what it applied (a user duplicate may sit before it)
+            e, gi, hi = next((f for f in found if result[f[0]][f[1]]["hooks"][f[2]] == prev[hid][0]), found[0])
             now = result[e][gi]["hooks"][hi]
             if now != prev[hid][0] and now != hook:
                 continue  # the user edited the kit's hook: theirs from now on, and it leaves the snapshot
@@ -249,7 +250,8 @@ def merge_settings(current: dict, desired: dict, previous: dict) -> dict:
     - desired and in current: never added a second time. Applied before and unchanged in current: the kit's;
       updated in place if the desired hook changed (e.g. timeout). Applied before but changed in current (and
       not equal to desired): the user edited it, so it is theirs from now on: never overwritten or removed, and
-      it leaves the snapshot. Not applied before: the user's own copy, untouched and not recorded.
+      it leaves the snapshot. Not applied before: the user's own copy, untouched and not recorded. With several
+      copies in current, the kit's copy is the one equal to the applied hook (else the first).
     - applied before, no longer desired: removed if current still holds it unchanged; a group left empty is
       removed. A hook the user changed stays. Its tombstone, if any, goes.
     - in neither desired nor the snapshot: never touched.
