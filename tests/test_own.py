@@ -425,10 +425,22 @@ def test_resolve_allows_keep_global_for_scope_down_plugin(machine):
         own.resolve(own.parse_spec("sonarqube@claude-plugins-official=leave"), _verdicts())
 
 
-def test_ask_choices_leave_all_is_default(machine):
+def test_ask_choices_empty_decides_nothing(machine):
     vs = own.unmanaged(_verdicts())
-    pairs = own.ask_choices(vs, ask=lambda q: "")
+    assert own.ask_choices(vs, ask=lambda q: "") == []
+
+
+def test_ask_choices_explicit_leave_all(machine):
+    vs = own.unmanaged(_verdicts())
+    pairs = own.ask_choices(vs, ask=lambda q: "l")
     assert {c.action for _, c in pairs} == {"leave"} and len(pairs) == len(vs)
+
+
+def test_ask_choices_per_item_empty_skips_and_l_leaves(machine):
+    vs = [v for v in own.unmanaged(_verdicts()) if v.item.name in ("mystery@somewhere", "my-skill")]
+    answers = iter(["c", "", "l"])
+    pairs = own.ask_choices(vs, ask=lambda q: next(answers))
+    assert pairs == [(vs[1], own.Choice("leave"))]
 
 
 def test_ask_choices_each(machine):

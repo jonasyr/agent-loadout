@@ -399,10 +399,14 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
         answer = ask("  repos (comma separated paths, empty = detected, '-' = none): ").strip()
         repos = found if answer == "" else [] if answer == "-" else [Path(a.strip()).expanduser() for a in answer.split(",") if a.strip()]
         for repo in repos:
-            if repo.is_dir():
+            if not repo.is_dir():
+                print(f"  {repo.resolve()}: not a folder, skipped")
+                continue
+            try:
                 project.add_profile(repo, name)
-            else:
-                print(f"  {repo}: not a folder, skipped")
+                print(f"  {repo.resolve()}: profile {name} applied")
+            except (OSError, InvalidJSON, ValueError) as exc:
+                print(redact(f"  {repo.resolve()}: failed: {exc}"))
 
 
 def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = lambda q: "",

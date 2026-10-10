@@ -542,14 +542,65 @@ def test_run_interactive_offers_repo_for_new_profile(machine, fake_runner, monke
     assert offered == [1]
 
 
-def test_run_own_spec_never_offers_repo_or_commit(machine, fake_runner, monkeypatch):
+def _scripted(script, asked):
+    def ask(q):
+        asked.append(q)
+        return next((a for k, a in script.items() if k in q), "")
+    return ask
+
+
+def test_run_own_spec_never_offers_repo_or_commit(machine, fake_runner, monkeypatch, capsys):
     from loadout import configure
-    monkeypatch.setattr(adopt, "_offer_profiles", lambda *a: pytest.fail("repo offer"))
     monkeypatch.setattr(configure, "offer_commit", lambda ask: pytest.fail("commit offer"))
-    adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=True,
+    asked = []
+    ask = _scripted({"item(s)": "n", "Apply": "y"}, asked)
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True,
               own_spec="omarchy-kb=project:mine")
+    assert any("Apply" in q for q in asked) and not any("repos" in q for q in asked)
+    assert "enable it per project with `loadout profile mine`" in capsys.readouterr().out
+    assert (paths.personal_root() / "profiles/mine.json").exists()
 
 
-def test_run_interactive_leave_all_asks_nothing_more(machine, fake_runner):
-    adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=True)
-    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+def test_run_interactive_leave_all_asks_nothing_more(machine, fake_runner, monkeypatch, capsys):
+    from loadout import configure
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: pytest.fail("commit offer"))
+    asked = []
+    ask = _scripted({"item(s)": "n", "your own tools": "l"}, asked)
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    assert "left on this machine" in capsys.readouterr().out
+    assert own.decisions()
+    assert not any("Apply" in q or "repos" in q for q in asked)
+
+
+def test_run_interactive_enter_on_own_prompt_changes_nothing(machine, fake_runner, capsys):
+    asked = []
+    adopt.run(True, None, set(), False, ask=_scripted({"item(s)": "n"}, asked), with_versions=False, interactive=True)
+    assert not own.decisions()
+    assert "backup:" not in capsys.readouterr().out
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+
+
+def test_run_declined_confirm_remembers_nothing(machine, fake_runner):
+    asked = []
+    ask = _scripted({"item(s)": "n", "your own tools": "c", " — ": "g", "Apply": "n"}, asked)
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    assert any("Apply" in q for q in asked)
+    assert not own.decisions()
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+
+
+def test_offer_profiles_failure_does_not_stop_next_repo(machine, fake_runner, capsys):
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["projects"] = {}
+    for name in ("a-bad", "b-good"):
+        repo = machine / "code" / name
+        (repo / ".claude").mkdir(parents=True)
+        (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"omarchy-kb": {}}}))
+        cfg["projects"][str(repo)] = {}
+    (machine / "code/a-bad/.mcp.json").write_text('{"mcpServers": {"omarchy-kb": ')  # malformed, still mentions it
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+    ask = _scripted({"item(s)": "n", "your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y"}, [])
+    adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
+    out = capsys.readouterr().out
+    assert f"{(machine / 'code/a-bad').resolve()}: failed:" in out
+    assert f"{(machine / 'code/b-good').resolve()}: profile mine applied" in out

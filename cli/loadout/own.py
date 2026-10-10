@@ -563,23 +563,29 @@ def _existing_profiles() -> list[str]:
 def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
     if not verdicts:
         return []
-    first = ask("your own tools: [l]eave all / [c]hoose each (default leave): ").strip().lower()
-    if first not in ("c", "choose"):
+    first = ask("your own tools: [l]eave all / [c]hoose each (default: decide later): ").strip().lower()
+    if first in ("l", "leave"):
         return [(v, Choice("leave")) for v in verdicts]
+    if first not in ("c", "choose"):
+        return []  # empty or unknown: nothing decided, nothing remembered
     pairs, last_profile = [], ""
     for v in verdicts:
         opts = options(v.item)
-        prompt = f"  {v.item.kind} {v.item.name} — " + " / ".join(f"[{o[0]}]{o[1:]}" for o in opts) + " (default l): "
+        prompt = f"  {v.item.kind} {v.item.name} — " + " / ".join(f"[{o[0]}]{o[1:]}" for o in opts) + " (default: skip): "
         action = "leave"
+        skipped = False
         for _ in range(3):
             answer = ask(prompt).strip().lower()
             if not answer:
+                skipped = True
                 break
             hit = [o for o in opts if o == answer or o[0] == answer]
             if hit:
                 action = hit[0]
                 break
             print("  please answer " + ", ".join(f"{o[0]}({o[1:]})" for o in opts))
+        if skipped:
+            continue
         choice = Choice(action)
         if action == "project":
             profile = ""
