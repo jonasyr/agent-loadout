@@ -310,4 +310,4 @@ def set_own(name: str, choice: str) -> int:
         print(f"apply it in a repo: cd <repo> && loadout profile {profile}")
     if not bk.empty:
         print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
-    return 0
+    return 1 if any(line.startswith("skipped:") or ": failed:" in line for line in lines) else 0

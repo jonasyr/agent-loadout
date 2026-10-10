@@ -232,3 +232,16 @@ def test_configure_own_lists_numbered_names_for_shared_hooks(machine):
     _two_edit_hooks()
     text = "\n".join(configure.own_lines(False))
     assert "PreToolUse:Edit#1" in text and "PreToolUse:Edit#2" in text
+
+
+# 7. configure set own exits non-zero when nothing was recorded
+
+def test_set_own_exits_1_when_the_record_is_skipped(machine, capsys):
+    from loadout import configure
+    assert configure.set_own("mystery@somewhere", "global") == 1  # marketplace source unknown: skipped
+    assert "skipped:" in capsys.readouterr().out
+
+
+def test_set_own_exits_0_when_recorded(machine):
+    from loadout import configure
+    assert configure.set_own("my-skill", "leave") == 0
