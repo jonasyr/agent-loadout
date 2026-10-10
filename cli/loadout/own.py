@@ -440,10 +440,14 @@ def _private_in_raw(text: str) -> Path | None:
     """A denylisted path anywhere in the raw text, as written and with ~ and $HOME expanded. Claude Code runs the
     command through `sh -c`, so this does not rely on shlex seeing the same words as the shell."""
     home = str(paths.home())
-    expanded = re.sub(r"(?<![\w/])~(?=/|$)", home, text)
-    expanded = re.sub(r"\$\{?HOME\}?", home, expanded)
+
+    def expand(s: str) -> str:  # a function replacement: a Windows home (C:\\Users\\...) is not a regex template
+        s = re.sub(r"(?<![\w/])~(?=/|$)", lambda _: home, s)
+        return re.sub(r"\$\{?HOME\}?", lambda _: home, s)
+
+    expanded = expand(text)
     # quotes removed first ("$HOME"/.ssh/x -> /home/u/.ssh/x), so the refusal names the whole expanded path
-    unquoted = re.sub(r"\$\{?HOME\}?", home, re.sub(r"(?<![\w/])~(?=/|$)", home, re.sub(r"[\"']", "", text)))
+    unquoted = expand(re.sub(r"[\"']", "", text))
     for form in (unquoted, text, expanded):
         for piece in _SHELL_SPLIT.split(form):
             if (bad := _private_token(piece)) is not None:
@@ -680,10 +684,15 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
     return Recorded(True, [f"mcp {name}: recorded in {path}" + (" (secrets in secrets.env)" if lines else "")], machine)
 
 
+def _plain_link_target(target: str) -> str:
+    """os.readlink on Windows returns extended paths (\\\\?\\C:\\...); store the plain form."""
+    return target[4:] if target.startswith("\\\\?\\") else target
+
+
 def _global_skill(v: Verdict, bk) -> Recorded:
     name, src = v.item.name, Path(v.item.location)
     if src.is_symlink():
-        target = os.path.normpath(src.parent / os.readlink(src))
+        target = os.path.normpath(src.parent / _plain_link_target(os.readlink(src)))
         path = paths.personal_root() / "skills.json"
 
         def change(data):

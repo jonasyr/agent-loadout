@@ -407,6 +407,7 @@ def _stub_machine(home):
     w(".claude/settings.json", {"enabledPlugins": {"notes-helper@my-marketplace": True}})
 
 
+@pytest.mark.skipif(os.name == "nt", reason="runs the bash eval stub; not on Windows")
 @pytest.mark.parametrize("name", ["notes-helper@my-marketplace", "my-postgres"])
 @pytest.mark.parametrize("choice", ["global", "project:mine", "leave", "remove"])
 def test_eval_stub_matches_real_set_own(fake_home, fake_runner, capsys, tmp_path, name, choice):

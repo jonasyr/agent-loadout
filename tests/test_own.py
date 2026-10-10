@@ -749,3 +749,16 @@ def test_mcp_url_path_token_refused(machine, fake_runner, scope):
     rec = own.record_global(v, backup.Backup()) if scope == "global" else own.record_project(v, "mine", backup.Backup())
     assert not rec.ok and "0123456789abcdef" not in " ".join(rec.lines)
     assert "0123456789abcdef0123456789abcdef" not in _personal_text()
+
+
+def test_private_path_check_with_a_windows_style_home(monkeypatch):
+    # Windows homes contain backslashes (C:\Users\...); they must never be read as regex escapes
+    from pathlib import Path
+    monkeypatch.setattr(paths, "home", lambda: Path("C:\\Users\\runneradmin"))
+    assert own._private_in_raw("bash ~/bin/x.sh") is None
+    assert own._private_in_raw("echo $HOME/notes") is None
+
+
+def test_windows_extended_link_prefix_is_dropped():
+    assert own._plain_link_target("\\\\?\\C:\\Users\\me\\shared\\omarchy") == "C:\\Users\\me\\shared\\omarchy"
+    assert own._plain_link_target("/usr/share/omarchy") == "/usr/share/omarchy"

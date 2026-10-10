@@ -1,4 +1,5 @@
 """Fix batch C: user-facing text of the adopt/own tools."""
+import os
 import json
 
 import pytest
@@ -185,6 +186,7 @@ def _stub(tmp_path, *args):
     return subprocess.run(["bash", str(stub), *args], cwd=tmp_path, capture_output=True, text=True)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="runs the bash eval stub; not on Windows")
 def test_eval_stub_set_own_matches_the_real_cli(tmp_path):
     ok = _stub(tmp_path, "configure", "set", "own", "notes-helper@my-marketplace", "global")
     assert ok.returncode == 0 and ok.stdout.startswith("plugin notes-helper@my-marketplace: recorded in ")

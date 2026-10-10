@@ -63,7 +63,7 @@ def test_bootstrap_backs_up_the_settings_snapshot(fake_home, fake_runner):
     snap = paths.state_dir() / "managed-settings.json"
     assert snap.exists()
     steps = [s for m in paths.backups_root().rglob("manifest.json") for s in json.loads(m.read_text())["steps"]]
-    assert any(str(snap) in json.dumps(s["undo"]) for s in steps), steps
+    assert any(json.dumps(str(snap))[1:-1] in json.dumps(s["undo"]) for s in steps), steps  # JSON escapes \\
 
 
 # 2. maintenance links after a pull in every mode
