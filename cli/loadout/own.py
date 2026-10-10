@@ -572,20 +572,18 @@ def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
     for v in verdicts:
         opts = options(v.item)
         prompt = f"  {v.item.kind} {v.item.name} — " + " / ".join(f"[{o[0]}]{o[1:]}" for o in opts) + " (default: skip): "
-        action = "leave"
-        skipped = False
+        action = ""
         for _ in range(3):
             answer = ask(prompt).strip().lower()
             if not answer:
-                skipped = True
                 break
             hit = [o for o in opts if o == answer or o[0] == answer]
             if hit:
                 action = hit[0]
                 break
             print("  please answer " + ", ".join(f"{o[0]}({o[1:]})" for o in opts))
-        if skipped:
-            continue
+        if not action:
+            continue  # empty or invalid: not decided
         choice = Choice(action)
         if action == "project":
             profile = ""
@@ -597,7 +595,7 @@ def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
                     break
                 print("    use lowercase letters, digits, - and _")
             if not profile:
-                choice = Choice("leave")
+                continue  # no valid profile name: not decided
             else:
                 note = profile_note(profile)
                 if note:
