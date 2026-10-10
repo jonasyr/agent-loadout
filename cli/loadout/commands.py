@@ -151,12 +151,15 @@ def _register_configure(sub):
                               "  loadout configure set pref-choice effort_level high\n"
                               "  loadout configure set plugin hookify@claude-plugins-official on\n"
                               "  loadout configure set mcp dbhub on\n"
+                              "  loadout configure own\n"
+                              "  loadout configure set own foo@bar global\n"
                               "  loadout configure set pref effortLevel '\"high\"'")
-    p.add_argument("action", nargs="?", choices=["show", "set", "prefs"],
+    p.add_argument("action", nargs="?", choices=["show", "set", "prefs", "own"],
                    help="show the current state, set one value, or answer the working-preference questions")
-    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref"], help="what to set")
+    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref", "own"], help="what to set")
     p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, preference id, or settings key (ids: configure show)")
-    p.add_argument("value", nargs="?", help="on|off for plugin/mcp; an option for pref-choice; a JSON value for pref")
+    p.add_argument("value", nargs="?", help="on|off for plugin/mcp; an option for pref-choice; a JSON value for pref; global|project:<profile>|leave|remove for own")
+    p.add_argument("--all", action="store_true", help="with own: also list the tools you left on this machine")
     p.add_argument("--first-run", action="store_true", help="also ask the 'about you' questions again (keeps your me.md unless you agree)")
 
     def run(a):
@@ -167,8 +170,13 @@ def _register_configure(sub):
             return 0
         if a.action == "prefs":
             return configure.prefs(_ask)
+        if a.action == "own":
+            print("\n".join(configure.own_lines(a.all)))
+            return 0
         if not (a.kind and a.name and a.value):
-            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref <name> <value>")
+            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own <name> <value>")
+        if a.kind == "own":
+            return configure.set_own(a.name, a.value)
         if a.kind == "plugin":
             configure.set_plugin(a.name, configure.parse_switch(a.value, "plugin"))
         elif a.kind == "mcp":

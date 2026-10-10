@@ -183,3 +183,24 @@ def test_show_prints_settable_ids(fake_home):
     text = configure.show()
     assert "mcp addon-dbhub-global" in text
     assert "plugin hookify@claude-plugins-official" in text
+
+
+def test_configure_own_lists_and_set_own(fake_home, fake_runner, capsys):
+    from fixtures import author_machine
+    author_machine(fake_home)
+    text = "\n".join(configure.own_lines(False))
+    assert "mystery@somewhere" in text and "options: global, project, leave, remove" in text
+    assert configure.set_own("my-skill", "leave") == 0
+    assert "my-skill" not in "\n".join(configure.own_lines(False))
+    assert "my-skill" in "\n".join(configure.own_lines(True))
+    assert configure.set_own("nothing", "leave") == 2
+    assert configure.set_own("mystery@somewhere", "keep") == 2
+
+
+def test_cli_configure_own(fake_home, fake_runner, capsys):
+    from fixtures import author_machine
+    from loadout.__main__ import main
+    author_machine(fake_home)
+    assert main(["configure", "own"]) == 0
+    assert "options:" in capsys.readouterr().out
+    assert main(["configure", "set", "own", "nothing", "leave"]) == 2

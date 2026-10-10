@@ -98,3 +98,10 @@ def test_check_reports_invalid_skills_json(fake_home, fake_runner):
     (paths.personal_root() / "skills.json").write_text("{not json")
     r = _by(check.run_checks())["skills.json"]
     assert not r.ok and "invalid JSON" in r.detail
+
+
+def test_check_mentions_unmanaged_tools(fake_home, fake_runner):
+    _setup_ok(fake_home)
+    (fake_home / ".claude/skills/mine").mkdir(parents=True)
+    r = _by(check.run_checks())["own tools managed"]
+    assert not r.ok and r.severity == "warn" and r.fix == "loadout configure own"

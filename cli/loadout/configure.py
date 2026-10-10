@@ -263,3 +263,44 @@ def wizard(ask: Ask, first_run: bool, setup: bool = True, interactive: bool | No
         print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     apply_all(ask, setup=setup)
     return 0
+
+
+def _own_verdicts():
+    from . import inventory
+    return inventory.classify(inventory.collect(with_versions=False))
+
+
+def own_lines(include_left: bool) -> list[str]:
+    from . import own
+
+    found = own.unmanaged(_own_verdicts(), include_left)
+    if not found:
+        return ["all your tools are managed by loadout" + ("" if include_left else " (left ones: loadout configure own --all)")]
+    lines = ["Not managed by loadout (they stay on this machine only). Choose with:",
+             "  loadout configure set own <name> global|project:<profile>|leave|remove"]
+    for v in found:
+        lines.append(redact(f"  [{v.item.kind}] {v.item.name}  {v.item.detail}".rstrip()))
+        left = "  (left on this machine)" if own.is_left(v.item) else ""
+        lines.append(f"      options: {', '.join(own.options(v.item))}{left}")
+    return lines
+
+
+def set_own(name: str, choice: str) -> int:
+    import sys
+
+    from . import adopt, own
+
+    try:
+        pairs = own.resolve(own.parse_spec(f"{name}={choice}"), _own_verdicts())
+    except ValueError as exc:
+        print(f"loadout: {exc}", file=sys.stderr)
+        return 2
+    bk = Backup(description="configure own")
+    lines, profiles_changed = adopt.apply_own(pairs, bk)
+    for line in lines:
+        print(redact(line))
+    for profile in profiles_changed:
+        print(f"apply it in a repo: cd <repo> && loadout profile {profile}")
+    if not bk.empty:
+        print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+    return 0

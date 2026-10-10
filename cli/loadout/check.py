@@ -71,6 +71,17 @@ def _plugins() -> list[CheckResult]:
                         "they install automatically at the next Claude Code start (or run loadout bootstrap)", "warn")]
 
 
+def _own() -> list[CheckResult]:
+    from . import inventory, own
+
+    try:
+        n = len(own.unmanaged(inventory.classify(inventory.collect(with_versions=False))))
+    except InvalidJSON as exc:
+        return [CheckResult("own tools managed", False, str(exc), "fix the JSON syntax", "warn")]
+    return [CheckResult("own tools managed", n == 0, f"{n} tool(s) not managed by loadout (they stay on this machine only)",
+                        "loadout configure own", "warn")]
+
+
 def _binaries() -> list[CheckResult]:
     out = []
     for entry in catalog.binaries():
@@ -112,7 +123,7 @@ def _repos() -> list[CheckResult]:
 
 
 def run_checks() -> list[CheckResult]:
-    return [*_links(), *_skills_json(), *_settings(), *_plugins(), *_binaries(), *_gh(), *_secrets(), *_repos()]
+    return [*_links(), *_skills_json(), *_settings(), *_plugins(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
