@@ -87,6 +87,16 @@ def _snapshot():
     return paths.state_dir() / "managed-settings.json"
 
 
+def backup_snapshot(bk) -> None:
+    """Record the snapshot in the backup before apply_settings rewrites it. Without this a restore puts
+    settings.json back but leaves a snapshot that says the kit applied the change, so the next merge deletes it."""
+    snap = _snapshot()
+    if not snap.exists():
+        bk.record_created(snap, "managed-settings.json (created by the loadout merge)")
+    elif load_json(snap) != desired_settings():
+        bk.save_copy(snap, "managed-settings.json before loadout merge")
+
+
 def would_change() -> bool:
     current = load_json(_target())
     return merge_settings(current, desired_settings(), load_json(_snapshot())) != current

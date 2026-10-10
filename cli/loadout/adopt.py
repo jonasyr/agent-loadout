@@ -483,6 +483,7 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             settings_path = paths.claude_home() / "settings.json"
             if settings_path.exists() and settings_merge.would_change():
                 bk.save_copy(settings_path, "settings.json before loadout merge")
+            settings_merge.backup_snapshot(bk)
             settings_merge.apply_settings()
         except (OSError, InvalidJSON) as exc:
             out.append(redact(f"settings: failed: {exc}"))

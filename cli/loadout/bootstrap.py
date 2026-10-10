@@ -232,6 +232,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     settings_path = paths.claude_home() / "settings.json"
     if settings_path.exists() and settings_merge.would_change():
         bk.save_copy(settings_path, "settings.json before loadout merge")
+    settings_merge.backup_snapshot(bk)
     before, after = settings_merge.apply_settings()
     print("settings updated" if before != after else "settings already up to date")
     from .personal_mcp import apply_mcp
