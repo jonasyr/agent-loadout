@@ -17,7 +17,7 @@ Secrets live in an untracked file, `~/.config/loadout/secrets.env` (mode 600). T
 ## Consequences
 - Configs in git hold only `${VAR}` names. A new machine needs the values entered once.
 - The shell profile must load the file, so an app started without that shell does not see the variables.
-- Printed output is always masked (see [0018](0018-secret-guard-fails-closed.md) for the stricter guard on recorded tools).
+- Printed output is masked where the patterns recognise a secret (see [0018](0018-secret-guard-fails-closed.md) for the stricter guard on recorded tools).
 
 ## In the code
 - `cli/loadout/bootstrap.py` (`setup_secrets`, `RC_LINE`, `PS_BLOCK`)

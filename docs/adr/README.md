@@ -27,7 +27,7 @@ Template:
 | [0001](0001-kit-repo-plus-personal-repo.md) | Kit repo plus a personal repo per user | Accepted |
 | [0002](0002-kit-is-a-plugin-marketplace.md) | The kit is a plugin marketplace | Accepted |
 | [0003](0003-three-way-settings-merge.md) | settings.json is merged three-way; the kit manages only its keys | Accepted |
-| [0004](0004-rules-linked-as-directories.md) | Rules are linked as directories; the kit never edits `~/.claude/CLAUDE.md` | Accepted |
+| [0004](0004-rules-linked-as-directories.md) | Rules are linked as directories; `~/.claude/CLAUDE.md` changes only when you ask adopt to migrate it | Accepted |
 | [0005](0005-catalog-as-source-of-tool-knowledge.md) | `catalog.json` is the source of tool knowledge | Accepted |
 | [0006](0006-secrets-in-secrets-env.md) | Secrets live in `secrets.env` and are referenced as `${VAR}` | Accepted |
 | [0007](0007-tiered-scoping-with-profiles.md) | Tiered scoping: core tools global, domain tools per project | Accepted |

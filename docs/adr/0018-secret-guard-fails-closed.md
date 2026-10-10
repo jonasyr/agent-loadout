@@ -8,7 +8,7 @@
 Recording your own tools copies hooks, skill files, MCP configs and marketplace sources into the personal layer, which the commit offer can push to a remote. A secret that gets in there is published. Heuristics for "looks like a secret" have both kinds of error, and the reviews found cases of each: a hook token that copied any home file (including an SSH key), binary and UTF-16 files that were never scanned, and patterns that took seconds on long input.
 
 ## Decision
-Nothing that looks like a secret or a private file is written to the personal layer. When the guard cannot tell (for example an unreadable file), it refuses and the item stays as it is. MCP `env` and `headers` values become `${VAR}` with the value moved to `secrets.env`. Secrets in args, URLs, hook commands, skill files or marketplace sources are refused with an instruction to move them by hand. A denylist of private paths applies, and every printed line is redacted. Scans of long input run in linear time.
+Nothing that looks like a secret or a private file is written to the personal layer. When the guard cannot tell (for example an unreadable file), it refuses and the item stays as it is. MCP `env` and `headers` values become `${VAR}` with the value moved to `secrets.env`. Secrets in args, URLs, hook commands, skill files or marketplace sources are refused with an instruction to move them by hand. A denylist of private paths applies, and printed lines are redacted where the patterns recognise a secret. Scans of long input run in linear time.
 
 ## Alternatives considered
 - Fail open (copy what the scan could not read): a single missed file leaks.
@@ -17,7 +17,6 @@ Nothing that looks like a secret or a private file is written to the personal la
 
 ## Consequences
 - Some ordinary items are refused, for example a skill with a line like `auth: bearer-token-required`, or a dev default such as `POSTGRES_PASSWORD: postgres`. The user fixes the item and retries. This is deliberate.
-- Scanning skills takes roughly 2 s per MB.
 - The commit offer refuses while a private file would be committed.
 - Detection is heuristic. It lowers the risk, and the personal repo still has to be private.
 

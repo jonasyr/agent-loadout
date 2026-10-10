@@ -1,4 +1,4 @@
-# 0004. Rules are linked as directories; the kit never edits ~/.claude/CLAUDE.md
+# 0004. Rules are linked as directories; `~/.claude/CLAUDE.md` changes only when you ask adopt to migrate it
 
 - Status: Accepted
 - Date: 2026-10-08
@@ -8,7 +8,7 @@
 Many users already have a global `~/.claude/CLAUDE.md` with their own instructions. Claude Code also loads every file under `~/.claude/rules/`. The kit needs a place for its rules and for the user's, and a way to update them with a pull.
 
 ## Decision
-`~/.claude/rules/loadout` is linked to the kit's `rules/` folder and `~/.claude/rules/personal` to the personal layer's `rules/` folder. The kit never reads or writes `~/.claude/CLAUDE.md`.
+`~/.claude/rules/loadout` is linked to the kit's `rules/` folder and `~/.claude/rules/personal` to the personal layer's `rules/` folder. Linking and the settings merge never read or write `~/.claude/CLAUDE.md`.
 
 ## Alternatives considered
 - Append a managed block to `~/.claude/CLAUDE.md`: edits a file the user owns, and the block can be damaged by hand edits.

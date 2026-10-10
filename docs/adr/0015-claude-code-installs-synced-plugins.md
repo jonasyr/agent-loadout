@@ -21,5 +21,5 @@ No code change. After the daily pull merges the personal layer into `~/.claude/s
 
 ## In the code
 - `cli/loadout/maintenance.py` (`_maintain`: pull, then `apply_settings`, `apply_mcp`, `link_all`; no plugin step)
-- `cli/loadout/bootstrap.py` (`setup_plugins`, called only from `bootstrap`)
+- `cli/loadout/bootstrap.py` (`setup_plugins`, called from `bootstrap` and from `configure`'s `apply_all`; never from maintenance)
 - `cli/loadout/own.py` (`record_global`: writes `enabledPlugins` and `extraKnownMarketplaces` to the personal `settings.json`)
