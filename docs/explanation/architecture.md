@@ -59,8 +59,11 @@ sequenceDiagram
 Details, from `maintenance._maintain`:
 
 - One maintenance run at a time: a lock file in the state folder, taken over only after an hour.
-- The pull is skipped for a checkout with uncommitted changes, and everything is skipped with `LOADOUT_NO_AUTO_PULL=1`.
-- Settings, MCP and links are re-applied only when a pull brought new commits. Errors become a notice for the next session instead of a crash.
+- The pull is `git pull --ff-only` on the kit and on the personal layer (when each is a git checkout), at most once a day, with git's terminal and credential prompts turned off (`maintenance.pull_if_clean`). It is skipped for a checkout with uncommitted changes.
+- With `LOADOUT_NO_AUTO_PULL=1` the pull and the re-apply are skipped; the weekly version check still runs.
+- Settings, personal MCP servers and links (skills, hook scripts, and copies in copy mode) are re-applied only when a pull brought new commits. Errors become a notice for the next session instead of a crash.
+- The next session runs the pulled `loadout` code and the plugin's hooks. Whoever can push to the kit or your personal layer reaches every machine that follows it; see [the trust boundary](security-and-trust.md#the-trust-boundary).
+- Plugins newly enabled through the personal layer are installed by Claude Code at its next start, not by this job ([0015](../adr/0015-claude-code-installs-synced-plugins.md)).
 - The weekly check compares installed and latest versions (through mise when it manages the tool, so its pins and release-age rules count). It queues "updates available, run `loadout update`". It never installs.
 
 Plugins are not part of this loop: Claude Code updates them through the marketplace.

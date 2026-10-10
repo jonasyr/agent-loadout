@@ -29,12 +29,13 @@ The skill must name the rubric reasons for SDD. "Subagents are cleaner" is not a
 
 ## When the hook nudges
 
-Two hooks of the loadout plugin catch the moment a plan is finished, so you do not have to remember. The full conditions are in [Hooks](../reference/hooks.md#the-execution-advisor-hooks). In short:
+Two hooks of the loadout plugin catch the moment a plan is finished, so you do not have to remember (`plugins/loadout/hooks/advisor.py`; the hook table is in [Hooks](../reference/hooks.md#hooks-of-the-loadout-plugin)):
 
-1. After a file write, `advisor.py record` remembers files under `docs/superpowers/plans/` or `plans/` that look like a plan: an "Implementation Plan" heading in the first 15 lines and at least one `- [ ]` task. Claude Code's own plan-mode files are excluded.
-2. When the agent stops, `advisor.py stop` blocks once for a plan written in that turn if no box is ticked yet and the plan version was neither evaluated nor nudged about. The message asks the agent to run the skill and says its recommendation replaces any execution question already asked.
+1. **`record`** runs after a file is written or edited (`PostToolUse` on `Write|Edit|MultiEdit`). It acts only for a file whose path matches `*/docs/superpowers/plans/*.md` or `*/plans/*.md`, excluding Claude Code's own plan-mode folder `/.claude/plans/`. The file must look like a plan: a heading with "Implementation Plan" in its first 15 lines and at least one `- [ ]` task. It marks the plan as written in this turn.
+2. **`stop`** runs when the agent stops. For a plan written in this turn, with no ticked checkbox, that has not been evaluated and has not been nudged about, it blocks the stop once and asks the agent to run `/loadout:execution-advisor`. The instruction says that the advisor's recommendation replaces any execution question already asked. Every stop clears the "written" marks, and it never blocks twice in a row.
+3. **`loadout advisor-mark PLAN`** is called by the skill. It records the plan's current version as evaluated, so the hook stays quiet. `settings.base.json` pre-approves this command.
 
-Each version of a plan is nudged at most once. Ticking boxes while executing does not count as a change, so execution never triggers it again. The hooks are stdlib only, use no network and always exit 0, so they cannot break a session.
+Each version of a plan is nudged at most once. Ticking boxes while executing does not count as a change, so execution never triggers it again. The hooks are stdlib only, use no network and always exit 0, so they cannot break a session. State is in `~/.claude/.loadout/advisor-pending.json` and `advisor-done.json`.
 
 ## Why not SDD by default
 

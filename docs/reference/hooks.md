@@ -24,15 +24,11 @@ The plugin also declares two MCP servers in `plugins/loadout/.mcp.json`: `serena
 
 ### Maintenance
 
-`loadout hook-session-start` starts `loadout maintenance` in a detached background process when the last daily pull is older than one day or the last update check is older than seven days. The job pulls the kit and the personal layer when they are clean, re-merges the settings after a pull that brought commits, and checks tool versions. `LOADOUT_NO_AUTO_PULL=1` turns the pull off. See [personal-layer](personal-layer.md#sync) and [loadout update](cli.md#loadout-update).
+What `loadout hook-session-start` and the background `loadout maintenance` job do: [The daily sync](../explanation/architecture.md#the-daily-sync).
 
 ### The execution-advisor hooks
 
-`advisor.py` is stdlib only, does no network access and always exits 0. State is in `~/.claude/.loadout/advisor-pending.json` and `advisor-done.json`.
-
-- `record` runs after a file is written or edited. It acts only for a file whose path matches `*/docs/superpowers/plans/*.md` or `*/plans/*.md`, excluding Claude Code's own plan-mode folder `/.claude/plans/`. The file must look like a plan: a heading with "Implementation Plan" in its first 15 lines and at least one `- [ ]` task. It marks the plan as written in this turn.
-- `stop` runs when the agent stops. For a plan written in this turn, with no ticked checkbox, that has not been evaluated and has not been nudged about, it blocks the stop once and asks the agent to run `/loadout:execution-advisor`. The instruction says that the advisor's recommendation replaces any execution question already asked. Every stop clears the "written" marks, and it never blocks twice in a row. Each version of a plan is nudged at most once; ticking boxes does not count as a change.
-- `loadout advisor-mark PLAN` is called by the skill. It records the plan's current version as evaluated, so the hook stays quiet.
+When `advisor.py record` and `advisor.py stop` act, and where they keep state: [When the hook nudges](../explanation/execution-advisor.md#when-the-hook-nudges).
 
 ## Naming hooks of your own tools
 

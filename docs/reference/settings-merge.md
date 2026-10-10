@@ -10,6 +10,18 @@ The merge uses three inputs:
 | previous | The snapshot `~/.claude/.loadout/managed-settings.json`: what the merge applied last time. |
 | current | Your `~/.claude/settings.json` as it is now. |
 
+```mermaid
+flowchart LR
+  base["settings.base.json<br/>(kit)"] --> desired(["desired"])
+  personal["personal settings.json"] --> desired
+  snap["previous<br/>managed-settings.json"] --> merge{"merge per key<br/>and per hook"}
+  desired --> merge
+  current["current<br/>~/.claude/settings.json"] --> merge
+  merge -->|"key merge: desired wins,<br/>dropped kit values removed"| result["new settings.json"]
+  merge -->|"hook merge: add, update,<br/>keep yours, tombstone deletions"| result
+  merge -->|"desired keys,<br/>applied hooks, tombstones"| newsnap["new snapshot"]
+```
+
 The result is written to `settings.json` only if it differs from current. The snapshot is rewritten on every run. If `settings.json` or the snapshot is not valid JSON, the run stops with an error before anything is written.
 
 Everything in current that loadout never applied stays as it is: loadout manages only its own keys. The `hooks` section is merged per hook, with its own rules. All other keys follow the key merge.
@@ -88,5 +100,4 @@ The snapshot has the desired non-hook keys. Under `hooks` it holds exactly the h
 
 ## Limits
 
-- Backups made before the snapshot was part of them do not hold it. Restoring such a backup after a global hook or plugin choice can let the next merge remove the restored value again. Check `~/.claude/settings.json` afterwards.
-- `configure`, `apply-settings` and the daily maintenance rewrite the snapshot without making a backup.
+Which runs of the merge make a backup, and what restoring an older backup does to the snapshot: [Undo what loadout changed](../how-to/undo-and-restore.md#what-restore-does-not-undo).

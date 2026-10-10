@@ -36,22 +36,9 @@ loadout adopt --apply --own "foo@bar=global,my-db=project:mydb,notes=leave"
 loadout configure set own foo@bar global
 ```
 
-Items not named stay as they are. `--groups own` is refused (exit code 1); use `--own`. Names are as `loadout configure own` prints them:
+Items not named stay as they are. `--groups own` is refused; use `--own`. Use names as `loadout configure own` prints them; how hooks are named (`PreToolUse:Bash`, `Stop:`, `#n`, `<kind>:`) is in [Hooks](../reference/hooks.md#naming-hooks-of-your-own-tools).
 
-- If a name matches several kinds, write `<kind>:<name>`.
-- A hook is `<Event>:<matcher>`, and `Stop:` when it has no matcher. When several hooks share that name, add `#n` (`PreToolUse:Bash#2`), counted in the order `loadout configure own --all` lists them. Result lines show a hook without matcher as `hook Stop (no matcher)`.
-- A name containing a comma (a hook matcher such as `Bash,Edit`) cannot be given here. Choose it in the interactive prompt.
-
-The naming rules are in [hooks](../reference/hooks.md#naming-hooks-of-your-own-tools).
-
-### Exit codes
-
-| Command | Code | Meaning |
-|---|---|---|
-| `adopt --apply --own` | 2 | An unknown or duplicate name, a bad choice, or a name that needs `<kind>:` or `#n`. Nothing changed. |
-| `adopt --apply` | 2 | No terminal and none of `--yes`, `--groups` or `--own`. Nothing changed. |
-| `configure set own` | 2 | The same bad input as above. Nothing changed. |
-| `configure set own`, `adopt --apply --own` | 1 | At least one named item was not recorded, or recorded but not active on this machine (see the `skipped:`/`failed:` line). A removal that did not happen says `skipped (...)` or `not removed`. The other items were applied. |
+Exit codes: [`loadout adopt`](../reference/cli.md#loadout-adopt) and [`loadout configure`](../reference/cli.md#loadout-configure) in the CLI reference.
 
 ## What each choice changes
 
@@ -82,11 +69,11 @@ git add -A && git commit -m "chore: record own tools" && git push
 
 `leave` decisions stay on the machine where you made them.
 
-On the second machine, after the daily pull, loadout links the pulled skills and hook scripts by itself (`~/.claude/skills/<name>`, `~/.claude/hooks/personal`) and merges the hooks. Plugins install at the next Claude Code start. Pulling is skipped while the personal layer has uncommitted changes, or when `LOADOUT_NO_AUTO_PULL=1` is set.
+On the second machine, the [daily sync](../explanation/architecture.md#the-daily-sync) links the pulled skills and hook scripts, merges the hooks, and Claude Code installs the plugins at its next start.
 
 ## Secret guard
 
-Nothing that looks like a secret is written to the personal layer. Every printed line is redacted too.
+Nothing that looks like a secret is written to the personal layer. Printed lines are redacted where the patterns recognise a secret. Values you set yourself with `loadout configure set pref` do not pass this guard.
 
 - **MCP servers:** values in `env` and `headers` become `${VAR}` and move to `secrets.env`. A secret in `args`, in the URL (query string or a high-entropy path segment) or in a multi-line value is refused, because it cannot be moved safely.
 - **Marketplaces:** a source URL with credentials or a token is refused.
@@ -107,7 +94,7 @@ How recorded hooks are merged into `settings.json` (identity, deleted hooks, hoo
 
 ## Known limits
 
-- Windows: Claude Code runs hook commands through Git Bash, so a hook's script path must use forward slashes (`C:/Users/me/x.sh`) or quotes for loadout to recognise and copy the script. An unquoted backslash path is recorded as is (Git Bash would misread it too). Script detection is tested on Linux and macOS.
+- Windows: Claude Code runs hook commands through Git Bash, so a hook's script path must use forward slashes (`C:/Users/me/x.sh`) or quotes for loadout to recognise and copy the script. An unquoted backslash path is recorded as is (Git Bash would misread it too). Script detection is tested on Linux (CI).
 - An MCP server is managed by loadout only if it is in `managed-mcp.json` or its config in `~/.claude.json` is identical to the personal one; otherwise loadout leaves your server alone. Recording through adopt seeds `managed-mcp.json`.
 - A profile is copied into a repo when applied. Later changes to the personal profile do not reach repos until you apply it again, and skill copies in a repo can drift from your personal layer.
 - A skill recorded as a pointer to a shared source is linked only on machines where that source exists.
@@ -115,4 +102,5 @@ How recorded hooks are merged into `settings.json` (identity, deleted hooks, hoo
 - An older loadout stored a leave decision for a `~/.claude/.mcp.json` server under the plain server name, so it also hides a user-scope server of the same name. Deciding the `.mcp.json` server again replaces it, and the user-scope one is then asked about again.
 - Every file of a skill is scanned, so very large skill files slow the run down.
 - Hooks in project settings files and `leave` decisions on other machines are out of scope.
-- Backups made before the snapshot was part of them, and the snapshot rewrites without a backup: see [Limits](../reference/settings-merge.md#limits).
+- Backups made before the snapshot was part of them, and the snapshot rewrites without a backup: see [What restore does not undo](undo-and-restore.md#what-restore-does-not-undo).
+- A plugin recorded as global is installed on the other machines by Claude Code at its next start after the pull, not by loadout, and is usable after `/reload-plugins` or a new session. If Claude Code changes that behaviour, this path changes with it ([0015](../adr/0015-claude-code-installs-synced-plugins.md)).

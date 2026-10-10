@@ -26,15 +26,18 @@ With coding agents the cost goes up:
 
 The fix is old and boring: treat documentation like code. Write it in plain text, keep it in version control next to the code, review it in pull requests, and test it [Write the Docs]. Then add one rule on top: **a fact lives in one place; every other place links to it.**
 
-| Layer | Holds | Rule |
-|---|---|---|
-| `README.md` | What the project is, how to install and run it | Human entry point; links into `docs/` |
-| `docs/` | Everything a human may need: concepts, architecture, how-tos, reference; decisions as ADRs in `docs/adr/` | Single source of truth |
-| `AGENTS.md` (plus `CLAUDE.md` containing only `@AGENTS.md`) | Purpose, commands, hard conventions, a map of `docs/` and memories | Short and hand-curated; never copies docs content |
-| `.serena/memories/` (committed) | Agent working notes: per topic a 1–3 line summary plus a link into `docs/`; gotchas; "to do X, touch these files"; current status | Never the only home of a fact a human would need |
-| Claude Code auto memory (`~/.claude/projects/…`) | Temporary or machine-specific notes | Never project facts; it is machine-local and not shared |
+```mermaid
+flowchart LR
+  docs[("docs/<br/>single source of truth:<br/>tutorials, how-tos, reference,<br/>explanation, ADRs")]
+  readme["README.md<br/>what it is, install, run"] -->|links into| docs
+  agents["AGENTS.md<br/>purpose, commands,<br/>conventions, map"] -->|links into| docs
+  claude["CLAUDE.md<br/>@AGENTS.md"] -->|imports| agents
+  memories[".serena/memories/<br/>summary + link per topic,<br/>gotchas, recipes"] -->|links into| docs
+  agents -->|maps| memories
+  auto["Claude Code auto memory<br/>machine-local notes only"] -.->|never project facts| docs
+```
 
-This is the kit's [docs policy](../../rules/docs-policy.md) and [memory policy](../../rules/memory-policy.md); both are loaded into every Claude Code session on a machine set up with loadout.
+Which layer holds what, and the rule for each, is defined in one place: the kit's [docs policy](../../rules/docs-policy.md) (the layers) and [memory policy](../../rules/memory-policy.md) (where agents store what they learn). Both are loaded into every Claude Code session on a machine set up with loadout.
 
 Two details matter:
 
@@ -183,7 +186,7 @@ The copy had already drifted: the code says `MAX_TITLE_LEN = 120`.
 | Situation | Steps |
 |---|---|
 | New project | `loadout init`, then `/loadout:onboard` in Claude Code |
-| Existing repo | `loadout init` (never overwrites; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then `/loadout:onboard` |
+| Existing repo | `loadout init` (never overwrites a scaffold file; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then `/loadout:onboard` |
 | Existing repo with messy docs | Then `/loadout:docs-audit` |
 | Every feature | `/loadout:docs-sync` before merging |
 

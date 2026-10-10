@@ -36,7 +36,7 @@ The kit's own rules are linked the same way, to `~/.claude/rules/loadout`. `load
 
 ### Links and copies
 
-loadout links with symlinks. If the system cannot create them (Windows without Developer Mode), it writes a marker `~/.claude/.loadout/copy-mode` and copies the files instead. Copied folders carry a `.loadout-copy` file and are refreshed after each daily sync and by `loadout bootstrap`. A copy you edited in place is moved into a backup on the next refresh, so edit the source in the personal layer. `loadout bootstrap` returns to links when they work again.
+loadout links with symlinks. If the system cannot create them (Windows without Developer Mode), it writes a marker `~/.claude/.loadout/copy-mode` and copies the files instead. Copied folders carry a `.loadout-copy` file and are refreshed after each [daily sync](../explanation/architecture.md#the-daily-sync) and by `loadout bootstrap`. A copy you edited in place is moved into a backup on the next refresh, so edit the source in the personal layer. `loadout bootstrap` returns to links when they work again.
 
 If a link target would replace something you own, the old item goes into a backup first.
 
@@ -57,7 +57,7 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 
 | File | Holds |
 |---|---|
-| `managed-settings.json` | The snapshot of what the settings merge last applied. Under `hooks` it records exactly the hooks loadout applied. Under `loadoutDeletedHooks` it records hooks you deleted, so they are not added back. Written by `apply-settings`, `configure`, and the daily maintenance, and backed up by `bootstrap` and `adopt`. |
+| `managed-settings.json` | The snapshot of what the settings merge last applied. Under `hooks` it records exactly the hooks loadout applied. Under `loadoutDeletedHooks` it records hooks you deleted, so they are not added back. Written by every settings merge; which runs back it up is in [Undo](../how-to/undo-and-restore.md#what-restore-does-not-undo). |
 | `managed-mcp.json` | `{"mcpServers": {...}}`: the personal MCP servers loadout added successfully. A same-named server that is not in this file and differs from the personal one is left alone. |
 | `own-decisions.json` | Your `leave` decisions for own tools. Hooks are keyed by a hash of the command, so a command line is never stored. |
 | `copy-mode` | Marker for copy instead of link mode. |
@@ -68,7 +68,7 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 
 ## Sync
 
-The kit and the personal layer are pulled once a day in the background with `git pull --ff-only`, but only when the checkout has no local changes. `LOADOUT_NO_AUTO_PULL=1` turns the pull off. After a pull that brought commits, loadout merges the settings, applies `mcp.json`, and relinks skills and hook scripts. Plugins install at the next Claude Code start.
+The kit and the personal layer are pulled once a day in the background; see [The daily sync](../explanation/architecture.md#the-daily-sync).
 
 A personal layer reaches another machine only if you commit and push it. `loadout configure` offers to do that after a change. It does not offer while a private file would be committed (a `*.env` file or a file such as a key or credential). The same applies to the commit offer at the end of interactive `loadout adopt`.
 
