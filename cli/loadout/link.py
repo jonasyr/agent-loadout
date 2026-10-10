@@ -28,7 +28,7 @@ def LINKS() -> list[tuple[Path, Path]]:
     try:
         pointers = load_json(personal / "skills.json")
     except InvalidJSON:
-        pointers = {}  # reported by loadout check via the personal layer's own files; never crash linking
+        pointers = {}  # never crash linking; loadout check reports the broken file
     for name, target in sorted(pointers.items()):
         if isinstance(target, str) and Path(target).expanduser().is_dir():
             out.append((skills / name, Path(target).expanduser()))

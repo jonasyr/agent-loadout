@@ -21,8 +21,8 @@ class CheckResult:
 def _links() -> list[CheckResult]:
     out = []
     for dest, src in link.LINKS():
-        if not src.exists():
-            continue  # nothing to link (e.g. no personal hooks/); _link_one skips it too
+        if not src.exists() and dest.parent.name != "rules":
+            continue  # optional personal-layer source (hooks/, skills): nothing to link
         name = f"link {dest.parent.name}/{dest.name}"
         if link.is_copy_mode():
             ok = link._points_to(dest, src) or link._is_kit_copy(dest, src)
@@ -30,6 +30,17 @@ def _links() -> list[CheckResult]:
             ok = dest.is_symlink() and dest.resolve() == src.resolve()
         out.append(CheckResult(name, ok, "" if ok else f"{dest} does not point to {src}", "loadout bootstrap"))
     return out
+
+
+def _skills_json() -> list[CheckResult]:
+    path = paths.personal_root() / "skills.json"
+    if not path.exists():
+        return []
+    try:
+        load_json(path)
+    except InvalidJSON as exc:
+        return [CheckResult("skills.json", False, str(exc), f"fix the JSON syntax in {path}", "warn")]
+    return [CheckResult("skills.json", True)]
 
 
 def _settings() -> list[CheckResult]:
@@ -101,7 +112,7 @@ def _repos() -> list[CheckResult]:
 
 
 def run_checks() -> list[CheckResult]:
-    return [*_links(), *_settings(), *_plugins(), *_binaries(), *_gh(), *_secrets(), *_repos()]
+    return [*_links(), *_skills_json(), *_settings(), *_plugins(), *_binaries(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
