@@ -77,3 +77,10 @@ def test_every_failing_check_names_a_fix(fake_home, fake_runner):
     for r in check.run_checks():
         if not r.ok:
             assert r.fix.strip(), r.name
+
+
+def test_check_links_ignores_missing_personal_hooks_dir(fake_home, fake_runner):
+    _setup_ok(fake_home)
+    results = _by(check.run_checks())
+    assert not any(name.startswith("link hooks/") for name in results)
+    assert results["link rules/personal"].ok

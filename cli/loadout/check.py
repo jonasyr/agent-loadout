@@ -21,7 +21,9 @@ class CheckResult:
 def _links() -> list[CheckResult]:
     out = []
     for dest, src in link.LINKS():
-        name = f"link rules/{dest.name}"
+        if not src.exists():
+            continue  # nothing to link (e.g. no personal hooks/); _link_one skips it too
+        name = f"link {dest.parent.name}/{dest.name}"
         if link.is_copy_mode():
             ok = link._points_to(dest, src) or link._is_kit_copy(dest, src)
         else:
