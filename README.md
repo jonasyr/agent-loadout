@@ -201,7 +201,7 @@ Global, in your personal layer:
 | MCP server | `mcp.json`, secrets rewritten to `${VAR}` and moved to `secrets.env` | the server is re-added with the `${VAR}` config and managed by loadout |
 | Skill (folder) | copied to `skills/<name>/` | replaced by a link to the copy; the original goes into the backup |
 | Skill (link to a shared source) | a pointer in `skills.json` | unchanged |
-| Hook | `settings.json`: `hooks`; for a simple command the script is copied to `hooks/` (see [Hooks](#hooks)) | the hook is replaced in place, in its group, by the recorded hook and tracked as applied by loadout, so it does not run twice and removing it from the personal layer later removes it here too. A hook with the same identity already in the personal layer is replaced, not added a second time |
+| Hook | `settings.json`: `hooks`; for a simple command the script is copied to `hooks/` (see [Hooks](#hooks)) | exactly that hook is replaced in place, in its group, by the recorded hook and tracked as applied by loadout (also a hook you re-added by hand after deleting it, whose remembered deletion is cleared), so it does not run twice and removing it from the personal layer later removes it here too. A hook with the same identity already in the personal layer is replaced in its slot, not added a second time |
 
 With `project`, the item goes into a personal profile instead (`profiles/<name>.json`; skills into `profiles/skills/<name>/`) and is disabled (plugins) or removed (MCP servers, skills, hooks) from your global setup. A removed skill reads `skill <name>: removed from ~/.claude/skills (kept in profile <p>; original in the backup)`. `loadout profile` copies a profile's skills into a repo and never overwrites an existing one.
 
