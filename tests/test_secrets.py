@@ -266,3 +266,27 @@ def test_redact_is_linear_on_long_token_runs():
     secrets.redact("x" * 200_000)
     assert time.monotonic() - start < 1.0
     assert secrets.redact("a.API_KEY=" + "k" * 20) == "a.API_KEY=***"
+
+
+def _timed_redact(text):
+    import time
+    t0 = time.perf_counter()
+    secrets.redact(text)
+    return time.perf_counter() - t0
+
+
+@pytest.mark.parametrize("make", [
+    lambda: "-" * 50_000,
+    lambda: "a." * 20_000,
+    lambda: __import__("base64").urlsafe_b64encode(os.urandom(75_000)).decode(),   # 100 KB of base64url
+    lambda: "-" + "key" * 33_000,
+], ids=["dashes", "dotted", "b64url", "keykey"])
+def test_redact_has_no_redos(make):
+    assert _timed_redact(make()) < 1.0
+
+
+def test_flag_and_url_anchors_keep_matches():
+    assert "abcdefgh123" not in secrets.redact("cmd --api-key abcdefgh123")
+    assert "abcdefgh123" not in secrets.redact("x -token abcdefgh123")
+    assert "hunter2pass" not in secrets.redact("see postgres://u:hunter2pass@h/db")
+    assert "hunter2pass" not in secrets.redact("DSN=Postgres+Psycopg://u:hunter2pass@h/db")
