@@ -53,6 +53,17 @@ def _delete_path(d: dict, path: tuple) -> None:
             break
 
 
+def _group_key(group: Any) -> tuple | None:
+    """(matcher, frozenset of commands) of a hook group, or None when it has no hooks or a hook without a
+    string command (such a group is merged as a plain list item)."""
+    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list) or not group["hooks"]:
+        return None
+    cmds = [h.get("command") if isinstance(h, dict) else None for h in group["hooks"]]
+    if not all(isinstance(c, str) for c in cmds):
+        return None
+    return group.get("matcher", ""), frozenset(cmds)
+
+
 def _commands(groups: Any, matcher: str) -> set:
     out = set()
     for group in groups if isinstance(groups, list) else []:
@@ -61,30 +72,33 @@ def _commands(groups: Any, matcher: str) -> set:
     return out
 
 
+def _hook_lists(d: dict) -> dict:
+    hooks = d.get("hooks")
+    return hooks if isinstance(hooks, dict) else {}
+
+
+def _applied_keys(previous: dict, event: str) -> set:
+    groups = _hook_lists(previous).get(event)
+    return {k for g in (groups if isinstance(groups, list) else []) if (k := _group_key(g)) is not None}
+
+
 def effective_desired(current: dict, desired: dict, previous: dict) -> dict:
-    """`desired` without the hook groups the user already has: every hook of the group exists (by command)
-    under the same event and matcher in `current`, and the kit did not add it before. List union would add
-    such a group as a duplicate and run the hook twice. Because it is left out here, it is also left out of
-    the snapshot, so a later removal from the personal layer never deletes the user's own copy."""
+    """`desired` without the hook groups that are the user's own copy (see merge_settings). This is also what
+    the snapshot records, so a later removal from the personal layer never deletes the user's own copy."""
     hooks = desired.get("hooks")
     if not isinstance(hooks, dict):
         return desired
-    cur_hooks = current.get("hooks") if isinstance(current.get("hooks"), dict) else {}
-    prev_hooks = previous.get("hooks") if isinstance(previous.get("hooks"), dict) else {}
+    cur_hooks = _hook_lists(current)
     kept = {}
     for event, groups in hooks.items():
         if not isinstance(groups, list):
             kept[event] = groups
             continue
+        applied = _applied_keys(previous, event)
         out = []
         for group in groups:
-            cmds = ({h.get("command") for h in group["hooks"] if isinstance(h, dict)}
-                    if isinstance(group, dict) and isinstance(group.get("hooks"), list) and group["hooks"] else None)
-            matcher = group.get("matcher", "") if isinstance(group, dict) else ""
-            prev_list = prev_hooks.get(event)
-            applied_before = isinstance(prev_list, list) and group in prev_list
-            if cmds and not applied_before and all(isinstance(c, str) for c in cmds) \
-                    and cmds <= _commands(cur_hooks.get(event), matcher):
+            key = _group_key(group)
+            if key is not None and key not in applied and key[1] <= _commands(cur_hooks.get(event), key[0]):
                 continue
             out.append(group)
         if out or not groups:
@@ -95,9 +109,46 @@ def effective_desired(current: dict, desired: dict, previous: dict) -> dict:
     return result
 
 
+def _update_applied_groups(current: dict, desired: dict, previous: dict) -> dict:
+    """A copy of `current` where each hook group the kit applied before (same event, matcher and command set
+    in `previous`) and still desires is replaced in place by the desired version."""
+    out = copy.deepcopy(current)
+    cur_hooks = _hook_lists(out)
+    for event, groups in _hook_lists(desired).items():
+        now = cur_hooks.get(event)
+        if not isinstance(groups, list) or not isinstance(now, list):
+            continue
+        prev_groups = _hook_lists(previous).get(event)
+        prev_groups = prev_groups if isinstance(prev_groups, list) else []
+        for group in groups:
+            key = _group_key(group)
+            if key is None or group in now:
+                continue
+            prev = next((g for g in prev_groups if _group_key(g) == key), None)
+            if prev is None:
+                continue
+            at = next((i for i, g in enumerate(now) if g == prev), None)
+            if at is None:
+                at = next((i for i, g in enumerate(now) if _group_key(g) == key), None)
+            if at is not None:
+                now[at] = copy.deepcopy(group)
+    return out
+
+
 def merge_settings(current: dict, desired: dict, previous: dict) -> dict:
+    """Three-way merge. Hook groups (the lists under `hooks.<event>`) are matched by event + matcher + the set
+    of their commands, not by dict equality:
+
+    - A desired group whose commands all already exist under the same event and matcher in `current` is the
+      user's own copy and is skipped, unless the kit applied a group with that key before (it is in
+      `previous`). Adding it would run the hook twice. It is also left out of the snapshot, so the user's own
+      copy survives a later removal from the personal layer.
+    - A group the kit applied before and still desires is updated in place, even when another field (such as
+      `timeout`) changed: it is neither duplicated nor dropped.
+    - A group the kit applied before and no longer desires is removed only if the user did not change it.
+    """
     desired = effective_desired(current, desired, previous)
-    result = deep_merge(copy.deepcopy(current), desired)
+    result = deep_merge(_update_applied_groups(current, desired, previous), desired)
     for path, prev_value in leaves(previous):
         if get_path(current, path) is MISSING:
             continue
@@ -138,6 +189,23 @@ def backup_snapshot(bk) -> None:
         bk.record_created(snap, "managed-settings.json (created by the loadout merge)")
     elif load_json(snap) != effective_desired(load_json(_target()), desired_settings(), load_json(snap)):
         bk.save_copy(snap, "managed-settings.json before loadout merge")
+
+
+def record_applied_hook(event: str, group: dict, bk) -> None:
+    """Record `group` in the snapshot as applied by the kit (backed up first). Used after the hook was moved
+    into exactly this group in settings.json on the recording machine: without it the merge would treat the
+    group as the user's own copy, and a later removal from the personal layer would leave it there."""
+    snap = _snapshot()
+    data = load_json(snap)
+    groups = data.setdefault("hooks", {}).setdefault(event, [])
+    if not isinstance(groups, list) or group in groups:
+        return
+    if snap.exists():
+        bk.save_copy(snap, "managed-settings.json before recording a hook")
+    else:
+        bk.record_created(snap, "managed-settings.json (created when recording a hook)")
+    groups.append(copy.deepcopy(group))
+    save_json(snap, data)
 
 
 def would_change() -> bool:

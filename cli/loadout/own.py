@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 from urllib.parse import parse_qsl, urlsplit
 
-from . import paths, personal_mcp, secrets
+from . import paths, personal_mcp, secrets, settings_merge
 from .jsonio import InvalidJSON, load_json, save_json
 from .secrets import redact
 
@@ -513,7 +513,9 @@ def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
     _edit_json(path, bk, f"settings.json before regrouping hook {display_name(v.item)}", change)
     if gone[0]:
         return [f"hook {display_name(v.item)}: changed in ~/.claude/settings.json since the scan; left as is"]
-    return [f"hook {display_name(v.item)}: now managed through your personal layer"]
+    settings_merge.record_applied_hook(event, group, bk)
+    return [f"hook {display_name(v.item)}: now managed through your personal layer (removing it there "
+            f"removes it here too)"]
 
 
 def record_global(v: Verdict, bk) -> Recorded:
