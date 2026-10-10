@@ -477,3 +477,127 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
     except Collision as exc:
         return Recorded(False, [redact(f"skipped: {exc}")])
     return Recorded(True, [f"{item.kind} {item.name}: recorded in {where}"])
+
+
+CHOICES = ("global", "project", "leave", "remove")
+
+
+@dataclass(frozen=True)
+class Choice:
+    action: str        # global | project | leave | remove
+    profile: str = ""
+
+
+def parse_choice(text: str) -> Choice:
+    action, _, profile = text.strip().partition(":")
+    if action not in CHOICES or (action == "project") != bool(profile):
+        raise ValueError(f"choice '{text}': use global, project:<profile>, leave or remove")
+    if profile and not PROFILE_NAME.match(profile):
+        raise ValueError(f"profile name '{profile}': use lowercase letters, digits, - and _")
+    return Choice(action, profile)
+
+
+def parse_spec(spec: str) -> list[tuple[str | None, str, Choice]]:
+    """'name=choice,kind:name=choice,...'. Only a known kind counts as a prefix (hook names contain ':')."""
+    out = []
+    for part in (p.strip() for p in spec.split(",")):
+        if not part:
+            continue
+        name, sep, choice = part.rpartition("=")
+        if not sep or not name.strip():
+            raise ValueError(f"'{part}': use NAME=CHOICE (for example foo@bar=global)")
+        kind, colon, rest = name.strip().partition(":")
+        kind, name = (kind, rest) if colon and kind in KINDS else (None, name.strip())
+        out.append((kind, name, parse_choice(choice)))
+    return out
+
+
+def resolve(entries: list[tuple[str | None, str, Choice]], verdicts: list[Verdict]) -> list[tuple[Verdict, Choice]]:
+    """Match names to unmanaged (or left) items; scope-down plugins accept only global. Raises ValueError."""
+    own_items = unmanaged(verdicts, include_left=True)
+    scope_down = [v for v in verdicts if v.action == "scope-down" and v.item.kind == "plugin"]
+    pairs = []
+    for kind, name, choice in entries:
+        pool = own_items + (scope_down if choice.action == "global" else [])
+        matches = [v for v in pool if v.item.name == name and (kind is None or v.item.kind == kind)]
+        if not matches:
+            raise ValueError(f"no unmanaged item named '{name}'" + (f" of kind {kind}" if kind else "")
+                             + " (see: loadout configure own --all)")
+        kinds = sorted({v.item.kind for v in matches})
+        if len(kinds) > 1:
+            raise ValueError(f"'{name}' matches several kinds; write it as " + " or ".join(f"{k}:{name}" for k in kinds))
+        for v in matches:
+            allowed = ["global"] if v.action == "scope-down" else options(v.item)
+            if choice.action not in allowed:
+                raise ValueError(f"{v.item.kind} {name}: {choice.action} is not available (choose: {', '.join(allowed)})")
+            pairs.append((v, choice))
+    return pairs
+
+
+def _existing_profiles() -> list[str]:
+    from . import profiles
+    return profiles.list_profiles()
+
+
+def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
+    if not verdicts:
+        return []
+    first = ask("your own tools: [l]eave all / [c]hoose each (default leave): ").strip().lower()
+    if first not in ("c", "choose"):
+        return [(v, Choice("leave")) for v in verdicts]
+    pairs, last_profile = [], ""
+    for v in verdicts:
+        opts = options(v.item)
+        prompt = f"  {v.item.kind} {v.item.name} — " + " / ".join(f"[{o[0]}]{o[1:]}" for o in opts) + " (default l): "
+        action = "leave"
+        for _ in range(3):
+            answer = ask(prompt).strip().lower()
+            if not answer:
+                break
+            hit = [o for o in opts if o == answer or o[0] == answer]
+            if hit:
+                action = hit[0]
+                break
+            print("  please answer " + ", ".join(f"{o[0]}({o[1:]})" for o in opts))
+        choice = Choice(action)
+        if action == "project":
+            profile = ""
+            for _ in range(3):
+                answer = ask(f"    profile (existing: {', '.join(_existing_profiles()) or 'none'}; or a new name)"
+                             + (f" [{last_profile}]" if last_profile else "") + ": ").strip().lower() or last_profile
+                if PROFILE_NAME.match(answer):
+                    profile = answer
+                    break
+                print("    use lowercase letters, digits, - and _")
+            if not profile:
+                choice = Choice("leave")
+            else:
+                note = profile_note(profile)
+                if note:
+                    print("    " + note)
+                last_profile, choice = profile, Choice("project", profile)
+        pairs.append((v, choice))
+    return pairs
+
+
+def _mentions(path: Path, needle: str) -> bool:
+    try:
+        return path.is_file() and needle in path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def candidate_repos(item: Item) -> list[Path]:
+    """Repos Claude Code knows (~/.claude.json projects) whose project config mentions the item. A hint only."""
+    needle = item.detail if item.kind == "hook" else item.name
+    projects = load_json(paths.claude_json()).get("projects")
+    out = []
+    for path, cfg in sorted((projects if isinstance(projects, dict) else {}).items()):
+        repo = Path(path)
+        if not repo.is_dir():
+            continue
+        in_cfg = isinstance(cfg, dict) and needle in json.dumps(cfg.get("mcpServers") or {})
+        files = [repo / ".mcp.json", repo / ".claude/settings.json", repo / ".claude/settings.local.json"]
+        if in_cfg or any(_mentions(f, needle) for f in files):
+            out.append(repo)
+    return out

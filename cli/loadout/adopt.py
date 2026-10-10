@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, inventory, paths, pkgmgr, runner, secrets, ui
+from . import catalog, inventory, own, paths, pkgmgr, runner, secrets, ui
 from .backup import Backup
 from .inventory import Verdict
 from .jsonio import InvalidJSON, load_json, save_json
@@ -84,7 +84,8 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
     return "\n".join(lines)
 
 
-def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask: Ask) -> list[Verdict]:
+def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask: Ask,
+           keep_global: list | None = None) -> list[Verdict]:
     if groups is not None:
         valid = set(GROUP_ORDER) - {"keep"}
         for g in sorted(groups - valid):
@@ -92,6 +93,8 @@ def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask
         return [v for v in verdicts if v.action in groups and v.item.name not in skip]
     chosen = []
     for group in GROUP_ORDER[:-1]:
+        if group == "own":
+            continue
         members = [v for v in verdicts if v.action == group and v.item.name not in skip]
         if not members:
             continue
@@ -102,7 +105,14 @@ def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask
         if answer == "a":
             chosen += members
         elif answer == "p":
-            chosen += [v for v in members if ui.confirm(ask, f"  {_verb(v)} {v.item.kind} {v.item.name}? [y/N] ")]
+            for v in members:
+                keepable = keep_global is not None and group == "scope-down" and v.item.kind == "plugin"
+                hint = " [y/N/k=keep global] " if keepable else " [y/N] "
+                reply = ask(f"  {_verb(v)} {v.item.kind} {v.item.name}?{hint}").strip().lower()
+                if reply in ui.YES:
+                    chosen.append(v)
+                elif keepable and reply in ("k", "keep"):
+                    keep_global.append(v)
     return chosen
 
 
@@ -350,3 +360,40 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     if not bk.empty:
         print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
     return 0
+
+
+def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = lambda q: "",
+              confirm_cmds: bool = True) -> tuple[list[str], dict]:
+    """Record own-tool choices, run every removal (others + converted choices), then the deferred
+    machine steps (content-based, so earlier index-based hook removals cannot shift them)."""
+    from . import link, settings_merge
+
+    out, machine, removals, recorded_profiles, personal_changed = [], [], list(others), {}, False
+    for v, choice in pairs:
+        if choice.action == "leave":
+            own.remember_leave(v.item)
+            out.append(f"{v.item.kind} {v.item.name}: left on this machine (not asked again; loadout configure own --all)")
+            continue
+        own.forget(v.item)
+        if choice.action == "remove":
+            removals.append(Verdict(v.item, "remove", v.reason))
+            continue
+        rec = own.record_global(v, bk) if choice.action == "global" else own.record_project(v, choice.profile, bk)
+        out += rec.lines
+        if not rec.ok:
+            continue
+        personal_changed = True
+        if rec.machine:
+            machine.append(rec.machine)
+        if choice.action == "project":
+            recorded_profiles.setdefault(choice.profile, []).append(v.item)
+            removals.append(Verdict(v.item, "scope-down" if v.item.kind == "plugin" else "remove", v.reason))
+            out.append(f"{v.item.kind} {v.item.name}: enable it per project with `loadout profile {choice.profile}`")
+    if removals:
+        out += apply(removals, bk, ask, confirm_cmds)
+    for step in machine:
+        out += step()
+    if personal_changed:
+        out += link.link_all(bk)
+        settings_merge.apply_settings()
+    return out, recorded_profiles

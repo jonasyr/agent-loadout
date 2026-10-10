@@ -194,7 +194,8 @@ def _outdated(action="update"):
 @pytest.mark.parametrize("word", ["a", "all", "y", "YES", "Yes"])
 def test_group_prompt_accepts_yes_words(machine, word):
     chosen = adopt.select(_verdicts(), None, set(), ask=lambda q: word if "[a]ll" in q else "")
-    assert {v.action for v in chosen} >= {"remove", "own"}
+    assert {v.action for v in chosen} >= {"remove"}
+    assert "own" not in {v.action for v in chosen}  # own items are chosen via own.ask_choices
 
 
 def test_group_prompt_reasks_on_invalid_answer(machine, capsys):
@@ -208,7 +209,7 @@ def test_group_prompts_name_the_action(machine):
     questions = []
     adopt.select(_verdicts(), None, set(), ask=lambda q: (questions.append(q), "p" if "[a]ll" in q else "")[1])
     text = "\n".join(questions)
-    assert "remove mcp omarchy-kb? [y/N]" in text
+    assert "remove skill gpt-taste? [y/N]" in text
     assert "disable globally plugin sonarqube@claude-plugins-official? [y/N]" in text
 
 
@@ -317,3 +318,68 @@ def test_non_interactive_groups_never_prompts_for_secrets(machine, fake_runner):
     adopt.run(True, {"remove"}, set(), False, ask=lambda q: asked.append(q) or "", with_versions=False, interactive=False)
     assert asked == []
     assert not paths.secrets_file().exists()
+
+
+from loadout import own
+
+
+def _own_pairs(spec):
+    return own.resolve(own.parse_spec(spec), _verdicts())
+
+
+def test_apply_own_project_disables_and_removes(machine, fake_runner):
+    (machine / ".claude/plugins/known_marketplaces.json").write_text(json.dumps({
+        "somewhere": {"source": {"source": "github", "repo": "me/somewhere"}}}))
+    bk = backup.Backup()
+    lines, profiles = adopt.apply_own(_own_pairs("mystery@somewhere=project:mine,omarchy-kb=project:mine"), bk)
+    assert ["claude", "plugin", "disable", "mystery@somewhere", "--scope", "user"] in fake_runner.calls
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
+    assert set(profiles) == {"mine"}
+    assert any("loadout profile mine" in line for line in lines)
+
+
+def test_apply_own_leave_and_remove(machine, fake_runner):
+    adopt.apply_own(_own_pairs("my-skill=leave,omarchy-kb=remove"), backup.Backup())
+    assert own.is_left([v for v in _verdicts() if v.item.name == "my-skill"][0].item)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
+
+
+def test_apply_own_two_hooks_one_group(machine):
+    data = json.loads((machine / ".claude/settings.json").read_text())
+    data["hooks"]["PreToolUse"][3]["hooks"].append({"type": "command", "command": "second-linter"})
+    (machine / ".claude/settings.json").write_text(json.dumps(data))
+    pairs = [(v, own.Choice("global") if v.item.detail == "my-own-linter" else own.Choice("remove"))
+             for v in own.unmanaged(_verdicts()) if v.item.kind == "hook"]
+    adopt.apply_own(pairs, backup.Backup())
+    commands = [h["command"] for g in json.loads((machine / ".claude/settings.json").read_text())["hooks"]["PreToolUse"]
+                for h in g["hooks"]]
+    assert commands.count("my-own-linter") == 1 and "second-linter" not in commands
+    assert "rtk hook claude" in commands
+
+
+def test_rerun_asks_nothing(machine, fake_runner):
+    (machine / ".claude/plugins/known_marketplaces.json").write_text(json.dumps({
+        "somewhere": {"source": {"source": "github", "repo": "me/somewhere"}}}))
+    pairs = [(v, own.Choice("global") if "global" in own.options(v.item) else own.Choice("leave"))
+             for v in own.unmanaged(_verdicts())]
+    adopt.apply_own(pairs, backup.Backup())
+    assert own.unmanaged(_verdicts()) == []
+
+
+def test_select_pick_keep_global(machine):
+    keep = []
+    answers = iter(["p", "k", "n"])
+    adopt.select([v for v in _verdicts() if v.action == "scope-down" and v.item.kind == "plugin"], None, set(),
+                 ask=lambda q: next(answers, ""), keep_global=keep)
+    assert len(keep) == 1 and keep[0].item.kind == "plugin"
+
+
+def test_apply_own_collision_skips_machine_step(machine, fake_runner):
+    path = paths.personal_root() / "profiles/mine.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"mcp": {"mcpServers": {"omarchy-kb": {"command": "other"}}}}))
+    # omarchy-kb is now "keep" (in a personal profile); wrap it as own to exercise the collision path
+    v = [x for x in _verdicts() if x.item.name == "omarchy-kb"][0]
+    lines, _ = adopt.apply_own([(inventory.Verdict(v.item, "own", ""), own.Choice("project", "mine"))], backup.Backup())
+    assert any(line.startswith("skipped:") for line in lines)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls

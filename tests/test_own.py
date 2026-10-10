@@ -388,3 +388,62 @@ def test_project_bad_profile_name(machine):
 def test_project_not_offered_for_marketplace(machine):
     with pytest.raises(ValueError):
         own.record_project(_as_own("marketplace", "severity1-marketplace"), "mine", backup.Backup())
+
+
+def test_parse_spec_and_choice():
+    assert own.parse_spec("foo@bar=global, hook:PreToolUse:Edit=project:mine,x=leave") == [
+        (None, "foo@bar", own.Choice("global")),
+        ("hook", "PreToolUse:Edit", own.Choice("project", "mine")),
+        (None, "x", own.Choice("leave"))]
+    for bad in ("x", "x=", "x=keep", "x=project", "x=project:../a"):
+        with pytest.raises(ValueError):
+            own.parse_spec(bad)
+
+
+def test_resolve_errors(machine):
+    (machine / ".claude/plugins/known_marketplaces.json").write_text(json.dumps({
+        "somewhere": {"source": {"source": "github", "repo": "me/somewhere"}}}))
+    vs = _verdicts()
+    with pytest.raises(ValueError, match="no unmanaged item"):
+        own.resolve(own.parse_spec("nothing=leave"), vs)
+    with pytest.raises(ValueError, match="not available"):
+        own.resolve(own.parse_spec("somewhere=project:x"), vs)
+
+
+def test_resolve_ambiguous_needs_kind(machine):
+    (machine / ".claude/skills/omarchy-kb").mkdir()
+    vs = _verdicts()
+    with pytest.raises(ValueError, match="mcp:omarchy-kb"):
+        own.resolve(own.parse_spec("omarchy-kb=leave"), vs)
+    assert len(own.resolve(own.parse_spec("skill:omarchy-kb=leave"), vs)) == 1
+
+
+def test_resolve_allows_keep_global_for_scope_down_plugin(machine):
+    pairs = own.resolve(own.parse_spec("sonarqube@claude-plugins-official=global"), _verdicts())
+    assert pairs[0][1] == own.Choice("global")
+    with pytest.raises(ValueError):
+        own.resolve(own.parse_spec("sonarqube@claude-plugins-official=leave"), _verdicts())
+
+
+def test_ask_choices_leave_all_is_default(machine):
+    vs = own.unmanaged(_verdicts())
+    pairs = own.ask_choices(vs, ask=lambda q: "")
+    assert {c.action for _, c in pairs} == {"leave"} and len(pairs) == len(vs)
+
+
+def test_ask_choices_each(machine):
+    vs = [v for v in own.unmanaged(_verdicts()) if v.item.name in ("mystery@somewhere", "my-skill")]
+    answers = iter(["c", "p", "mine", "g"])
+    pairs = own.ask_choices(vs, ask=lambda q: next(answers))
+    got = {v.item.name: c for v, c in pairs}
+    assert got == {"mystery@somewhere": own.Choice("project", "mine"), "my-skill": own.Choice("global")}
+
+
+def test_candidate_repos(machine):
+    repo = machine / "code/app"
+    repo.mkdir(parents=True)
+    (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"omarchy-kb": {}}}))
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["projects"] = {str(repo): {}, str(machine / "code/gone"): {}}
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+    assert own.candidate_repos(_v("mcp", "omarchy-kb").item) == [repo]
