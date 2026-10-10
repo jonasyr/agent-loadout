@@ -5,6 +5,7 @@ Spec: docs/superpowers/specs/2026-10-10-adopt-own-tools-design.md
 from __future__ import annotations
 
 import filecmp
+import hashlib
 import json
 import os
 import re
@@ -29,7 +30,19 @@ OWN_REASON = "Not managed by loadout. Choose: global, project, leave or remove."
 
 
 def decision_key(item: Item) -> str:
-    return f"hook:{item.name}:{item.detail}" if item.kind == "hook" else f"{item.kind}:{item.name}"
+    """Hooks are keyed by a hash of their command, so the decisions file never holds a command line."""
+    if item.kind == "hook":
+        digest = hashlib.sha256(str(item.detail).encode("utf-8")).hexdigest()[:16]
+        return f"hook:{item.name}:{digest}"
+    return f"{item.kind}:{item.name}"
+
+
+def _keys(item: Item) -> list[str]:
+    """The current key plus the legacy raw-command key for hooks (decisions written before the hash)."""
+    keys = [decision_key(item)]
+    if item.kind == "hook":
+        keys.append(f"hook:{item.name}:{item.detail}")
+    return keys
 
 
 def _decisions_path():
@@ -38,6 +51,11 @@ def _decisions_path():
 
 def decisions() -> dict[str, str]:
     return load_json(_decisions_path())
+
+
+def decided(data: dict[str, str], item: Item) -> str | None:
+    """The decision recorded for this item in `data`, under its current or legacy key."""
+    return next((data[k] for k in _keys(item) if k in data), None)
 
 
 def backup_decisions(bk) -> None:
@@ -53,21 +71,24 @@ def remember_leave(item: Item, bk=None) -> None:
     if bk is not None:
         backup_decisions(bk)
     data = decisions()
+    for key in _keys(item)[1:]:
+        data.pop(key, None)
     data[decision_key(item)] = "leave"
     save_json(_decisions_path(), data)
 
 
 def forget(item: Item, bk=None) -> None:
     data = decisions()
-    if decision_key(item) in data:
+    if any(k in data for k in _keys(item)):
         if bk is not None:
             backup_decisions(bk)
-        data.pop(decision_key(item))
+        for key in _keys(item):
+            data.pop(key, None)
         save_json(_decisions_path(), data)
 
 
 def is_left(item: Item) -> bool:
-    return decisions().get(decision_key(item)) == "leave"
+    return decided(decisions(), item) == "leave"
 
 
 def _hook_commands(settings: dict) -> set[str]:

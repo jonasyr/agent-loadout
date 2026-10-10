@@ -65,9 +65,25 @@ def test_left_items_are_keep_and_listed_with_all(machine):
     assert _by(_verdicts())[("skill", "my-skill")].action == "own"
 
 
-def test_hook_decision_key_includes_command(machine):
+def test_hook_decision_key_hashes_command(machine):
+    import hashlib
     hook = _by(_verdicts())[("hook", "PreToolUse:Edit")].item
-    assert own.decision_key(hook) == "hook:PreToolUse:Edit:my-own-linter"
+    assert own.decision_key(hook) == "hook:PreToolUse:Edit:" + hashlib.sha256(b"my-own-linter").hexdigest()[:16]
+    assert "my-own-linter" not in own.decision_key(hook)
+
+
+def test_legacy_hook_leave_decision_still_matches(machine):
+    item = _by(_verdicts())[("hook", "PreToolUse:Edit")].item
+    path = paths.state_dir() / "own-decisions.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"hook:PreToolUse:Edit:my-own-linter": "leave"}))
+    v = _by(_verdicts())[("hook", "PreToolUse:Edit")]
+    assert v.action == "keep" and v.reason == own.LEFT_REASON and own.is_left(item)
+    own.forget(item)
+    assert own.decisions() == {} and _by(_verdicts())[("hook", "PreToolUse:Edit")].action == "own"
+    path.write_text(json.dumps({"hook:PreToolUse:Edit:my-own-linter": "leave"}))
+    own.remember_leave(item)
+    assert own.decisions() == {own.decision_key(item): "leave"}   # legacy key rewritten, raw command gone
 
 
 def _v(kind, name):

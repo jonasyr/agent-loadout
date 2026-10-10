@@ -157,7 +157,7 @@ def classify(items: list[Item]) -> list[Verdict]:
         if personal:
             out.append(Verdict(item, "keep", personal))
             continue
-        if left.get(own.decision_key(item)) == "leave":
+        if own.decided(left, item) == "leave":
             out.append(Verdict(item, "keep", own.LEFT_REASON))
             continue
         entry = catalog.match(item.kind, item.name, item.detail)
