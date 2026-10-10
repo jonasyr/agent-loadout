@@ -158,7 +158,7 @@ def _add_market(data: dict, name: str) -> None:
         raise Collision(f"marketplace {name}: no source is known on this machine")
     markets = data.setdefault("extraKnownMarketplaces", {})
     have = markets.get(name)
-    if have is not None and have.get("source") != src:
+    if have is not None and (not isinstance(have, dict) or have.get("source") != src):
         raise Collision(f"marketplace {name} already exists with a different source")
     markets[name] = {"source": src}
 
@@ -174,6 +174,21 @@ def _secret_free(name: str, cfg: dict) -> tuple[dict, list[str]]:
     return new, lines
 
 
+def _refuse_if_secret(label: str, text: str) -> None:
+    if secrets.redact(text) != text:
+        raise Collision(f"{label} looks like it contains a secret; move it to secrets.env and use ${{VAR}}, then try again")
+
+
+def _scan_tree(src: Path, label: str) -> None:
+    for f in sorted(src.rglob("*")):
+        if f.is_symlink() or not f.is_file() or f.stat().st_size > 1_000_000:
+            continue
+        data = f.read_bytes()
+        if b"\0" in data:
+            continue
+        _refuse_if_secret(f"{label} ({f.relative_to(src)})", data.decode("utf-8", errors="ignore"))
+
+
 def _same_tree(a: Path, b: Path) -> bool:
     cmp = filecmp.dircmp(a, b)
     if cmp.left_only or cmp.right_only or cmp.funny_files:
@@ -183,6 +198,7 @@ def _same_tree(a: Path, b: Path) -> bool:
 
 
 def _copy_tree(src: Path, dest: Path, bk, label: str) -> None:
+    _scan_tree(src, label)
     if dest.exists():
         if not _same_tree(src, dest):
             raise Collision(f"{dest.name} already exists in {dest.parent} with different content")
@@ -211,29 +227,38 @@ def _portable_hook(hook: dict, bk) -> tuple[dict, list[str]]:
         tokens = shlex.split(cmd)
     except ValueError:
         return hook, []
+    outside: list[str] = []
     for tok in tokens:
         p = Path(os.path.expandvars(os.path.expanduser(tok)))
         if not p.is_absolute() or not p.is_file():
             continue
         if _under(p, paths.kit_root()) or _under(p, paths.personal_root()):
-            return hook, []
+            continue
         if not _under(p, paths.home()):
-            return hook, [f"note: {tok} is outside your home folder; the hook works only where it exists"]
+            outside.append(f"note: {tok} is outside your home folder; the hook works only where it exists")
+            continue
+        _refuse_if_secret(f"hook script {p.name}", p.read_text(errors="ignore"))
         dest = paths.personal_root() / "hooks" / p.name
         if dest.exists():
             if not filecmp.cmp(dest, p, shallow=False):
                 raise Collision(f"hook script {p.name} already exists in {dest.parent} with different content")
-        else:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            bk.record_created(dest, f"hook script {p.name} copied into the personal layer")
-            shutil.copy2(p, dest)
         new = f'"$HOME/.claude/hooks/personal/{p.name}"'
+        replaced = False
         for raw in (f"'{tok}'", f'"{tok}"', tok):
             if raw in cmd:
                 cmd = cmd.replace(raw, new, 1)
+                replaced = True
                 break
+        if not replaced:
+            return hook, [f"note: could not rewrite the path in the command; edit it in {_personal_settings()}"]
+        _refuse_if_secret("hook command", cmd)
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            bk.record_created(dest, f"hook script {p.name} copied into the personal layer")
+            shutil.copy2(p, dest)
         return {**hook, "command": cmd}, [f"hook script {p.name} copied to {dest} (only this file; copy files it needs next to it by hand)"]
-    return hook, []
+    _refuse_if_secret("hook command", cmd)
+    return hook, outside
 
 
 def _find_hook(data: dict, event: str, matcher: str, command: str) -> tuple[int, int] | None:
@@ -267,20 +292,26 @@ def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
     path = paths.claude_home() / "settings.json"
     matcher = v.item.name[len(event) + 1:]
 
+    gone = [False]
+
     def change(data):
         found = _find_hook(data, event, matcher, v.item.detail)
+        if found is None:
+            gone[0] = True
+            return
         groups = data["hooks"][event]
-        if found is not None:
-            gi, hi = found
-            rest = [h for i, h in enumerate(groups[gi]["hooks"]) if i != hi]
-            if rest:
-                groups[gi] = {**groups[gi], "hooks": rest}
-            else:
-                groups.pop(gi)
+        gi, hi = found
+        rest = [h for i, h in enumerate(groups[gi]["hooks"]) if i != hi]
+        if rest:
+            groups[gi] = {**groups[gi], "hooks": rest}
+        else:
+            groups.pop(gi)
         if group not in groups:
             groups.append(group)
 
     _edit_json(path, bk, f"settings.json before regrouping hook {v.item.name}", change)
+    if gone[0]:
+        return [f"hook {v.item.name}: changed in ~/.claude/settings.json since the scan; left as is"]
     return [f"hook {v.item.name}: now managed through your personal layer"]
 
 
@@ -320,6 +351,7 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
     if v.item.location != "~/.claude.json":
         raise Collision(f"mcp {name}: only user-scope servers in ~/.claude.json can be recorded")
     new, lines = _secret_free(name, original)
+    _refuse_if_secret(f"mcp {name}", json.dumps(new))
     path = paths.personal_root() / "mcp.json"
 
     def change(data):
@@ -348,7 +380,7 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
 def _global_skill(v: Verdict, bk) -> Recorded:
     name, src = v.item.name, Path(v.item.location)
     if src.is_symlink():
-        target = os.readlink(src)
+        target = os.path.normpath(src.parent / os.readlink(src))
         path = paths.personal_root() / "skills.json"
 
         def change(data):

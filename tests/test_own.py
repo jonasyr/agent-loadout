@@ -209,3 +209,95 @@ def test_global_hook_no_duplicate_after_merge(machine):
     settings_merge.apply_settings()
     commands = [h["command"] for g in _settings()["hooks"]["PreToolUse"] for h in g["hooks"]]
     assert commands.count("my-own-linter") == 1
+
+
+def _set_hook(machine, event, command):
+    data = _settings()
+    data["hooks"][event] = [{"hooks": [{"type": "command", "command": command}]}]
+    (paths.claude_home() / "settings.json").write_text(json.dumps(data))
+
+
+def _personal_empty():
+    root = paths.personal_root()
+    return not root.exists() or not any(p.is_file() for p in root.rglob("*"))
+
+
+def test_global_hook_interpreter_outside_home_still_copies_script(machine):
+    script = machine / "bin/run.sh"
+    script.parent.mkdir()
+    script.write_text("#!/bin/sh\necho hi\n")
+    _set_hook(machine, "Notification", f"/bin/sh '{script}'")
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    _run_machine(rec)
+    assert (paths.personal_root() / "hooks/run.sh").read_text() == script.read_text()
+    assert not any("outside your home" in line for line in rec.lines)
+    got = json.loads((paths.personal_root() / "settings.json").read_text())["hooks"]["Notification"][0]["hooks"][0]["command"]
+    assert got == '/bin/sh "$HOME/.claude/hooks/personal/run.sh"'
+
+
+def test_global_skill_relative_symlink_becomes_absolute_pointer(machine):
+    from loadout import link
+    skills = machine / ".claude/skills"
+    shared = machine / ".claude/shared/rel"
+    shared.mkdir(parents=True)
+    (skills / "rel").symlink_to("../shared/rel")
+    own.record_global(_v("skill", "rel"), backup.Backup())
+    ptr = json.loads((paths.personal_root() / "skills.json").read_text())["rel"]
+    assert ptr == str(shared)
+    assert any(dest.name == "rel" and src == shared for src, dest in link.LINKS()) or \
+        any(shared in pair for pair in link.LINKS())
+
+
+def test_global_hook_gone_before_machine_step_is_not_readded(machine):
+    rec = own.record_global(_v("hook", "PreToolUse:Edit"), backup.Backup())
+    data = _settings()
+    for g in data["hooks"]["PreToolUse"]:
+        g["hooks"] = [h for h in g["hooks"] if h["command"] != "my-own-linter"]
+    data["hooks"]["PreToolUse"] = [g for g in data["hooks"]["PreToolUse"] if g["hooks"]]
+    (paths.claude_home() / "settings.json").write_text(json.dumps(data))
+    lines = _run_machine(rec)
+    assert any("left as is" in line for line in lines)
+    cmds = [h["command"] for g in _settings()["hooks"]["PreToolUse"] for h in g["hooks"]]
+    assert "my-own-linter" not in cmds
+
+
+def test_global_hook_unrewritable_path_notes(machine):
+    script = machine / "bin/odd.sh"
+    script.parent.mkdir()
+    script.write_text("x")
+    _set_hook(machine, "Notification", str(script).replace("odd", 'od"d"'))
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    assert any("could not rewrite" in line for line in rec.lines)
+
+
+def test_global_hook_secret_refused(machine):
+    _set_hook(machine, "Notification", 'curl -H "Authorization: Bearer abcdefgh12345678" x')
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+    assert _personal_empty()
+
+
+def test_global_hook_script_secret_refused(machine):
+    script = machine / "bin/s.sh"
+    script.parent.mkdir()
+    script.write_text("KEY=sk-" + "a" * 30 + "\n")
+    _set_hook(machine, "Notification", f"bash '{script}'")
+    rec = own.record_global(_v("hook", "Notification:"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+    assert _personal_empty()
+
+
+def test_global_skill_secret_refused(machine):
+    (machine / ".claude/skills/my-skill/SKILL.md").write_text("token sk-" + "a" * 30)
+    rec = own.record_global(_v("skill", "my-skill"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+    assert not (paths.personal_root() / "skills/my-skill").exists()
+
+
+def test_global_mcp_unkeyed_url_secret_refused(machine, fake_runner):
+    cfg = json.loads((machine / ".claude.json").read_text())
+    cfg["mcpServers"]["db"] = {"command": "x", "env": {"DB": "postgres://u:hunter2secret@h/db"}}
+    (machine / ".claude.json").write_text(json.dumps(cfg))
+    rec = own.record_global(_v("mcp", "db"), backup.Backup())
+    assert not rec.ok and "secret" in rec.lines[0]
+    assert _personal_empty()
