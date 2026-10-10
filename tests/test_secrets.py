@@ -290,3 +290,49 @@ def test_flag_and_url_anchors_keep_matches():
     assert "abcdefgh123" not in secrets.redact("x -token abcdefgh123")
     assert "hunter2pass" not in secrets.redact("see postgres://u:hunter2pass@h/db")
     assert "hunter2pass" not in secrets.redact("DSN=Postgres+Psycopg://u:hunter2pass@h/db")
+
+
+JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+
+
+@pytest.mark.parametrize("text,leak", [
+    ("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk", "BEGIN OPENSSH PRIVATE KEY"),
+    ("-----BEGIN PRIVATE KEY-----", "BEGIN PRIVATE KEY"),
+    ("pay sk_live_" + "a1" * 12, "sk_live_" + "a1" * 12),
+    ("rk_test_" + "Z" * 20, "rk_test_" + "Z" * 20),
+    ("glpat-" + "a" * 20, "glpat-" + "a" * 20),
+    ("AIza" + "b" * 35, "AIza" + "b" * 35),
+    ("npm_" + "a1" * 18, "npm_" + "a1" * 18),
+    ("hf_" + "aB1" * 12, "hf_" + "aB1" * 12),
+    (JWT, JWT),
+    ("password: hunter2hunter2", "hunter2hunter2"),
+    ("  api_key: 'Zx9qqqqqqqqqqqqqqq'", "Zx9qqqqqqqqqqqqqqq"),
+    ("DB_PASS=hunter2hunter", "hunter2hunter"),
+    ("export AUTH_TOKEN=\"abcdefgh1\"", "abcdefgh1"),
+    ("[db]\npasswd = s3cretpassword\n", "s3cretpassword"),
+    ("- client_secret: abcdefgh12", "abcdefgh12"),
+    ("{'api_key': 'abcdefghijkl1234'}", "abcdefghijkl1234"),
+])
+def test_redact_new_patterns(text, leak):
+    out = secrets.redact(text)
+    assert leak not in out and "***" in out
+
+
+@pytest.mark.parametrize("text", [
+    "password: ${DB_PASSWORD}", "api_key: <your key here>", "token: $GITHUB_TOKEN", "password: short",
+    "author: jonas.weirauch@example.com", "keywords: retrieval,chunking", "{'name': 'loadout-kit-x'}",
+    "description: Use when the token budget matters",
+    '    "key": "attribution",', "        key = decision_key(v.item)", 'SECRET_KEY = re.compile(r"KEY|TOKEN")',
+])
+def test_redact_line_rule_leaves_placeholders(text):
+    assert secrets.redact(text) == text
+
+
+@pytest.mark.parametrize("make", [
+    lambda: "key" * 33_000 + ": " + "v" * 10,
+    lambda: ("a_key" + " " * 5) * 20_000,
+    lambda: "'" * 100_000,
+    lambda: "password:" * 20_000,
+], ids=["longkey", "keys-spaces", "quotes", "colons"])
+def test_new_rules_are_linear(make):
+    assert _timed_redact(make()) < 1.0
