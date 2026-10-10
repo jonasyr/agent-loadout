@@ -447,3 +447,33 @@ def test_candidate_repos(machine):
     cfg["projects"] = {str(repo): {}, str(machine / "code/gone"): {}}
     (machine / ".claude.json").write_text(json.dumps(cfg))
     assert own.candidate_repos(_v("mcp", "omarchy-kb").item) == [repo]
+
+
+def test_resolve_rejects_duplicate_matches(machine):
+    vs = _verdicts()
+    for spec in ("my-skill=global,my-skill=remove", "my-skill=global,skill:my-skill=remove"):
+        with pytest.raises(ValueError, match="more than once"):
+            own.resolve(own.parse_spec(spec), vs)
+
+
+def test_resolve_scope_down_plugin_only_global(machine):
+    with pytest.raises(ValueError, match="only global is available for this catalog plugin"):
+        own.resolve(own.parse_spec("sonarqube@claude-plugins-official=project:x"), _verdicts())
+
+
+def test_candidate_repos_survives_corrupt_claude_json(machine):
+    item = _v("mcp", "omarchy-kb").item
+    (machine / ".claude.json").write_text("{not json")
+    assert own.candidate_repos(item) == []
+
+
+def test_ask_choices_invalid_answers_fall_back_to_leave(machine):
+    vs = [v for v in own.unmanaged(_verdicts()) if v.item.name == "my-skill"]
+    answers = iter(["c", "zzz", "zzz", "zzz"])
+    assert own.ask_choices(vs, ask=lambda q: next(answers)) == [(vs[0], own.Choice("leave"))]
+
+
+def test_ask_choices_invalid_profile_falls_back_to_leave(machine):
+    vs = [v for v in own.unmanaged(_verdicts()) if v.item.name == "my-skill"]
+    answers = iter(["c", "p", "Bad Name", "../x", "A B"])
+    assert own.ask_choices(vs, ask=lambda q: next(answers)) == [(vs[0], own.Choice("leave"))]

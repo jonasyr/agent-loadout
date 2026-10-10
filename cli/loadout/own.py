@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from . import paths, personal_mcp, secrets
-from .jsonio import load_json, save_json
+from .jsonio import InvalidJSON, load_json, save_json
 from .secrets import redact
 
 if TYPE_CHECKING:
@@ -39,15 +39,29 @@ def decisions() -> dict[str, str]:
     return load_json(_decisions_path())
 
 
-def remember_leave(item: Item) -> None:
+def backup_decisions(bk) -> None:
+    """Record the decisions file in the backup (copy if it exists, else mark it created) before a write."""
+    path = _decisions_path()
+    if path.exists():
+        bk.save_copy(path, "own-decisions.json before change")
+    else:
+        bk.record_created(path, "own-decisions.json")
+
+
+def remember_leave(item: Item, bk=None) -> None:
+    if bk is not None:
+        backup_decisions(bk)
     data = decisions()
     data[decision_key(item)] = "leave"
     save_json(_decisions_path(), data)
 
 
-def forget(item: Item) -> None:
+def forget(item: Item, bk=None) -> None:
     data = decisions()
-    if data.pop(decision_key(item), None) is not None:
+    if decision_key(item) in data:
+        if bk is not None:
+            backup_decisions(bk)
+        data.pop(decision_key(item))
         save_json(_decisions_path(), data)
 
 
@@ -516,10 +530,13 @@ def resolve(entries: list[tuple[str | None, str, Choice]], verdicts: list[Verdic
     """Match names to unmanaged (or left) items; scope-down plugins accept only global. Raises ValueError."""
     own_items = unmanaged(verdicts, include_left=True)
     scope_down = [v for v in verdicts if v.action == "scope-down" and v.item.kind == "plugin"]
-    pairs = []
+    pairs, seen = [], set()
     for kind, name, choice in entries:
         pool = own_items + (scope_down if choice.action == "global" else [])
         matches = [v for v in pool if v.item.name == name and (kind is None or v.item.kind == kind)]
+        if not matches and choice.action != "global":
+            if any(v.item.name == name and (kind is None or v.item.kind == kind) for v in scope_down):
+                raise ValueError(f"{name}: only global is available for this catalog plugin (keep it global)")
         if not matches:
             raise ValueError(f"no unmanaged item named '{name}'" + (f" of kind {kind}" if kind else "")
                              + " (see: loadout configure own --all)")
@@ -527,6 +544,10 @@ def resolve(entries: list[tuple[str | None, str, Choice]], verdicts: list[Verdic
         if len(kinds) > 1:
             raise ValueError(f"'{name}' matches several kinds; write it as " + " or ".join(f"{k}:{name}" for k in kinds))
         for v in matches:
+            key = decision_key(v.item)
+            if key in seen:
+                raise ValueError(f"'{name}' is listed more than once")
+            seen.add(key)
             allowed = ["global"] if v.action == "scope-down" else options(v.item)
             if choice.action not in allowed:
                 raise ValueError(f"{v.item.kind} {name}: {choice.action} is not available (choose: {', '.join(allowed)})")
@@ -590,11 +611,17 @@ def _mentions(path: Path, needle: str) -> bool:
 def candidate_repos(item: Item) -> list[Path]:
     """Repos Claude Code knows (~/.claude.json projects) whose project config mentions the item. A hint only."""
     needle = item.detail if item.kind == "hook" else item.name
-    projects = load_json(paths.claude_json()).get("projects")
+    try:
+        projects = load_json(paths.claude_json()).get("projects")
+    except (OSError, InvalidJSON):
+        return []
     out = []
     for path, cfg in sorted((projects if isinstance(projects, dict) else {}).items()):
         repo = Path(path)
-        if not repo.is_dir():
+        try:
+            if not repo.is_dir():
+                continue
+        except OSError:
             continue
         in_cfg = isinstance(cfg, dict) and needle in json.dumps(cfg.get("mcpServers") or {})
         files = [repo / ".mcp.json", repo / ".claude/settings.json", repo / ".claude/settings.local.json"]

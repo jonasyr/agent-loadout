@@ -383,3 +383,61 @@ def test_apply_own_collision_skips_machine_step(machine, fake_runner):
     lines, _ = adopt.apply_own([(inventory.Verdict(v.item, "own", ""), own.Choice("project", "mine"))], backup.Backup())
     assert any(line.startswith("skipped:") for line in lines)
     assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+
+
+def test_apply_own_overlap_with_others_acts_once(machine, fake_runner):
+    v = [x for x in _verdicts() if x.item.name == "omarchy-kb"][0]
+    adopt.apply_own([(v, own.Choice("leave"))], backup.Backup(), others=[inventory.Verdict(v.item, "remove", "")])
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+    adopt.apply_own([(v, own.Choice("remove"))], backup.Backup(), others=[inventory.Verdict(v.item, "remove", "")])
+    assert fake_runner.calls.count(["claude", "mcp", "remove", "-s", "user", "omarchy-kb"]) == 1
+
+
+def test_apply_own_record_error_keeps_other_items(machine, fake_runner):
+    vs = {x.item.name: x for x in _verdicts()}
+    path = paths.personal_root() / "profiles/mine.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{corrupt")
+    pairs = [(vs["omarchy-kb"], own.Choice("project", "mine")), (vs["my-skill"], own.Choice("global"))]
+    lines, _ = adopt.apply_own(pairs, backup.Backup())
+    assert any("omarchy-kb: failed:" in line for line in lines)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] not in fake_runner.calls
+    assert (paths.personal_root() / "skills/my-skill").exists()
+
+
+def test_apply_own_unreadable_skill_reports_and_continues(machine, fake_runner):
+    import os
+    if os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0):
+        pytest.skip("permissions not enforced")
+    vs = {x.item.name: x for x in _verdicts()}
+    skill = machine / ".claude/skills/my-skill"
+    files = [f for f in skill.rglob("*") if f.is_file()]
+    for f in files:
+        f.chmod(0)
+    try:
+        lines, _ = adopt.apply_own([(vs["my-skill"], own.Choice("global")),
+                                    (vs["omarchy-kb"], own.Choice("remove"))], backup.Backup())
+    finally:
+        for f in files:
+            f.chmod(0o644)
+    assert ["claude", "mcp", "remove", "-s", "user", "omarchy-kb"] in fake_runner.calls
+    assert any("my-skill" in line for line in lines)
+
+
+def test_apply_own_backs_up_settings(machine, fake_runner):
+    settings = machine / ".claude/settings.json"
+    original = settings.read_text()
+    bk = backup.Backup()
+    v = [x for x in _verdicts() if x.item.kind == "plugin" and x.action == "scope-down"][0]
+    adopt.apply_own([(v, own.Choice("global"))], bk)
+    backup.restore(bk.root, force=True)
+    assert settings.read_text() == original
+
+
+def test_apply_own_leave_is_restorable(machine):
+    v = [x for x in _verdicts() if x.item.name == "my-skill"][0]
+    bk = backup.Backup()
+    adopt.apply_own([(v, own.Choice("leave"))], bk)
+    assert own.decisions()
+    backup.restore(bk.root, force=True)
+    assert not own.decisions()

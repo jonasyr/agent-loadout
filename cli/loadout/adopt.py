@@ -365,35 +365,78 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
 def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = lambda q: "",
               confirm_cmds: bool = True) -> tuple[list[str], dict]:
     """Record own-tool choices, run every removal (others + converted choices), then the deferred
-    machine steps (content-based, so earlier index-based hook removals cannot shift them)."""
+    machine steps (content-based, so earlier index-based hook removals cannot shift them).
+    An item in both `pairs` and `others` is acted on once, by its own choice. One item's I/O error is
+    reported as a 'failed:' line and does not stop the others."""
     from . import link, settings_merge
 
-    out, machine, removals, recorded_profiles, personal_changed = [], [], list(others), {}, False
+    mine = {own.decision_key(v.item) for v, _ in pairs}
+    out, machine, recorded_profiles, personal_changed = [], [], {}, False
+    removals = [v for v in others if own.decision_key(v.item) not in mine]
+    backed_up = False
+
+    def fail(v, exc):
+        out.append(redact(f"{v.item.kind} {v.item.name}: failed: {exc}"))
+
+    def backup_decisions():
+        nonlocal backed_up
+        if not backed_up:
+            own.backup_decisions(bk)
+            backed_up = True
+
     for v, choice in pairs:
         if choice.action == "leave":
-            own.remember_leave(v.item)
+            try:
+                backup_decisions()
+                own.remember_leave(v.item)
+            except (OSError, InvalidJSON) as exc:
+                fail(v, exc)
+                continue
             out.append(f"{v.item.kind} {v.item.name}: left on this machine (not asked again; loadout configure own --all)")
             continue
-        own.forget(v.item)
         if choice.action == "remove":
+            try:
+                backup_decisions()
+                own.forget(v.item)
+            except (OSError, InvalidJSON) as exc:
+                fail(v, exc)
+                continue
             removals.append(Verdict(v.item, "remove", v.reason))
             continue
-        rec = own.record_global(v, bk) if choice.action == "global" else own.record_project(v, choice.profile, bk)
+        try:
+            rec = own.record_global(v, bk) if choice.action == "global" else own.record_project(v, choice.profile, bk)
+        except (OSError, InvalidJSON) as exc:
+            fail(v, exc)
+            continue
         out += rec.lines
         if not rec.ok:
             continue
+        try:
+            backup_decisions()
+            own.forget(v.item)
+        except (OSError, InvalidJSON) as exc:
+            fail(v, exc)
         personal_changed = True
         if rec.machine:
-            machine.append(rec.machine)
+            machine.append((v, rec.machine))
         if choice.action == "project":
             recorded_profiles.setdefault(choice.profile, []).append(v.item)
             removals.append(Verdict(v.item, "scope-down" if v.item.kind == "plugin" else "remove", v.reason))
             out.append(f"{v.item.kind} {v.item.name}: enable it per project with `loadout profile {choice.profile}`")
     if removals:
         out += apply(removals, bk, ask, confirm_cmds)
-    for step in machine:
-        out += step()
+    for v, step in machine:
+        try:
+            out += step()
+        except (OSError, InvalidJSON) as exc:
+            fail(v, exc)
     if personal_changed:
-        out += link.link_all(bk)
-        settings_merge.apply_settings()
+        try:
+            out += link.link_all(bk)
+            settings_path = paths.claude_home() / "settings.json"
+            if settings_path.exists() and settings_merge.would_change():
+                bk.save_copy(settings_path, "settings.json before loadout merge")
+            settings_merge.apply_settings()
+        except (OSError, InvalidJSON) as exc:
+            out.append(redact(f"settings: failed: {exc}"))
     return out, recorded_profiles

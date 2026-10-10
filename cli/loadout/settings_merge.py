@@ -87,6 +87,11 @@ def _snapshot():
     return paths.state_dir() / "managed-settings.json"
 
 
+def would_change() -> bool:
+    current = load_json(_target())
+    return merge_settings(current, desired_settings(), load_json(_snapshot())) != current
+
+
 def apply_settings() -> tuple[dict, dict]:
     current = load_json(_target())  # raises InvalidJSON before anything is written
     desired = desired_settings()
