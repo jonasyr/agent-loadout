@@ -17,6 +17,8 @@ def load() -> list[dict]:
 
 
 def match(kind: str, name: str, detail: str = "") -> dict | None:
+    if not isinstance(detail, str):
+        detail = str(detail)  # a hook whose command is a list or a number
     for entry in load():
         if entry["kind"] != kind:
             continue

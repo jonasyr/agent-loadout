@@ -65,3 +65,22 @@ def apply_mcp() -> list[str]:
             out.append(redact(f"mcp {name}: failed: {res.stderr.strip()}"))
     save_json(snap, {"mcpServers": managed})
     return out
+
+
+def replace_user_server(name: str, original: dict, new: dict, bk) -> str:
+    """Swap a user-scope server's config. Never leaves the user without the server."""
+    remove = ["claude", "mcp", "remove", "-s", "user", name]
+    add_new = ["claude", "mcp", "add-json", "-s", "user", name, json.dumps(new)]
+    if runner.would_refuse(add_new):  # decide before removing anything
+        bk._ensure_root()
+        where = runner.write_manual_commands(bk.root, f"mcp {name} (full commands, contains secrets)", [remove, add_new])
+        return f"manual: {where}"
+    # reverse replay: remove the new server first, then re-add the original
+    bk.record_command(f"mcp {name} (original)", ["claude", "mcp", "add-json", "-s", "user", name, json.dumps(original)])
+    bk.record_command(f"mcp {name} (remove rewritten)", remove)
+    runner.run(remove)
+    res = runner.run(add_new)
+    if res.ok:
+        return "ok"
+    back = _add(name, original)
+    return redact(f"failed: {res.stderr.strip()} (original re-added: {'ok' if back.ok else 'failed: ' + back.stderr.strip()})")

@@ -39,15 +39,20 @@ def _register_adopt(sub):
 
     p = sub.add_parser("adopt", help="review and migrate the existing Claude Code setup")
     p.add_argument("--apply", action="store_true", help="choose and apply changes (default: dry run)")
-    p.add_argument("--groups", help="apply exactly these groups, e.g. remove,migrate (update/install run each command after confirmation unless --yes)")
-    p.add_argument("--skip", default="", help="comma-separated item names to leave alone")
-    p.add_argument("--yes", action="store_true", help="no questions: apply --groups, or remove,migrate,scope-down, and move secrets")
+    p.add_argument("--groups", help="apply exactly these groups, e.g. remove,migrate (update/install run each command after confirmation unless --yes); `own` is refused, use --own")
+    p.add_argument("--skip", default="", help="comma-separated item names to skip in this run (nothing is remembered)")
+    p.add_argument("--yes", action="store_true", help="no questions: apply --groups, or remove,migrate,scope-down, and move secrets; your own tools stay as they are")
+    p.add_argument("--own", metavar="NAME=CHOICE,...",
+                   help="Example: my-db=project:mydb,foo@bar=global. Decide for your own tools. "
+                        "Choices: global, project:<profile>, leave, remove; others stay as they are. "
+                        "A hook is named Event:matcher (Stop: has no matcher); add #n when several hooks "
+                        "share a name (names: loadout configure own)")
     p.add_argument("--no-versions", action="store_true", help="skip network version checks")
 
     def run(a):
         groups = {g.strip() for g in a.groups.split(",") if g.strip()} if a.groups else None
         skip = {s.strip() for s in a.skip.split(",") if s.strip()}
-        return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions)
+        return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions, own_spec=a.own)
 
     p.set_defaults(func=run)
 
@@ -148,12 +153,16 @@ def _register_configure(sub):
                               "  loadout configure set pref-choice effort_level high\n"
                               "  loadout configure set plugin hookify@claude-plugins-official on\n"
                               "  loadout configure set mcp dbhub on\n"
+                              "  loadout configure own\n"
+                              "  loadout configure set own foo@bar global\n"
                               "  loadout configure set pref effortLevel '\"high\"'")
-    p.add_argument("action", nargs="?", choices=["show", "set", "prefs"],
-                   help="show the current state, set one value, or answer the working-preference questions")
-    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref"], help="what to set")
-    p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, preference id, or settings key (ids: configure show)")
-    p.add_argument("value", nargs="?", help="on|off for plugin/mcp; an option for pref-choice; a JSON value for pref")
+    p.add_argument("action", nargs="?", choices=["show", "set", "prefs", "own"],
+                   help="show the current state, set one value, answer the working-preference questions, or list your own tools (own)")
+    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref", "own"], help="what to set")
+    p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, preference id, or settings key (ids: configure show), "
+                                      "or one of your own tools (names: configure own)")
+    p.add_argument("value", nargs="?", help="on|off for plugin/mcp; an option for pref-choice; a JSON value for pref; global|project:<profile>|leave|remove for own")
+    p.add_argument("--all", action="store_true", help="with own: also list the tools you left on this machine")
     p.add_argument("--first-run", action="store_true", help="also ask the 'about you' questions again (keeps your me.md unless you agree)")
 
     def run(a):
@@ -164,8 +173,13 @@ def _register_configure(sub):
             return 0
         if a.action == "prefs":
             return configure.prefs(_ask)
+        if a.action == "own":
+            print("\n".join(configure.own_lines(a.all)))
+            return 0
         if not (a.kind and a.name and a.value):
-            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref <name> <value>")
+            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own <name> <value>")
+        if a.kind == "own":
+            return configure.set_own(a.name, a.value)
         if a.kind == "plugin":
             configure.set_plugin(a.name, configure.parse_switch(a.value, "plugin"))
         elif a.kind == "mcp":

@@ -208,12 +208,6 @@ def setup_secrets(bk: Backup | None = None) -> list[str]:
     return out
 
 
-def _settings_would_change() -> bool:
-    current = load_json(paths.claude_home() / "settings.json")
-    previous = load_json(paths.state_dir() / "managed-settings.json")
-    return settings_merge.merge_settings(current, settings_merge.desired_settings(), previous) != current
-
-
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
     if interactive is None:
         interactive = ui.is_interactive()
@@ -236,8 +230,9 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         wizard(ask, first_run=False, setup=False, interactive=interactive, preferences_asked=starter)  # settings, MCP servers and plugins are applied below
     _step("Settings")
     settings_path = paths.claude_home() / "settings.json"
-    if settings_path.exists() and _settings_would_change():
+    if settings_path.exists() and settings_merge.would_change():
         bk.save_copy(settings_path, "settings.json before loadout merge")
+    settings_merge.backup_snapshot(bk)
     before, after = settings_merge.apply_settings()
     print("settings updated" if before != after else "settings already up to date")
     from .personal_mcp import apply_mcp

@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from . import catalog, paths, preferences, profiles, runner, scaffold, ui
+from . import catalog, paths, preferences, profiles, runner, scaffold, secrets, ui
 from .backup import Backup
 from .jsonio import load_json, save_json
 from .secrets import redact
@@ -149,6 +149,26 @@ def show() -> str:
     return "\n".join(lines)
 
 
+def offer_commit(ask: Ask) -> None:
+    root = paths.personal_root()
+    if (root / ".git").exists():
+        # porcelain v1 is the --short format with a stable layout; -uall lists files inside new dirs
+        status = runner.run(["git", "-C", str(root), "status", "--porcelain", "-uall"])
+        if status.stdout.strip():
+            print(f"changes in your personal layer ({root}):")
+            print(status.stdout.rstrip("\n"))
+        changed = [line[3:].split(" -> ")[-1].strip().strip('"') for line in status.stdout.splitlines() if line.strip()]
+        private = [p for p in changed if p.rsplit("/", 1)[-1].endswith(".env") or secrets.private_path(p)]
+        if private:
+            print(f"not offering to commit the personal layer: {', '.join(private)} would be committed "
+                  f"(keys and secrets never belong there; secrets go in {paths.secrets_file()}; "
+                  f"remove them or add them to {root / '.gitignore'})")
+        elif status.stdout.strip() and ask("commit and push your personal layer? [y/N] ").strip().lower() == "y":
+            runner.run(["git", "-C", str(root), "add", "-A"])
+            runner.run(["git", "-C", str(root), "commit", "-m", "chore: update loadout preferences"])
+            runner.run(["git", "-C", str(root), "push"])
+
+
 def apply_all(ask: Ask, setup: bool = True) -> None:
     """setup=False: the caller (bootstrap) applies settings, MCP servers and plugins itself afterwards."""
     from . import bootstrap
@@ -162,18 +182,7 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
             apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
         for line in plugin_lines + apply_mcp():
             print(line)
-    root = paths.personal_root()
-    if (root / ".git").exists():
-        status = runner.run(["git", "-C", str(root), "status", "--porcelain", "-uall"])  # -uall: files inside new dirs
-        changed = [line[3:].strip().strip('"') for line in status.stdout.splitlines() if line.strip()]
-        env_files = [p for p in changed if p.rsplit("/", 1)[-1].endswith(".env")]
-        if env_files:
-            print(f"not offering to commit the personal layer: {', '.join(env_files)} would be committed "
-                  f"(secrets belong in {paths.secrets_file()}; add them to {root / '.gitignore'})")
-        elif status.stdout.strip() and ask("commit and push your personal layer? [y/N] ").strip().lower() == "y":
-            runner.run(["git", "-C", str(root), "add", "-A"])
-            runner.run(["git", "-C", str(root), "commit", "-m", "chore: update loadout preferences"])
-            runner.run(["git", "-C", str(root), "push"])
+    offer_commit(ask)
     if setup:
         print("Restart Claude Code (or run /reload-plugins) to load the changes.")
 
@@ -259,3 +268,55 @@ def wizard(ask: Ask, first_run: bool, setup: bool = True, interactive: bool | No
         print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     apply_all(ask, setup=setup)
     return 0
+
+
+def _own_verdicts():
+    from . import inventory
+    return inventory.classify(inventory.collect(with_versions=False))
+
+
+def own_lines(include_left: bool) -> list[str]:
+    from . import own
+
+    verdicts = _own_verdicts()
+    found = own.unmanaged(verdicts, include_left)
+    names = own.qualified_names(own.unmanaged(verdicts, True))
+    if not found:
+        lines = ["Nothing to decide: loadout or your personal layer manages every tool."]
+        if not include_left and any(v.action == "keep" and v.reason == own.LEFT_REASON for v in verdicts):
+            lines.append("Tools you chose to leave on this machine: `loadout configure own --all`")
+        return lines
+    lines = ["Not managed by loadout (they stay on this machine only). Choose with:",
+             "  loadout configure set own <name> global|project:<profile>|leave|remove"]
+    for v in found:
+        lines.append(redact(f"  [{v.item.kind}] {names.get(id(v.item), v.item.name)}  {v.item.detail}".rstrip()))
+        left = "  (left on this machine)" if own.is_left(v.item) else ""
+        lines.append(f"      options: {', '.join(own.options(v.item))}{left}")
+    return lines
+
+
+def set_own(name: str, choice: str) -> int:
+    import sys
+
+    from . import adopt, own
+
+    try:
+        pairs = own.resolve(own.parse_spec(f"{name}={choice}"), _own_verdicts())
+    except ValueError as exc:
+        print(f"loadout: {exc}", file=sys.stderr)
+        return 2
+    bk = Backup(description="configure own")
+    for note in own.profile_notes(pairs):
+        print(note)
+    changed: list = []
+    not_done: list = []
+    lines, profiles_changed = adopt.apply_own(pairs, bk, changed=changed, project_hint=False, not_done=not_done)
+    for line in lines:
+        print(redact(line))
+    if changed:
+        print(adopt.RESTART_NOTE)
+    for profile in profiles_changed:
+        print(f"apply it in a repo: cd <repo> && loadout profile {profile}")
+    if not bk.empty:
+        print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+    return 1 if not_done else 0

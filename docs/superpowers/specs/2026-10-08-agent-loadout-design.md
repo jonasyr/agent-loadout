@@ -77,9 +77,16 @@ Located at `$LOADOUT_PERSONAL`, default `~/.config/loadout/personal`. Can be a g
 ```
 personal/
 ├── rules/me.md          who I am, working style; other personal rules
-├── settings.json        overlay: extra plugins/marketplaces, opt-outs ("x@y": false), preferences
-└── profiles/*.json      optional personal profiles (override kit profiles with the same name)
+├── settings.json        overlay: extra plugins/marketplaces, opt-outs ("x@y": false), preferences, hooks
+├── mcp.json             global MCP servers (secrets as ${VAR})
+├── skills/<name>/       global skills, linked to ~/.claude/skills/<name>
+├── skills.json          {"<name>": "<target>"} pointers to shared skill sources
+├── hooks/<file>         hook scripts, linked as ~/.claude/hooks/personal
+├── profiles/*.json      optional personal profiles (override kit profiles with the same name)
+└── profiles/skills/<name>/   skills used by profiles (copied into repos, not linked globally)
 ```
+
+The skill, hook and `skills.json` entries are written by `adopt` for the user's own tools (see `2026-10-10-adopt-own-tools-design.md`). They reach other machines only when the personal layer is a git repo and the user commits and pushes; after the daily pull, maintenance links the pulled skills and hook scripts. Nothing that looks like a secret, and no private file (keys, credentials), is written there.
 
 Working preferences are defined as data in the kit's `preferences.json` (`id`, `question`, `options`, `default`, `target`, optional `detect`/`generator`). A `me_md` target writes one template line per answer into a managed block of `rules/me.md` (`<!-- loadout:preferences:start -->` … `<!-- loadout:preferences:end -->`); a `setting` target writes a dotted key in `settings.json` (`null` removes it; a value equal to the kit default is not stored); `ai_attribution` has both. Free-text lines outside the block are read (conservative regexes; ambiguous or negated lines count as not set) but never moved or rewritten: when an answer changes, a free-text line stating it is named and, interactively, offered for removal with a backup. Only a line equal to a template line (whitespace-normalised) moves into the block, during a write that happens anyway. Unbalanced or duplicated markers make every me.md write refuse. A block left with no lines loses its marker pair. Line endings are kept.
 
@@ -156,7 +163,7 @@ Each entry:
 }
 ```
 
-`match` is evaluated against names; `contains` is evaluated against the command line, URL, hook command or symlink target. Items not matched by any entry are `unknown`.
+`match` is evaluated against names; `contains` is evaluated against the command line, URL, hook command or symlink target. Items not matched by any entry are `own`.
 
 ## 6. Machine setup
 
@@ -199,7 +206,7 @@ Runs `loadout bootstrap [--install] [--yes]`. Safe to re-run.
    - *scope down* (profile-only → disable globally, print `loadout init <profile>` hint);
    - *remove* (superseded/deprecated, with reason and replacement);
    - *update* (binary outdated: installed → latest);
-   - *unknown* (kept untouched).
+   - *own* (not managed by loadout; the user chooses global / project / leave / remove per item, default decide later; non-interactively with `--own NAME=CHOICE,...`, and `--groups own` is invalid; see `2026-10-10-adopt-own-tools-design.md`). Items already in the personal layer are *keep*, and so is a plugin that a personal profile holds while it is disabled globally. After `project` choices, applying the profile to repos is offered with the default none.
 4. **Present** the grouped plan.
    - `--dry-run` (default when not interactive) stops here.
    - Interactive: confirm per group, with an option to pick individual items.
@@ -231,6 +238,7 @@ One engine, two front-ends. Defaults stay as the kit ships them; the wizard only
   - `loadout configure set mcp <catalog-id> on|off` → `<personal>/mcp.json`. The servers listed there are applied as user-scope MCP servers via `claude mcp add-json -s user`. The managed names are kept in a snapshot, so an `off` removes only kit-applied servers.
   - `loadout configure set pref <key> <json-value>` → `<personal>/settings.json`.
   - `loadout configure set pref-choice <id> <option>` → validated against `preferences.json` (free text: one line, at most 100 characters), written to the me.md block and/or `settings.json`. `loadout configure prefs` asks all preference questions; Enter keeps the current or detected answer (managed block, me.md free text, personal settings, kit default, then the user's own `~/.claude/settings.json` values via adopt's prefill). An answer that removes a key (`ai_attribution on`) checks the effective state: a legacy key, the user's own value, or a free-text me.md line that still contradicts it (report-only `me_md_report` patterns; they never set an answer) is named (file and key, or me.md line), offered for removal interactively, and the command exits 1 instead of claiming success.
+  - `loadout configure own [--all]` lists the tools loadout does not manage (`--all` adds those left on this machine); `loadout configure set own <name> global|project:<profile>|leave|remove` applies one choice (exit 2 on bad input, exit 1 when nothing was recorded for the item).
   - `loadout configure show` prints the effective setup: kit default vs personal override.
   - After each change it runs the settings merge and the MCP apply. If the personal layer is a git repo, it offers to commit and push.
 - **Interactive CLI wizard** (`loadout configure`; bootstrap runs it in first-run mode instead of the separate personal wizard):

@@ -32,6 +32,8 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     else:
         for path in profiles.apply_profile(prof, project):
             print(f"updated {path}")
+    for line in profiles.copy_skills(prof, project, dry_run=dry_run):
+        print(line)
     if install:
         _install(prof, project, dry_run)
     if prof.notes:

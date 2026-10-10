@@ -14,11 +14,26 @@ from .backup import Backup
 
 
 def LINKS() -> list[tuple[Path, Path]]:
+    from .jsonio import InvalidJSON, load_json
+
     rules = paths.claude_home() / "rules"
-    return [
+    personal = paths.personal_root()
+    out = [
         (rules / "loadout", paths.kit_root() / "rules"),
-        (rules / "personal", paths.personal_root() / "rules"),
+        (rules / "personal", personal / "rules"),
     ]
+    skills = paths.claude_home() / "skills"
+    if (personal / "skills").is_dir():
+        out += [(skills / p.name, p) for p in sorted((personal / "skills").iterdir()) if p.is_dir()]
+    try:
+        pointers = load_json(personal / "skills.json")
+    except InvalidJSON:
+        pointers = {}  # never crash linking; loadout check reports the broken file
+    for name, target in sorted(pointers.items()):
+        if isinstance(target, str) and Path(target).expanduser().is_dir():
+            out.append((skills / name, Path(target).expanduser()))
+    out.append((paths.claude_home() / "hooks" / "personal", personal / "hooks"))
+    return out
 
 
 def _marker() -> Path:

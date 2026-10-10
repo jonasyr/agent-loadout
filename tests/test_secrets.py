@@ -210,3 +210,129 @@ def test_powershell_block_loads_values(tmp_path):
     proc = subprocess.run([exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
                           capture_output=True, text=True, encoding="utf-8")
     assert proc.stdout == NASTY + "|plain", proc.stderr
+
+
+def test_rewrite_returns_var_config_and_lines():
+    from loadout import secrets
+    cfg = {"command": "x", "env": {"API_KEY": "k" * 20}}
+    found = secrets.scan({"mcpServers": {"srv": cfg}})
+    known = {}
+    new, lines, names = secrets.rewrite("srv", cfg, found, known)
+    assert new["env"]["API_KEY"] == "${SRV_API_KEY}"
+    assert cfg["env"]["API_KEY"] == "k" * 20          # original untouched
+    assert lines == ["SRV_API_KEY='" + "k" * 20 + "'\n"] and names == ["SRV_API_KEY"]
+    assert known == {"SRV_API_KEY": "k" * 20}
+
+
+def test_rewrite_never_overwrites_a_different_value():
+    from loadout import secrets
+    cfg = {"command": "x", "env": {"API_KEY": "k" * 20}}
+    found = secrets.scan({"mcpServers": {"srv": cfg}})
+    new, lines, names = secrets.rewrite("srv", cfg, found, {"SRV_API_KEY": "other"})
+    assert names == ["SRV_API_KEY_2"] and new["env"]["API_KEY"] == "${SRV_API_KEY_2}"
+
+
+def test_append_env_creates_private_file_and_records_it(fake_home):
+    import os, stat
+    from loadout import backup, paths, secrets
+    bk = backup.Backup()
+    secrets.append_env(paths.secrets_file(), ["A='1'\n"], bk)
+    assert paths.secrets_file().read_text() == "A='1'\n"
+    if os.name != "nt":
+        assert stat.S_IMODE(paths.secrets_file().stat().st_mode) == 0o600
+    assert any("created" in s["undo"] for s in bk.steps)
+
+
+def test_replace_user_server_records_undo_and_reports_ok(fake_home, fake_runner):
+    from loadout import backup, personal_mcp
+    bk = backup.Backup()
+    assert personal_mcp.replace_user_server("srv", {"command": "a"}, {"command": "b"}, bk) == "ok"
+    assert ["claude", "mcp", "remove", "-s", "user", "srv"] in fake_runner.calls
+    assert [s["undo"]["run"][2] for s in bk.steps] == ["add-json", "remove"]
+
+
+def test_replace_user_server_cmd_shim_removes_nothing(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, personal_mcp, runner
+    monkeypatch.setattr(runner, "would_refuse", lambda cmd: True)
+    res = personal_mcp.replace_user_server("srv", {"command": "a"}, {"command": "b"}, backup.Backup())
+    assert res.startswith("manual: ")
+    assert [c for c in fake_runner.calls if c[:1] == ["claude"]] == []
+
+
+def test_redact_is_linear_on_long_token_runs():
+    import time
+    from loadout import secrets
+    start = time.monotonic()
+    secrets.redact("x" * 200_000)
+    assert time.monotonic() - start < 3.0
+    assert secrets.redact("a.API_KEY=" + "k" * 20) == "a.API_KEY=***"
+
+
+def _timed_redact(text):
+    import time
+    t0 = time.perf_counter()
+    secrets.redact(text)
+    return time.perf_counter() - t0
+
+
+@pytest.mark.parametrize("make", [
+    lambda: "-" * 50_000,
+    lambda: "a." * 20_000,
+    lambda: __import__("base64").urlsafe_b64encode(os.urandom(75_000)).decode(),   # 100 KB of base64url
+    lambda: "-" + "key" * 33_000,
+], ids=["dashes", "dotted", "b64url", "keykey"])
+def test_redact_has_no_redos(make):
+    assert _timed_redact(make()) < 3.0
+
+
+def test_flag_and_url_anchors_keep_matches():
+    assert "abcdefgh123" not in secrets.redact("cmd --api-key abcdefgh123")
+    assert "abcdefgh123" not in secrets.redact("x -token abcdefgh123")
+    assert "hunter2pass" not in secrets.redact("see postgres://u:hunter2pass@h/db")
+    assert "hunter2pass" not in secrets.redact("DSN=Postgres+Psycopg://u:hunter2pass@h/db")
+
+
+JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+
+
+@pytest.mark.parametrize("text,leak", [
+    ("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk", "BEGIN OPENSSH PRIVATE KEY"),
+    ("-----BEGIN PRIVATE KEY-----", "BEGIN PRIVATE KEY"),
+    ("pay sk_live_" + "a1" * 12, "sk_live_" + "a1" * 12),
+    ("rk_test_" + "Z" * 20, "rk_test_" + "Z" * 20),
+    ("glpat-" + "a" * 20, "glpat-" + "a" * 20),
+    ("AIza" + "b" * 35, "AIza" + "b" * 35),
+    ("npm_" + "a1" * 18, "npm_" + "a1" * 18),
+    ("hf_" + "aB1" * 12, "hf_" + "aB1" * 12),
+    (JWT, JWT),
+    ("password: hunter2hunter2", "hunter2hunter2"),
+    ("  api_key: 'Zx9qqqqqqqqqqqqqqq'", "Zx9qqqqqqqqqqqqqqq"),
+    ("DB_PASS=hunter2hunter", "hunter2hunter"),
+    ("export AUTH_TOKEN=\"abcdefgh1\"", "abcdefgh1"),
+    ("[db]\npasswd = s3cretpassword\n", "s3cretpassword"),
+    ("- client_secret: abcdefgh12", "abcdefgh12"),
+    ("{'api_key': 'abcdefghijkl1234'}", "abcdefghijkl1234"),
+])
+def test_redact_new_patterns(text, leak):
+    out = secrets.redact(text)
+    assert leak not in out and "***" in out
+
+
+@pytest.mark.parametrize("text", [
+    "password: ${DB_PASSWORD}", "api_key: <your key here>", "token: $GITHUB_TOKEN", "password: short",
+    "author: jonas.weirauch@example.com", "keywords: retrieval,chunking", "{'name': 'loadout-kit-x'}",
+    "description: Use when the token budget matters",
+    '    "key": "attribution",', "        key = decision_key(v.item)", 'SECRET_KEY = re.compile(r"KEY|TOKEN")',
+])
+def test_redact_line_rule_leaves_placeholders(text):
+    assert secrets.redact(text) == text
+
+
+@pytest.mark.parametrize("make", [
+    lambda: "key" * 33_000 + ": " + "v" * 10,
+    lambda: ("a_key" + " " * 5) * 20_000,
+    lambda: "'" * 100_000,
+    lambda: "password:" * 20_000,
+], ids=["longkey", "keys-spaces", "quotes", "colons"])
+def test_new_rules_are_linear(make):
+    assert _timed_redact(make()) < 3.0

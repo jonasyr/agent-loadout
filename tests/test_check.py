@@ -77,3 +77,32 @@ def test_every_failing_check_names_a_fix(fake_home, fake_runner):
     for r in check.run_checks():
         if not r.ok:
             assert r.fix.strip(), r.name
+
+
+def test_check_links_ignores_missing_personal_hooks_dir(fake_home, fake_runner):
+    _setup_ok(fake_home)
+    results = _by(check.run_checks())
+    assert not any(name.startswith("link hooks/") for name in results)
+    assert results["link rules/personal"].ok
+
+
+def test_check_keeps_rules_links_when_source_missing(fake_home, fake_runner):
+    import shutil
+    _setup_ok(fake_home)
+    shutil.rmtree(paths.personal_root() / "rules")
+    assert "link rules/personal" in _by(check.run_checks())  # only optional sources are skipped
+
+
+def test_check_reports_invalid_skills_json(fake_home, fake_runner):
+    _setup_ok(fake_home)
+    (paths.personal_root() / "skills.json").write_text("{not json")
+    r = _by(check.run_checks())["skills.json"]
+    assert not r.ok and "invalid JSON" in r.detail
+
+
+def test_check_mentions_unmanaged_tools(fake_home, fake_runner):
+    _setup_ok(fake_home)
+    (fake_home / ".claude/skills/mine").mkdir(parents=True)
+    r = _by(check.run_checks())["own tools"]
+    assert not r.ok and r.severity == "warn"
+    assert r.fix == "decide with `loadout adopt --apply` or `loadout configure own`"
