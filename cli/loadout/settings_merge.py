@@ -312,8 +312,7 @@ def apply_settings() -> tuple[dict, dict]:
     current = load_json(_target())  # raises InvalidJSON before anything is written
     desired = desired_settings()
     previous = load_json(_snapshot())
-    applied = effective_desired(current, desired, previous)
-    after = merge_settings(current, desired, previous)
+    after, applied = _plan(current, desired, previous)
     if after != current:
         save_json(_target(), after)
     save_json(_snapshot(), applied)
