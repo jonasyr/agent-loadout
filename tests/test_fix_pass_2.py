@@ -416,3 +416,49 @@ def test_eval_stub_matches_real_set_own(fake_home, fake_runner, capsys, tmp_path
     stub = subprocess.run(["bash", str(STUB), "configure", "set", "own", name, choice], cwd=tmp_path, env=env,
                           capture_output=True, text=True, timeout=30).stdout.splitlines()
     assert stub == real
+
+
+# 7. --own and configure set own exit 1 when a removal was not done
+
+def _nosrc_market(home):
+    p = home / ".claude/plugins/known_marketplaces.json"
+    data = json.loads(p.read_text())
+    data["nosrc-market"] = {"source": {}}
+    p.write_text(json.dumps(data))
+
+
+def _adopt_own(spec):
+    return adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False, own_spec=spec)
+
+
+def test_own_exit_1_when_marketplace_removal_skipped(machine, capsys):
+    _nosrc_market(machine)
+    assert _adopt_own("nosrc-market=remove") == 1
+    assert "skipped (no source" in capsys.readouterr().out
+
+
+def test_own_exit_1_when_mcp_not_removed(machine, monkeypatch, capsys):
+    from loadout import runner as r
+    monkeypatch.setattr(r, "would_refuse", lambda cmd: True)
+    assert _adopt_own("omarchy-kb=remove") == 1
+    assert "not removed" in capsys.readouterr().out
+
+
+def test_own_exit_1_when_project_scope_down_fails(machine, fake_runner, capsys):
+    fake_runner.responses[("claude", "mcp", "remove")] = runner_mod.Result(1, "", "boom")
+    assert _adopt_own("omarchy-kb=project:mine") == 1
+
+
+def test_own_exit_0_when_removal_done(machine, fake_runner):
+    assert _adopt_own("omarchy-kb=remove") == 0
+
+
+def test_set_own_exit_1_when_marketplace_removal_skipped(machine, capsys):
+    _nosrc_market(machine)
+    assert configure.set_own("nosrc-market", "remove") == 1
+
+
+def test_set_own_exit_1_when_mcp_not_removed(machine, monkeypatch):
+    from loadout import runner as r
+    monkeypatch.setattr(r, "would_refuse", lambda cmd: True)
+    assert configure.set_own("omarchy-kb", "remove") == 1

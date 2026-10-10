@@ -309,7 +309,8 @@ def set_own(name: str, choice: str) -> int:
     for note in own.profile_notes(pairs):
         print(note)
     changed: list = []
-    lines, profiles_changed = adopt.apply_own(pairs, bk, changed=changed, project_hint=False)
+    not_done: list = []
+    lines, profiles_changed = adopt.apply_own(pairs, bk, changed=changed, project_hint=False, not_done=not_done)
     for line in lines:
         print(redact(line))
     if changed:
@@ -318,4 +319,4 @@ def set_own(name: str, choice: str) -> int:
         print(f"apply it in a repo: cd <repo> && loadout profile {profile}")
     if not bk.empty:
         print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
-    return 1 if any(line.startswith("skipped:") or ": failed:" in line for line in lines) else 0
+    return 1 if not_done else 0

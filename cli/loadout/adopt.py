@@ -119,9 +119,23 @@ def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask
     return chosen
 
 
-def _claude(args: list[str]) -> str:
+class NotDone(str):
+    """A result line for an action that did not happen (failed, refused, skipped). apply() reports the item in
+    its `not_done` list, so callers decide exit codes by type instead of matching the text."""
+
+
+def _done(line: str, ok: bool) -> str:
+    return line if ok else NotDone(line)
+
+
+def _claude(args: list[str]) -> tuple[str, bool]:
     res = runner.run(["claude", *args])
-    return "ok" if res.ok else f"failed: {res.stderr.strip()}"
+    return ("ok", True) if res.ok else (f"failed: {res.stderr.strip()}", False)
+
+
+def _claude_line(prefix: str, args: list[str], suffix: str = "") -> str:
+    text, ok = _claude(args)
+    return _done(prefix + text + suffix, ok)
 
 
 def _manual(bk: Backup, title: str, cmds: list[list[str]], undo: list[list[str]] | None = None) -> str:
@@ -150,29 +164,31 @@ def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> s
     remove = ["claude", "mcp", "remove", "-s", "user", v.item.name]
     if runner.would_refuse(undo):  # the undo could not be replayed: do not remove
         where = _manual(bk, f"mcp {v.item.name}: remove", [remove], undo=[undo])
-        return f"mcp {v.item.name}: not removed, its undo cannot run through this claude (Windows .cmd shim); commands are in {where}"
+        return NotDone(f"mcp {v.item.name}: not removed, its undo cannot run through this claude (Windows .cmd shim); "
+                       f"commands are in {where}")
     bk.record_command(f"mcp {v.item.name}", undo)
-    return f"mcp {v.item.name}: " + _claude(["mcp", "remove", "-s", "user", v.item.name])
+    return _claude_line(f"mcp {v.item.name}: ", ["mcp", "remove", "-s", "user", v.item.name])
 
 
 def _apply_plugin(v: Verdict, bk: Backup) -> str:
     if v.action == "scope-down":
         bk.record_command(f"plugin {v.item.name}", ["claude", "plugin", "enable", v.item.name, "--scope", "user"])
-        return f"plugin {v.item.name} disabled globally: " + _claude(["plugin", "disable", v.item.name, "--scope", "user"])
+        return _claude_line(f"plugin {v.item.name} disabled globally: ", ["plugin", "disable", v.item.name, "--scope", "user"])
     bk.record_command(f"plugin {v.item.name}", ["claude", "plugin", "install", v.item.name, "--scope", "user"])
     # --keep-data: the plugin's ~/.claude/plugins/data/<id>/ survives, so the undo (reinstall) is complete
-    return f"plugin {v.item.name} uninstalled: " + _claude(["plugin", "uninstall", v.item.name, "--scope", "user", "--keep-data"])
+    return _claude_line(f"plugin {v.item.name} uninstalled: ",
+                        ["plugin", "uninstall", v.item.name, "--scope", "user", "--keep-data"])
 
 
 def _apply_marketplace(v: Verdict, bk: Backup) -> str:
     src = v.item.extra.get("source", {})
     origin = src.get("repo") or src.get("url") or src.get("path")
     if not origin:
-        return f"marketplace {v.item.name}: skipped (no source to restore from)"
+        return NotDone(f"marketplace {v.item.name}: skipped (no source to restore from)")
     bk.record_command(f"marketplace {v.item.name}", ["claude", "plugin", "marketplace", "add", origin], source=src)
     extra = {k: val for k, val in src.items() if k not in ("source", "repo", "url", "path")}
     note = f" (restore re-adds {origin}; also recorded: {json.dumps(extra)})" if extra else ""
-    return f"marketplace {v.item.name}: " + _claude(["plugin", "marketplace", "remove", v.item.name]) + note
+    return _claude_line(f"marketplace {v.item.name}: ", ["plugin", "marketplace", "remove", v.item.name], note)
 
 
 def _apply_skill(v: Verdict, bk: Backup) -> str:
@@ -303,7 +319,9 @@ def fix_secrets(findings: list, bk: Backup) -> list[str]:
     return out
 
 
-def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_cmds: bool = True) -> list[str]:
+def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_cmds: bool = True,
+          not_done: list | None = None) -> list[str]:
+    """Act on the selected verdicts. `not_done` gets the item of each action that did not happen."""
     out, moved = [], set()
     selected = [v for v in selected if v.action != "keep"]  # keep never acts, whatever was passed in
     for v in selected:
@@ -323,6 +341,8 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
             out.append(_apply_binary(v, ask, confirm_cmds))
         elif kind == "claude-md":
             out += migrate_claude_md(bk)
+        if not_done is not None and any(isinstance(line, NotDone) for line in out[n:]):
+            not_done.append(v.item)
         entry = catalog.by_id(v.entry_id) if v.action == "scope-down" else None
         if entry and entry.get("profile") and len(out) > n:
             out[-1] += f" (enable it per project: loadout profile {entry['profile']})"
@@ -375,12 +395,13 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
             print(note)
     try:
         changed: list = []
+        not_done: list = []
         lines, new_profiles = apply_own(own_pairs, bk, chosen, ask if interactive else (lambda q: ""),
-                                        confirm_cmds=not (yes and explicit), changed=changed)
+                                        confirm_cmds=not (yes and explicit), changed=changed, not_done=not_done)
         for line in lines:
             print(redact(line))
         # --own is for scripts: an item that was skipped or failed must not look like success
-        not_recorded = own_spec is not None and any(l.startswith("skipped:") or ": failed:" in l for l in lines)
+        not_recorded = own_spec is not None and bool(not_done)
         if changed:
             print(RESTART_NOTE)
         done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
@@ -437,13 +458,16 @@ def _remove_project_skill(v: Verdict, profile: str, bk: Backup) -> list[str]:
 
 
 def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = lambda q: "",
-              confirm_cmds: bool = True, changed: list | None = None, project_hint: bool = True) -> tuple[list[str], dict]:
+              confirm_cmds: bool = True, changed: list | None = None, project_hint: bool = True,
+              not_done: list | None = None) -> tuple[list[str], dict]:
     """Record own-tool choices, run every removal (others + converted choices), then the deferred
     machine steps (content-based, so earlier index-based hook removals cannot shift them).
     An item in both `pairs` and `others` is acted on once, by its own choice. One item's I/O error is
     reported as a 'failed:' line and does not stop the others. `changed` gets an entry when something was
     recorded or removed (the caller then prints RESTART_NOTE); `project_hint=False` leaves out the per-item
-    "enable it per project" line for callers that print their own."""
+    "enable it per project" line for callers that print their own. `not_done` gets every item that was not
+    recorded, or was recorded but is not active on this machine (a failed or skipped removal or machine step),
+    plus "settings" when the settings merge failed; callers turn a non-empty list into exit code 1."""
     from . import link, settings_merge
 
     mine = {own.decision_key(v.item) for v, _ in pairs}
@@ -451,7 +475,10 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
     removals = [v for v in others if own.decision_key(v.item) not in mine]
     backed_up = False
 
+    nd: list = not_done if not_done is not None else []
+
     def fail(v, exc):
+        nd.append(v.item)
         out.append(redact(f"{own.label(v.item)}: failed: {exc}"))
 
     def backup_decisions():
@@ -492,6 +519,7 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             continue
         out += rec.lines
         if not rec.ok:
+            nd.append(v.item)
             continue
         try:
             forget(v.item)
@@ -514,8 +542,9 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
         if changed is not None:
             changed.append(removals)
         try:
-            out += apply(removals, bk, ask, confirm_cmds)
+            out += apply(removals, bk, ask, confirm_cmds, not_done=nd)
         except (OSError, InvalidJSON) as exc:
+            nd.extend(v.item for v in removals)
             out.append(redact(f"removals: failed: {exc}"))
     for v, step in machine:
         try:
@@ -531,5 +560,6 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             settings_merge.backup_snapshot(bk)
             settings_merge.apply_settings()
         except (OSError, InvalidJSON) as exc:
+            nd.append("settings")
             out.append(redact(f"settings: failed: {exc}"))
     return out, recorded_profiles
