@@ -227,3 +227,22 @@ def test_windows_read_failure_changes_nothing(fake_home, fake_runner, monkeypatc
     fake_runner.responses[GET] = runner.Result(1, "", "boom")
     out, changed = b.setup_path(None)
     assert not changed and out and not _sets(fake_runner)
+
+
+def test_still_to_do_lists_only_what_applies(fake_home, fake_runner):
+    fake_runner.missing.add("git")
+    fake_runner.responses[("gh", "auth", "status")] = runner.Result(1, "", "not logged in")
+    lines = b.still_to_do("macos")
+    assert "xcode-select --install" in "\n".join(lines)
+    assert "gh auth login" in "\n".join(lines)
+    assert any("claude" in l and "log in" in l for l in lines)
+
+
+def test_still_to_do_windows_git_line(fake_home, fake_runner):
+    fake_runner.missing.add("git")
+    assert any("winget install --id Git.Git -e" in l for l in b.still_to_do("windows"))
+
+
+def test_still_to_do_empty_when_all_done(fake_home, fake_runner):
+    (fake_home / ".claude.json").write_text('{"oauthAccount": {"emailAddress": "x"}}')
+    assert b.still_to_do("linux") == []

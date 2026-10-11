@@ -71,7 +71,7 @@ def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple
     if version == 2:
         missing = [pkg for binary, pkg in SANDBOX if not runner.have(binary)]
         if missing:
-            out.append((f"sandbox packages missing: {', '.join(missing)}",
+            out.append((f"sandbox packages missing: {', '.join(missing)} (needed for Claude Code's sandbox)",
                         f"`sudo apt-get install {' '.join(missing)}`"))
     return out
 

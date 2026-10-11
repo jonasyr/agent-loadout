@@ -42,6 +42,38 @@ def _step(title: str) -> None:
     print(f"\n== {title}")
 
 
+MANUAL_STEPS = {
+    "git": {"linux": "sudo apt install git   (Debian/Ubuntu; other distros: their package manager)",
+            "macos": "xcode-select --install",
+            "windows": "winget install --id Git.Git -e   (Git Bash runs the hooks)"},
+}
+
+
+def os_key() -> str:
+    import sys
+    if paths.platform_key() == "windows":
+        return "windows"
+    return "macos" if sys.platform == "darwin" else "linux"
+
+
+def _claude_logged_in() -> bool:
+    try:
+        return bool(load_json(paths.claude_json()).get("oauthAccount"))
+    except Exception:
+        return False
+
+
+def still_to_do(key: str) -> list[str]:
+    out = []
+    if not runner.have("git"):
+        out.append(f"install git: {MANUAL_STEPS['git'][key]}")
+    if runner.have("claude") and not _claude_logged_in():
+        out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
+    if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
+        out.append("log in to GitHub: gh auth login && gh auth setup-git")
+    return out
+
+
 def prepend_tool_dirs() -> None:
     parts = os.environ.get("PATH", "").split(os.pathsep)
     new = [str(d) for d in paths.tool_dirs() if str(d) not in parts]
@@ -395,6 +427,11 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     _step("Check")
     text, code = check.format_results(check.run_checks())
     print(text)
+    todo = still_to_do(os_key())
+    if todo:
+        print("\nStill to do:")
+        for line in todo:
+            print(f"  - {line}")
     print("\nOpen a new terminal so the new PATH applies, then start Claude Code." if path_changed
           else "\nRestart Claude Code to load plugins and rules.")
     if not personal_ok:
