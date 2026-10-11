@@ -344,20 +344,21 @@ def _path_block(dirs: list[Path]) -> str:
 def _refresh_path_block(rc: Path, block: str, bk: Backup | None) -> str | None:
     """A profile that already has our block gets it replaced when the content differs; the rest stays as is."""
     raw = rc.read_bytes() if rc.exists() else b""
-    start = raw.find(PATH_MARKER.encode() + b"\n")
+    nl = b"\r\n" if raw.find(PATH_MARKER.encode() + b"\r\n") >= 0 else b"\n"  # keep a CRLF profile CRLF
+    start = raw.find(PATH_MARKER.encode() + nl)
     if start < 0:
         return None  # no block yet: the caller appends one
-    end_tag = PATH_END.encode() + b"\n"
+    end_tag = PATH_END.encode() + nl
     end = raw.find(end_tag, start)
     if end >= 0:
         end += len(end_tag)
     else:  # a block without end marker ends at its `export PATH`
-        tail = b"export PATH\n"
+        tail = b"export PATH" + nl
         end = raw.find(tail, start)
         if end < 0:
             return ""
         end += len(tail)
-    new = block.encode("utf-8")
+    new = block.encode("utf-8").replace(b"\n", nl)
     if raw[start:end] == new:
         return ""
     if bk is not None:

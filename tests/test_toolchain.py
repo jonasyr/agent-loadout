@@ -317,3 +317,17 @@ def test_failed_install_shows_the_end_of_its_output(fake_home, fake_runner, monk
     fake_runner.responses[("install-tool",)] = runner.Result(1, "", "#" * 2000 + "\nerror: the real reason")
     b.check_prereqs(True, lambda q: "")
     assert "error: the real reason" in capsys.readouterr().out
+
+
+def test_path_block_in_a_crlf_profile_is_replaced_in_place(fake_home, fake_runner, monkeypatch):
+    """A .bashrc saved by a Windows editor (common on WSL) has CRLF line endings."""
+    _posix(monkeypatch)
+    (fake_home / ".local/bin").mkdir(parents=True)
+    old = f"{b.PATH_MARKER}\nPATH=\"$HOME/old\":\"$PATH\"\nexport PATH\n{b.PATH_END}\n"
+    (fake_home / ".bashrc").write_bytes(("# top\n" + old + "# bottom\n").replace("\n", "\r\n").encode())
+    (fake_home / ".profile").write_bytes(b"# p\n")
+    b.setup_path(None)
+    raw = (fake_home / ".bashrc").read_bytes()
+    assert b"$HOME/old" not in raw and b'"$HOME/.local/bin"' in raw and raw.count(b.PATH_MARKER.encode() + b"\r\n") == 1
+    assert raw.startswith(b"# top\r\n") and raw.endswith(b"# bottom\r\n") and b"\n" not in raw.replace(b"\r\n", b"")
+    assert b.setup_path(None) == ([], False)
