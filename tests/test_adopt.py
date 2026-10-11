@@ -625,3 +625,15 @@ def test_run_own_spec_exits_1_when_an_item_was_not_recorded(machine, fake_runner
     code = adopt.run(True, None, set(), False, ask=lambda q: "", with_versions=False, interactive=False,
                      own_spec="omarchy-kb=project:mine")
     assert code == 1
+
+
+def test_kit_plugins_and_marketplaces_in_keep_are_one_line_each():
+    from loadout.adopt import render_plan
+    from loadout.inventory import Item, Verdict
+    kit = [Verdict(Item("plugin", p, "1", "user", {}), "keep", "Enabled by the kit.") for p in ("a@m", "b@m")]
+    kit.append(Verdict(Item("marketplace", "m", "o/r", "user", {}), "keep", "Declared by the kit."))
+    other = Verdict(Item("mcp", "mine", "x", "user", {}), "keep", "Kept on purpose.")
+    text = render_plan([*kit, other], [])
+    assert "  kit plugins: a@m, b@m" in text and "  kit marketplaces: m" in text
+    assert "Enabled by the kit" not in text and "[plugin]" not in text
+    assert "[mcp] mine" in text and "Kept on purpose." in text  # anything else stays itemised

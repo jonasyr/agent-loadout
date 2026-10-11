@@ -46,7 +46,7 @@ jobs:
       - name: smoke test (WSL 2 detected)
         run: |
           python3 -c "import sys; sys.path.insert(0, 'cli'); from loadout import wsl; v = wsl.detect(); print('detect:', v); assert v == 2"
-          out="$(python3 bin/loadout check || true)"
+          out="$(python3 bin/loadout check --verbose || true)"
           printf '%s\n' "$out"
           printf '%s\n' "$out" | grep -F '[ok  ] WSL 2'
           ! printf '%s\n' "$out" | grep -F 'WSL 1:'

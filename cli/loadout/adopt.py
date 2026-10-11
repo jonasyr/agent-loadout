@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, inventory, own, paths, pkgmgr, runner, secrets, ui
+from . import catalog, inventory, out, own, paths, pkgmgr, runner, secrets, ui
 from .backup import Backup
 from .inventory import Verdict
 from .jsonio import InvalidJSON, load_json, save_json
@@ -31,6 +31,21 @@ VERB = {"remove": "remove", "migrate": "remove", "scope-down": "disable globally
 MIGRATED_MARKER = "<!-- Global instructions live in"
 Ask = Callable[[str], str]
 RESTART_NOTE = "Restart Claude Code (or run /reload-plugins) to load the changes."
+# calm view: plain-language heading, the question asked under it, and the summary verb after applying
+CALM = {
+    "remove": ("Remove: superseded by something better", "Remove them?"),
+    "migrate": ("Already provided by loadout", "Remove your copy?"),
+    "scope-down": ("Only useful in some projects", "Disable globally?"),
+    "update": ("Updates available", "Update? (each command is shown first)"),
+    "install": ("Not installed yet", "Install? (each command is shown first)"),
+    "review": ("Worth a look", "Remove?"),
+    "own": ("Your own tools: loadout doesn't know these", ""),
+}
+DONE = {"remove": "Removed", "migrate": "Removed your copy", "scope-down": "Disabled globally",
+        "update": "Updated", "install": "Installed", "review": "Removed"}
+KIND_LABEL = {"mcp": "MCP", "plugin": "plugin", "marketplace": "marketplace", "skill": "skill", "hook": "hook"}
+UNDO_LINE = "Undo any time: loadout restore --list"
+LAST_BACKUP: Path | None = None  # the backup of the last run(); bootstrap prints one undo line for both
 
 
 def prefill_settings() -> dict:
@@ -72,6 +87,11 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
             if bins:
                 lines.append("  binaries: " + ", ".join(f"{v.item.name} {v.item.detail}".rstrip() for v in bins))
             members = [v for v in members if v.item.kind != "binary"]
+            for kind, reason in (("plugin", "Enabled by the kit."), ("marketplace", "Declared by the kit.")):
+                kit = [v for v in members if v.item.kind == kind and v.reason == reason]
+                if kit:
+                    lines.append(f"  kit {kind}s: " + ", ".join(v.item.name for v in kit))
+                members = [v for v in members if v not in kit]
         for v in members:
             lines.append(redact(f"  [{v.item.kind}] {v.item.name}  {v.item.detail}".rstrip()))
             lines.append(redact(f"      {v.reason}"))
@@ -85,8 +105,94 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
     return "\n".join(lines)
 
 
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def _calm_name(v: Verdict) -> str:
+    name = own.display_name(v.item)
+    if v.item.kind == "plugin":
+        name = name.split("@")[0]
+    elif v.item.kind == "marketplace" and name.endswith("-marketplace"):
+        name = name[: -len("-marketplace")]
+    return f"{name} {KIND_LABEL.get(v.item.kind, '')}".strip()
+
+
+def _calm_reason(v: Verdict) -> str:
+    if v.item.kind == "claude-md":
+        return "its content moves into your personal layer (not deleted)"
+    entry = catalog.by_id(v.entry_id) if v.entry_id else None
+    if entry and entry.get("short"):
+        reason = entry["short"]
+    elif v.action == "own":
+        return ""
+    else:
+        reason = v.reason.split(". ")[0].rstrip(".")
+    if v.action == "scope-down" and entry and entry.get("profile"):
+        reason += f" (loadout profile {entry['profile']})"
+    return reason
+
+
+def calm_group(group: str, members: list[Verdict]) -> str:
+    width = max(len(_calm_name(v)) for v in members)
+    lines = [f"\n  {out.paint(CALM[group][0], 'accent')}"]
+    for v in members:
+        reason = _calm_reason(v)
+        tail = f"  {out.sym('arrow')} {reason}" if reason else ""
+        lines.append(redact(f"    {out.sym('bullet')} {_calm_name(v).ljust(width)}{tail}".rstrip()))
+    return "\n".join(lines)
+
+
+def calm_secrets(findings: list) -> str:
+    lines = [f"\n  {out.paint('Plaintext secrets (values hidden)', 'accent')}"]
+    for f in findings:
+        how = "can move to secrets.env" if f.fixable else "move it to secrets.env by hand"
+        lines.append(f"    {out.sym('bullet')} {f.server} MCP: {f.key} in {f.location}  {out.sym('arrow')} {how}")
+    return "\n".join(lines)
+
+
+def render_calm(verdicts: list[Verdict], findings: list, header_only: bool = False) -> str:
+    acting = [v for v in verdicts if v.action != "keep"]
+    fine = len(verdicts) - len(acting)
+    head = (f"Your existing setup: {_plural(len(acting), 'suggestion')} ({fine} other items are fine)" if acting
+            else f"Your existing setup: nothing to change ({fine} items are fine)")
+    if header_only:
+        return head
+    lines = [head]
+    for group in GROUP_ORDER[:-1]:
+        members = [v for v in verdicts if v.action == group]
+        if members:
+            lines.append(calm_group(group, members))
+    if findings:
+        lines.append(calm_secrets(findings))
+    return "\n".join(lines)
+
+
+def calm_summary(chosen: list[Verdict], acting: list) -> list[str]:
+    ok = out.paint(out.sym("ok"), "ok")
+    lines = []
+    for group in GROUP_ORDER:
+        members = [v for v in chosen if v.action == group]
+        moved = [v for v in members if v.item.kind == "claude-md"]
+        members = [v for v in members if v not in moved]
+        if moved:
+            lines.append(f"{ok} Moved into your personal layer: " + ", ".join(_calm_name(v) for v in moved))
+        if members and group in DONE:
+            line = f"{ok} {DONE[group]}: " + ", ".join(_calm_name(v) for v in members)
+            entries = [catalog.by_id(v.entry_id) for v in members if v.entry_id] if group == "scope-down" else []
+            profiles = sorted({e["profile"] for e in entries if e and e.get("profile")})
+            if profiles:
+                line += f" (turn on per repo: loadout profile {', '.join(profiles)})"
+            lines.append(line)
+    where = {"global": "every machine", "remove": "removed"}
+    if acting:
+        lines.append(f"{ok} Your own tools: " + ", ".join(
+            f"{_calm_name(v)} {out.sym('arrow')} {where.get(c.action, f'profile {c.profile}')}" for v, c in acting))
+    return lines
+
+
 def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask: Ask,
-           keep_global: list | None = None) -> list[Verdict]:
+           keep_global: list | None = None, calm: bool = False) -> list[Verdict]:
     if groups is not None:
         valid = set(GROUP_ORDER) - {"keep", "own"}
         if "own" in groups:
@@ -102,8 +208,15 @@ def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask
         if not members:
             continue
         default = "a" if group in DEFAULT_ALL else "n"
-        question = (f"{group}: {len(members)} item(s) — {GROUP_HELP[group]} "
-                    f"[a]ll / [n]one / [p]ick (default {'all' if default == 'a' else 'none'}): ")
+        if calm:
+            print(calm_group(group, members))
+            ask_text = ("Move it? (CLAUDE.md goes into your personal layer, nothing is deleted)"
+                        if all(v.item.kind == "claude-md" for v in members) else CALM[group][1])
+            question = (f"  {ask_text} [a]ll / [n]one / [p]ick "
+                        f"(Enter: {'all' if default == 'a' else 'none'}) ")
+        else:
+            question = (f"{group}: {len(members)} item(s) — {GROUP_HELP[group]} "
+                        f"[a]ll / [n]one / [p]ick (default {'all' if default == 'a' else 'none'}): ")
         answer = ui.choose_group(ask, question, default)
         if answer == "a":
             chosen += members
@@ -231,17 +344,17 @@ def _apply_binary(v: Verdict, ask: Ask, confirm_cmds: bool) -> str:
     entry = v.item.extra["entry"]
     cmds = pkgmgr.update_plan(entry)[0] if key == "update" else catalog.platform_cmds(entry, key)
     if not cmds:
-        return f"{v.item.name}: no {key} command for this platform. {entry.get('manual', '')}".strip()
+        return NotDone(f"{v.item.name}: no {key} command for this platform. {entry.get('manual', '')}".strip())
     print(f"{v.item.name} {key}:")
     for cmd in cmds:
         print("  command: " + " ".join(cmd))
     if confirm_cmds and not ui.confirm(ask, "  run it? [y/N] "):
-        return f"{v.item.name} {key}: skipped"
+        return NotDone(f"{v.item.name} {key}: skipped")
     results = []
     for cmd in cmds:
         res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
         results.append("ok" if res.ok else f"failed: {res.stderr.strip()[:200]}")
-    return f"{v.item.name} {key}: " + ", ".join(results)
+    return _done(f"{v.item.name} {key}: " + ", ".join(results), all(r == "ok" for r in results))
 
 
 def migrate_claude_md(bk: Backup) -> list[str]:
@@ -351,8 +464,12 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
 
 
 def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask, with_versions: bool = True,
-        interactive: bool | None = None, own_spec: str | None = None) -> int:
+        interactive: bool | None = None, own_spec: str | None = None, embedded: bool = False) -> int:
+    """embedded: called by bootstrap, which prints the restart and undo lines once for the whole run."""
     import sys
+
+    global LAST_BACKUP
+    LAST_BACKUP = None
 
     if interactive is None:
         interactive = ui.is_interactive()
@@ -363,7 +480,12 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     except ValueError as exc:
         print(f"loadout: {exc}", file=sys.stderr)
         return 2
-    print(render_plan(verdicts, findings))
+    calm = not out.VERBOSE
+    asks_each_group = calm and apply_changes and interactive and not yes and groups is None
+    if asks_each_group:
+        print(render_calm(verdicts, findings, header_only=True))
+    else:
+        print(render_calm(verdicts, findings) if calm else render_plan(verdicts, findings))
     if not apply_changes:
         print("\n(dry run — nothing changed. Re-run with --apply to choose and apply.)")
         return 0
@@ -376,10 +498,12 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         chosen = []  # --own alone: only the named items
     else:
         chosen = select(verdicts, groups if explicit else (DEFAULT_ALL if yes else None), skip, ask,
-                        keep_global=keep_global if interactive and not yes else None)
+                        keep_global=keep_global if interactive and not yes else None, calm=asks_each_group)
     if own_pairs is None:
-        own_pairs = (own.ask_choices([v for v in own.unmanaged(verdicts) if v.item.name not in skip], ask)
-                     if interactive and not yes else [])
+        unmanaged = [v for v in own.unmanaged(verdicts) if v.item.name not in skip]
+        if asks_each_group and unmanaged:
+            print(calm_group("own", unmanaged))
+        own_pairs = own.ask_choices(unmanaged, ask) if interactive and not yes else []
     own_pairs = own_pairs + [(v, own.Choice("global")) for v in keep_global]
     acting = [p for p in own_pairs if p[1].action != "leave"]
     if (chosen or acting) and interactive and not yes:
@@ -398,14 +522,23 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         not_done: list = []
         lines, new_profiles = apply_own(own_pairs, bk, chosen, ask if interactive else (lambda q: ""),
                                         confirm_cmds=not (yes and explicit), changed=changed, not_done=not_done)
-        for line in lines:
-            print(redact(line))
+        if calm and not not_done and not any(out.PROBLEM.search(line) for line in lines):
+            for line in calm_summary(chosen, acting):
+                print(line)
+        else:
+            if calm:
+                print("\nSome changes did not complete; details:")
+            for line in lines:
+                print(redact(line))
         # --own is for scripts: an item that was skipped or failed must not look like success
         not_recorded = own_spec is not None and bool(not_done)
-        if changed:
+        if changed and not (embedded and calm):
             print(RESTART_NOTE)
         done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
         remaining = [f for f in findings if f.fixable and f.server not in done]
+        by_hand = [f for f in findings if not f.fixable]
+        if asks_each_group and (remaining or by_hand):
+            print(calm_secrets(remaining + by_hand))
         if remaining and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
             for line in fix_secrets(remaining, bk):
                 print(redact(line))
@@ -416,7 +549,14 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
             offer_commit(ask)
     finally:
         if not bk.empty:
-            print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
+            LAST_BACKUP = bk.root
+            if calm and embedded:
+                out.detail(f"backup: {bk.root} (it holds old configs, keep it private)")
+            elif calm:
+                print(f"\n{UNDO_LINE}")
+                out.detail(f"backup: {bk.root} (it holds old configs, keep it private)")
+            else:
+                print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
     return 1 if not_recorded else 0
 
 

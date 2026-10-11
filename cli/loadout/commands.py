@@ -34,7 +34,7 @@ EXTRA_COMMANDS.append(_register_restore)
 
 
 def _register_adopt(sub):
-    from . import adopt
+    from . import adopt, out
     from .__main__ import _ask
 
     p = sub.add_parser("adopt", help="review and migrate the existing Claude Code setup")
@@ -48,8 +48,11 @@ def _register_adopt(sub):
                         "A hook is named Event:matcher (Stop: has no matcher); add #n when several hooks "
                         "share a name (names: loadout configure own)")
     p.add_argument("--no-versions", action="store_true", help="skip network version checks")
+    p.add_argument("--verbose", action="store_true", help="full detail: commands, long reasons, the items that stay")
 
     def run(a):
+        if a.verbose:
+            out.VERBOSE = True
         groups = {g.strip() for g in a.groups.split(",") if g.strip()} if a.groups else None
         skip = {s.strip() for s in a.skip.split(",") if s.strip()}
         return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions, own_spec=a.own)
@@ -61,12 +64,15 @@ EXTRA_COMMANDS.append(_register_adopt)
 
 
 def _register_check(sub):
-    from . import check, settings_merge
+    from . import check, out, settings_merge
 
     p = sub.add_parser("check", help="verify this machine's loadout setup")
+    p.add_argument("--verbose", action="store_true", help="list every check, not only the problems")
 
     def run_check(a):
-        text, code = check.format_results(check.run_checks())
+        if a.verbose:
+            out.VERBOSE = True
+        text, code = (check.format_results if out.VERBOSE else check.format_summary)(check.run_checks())
         print(text)
         return code
 
@@ -124,7 +130,7 @@ EXTRA_COMMANDS.append(_register_maintenance)
 
 
 def _register_bootstrap(sub):
-    from . import bootstrap
+    from . import bootstrap, out
     from .__main__ import _ask
 
     p = sub.add_parser("bootstrap", help="set up (or repair) this machine")
@@ -132,7 +138,14 @@ def _register_bootstrap(sub):
     p.add_argument("--yes", action="store_true", help="accept defaults without asking (adopt applies remove/migrate/scope-down; never binary updates)")
     p.add_argument("--no-plugins", action="store_true", help="skip adding marketplaces and installing plugins (offline/CI)")
     p.add_argument("--no-adopt", action="store_true", help="skip reviewing the existing setup")
-    p.set_defaults(func=lambda a: bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask))
+    p.add_argument("--verbose", action="store_true", help="print every detail of every step")
+
+    def run(a):
+        if a.verbose:
+            out.VERBOSE = True
+        return bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask)
+
+    p.set_defaults(func=run)
 
 
 EXTRA_COMMANDS.append(_register_bootstrap)

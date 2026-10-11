@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""A stand-in for Claude Code in the demo sandbox: it edits the sandbox's files the way the real
+commands would, so `loadout check` and `loadout restore --list` show real results. Never put it on a real PATH."""
+import json
+import os
+import sys
+from pathlib import Path
+
+home = Path(os.environ["HOME"])
+if not (home / ".loadout-demo").exists():
+    sys.exit("demo claude: refusing to run outside the demo sandbox")
+
+
+def edit(path, change):
+    data = json.loads(path.read_text()) if path.exists() else {}
+    change(data)
+    path.write_text(json.dumps(data, indent=2))
+
+
+args = sys.argv[1:]
+plugins = home / ".claude/plugins/installed_plugins.json"
+markets = home / ".claude/plugins/known_marketplaces.json"
+if args[:1] == ["--version"]:
+    print("2.1.296 (Claude Code)")
+elif args[:2] == ["mcp", "remove"]:
+    edit(home / ".claude.json", lambda d: d.get("mcpServers", {}).pop(args[-1], None))
+elif args[:2] == ["mcp", "add-json"]:
+    edit(home / ".claude.json", lambda d: d.setdefault("mcpServers", {}).__setitem__(args[-2], json.loads(args[-1])))
+elif args[:2] == ["plugin", "uninstall"]:
+    edit(plugins, lambda d: d.get("plugins", {}).pop(args[2], None))
+elif args[:2] == ["plugin", "install"]:
+    edit(plugins, lambda d: d.setdefault("plugins", {}).setdefault(args[2], [{"scope": "user", "version": "1"}]))
+elif args[:3] == ["plugin", "marketplace", "remove"]:
+    edit(markets, lambda d: d.pop(args[3], None))
+elif args[:3] == ["plugin", "marketplace", "list"]:
+    print("\n".join(json.loads(markets.read_text())) if markets.exists() else "")
+elif args[:2] == ["mcp", "list"]:
+    servers = json.loads((home / ".claude.json").read_text()).get("mcpServers", {})
+    for name, cfg in servers.items():
+        print(f"{name}: {' '.join([cfg.get('command', ''), *cfg.get('args', [])])}")
+elif args[:2] == ["plugin", "list"]:
+    print("\n".join(json.loads(plugins.read_text()).get("plugins", {})) if plugins.exists() else "")

@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from . import catalog, paths, preferences, profiles, runner, scaffold, secrets, ui
+from . import catalog, out, paths, preferences, profiles, runner, scaffold, secrets, ui
 from .backup import Backup
 from .jsonio import load_json, save_json
 from .secrets import redact
@@ -211,7 +211,26 @@ def _about_you(ask: Ask, bk: Backup) -> bool:
     return True
 
 
-def ask_preferences(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup) -> None:
+def _quick_defaults(ask: Ask) -> bool:
+    """First run: show the recommended preferences on one screen; Enter (or y) takes them all."""
+    shown = [p for p in preferences.load() if not p.get("generator")]
+    width = max(len(p["id"]) for p in shown)
+    print("\n-- Working preferences (recommended)")
+    for p in shown:
+        label = next((o["label"] for o in p["options"] if o["value"] == p["default"]), "")
+        print(f"  {p['id'].ljust(width)}  {p['default']}" + (f" — {label}" if label and label != p["default"] else ""))
+    answer = ask("Use these? [Y/n] (n = choose each one; change them later: loadout configure prefs) ")
+    return answer.strip().lower() in ("", "y", "yes")
+
+
+def ask_preferences(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup, quick: bool = False) -> None:
+    """quick (bootstrap's first run): offer the recommended answers on one screen before asking each."""
+    if quick and interactive and fill_defaults and _quick_defaults(ask):
+        # the same engine as a run without a terminal: unset answers take the default, auto mode is skipped
+        for line in preferences.ask_all(ask, fill_defaults=True, interactive=False, bk=bk):
+            (out.problem if out.PROBLEM.search(line) else out.detail)(line)
+        print("  auto mode trust: not drafted (run `loadout configure prefs` to draft it)")
+        return
     if interactive:
         print("\n-- Working preferences (enter = keep the current answer"
               + ("; new answers start at the recommended default)" if fill_defaults else ")"))

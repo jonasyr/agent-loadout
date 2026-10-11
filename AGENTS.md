@@ -20,7 +20,7 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 
 `cli/loadout/` modules:
 
-- `__main__.py` CLI entry; `commands.py` registers subcommands; `ui.py` prompt helpers
+- `__main__.py` CLI entry; `commands.py` registers subcommands; `ui.py` prompt helpers; `out.py` calm status lines and `--verbose`
 - `paths.py` locations from HOME; `runner.py` the only place external commands run; `jsonio.py` JSON and deep merge
 - `bootstrap.py` first-time setup; `adopt.py` migrate an existing machine; `maintenance.py` session hook and `update`
 - `link.py` rule links and PATH; `settings_merge.py` three-way settings merge; `personal_mcp.py` personal MCP servers
@@ -33,6 +33,7 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 Other kit parts:
 
 - `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`, `.mcp.json`)
+- `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
 
 `docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0020), `examples/`, and `docs/superpowers/` (where agents write specs and plans).

@@ -65,9 +65,9 @@ Go on with [What bootstrap asks](#what-bootstrap-asks).
 
 ## What bootstrap asks
 
-Bootstrap is safe to re-run. It works in steps and prints a heading for each. It asks you at most three things.
+Bootstrap is safe to re-run. It works in steps and prints one status line for each (`--verbose` prints every detail). It asks you at most three things.
 
-1. **Your personal layer.** Paste the git URL of your own personal repo to clone it. Leave it empty to create a starter. The starter asks four short questions about you, then the working preferences. If you already have a personal layer on this machine, bootstrap uses it and asks nothing. See [Personal layer](../reference/personal-layer.md).
+1. **Your personal layer.** Paste the git URL of your own personal repo to clone it. Leave it empty to create a starter. The starter asks four short questions about you, then shows the recommended working preferences on one screen: Enter takes them, `n` asks each one. If you already have a personal layer on this machine, bootstrap uses it and asks nothing. See [Personal layer](../reference/personal-layer.md).
 2. **Preferences and add-ons.** `Customize preferences and global add-ons now? [y/N]` starts the configure wizard. You can run it later with `loadout configure`. See [Set your working preferences](../how-to/set-preferences.md).
 3. **Your existing setup.** If Claude Code already has plugins, MCP servers, skills or hooks, `loadout adopt` reviews them. It offers to remove superseded or duplicate tools, to disable per-project tools globally, and to move plaintext secrets into `secrets.env`. For tools loadout does not manage, it asks whether to record them globally, put them in a personal profile, leave them, or remove them. Nothing changes without your answer. See [Handle your own tools](../how-to/your-own-tools.md).
 
@@ -92,7 +92,7 @@ Restart Claude Code. Then run:
 loadout check
 ```
 
-It is read-only. Each line is `ok`, `warn` or `FAIL`, and a problem line names the fix. If you see `loadout: command not found`, open a new terminal: bootstrap added `~/.local/bin` to your profile (Windows: your user PATH). More in [Troubleshooting](../how-to/troubleshooting.md). What each check means is in the [CLI reference](../reference/cli.md#loadout-check).
+It is read-only. It prints `Health check: N of M OK`, then only the problems, and each problem line names the fix (`--verbose` lists every check). If you see `loadout: command not found`, open a new terminal: bootstrap added `~/.local/bin` to your profile (Windows: your user PATH). More in [Troubleshooting](../how-to/troubleshooting.md). What each check means is in the [CLI reference](../reference/cli.md#loadout-check).
 
 ## Prepare a project
 

@@ -105,7 +105,8 @@ def _binary_items(with_versions: bool) -> list[Item]:
     for entry in catalog.binaries():
         name = entry["id"]
         if not runner.have(name):
-            out.append(Item("binary", name, "missing", "PATH", {"entry": entry, "state": "missing"}))
+            if not entry.get("helper"):  # a helper (mise) is installed only when another tool needs it
+                out.append(Item("binary", name, "missing", "PATH", {"entry": entry, "state": "missing"}))
             continue
         if not with_versions or entry.get("helper"):  # helpers (mise) only install other tools
             out.append(Item("binary", name, "installed", "PATH", {"entry": entry, "state": "ok"}))

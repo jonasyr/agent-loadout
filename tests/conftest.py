@@ -54,3 +54,10 @@ def fake_runner(monkeypatch):
 def kit_root():
     from loadout import paths
     return paths.kit_root()
+
+
+@pytest.fixture(autouse=True)
+def verbose_output(monkeypatch):
+    """Existing tests assert today's detail lines (verbose mode); calm-mode tests set out.VERBOSE = False."""
+    from loadout import out
+    monkeypatch.setattr(out, "VERBOSE", True)

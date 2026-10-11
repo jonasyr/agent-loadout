@@ -606,6 +606,7 @@ def test_interactive_bootstrap_asks_the_preferences_once(fake_home, fake_runner,
         return "y" if q.strip().startswith("Customize preferences") else ""
 
     bootstrap.bootstrap(install=False, yes=False, plugins=False, adopt_step=False, ask=ask, interactive=True)
-    assert sum(q.startswith("answer_language") for q in seen) == 1
+    # the first-run summary counts as asking them; the wizard must not ask again
+    assert sum(q.startswith(("answer_language", "Use these? [Y/n]")) for q in seen) == 1
     assert any(q.strip().startswith("Customize preferences") for q in seen)
     assert _settings()["effortLevel"] == "medium"

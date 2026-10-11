@@ -46,10 +46,18 @@ They make real model calls with your own Claude credential and use your plan's u
 
 When you change behaviour, update the page in `docs/` that owns the fact, and link to it from other pages instead of copying it. The index is [docs/README.md](docs/README.md). A decision with alternatives becomes an ADR in [`docs/adr/`](docs/adr/README.md).
 
+## The README demo
+
+`docs/assets/demo.gif` follows the README Quick start: an existing Claude Code setup, the one-liner, `loadout check`, `loadout init`, then real Claude Code running `/loadout:onboard`. It has two parts:
+
+- **The terminal part** is recorded from [`demo/loadout.tape`](demo/loadout.tape) with [VHS](https://github.com/charmbracelet/vhs). `demo/render.sh` runs it in a container without network access (podman, or `DEMO_ENGINE=docker`), so nothing is installed on your machine. The recording runs the real `loadout` and the real `bootstrap.sh` in a new sandbox HOME that `demo/sandbox.sh` fills with fake data and stand-in binaries (`demo/bin/`: `claude`, `curl` and `uv` refuse to run outside the sandbox).
+- **The Claude Code part** (`demo/claude-clip.mp4`) is recorded by the maintainer with `demo/record-claude.sh`, because it needs a real Claude Code login. It works in a throwaway project in `/tmp` and uses a little plan usage. Watch the clip before committing it: it shows the recording machine's plugins and paths. `render.sh` appends it when it exists.
+
+Both tapes share [`demo/style.tape`](demo/style.tape) (font, size, theme, window); title cards come from `demo/card.sh`. Re-render when the output of `bootstrap`, `adopt`, `check` or `init` changes, and before each release. Keep the GIF under 5 MB (lower the framerate in `render.sh` before shortening pauses). VHS's `Wait` reads the top of the scrollback, so the tapes pace answers with `Sleep` instead; check a render by looking at frames (`DEMO_KEEP_DIR=DIR demo/render.sh` keeps the mp4).
+
 ## Commits and pull requests
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, for example `feat(catalog): add <tool>`, `fix(adopt): ...`, `docs: ...`, `test: ...`.
-- Do not add `Co-Authored-By` or any other attribution trailer to commits or pull requests.
 - Work on a branch and open a pull request against `main`. Say what changed and why, and how you tested it.
 - CI must be green before a merge: the test suite on Linux and on Windows (including the hook scripts under Git Bash), and `claude plugin validate` for the marketplace and the plugin.
 

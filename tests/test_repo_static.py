@@ -191,3 +191,15 @@ def test_toolchain_installs_in_user_space():
     known = set(entries)
     for e in entries.values():
         assert set(e.get("needs", [])) <= known, e["id"]
+
+
+VERDICT_PREFIXES = ("mcp-", "plugin-", "marketplace-", "skill-", "skills-", "hook-")
+
+
+def test_catalog_short_reasons():
+    for e in _json("catalog.json")["entries"]:
+        if e["id"].startswith(VERDICT_PREFIXES):
+            assert e.get("short"), f"{e['id']}: add a short reason"
+        if "short" in e:
+            s = e["short"]
+            assert "\n" not in s and len(s) <= 60 and not s.endswith("."), e["id"]
