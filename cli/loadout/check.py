@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import stat
+import sys
 from dataclasses import dataclass
 
 from . import catalog, link, paths, runner, settings_merge
@@ -129,8 +130,12 @@ def _repos() -> list[CheckResult]:
     return out
 
 
+def _python() -> list[CheckResult]:
+    return [CheckResult(f"Python {sys.version_info[0]}.{sys.version_info[1]}", True)]
+
+
 def run_checks() -> list[CheckResult]:
-    return [*_links(), *_skills_json(), *_settings(), *_plugins(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
+    return [*_python(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

@@ -161,6 +161,7 @@ It has no flags. Each line is `ok`, `warn` or `FAIL`.
 
 | Check | Severity when it fails |
 |---|---|
+| The Python version that runs loadout (an `ok` line; loadout needs 3.10 or newer and stops before this on older versions) | — |
 | The links under `~/.claude` (rules, global skills, `hooks/personal`) | FAIL |
 | `settings.json` is valid JSON | FAIL |
 | A required binary is on `PATH` | FAIL |
