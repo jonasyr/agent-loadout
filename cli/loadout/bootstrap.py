@@ -4,7 +4,6 @@ from __future__ import annotations
 import codecs
 import locale
 import os
-import re
 from pathlib import Path
 from typing import Callable
 
@@ -101,8 +100,12 @@ def check_prereqs(install: bool, ask: Ask) -> list[str]:
         cmds = catalog.platform_cmds(entry, "install")
         blocked = [d for d in entry.get("needs", []) if d in failed]
         if install and cmds and blocked:
-            print(f"missing {name}: skipped: needs {', '.join(blocked)}")
-        elif install and cmds:
+            failed.add(name)
+            if not entry.get("helper"):
+                print(f"missing {name}: not installed because {', '.join(blocked)} failed to install")
+                missing.append(name)
+            continue
+        if install and cmds:
             for cmd in cmds:
                 print("installing: " + " ".join(cmd))
                 res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
@@ -271,8 +274,28 @@ def setup_secrets(bk: Backup | None = None) -> list[str]:
 
 PATH_MARKER = "# loadout PATH"
 PATH_END = "# loadout PATH end"
-WIN_PATH_GET = ("[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment').GetValue('Path', '', "
-                "[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)")
+# One read-modify-write of the user PATH, in PowerShell. Values travel in environment variables (never
+# spliced into the command), the old value is saved as UTF-8 before anything changes, and only a fixed
+# ASCII status comes back on stdout (Windows PowerShell writes stdout in the OEM code page).
+WIN_PATH_SCRIPT = r"""$ErrorActionPreference = 'Stop'
+$k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+$old = [string]$k.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+$parts = @($old -split ';' | Where-Object { $_ })
+function Norm([string]$x) { $x.Replace('\', '/').TrimEnd('/').ToLowerInvariant() }
+$have = @{}
+foreach ($p in $parts) { $have[(Norm $p)] = 1; $have[(Norm ([Environment]::ExpandEnvironmentVariables($p)))] = 1 }
+$want = @($env:LOADOUT_PATH_ADD -split "`n" | Where-Object { $_ })
+$added = @(); $idx = @()
+for ($i = 0; $i -lt $want.Count; $i++) {
+  if (-not $have.ContainsKey((Norm $want[$i]))) { $added += $want[$i]; $idx += $i; $have[(Norm $want[$i])] = 1 }
+}
+if ($added.Count -eq 0) { 'UNCHANGED'; exit 0 }
+[IO.File]::WriteAllText($env:LOADOUT_PATH_BACKUP, $old, (New-Object System.Text.UTF8Encoding $false))
+$k.SetValue('Path', (($added + $parts) -join ';'), [Microsoft.Win32.RegistryValueKind]::ExpandString)
+$k.Close()
+[Environment]::SetEnvironmentVariable('LOADOUT_PATH_REFRESH', $null, 'User')  # broadcasts WM_SETTINGCHANGE
+'CHANGED ' + ($idx -join ' ')
+"""
 
 
 def _path_block(dirs: list[Path]) -> str:
@@ -320,7 +343,7 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
     if not dirs:
         return [], False
     if paths.platform_key() == "windows":
-        return _setup_windows_path(dirs)
+        return _setup_windows_path(dirs, bk)
     shell = os.path.basename(os.environ.get("SHELL", ""))
     targets = [r for r in (home / ".bashrc", home / ".zshrc") if r.exists()]
     own = {"zsh": home / ".zshrc", "bash": home / ".bashrc"}.get(shell)
@@ -340,31 +363,32 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
     return out, bool(out)
 
 
-def _expand_user_vars(entry: str) -> str:
-    local = os.environ.get("LOCALAPPDATA") or str(paths.home() / "AppData" / "Local")
-    for var, value in (("%USERPROFILE%", str(paths.home())), ("%LOCALAPPDATA%", local)):
-        entry = re.sub(re.escape(var), lambda _m, v=value: v, entry, flags=re.IGNORECASE)
-    return entry
+def _win_path_command() -> list[str]:
+    import base64
+    encoded = base64.b64encode(WIN_PATH_SCRIPT.encode("utf-16-le")).decode("ascii")
+    return ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
 
 
-def _setup_windows_path(dirs: list[Path]) -> tuple[list[str], bool]:
-    hand = f"add {', '.join(map(str, dirs))} to it by hand"
-    res = runner.run(["powershell", "-NoProfile", "-Command", WIN_PATH_GET], timeout=30)
-    if not res.ok:
-        return [f"could not read your user PATH; {hand}"], False
-    current = [p for p in res.stdout.strip().split(";") if p]  # raw: %VARS% stay unexpanded
-    def norm(x: str) -> str:
-        return x.replace("\\", "/").rstrip("/").lower()
-    present = {norm(x) for p in current for x in (p, _expand_user_vars(p))}
-    new = [str(d) for d in dirs if norm(str(d)) not in present]
-    if not new:
-        return [], False
-    value = ";".join(new + current).replace("'", "''")
-    set_cmd = ("$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true); "
-               f"$k.SetValue('Path', '{value}', [Microsoft.Win32.RegistryValueKind]::ExpandString)")
-    if not runner.run(["powershell", "-NoProfile", "-Command", set_cmd], timeout=30).ok:
-        return [f"could not update your user PATH; {hand}"], False
-    return [f"added {', '.join(new)} to your user PATH (was: {';'.join(current) or 'empty'})"], True
+def _setup_windows_path(dirs: list[Path], bk: Backup | None) -> tuple[list[str], bool]:
+    failed = [f"could not update your user PATH; add {', '.join(map(str, dirs))} to it by hand"], False
+    state = paths.state_dir()
+    state.mkdir(parents=True, exist_ok=True)
+    saved = state / f"user-PATH-before-{os.getpid()}.txt"
+    env = {**os.environ, "LOADOUT_PATH_ADD": "\n".join(map(str, dirs)), "LOADOUT_PATH_BACKUP": str(saved)}
+    try:
+        res = runner.run(_win_path_command(), timeout=60, env=env)
+        words = res.stdout.split()
+        if not res.ok or not words or words[0] not in ("CHANGED", "UNCHANGED"):
+            return failed
+        if words[0] == "UNCHANGED":
+            return [], False
+        added = [str(dirs[int(i)]) for i in words[1:] if i.isdigit() and int(i) < len(dirs)] or list(map(str, dirs))
+        if saved.is_file():
+            (bk if bk is not None else Backup(description="user PATH")).keep(
+                saved, "your user PATH before loadout added the tool folders")
+        return [f"added {', '.join(added)} to your user PATH (old value saved in the backup)"], True
+    finally:
+        saved.unlink(missing_ok=True)
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
@@ -428,12 +452,13 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     text, code = check.format_results(check.run_checks())
     print(text)
     todo = still_to_do(os_key())
+    if path_changed:
+        print("\nOpen a new terminal so the new PATH applies.")
     if todo:
-        print("\nStill to do:")
+        print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
-    print("\nOpen a new terminal so the new PATH applies, then start Claude Code." if path_changed
-          else "\nRestart Claude Code to load plugins and rules.")
+    print("\nThen start Claude Code." if path_changed else "\nRestart Claude Code to load plugins and rules.")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1

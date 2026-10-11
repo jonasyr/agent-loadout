@@ -89,6 +89,14 @@ class Backup:
         self._add(label, {"restore-file": [str(dest), str(path)], "mode": mode})
         return dest
 
+    def keep(self, path: Path, label: str) -> Path:
+        """Move a file loadout wrote (e.g. an old registry value) into the backup; restore points to it."""
+        dest = self._slot(path)
+        shutil.move(str(path), str(dest))
+        _private(dest, PRIVATE_FILE)
+        self._add(label, {"kept": str(dest)})
+        return dest
+
     def record_created(self, path: Path, label: str) -> None:
         """A file the kit created: undo moves it into the pre-restore backup."""
         self._ensure_root()
@@ -173,6 +181,8 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
             return f"skipped (already gone): {path}"
         pre.move(path, f"{path} (created by loadout)", replace=True)
         return f"moved aside: {path}"
+    elif "kept" in undo:
+        return f"not restored automatically: {label}; the old value is in {undo['kept']}, restore it by hand"
     elif "run" in undo:
         cmd = undo["run"]
         if not cmd or cmd[0] != "claude":
