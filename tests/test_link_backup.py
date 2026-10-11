@@ -81,13 +81,13 @@ def test_copy_fallback_when_symlinks_unavailable(fake_home, monkeypatch):
     assert bk.empty
 
 
-def test_link_bin_posix_symlink(fake_home):
+def test_link_bin_posix_writes_launcher(fake_home):
     if os.name == "nt":
         pytest.skip("posix only")
     link.link_bin(backup.Backup())
     target = fake_home / ".local/bin/loadout"
-    assert target.is_symlink()
-    assert target.resolve() == (paths.kit_root() / "bin/loadout").resolve()
+    assert link.LAUNCHER_MARKER in target.read_text()
+    assert str(paths.kit_root() / "bin" / "loadout") in target.read_text()
 
 
 def test_windows_shims_quote_paths_with_spaces(fake_home, monkeypatch, tmp_path):
@@ -99,7 +99,7 @@ def test_windows_shims_quote_paths_with_spaces(fake_home, monkeypatch, tmp_path)
     cmd = (fake_home / ".local/bin/loadout.cmd").read_text()
     sh = (fake_home / ".local/bin/loadout").read_text()
     assert f'"{kit / "bin" / "loadout"}"' in cmd
-    assert f'"{(kit / "bin" / "loadout").as_posix()}"' in sh
+    assert f"script='{(kit / 'bin' / 'loadout').as_posix()}'" in sh
 
 
 def test_backups_created_back_to_back_get_distinct_roots(fake_home):
@@ -163,35 +163,14 @@ def test_copy_mode_backs_up_user_dir_before_replacing(fake_home):
     assert again.empty
 
 
-@pytest.mark.skipif(os.name == "nt", reason="link_bin writes shims on Windows instead of linking/copying the file")
-def test_copy_mode_file_backed_up_only_when_not_kit_copy(fake_home, monkeypatch, tmp_path):
-    kit = tmp_path / "kit"
-    (kit / "bin").mkdir(parents=True)
-    (kit / "bin/loadout").write_text("v2")
-    monkeypatch.setenv("LOADOUT_ROOT", str(kit))
-    marker = paths.state_dir() / "copy-mode"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("copy\n")
-    target = fake_home / ".local/bin/loadout"
-    target.parent.mkdir(parents=True)
-    target.write_text("user script")
-    bk = backup.Backup()
-    link.link_bin(bk)
-    assert not bk.empty
-    assert target.read_text() == "v2"
-    again = backup.Backup()
-    link.link_bin(again)
-    assert again.empty
-
-
 def test_git_bash_shim_has_lf_only_and_uses_current_python(fake_home):
     import sys
     from pathlib import Path
     link.write_windows_shims(fake_home / ".local/bin")
     raw = (fake_home / ".local/bin/loadout").read_bytes()
     assert b"\r" not in raw
-    assert Path(sys.executable).as_posix().encode() in raw
-    assert sys.executable.encode() in (fake_home / ".local/bin/loadout.cmd").read_bytes()
+    assert link.LAUNCHER_MARKER.encode() in raw
+    assert b"uv run" in (fake_home / ".local/bin/loadout.cmd").read_bytes()
 
 
 # --- restore safety (R-C) ---

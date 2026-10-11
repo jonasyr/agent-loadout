@@ -129,15 +129,28 @@ def link_all(bk: Backup, retry_symlinks: bool = False) -> list[str]:
     return out + [a for dest, src in LINKS() if (a := _link_one(dest, src, bk))]
 
 
+LAUNCHER_MARKER = "# loadout launcher"
+PY_OK = "import sys; sys.exit(sys.version_info < (3, 10))"
+
+
+def launcher_text(script: Path) -> str:
+    s = script.as_posix().replace("'", "'\\''")
+    return (f"#!/bin/sh\n{LAUNCHER_MARKER} (written by loadout bootstrap; Python 3.10+ or uv runs it)\n"
+            f"script='{s}'\n"
+            f'if command -v python3 >/dev/null 2>&1 && python3 -c "{PY_OK}" 2>/dev/null; then exec python3 "$script" "$@"; fi\n'
+            'if command -v uv >/dev/null 2>&1; then exec uv run --no-project --python ">=3.10" "$script" "$@"; fi\n'
+            'echo "loadout needs Python 3.10 or newer, or uv, on PATH" >&2\nexit 1\n')
+
+
 def write_windows_shims(target_dir: Path) -> None:
     script = paths.kit_root() / "bin" / "loadout"
-    python = Path(sys.executable)
     target_dir.mkdir(parents=True, exist_ok=True)
     # newline="" / "\n": write exactly these bytes; text mode on Windows would turn \n into \r\n
-    (target_dir / "loadout.cmd").write_text(f'@echo off\r\n"{python}" "{script}" %*\r\n', encoding="utf-8", newline="")
+    cmd = (f'@echo off\r\nwhere python >nul 2>nul && python -c "{PY_OK}" 2>nul && (python "{script}" %* & exit /b)\r\n'
+           f'uv run --no-project --python ">=3.10" "{script}" %*\r\n')
+    (target_dir / "loadout.cmd").write_text(cmd, encoding="utf-8", newline="")
     # Git Bash (used for hooks on Windows) runs extensionless scripts; a CR would break the shebang
-    (target_dir / "loadout").write_text(f'#!/bin/sh\nexec "{python.as_posix()}" "{script.as_posix()}" "$@"\n',
-                                        encoding="utf-8", newline="\n")
+    (target_dir / "loadout").write_text(launcher_text(script), encoding="utf-8", newline="\n")
 
 
 def link_bin(bk: Backup) -> list[str]:
@@ -145,5 +158,17 @@ def link_bin(bk: Backup) -> list[str]:
     if os.name == "nt":
         write_windows_shims(target_dir)
         return [f"wrote shims to {target_dir} (make sure it is on PATH)"]
-    action = _link_one(target_dir / "loadout", paths.kit_root() / "bin" / "loadout", bk)
-    return [action] if action else []
+    dest = target_dir / "loadout"
+    text = launcher_text(paths.kit_root() / "bin" / "loadout")
+    ours = dest.is_file() and not dest.is_symlink() and LAUNCHER_MARKER in dest.read_text(encoding="utf-8", errors="replace")
+    if ours and dest.read_text(encoding="utf-8") == text:
+        return []
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    kit_link = dest.is_symlink() and _points_to(dest, paths.kit_root() / "bin" / "loadout")
+    if (dest.exists() or dest.is_symlink()) and not ours and not kit_link:
+        bk.move(dest, f"replaced {dest}", replace=True)
+    elif dest.is_symlink() or dest.exists():
+        dest.unlink()
+    dest.write_text(text, encoding="utf-8", newline="\n")
+    dest.chmod(0o755)
+    return [f"wrote launcher {dest}"]
