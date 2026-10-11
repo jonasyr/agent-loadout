@@ -32,7 +32,10 @@ Whatever restore replaces goes into a new `pre-restore` backup, so a restore can
 
 ## What restore does not undo
 
-- Links that bootstrap created where nothing was before: `~/.claude/rules/loadout`, `~/.claude/rules/personal`, `~/.local/bin/loadout`. Remove them as in [Uninstall](uninstall.md).
+- Links that bootstrap created where nothing was before: `~/.claude/rules/loadout`, `~/.claude/rules/personal`, and the launcher script `~/.local/bin/loadout`. Remove them as in [Uninstall](uninstall.md).
+- The `# loadout PATH` block that bootstrap appended to an existing shell startup file. It has no backup: remove the lines between `# loadout PATH` and `# loadout PATH end`.
+- On native Windows, the folders added to your user PATH. The old value is in the backup folder.
+- The tools `--install` installed: uv, Claude Code, mise and what mise installed. See [Uninstall](uninstall.md#what-stays).
 - The "# loadout secrets" line that bootstrap appended to an existing shell startup file on Linux and macOS. A startup file that bootstrap created, and a Windows PowerShell profile (a copy is saved first), are covered.
 - Plugins and marketplaces that bootstrap or `configure` installed. Uninstall them with `claude plugin uninstall ID`.
 - A profile applied to a repo with `loadout profile` or `loadout init`. It writes the repo's committed `.claude/settings.json` and `.mcp.json`; use git there.

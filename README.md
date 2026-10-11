@@ -46,28 +46,30 @@ What runs automatically, what loadout touches and where the trust boundary is: [
 **Linux, macOS and WSL 2** (WSL 2 is the recommended setup on Windows; read [Use loadout on Windows with WSL 2](docs/how-to/wsl.md) first):
 
 ```bash
+cd ~
 curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install
 ```
 
-This clones the kit into `./agent-loadout` and installs everything that is missing, in your home folder, without sudo: uv (which also provides Python), Claude Code, Node.js, gh and every tool in [the toolset](#the-toolset). `--install` runs those installers without a further prompt (see [Security and trust](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). Prefer to read the code first? Clone it and run the same script:
+The `cd ~` matters because the clone stays where you run this (on WSL, a shell started from Windows opens in `/mnt/c`). This clones the kit into `./agent-loadout` and installs everything that is missing, in your home folder, without sudo: uv (which also provides Python), Claude Code, Node.js, gh and every tool in [the toolset](#the-toolset). `--install` runs those installers without a further prompt (see [Security and trust](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). Prefer to read the code first? Clone it and run the same script:
 
 ```bash
 git clone https://github.com/jonasyr/agent-loadout && cd agent-loadout && ./bootstrap.sh --install
 ```
 
-**Before you start:** you need git; after bootstrap you log in to Claude Code and gh. The one line per OS is in [Before you start](docs/tutorials/getting-started.md#before-you-start), and bootstrap ends with the steps still open on your machine.
+**Before you start:** you need git and curl; after bootstrap you log in to Claude Code and gh. The one line per OS is in [Before you start](docs/tutorials/getting-started.md#before-you-start), and bootstrap ends with the steps still open on your machine.
 
 <details>
 <summary>Experimental: native Windows (not recommended; use WSL 2)</summary>
 
 ```powershell
+cd $HOME
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install
 ```
 
 Git for Windows is required (Git Bash runs the hooks). Details: [Native Windows](docs/tutorials/getting-started.md#experimental-native-windows).
 </details>
 
-Keep the clone where it is: the installed links point into it. Bootstrap walks you through three steps (your personal layer, preferences, your existing setup), and, if it replaced anything, names the backup and the undo command. Then restart Claude Code and run the read-only health check (if `loadout` is not found, open a new terminal: bootstrap added `~/.local/bin` to your shell profile):
+Keep the clone where it is: the installed links point into it. Bootstrap walks you through three steps (your personal layer, preferences, your existing setup), and, if it replaced anything, names the backup and the undo command. Then open a new terminal (bootstrap added `~/.local/bin` to your shell profile), log in with `claude` and `gh auth login && gh auth setup-git`, restart Claude Code and run the read-only health check:
 
 ```bash
 loadout check

@@ -59,7 +59,7 @@ From the `binary` entries in `catalog.json`. `loadout bootstrap --install` insta
 
 codebase-memory-mcp is installed and updated with its install script and `--skip-config`, so it does not register a second MCP server next to the plugin's ([ADR 0019](../adr/0019-upstream-installers-without-agent-configuration.md)). On Windows, bootstrap uses `install.ps1`.
 
-Python is provided by uv; git is the only prerequisite ([Before you start](../tutorials/getting-started.md#before-you-start)). Updates: [`loadout update`](cli.md#loadout-update).
+Python is provided by uv; git and curl are the only prerequisites ([Before you start](../tutorials/getting-started.md#before-you-start)). Updates: [`loadout update`](cli.md#loadout-update).
 
 ## Per-project profiles
 

@@ -6,8 +6,8 @@ This tutorial takes you from nothing to a first Claude Code session with loadout
 
 | | Linux / WSL | macOS | Windows (experimental) |
 |---|---|---|---|
-| git | `sudo apt install git` (Debian/Ubuntu; other distros: their package manager) | `xcode-select --install` | `winget install --id Git.Git -e` (Git Bash runs the hooks) |
-| After bootstrap | `claude` (log in), `gh auth login` | same | same |
+| git and curl | `sudo apt install git curl` (Debian/Ubuntu; other distros: their package manager) | `xcode-select --install` (provides git; curl is included) | `winget install --id Git.Git -e`, then open a new PowerShell (Git Bash runs the hooks) |
+| After bootstrap | `claude` (log in), `gh auth login && gh auth setup-git` | same | same |
 
 Bootstrap installs everything else that is missing, in your home folder and without sudo: uv (which also provides Python), Claude Code, Node.js, gh and the tools in [Included tools](../reference/included-tools.md#command-line-tools). It never replaces a tool you already have. The installers run without a further prompt; see [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
 
@@ -18,8 +18,11 @@ Optional, only if you turn on Claude Code's sandbox (Linux, WSL 2): `sudo apt-ge
 On Linux, macOS and WSL 2, run the one-liner. It clones the kit into `./agent-loadout` (use `--dir PATH` after `--` to choose another folder) and runs bootstrap:
 
 ```bash
+cd ~
 curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install
 ```
+
+The `cd ~` matters because the clone stays where you run this (on WSL, a shell started from Windows opens in `/mnt/c`).
 
 Prefer to read the code first? Clone it and run the same script:
 
@@ -27,7 +30,7 @@ Prefer to read the code first? Clone it and run the same script:
 git clone https://github.com/jonasyr/agent-loadout && cd agent-loadout && ./bootstrap.sh --install
 ```
 
-Keep the clone where it is. The installed links point into it. Bootstrap adds `~/.local/bin` and the folders of the tools it installed to your shell profile (block `# loadout PATH`), so open a new terminal when it is done. It ends with the steps still open on your machine.
+Keep the clone where it is. The installed links point into it. `~/.local/bin/loadout` is a small launcher script. Bootstrap adds `~/.local/bin` and the folders of the tools it installed to your shell profile (block `# loadout PATH`), so open a new terminal when it is done. It ends with the steps still open on your machine.
 
 On Windows, use WSL 2: open a WSL terminal, not PowerShell, and follow the steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages); `loadout check` warns about each of these it can see.
 
@@ -37,10 +40,11 @@ Go on with [What bootstrap asks](#what-bootstrap-asks).
 
 Native Windows is experimental and not recommended. Use WSL 2 if you can.
 
-1. Install Git for Windows (`winget install --id Git.Git -e`). `bootstrap.ps1` only warns when `bash` is missing, but Claude Code hooks need Git Bash. Python is not needed: uv provides it.
-2. In PowerShell, run the one-liner (it clones into `.\agent-loadout`):
+1. Install Git for Windows (`winget install --id Git.Git -e`), then open a new PowerShell. `bootstrap.ps1` only warns when `bash` is missing, but Claude Code hooks need Git Bash. Python is not needed: uv provides it.
+2. In PowerShell, run the one-liner (it clones into `.\agent-loadout` in the current folder):
 
    ```powershell
+   cd $HOME
    & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install
    ```
 
@@ -70,6 +74,15 @@ Bootstrap is safe to re-run. It works in steps and prints a heading for each. It
 Items you own that bootstrap removes or replaces go into a backup first. The end of the output names it and shows the undo command. See [Undo what loadout changed](../how-to/undo-and-restore.md).
 
 Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input) bootstrap skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates a starter personal layer with default preferences if none exists, merges settings, applies your MCP servers and sets up plugins. Pass `--yes` to apply adopt's default groups (remove, migrate, scope-down) plus moving plaintext secrets, without asking. The flags are in the [CLI reference](../reference/cli.md#loadout-bootstrap).
+
+## Log in
+
+Open a new terminal so the new PATH applies. Then do the "Still to do" items bootstrap printed:
+
+```bash
+claude                                  # log in to Claude Code
+gh auth login && gh auth setup-git      # log in to GitHub
+```
 
 ## Verify
 

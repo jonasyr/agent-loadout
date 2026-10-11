@@ -1,6 +1,6 @@
 # Use loadout on Windows with WSL 2
 
-Use this page if you work on Windows. WSL 2 is the recommended setup for loadout. Native Windows is supported too: its steps are in the Windows part of the getting-started tutorial.
+Use this page if you work on Windows. WSL 2 is the recommended setup for loadout. Native Windows is experimental and not recommended; its steps are in [Getting started](../tutorials/getting-started.md#experimental-native-windows).
 
 loadout detects WSL. `loadout check` prints `WSL 1` or `WSL 2` and warns about the problems below that it can see: WSL 1, the kit, the personal layer or the current folder under `/mnt/<drive>/`, `claude`, `node`, `npm`, `uv` or `git` resolving to a Windows program, and (WSL 2) missing bubblewrap or socat. Bootstrap prints the same warnings at its start and continues. The steps below are the fixes.
 
@@ -23,15 +23,9 @@ WSL 1 has a regression where Claude Code's native binary fails with `Exec format
 
 ## 2. Install loadout inside WSL
 
-Open the WSL terminal, not PowerShell, and follow the Linux steps of the tutorial:
+Open the WSL terminal, not PowerShell. Run `cd ~`, then follow [Step 1 of the tutorial](../tutorials/getting-started.md#step-1-run-bootstrap) inside WSL.
 
-```bash
-git clone https://github.com/jonasyr/agent-loadout ~/agent-loadout
-cd ~/agent-loadout
-./bootstrap.sh --install
-```
-
-Keep the clone in the Linux home, as above: the installed links point into it. Then restart Claude Code and run `loadout check`.
+Keep the clone in the Linux home: the installed links point into it. Then restart Claude Code and run `loadout check`.
 
 ## 3. Know which install loadout configures
 
@@ -60,8 +54,6 @@ These packages are needed only if you turn on Claude Code's sandbox. The sandbox
 ```bash
 sudo apt-get install bubblewrap socat
 ```
-
-After bootstrap, open a new terminal so the PATH changes take effect.
 
 On Ubuntu 24.04 and later, bubblewrap may also need an AppArmor profile; see [sandboxing](https://code.claude.com/docs/en/sandboxing).
 

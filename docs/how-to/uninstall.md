@@ -22,7 +22,7 @@ Remove the block between `# loadout PATH` and `# loadout PATH end` from `~/.bash
 
 On Windows, delete `loadout` and `loadout.cmd` in `%USERPROFILE%\.local\bin`, remove the folders bootstrap added from your user PATH (Settings, Environment Variables), and delete the folders `%USERPROFILE%\.claude\rules\loadout`, `%USERPROFILE%\.claude\rules\personal` and `%USERPROFILE%\.claude\.loadout`. If loadout copied instead of linking (see [Links and copies](../reference/personal-layer.md#links-and-copies)), these are folders, not links.
 
-You can then delete the clone (`~/agent-loadout`).
+You can then delete the clone (`agent-loadout` in the folder you ran bootstrap from, usually your home).
 
 ## What stays
 
@@ -30,6 +30,7 @@ You can then delete the clone (`~/agent-loadout`).
 - **Plugins** that bootstrap installed stay installed. Uninstall each with `claude plugin uninstall ID` if you want.
 - **`~/.claude/settings.json`** keeps the other merged values (the other plugins, `env`, `permissions`). Remove them if you want, or restore an older backup from `~/.claude/backups/`.
 - **Git's credential helper for GitHub**, if bootstrap ran `gh auth setup-git`. Remove it with `git config --global --unset-all credential.https://github.com.helper`.
+- **Tools bootstrap installed** (uv, Claude Code, mise and what mise installed, codebase-memory-mcp, rtk, npm tools) stay. Remove them with their own uninstall steps: see the docs of [uv](https://docs.astral.sh/uv/), [Claude Code](https://code.claude.com/docs/en/setup) and [mise](https://mise.jdx.dev/).
 - **The shell startup file** keeps the "# loadout secrets" block that bootstrap added. Delete it if you want.
 - **Your personal layer and `secrets.env`** under `~/.config/loadout/` are never touched. Delete them yourself if you want them gone.
 - **Backups** in `~/.claude/backups/` stay. They can hold old configs with secrets, so delete them when you no longer need them.

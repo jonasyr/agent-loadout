@@ -6,7 +6,7 @@ This page covers two things: the hooks that the loadout plugin ships, and how lo
 
 They are defined in `plugins/loadout/hooks/hooks.json` and run from the installed plugin. They are not written into your `~/.claude/settings.json`.
 
-Most commands go through `plugins/loadout/hooks/run.sh`. It runs the command only if its binary is on `PATH`; on a machine without the tool, the hook does nothing and exits 0. With `--soft` it also discards errors and always exits 0. With `--python` it runs a Python script with `python3` 3.10+, or through `uv` when there is none.
+Most commands go through `plugins/loadout/hooks/run.sh`. It runs the command only if its binary is on `PATH`; on a machine without the tool, the hook does nothing and exits 0. With `--soft` it also discards errors and always exits 0. With `--python` it runs a Python script with `python3` or `python` 3.10+, else a uv-managed Python.
 
 | Event | Matcher | Runs | Timeout | Purpose |
 |---|---|---|---|---|
