@@ -6,8 +6,9 @@ import re
 import stat
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
-from . import catalog, link, paths, runner, settings_merge
+from . import catalog, link, paths, runner, settings_merge, wsl
 from .jsonio import InvalidJSON, load_json
 
 
@@ -134,8 +135,16 @@ def _python() -> list[CheckResult]:
     return [CheckResult(f"Python {sys.version_info[0]}.{sys.version_info[1]}", True)]
 
 
+def _wsl() -> list[CheckResult]:
+    version = wsl.detect()
+    if version is None:
+        return []
+    return [CheckResult(f"WSL {version}", True),
+            *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in wsl.problems(version, Path.cwd()))]
+
+
 def run_checks() -> list[CheckResult]:
-    return [*_python(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
+    return [*_python(), *_wsl(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

@@ -27,7 +27,7 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 - `catalog.py`, `versions.py`, `pkgmgr.py` tool knowledge, versions, binary updates
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
 - `preferences.py`, `configure.py` structured preferences and the wizard
-- `own.py` your own tools; `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates
+- `own.py` your own tools; `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks
 - `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker
 
 Other kit parts:

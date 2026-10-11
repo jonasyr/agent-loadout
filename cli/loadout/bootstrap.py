@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, catalog, check, link, paths, runner, secrets, settings_merge, ui
+from . import adopt, catalog, check, link, paths, runner, secrets, settings_merge, ui, wsl
 from .backup import Backup
 from .jsonio import load_json
 from .secrets import redact
@@ -211,6 +211,11 @@ def setup_secrets(bk: Backup | None = None) -> list[str]:
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
     if interactive is None:
         interactive = ui.is_interactive()
+    version = wsl.detect()
+    if version is not None:
+        _step("WSL")
+        for line in wsl.report_lines(version, Path.cwd()):
+            print(line)
     _step("Prerequisites")
     check_prereqs(install, ask)
     bk = Backup(description="bootstrap")
