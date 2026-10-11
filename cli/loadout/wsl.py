@@ -24,7 +24,19 @@ def detect(osrelease: Path = OSRELEASE, platform: str | None = None) -> int | No
     return 2 if "wsl2" in text else 1
 
 
+def current_dir() -> Path | None:
+    """The working directory, or None when it was deleted under the shell."""
+    try:
+        return Path.cwd()
+    except OSError:
+        return None
+
+
 def _on_windows_drive(path: Path, mount: str) -> bool:
+    try:
+        path = Path(path).resolve()  # a link into /mnt/c is on the Windows drive too
+    except (OSError, RuntimeError):
+        pass
     s = Path(path).as_posix()
     if not s.startswith(mount):
         return False
@@ -32,14 +44,14 @@ def _on_windows_drive(path: Path, mount: str) -> bool:
     return len(first) == 1 and first.isalpha()
 
 
-def problems(version: int, cwd: Path, mount: str = "/mnt/") -> list[tuple[str, str]]:
+def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple[str, str]]:
     out = []
     if version == 1:
         out.append(("WSL 1: Claude Code's sandbox needs WSL 2, and its native binary can fail with `Exec format error`",
                     "in PowerShell: `wsl --set-version <distro> 2`"))
     for label, path in (("the kit", paths.kit_root()), ("the personal layer", paths.personal_root()),
                         ("the current folder", cwd)):
-        if _on_windows_drive(path, mount):
+        if path is not None and _on_windows_drive(path, mount):
             out.append((f"{label} ({Path(path).as_posix()}) is on the Windows filesystem (slow, search can be incomplete)",
                         "move it into the Linux home, e.g. `~/code/...`"))
     for tool in LINUX_TOOLS:
@@ -56,7 +68,7 @@ def problems(version: int, cwd: Path, mount: str = "/mnt/") -> list[tuple[str, s
     return out
 
 
-def report_lines(version: int, cwd: Path) -> list[str]:
+def report_lines(version: int, cwd: Path | None) -> list[str]:
     lines = [f"WSL {version} detected"]
     for problem, fix in problems(version, cwd):
         lines += [problem, f"  fix: {fix}"]

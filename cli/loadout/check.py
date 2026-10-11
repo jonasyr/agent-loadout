@@ -6,7 +6,6 @@ import re
 import stat
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
 from . import catalog, link, paths, runner, settings_merge, wsl
 from .jsonio import InvalidJSON, load_json
@@ -140,7 +139,7 @@ def _wsl() -> list[CheckResult]:
     if version is None:
         return []
     return [CheckResult(f"WSL {version}", True),
-            *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in wsl.problems(version, Path.cwd()))]
+            *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in wsl.problems(version, wsl.current_dir()))]
 
 
 def run_checks() -> list[CheckResult]:

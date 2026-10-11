@@ -214,7 +214,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     version = wsl.detect()
     if version is not None:
         _step("WSL")
-        for line in wsl.report_lines(version, Path.cwd()):
+        for line in wsl.report_lines(version, wsl.current_dir()):
             print(line)
     _step("Prerequisites")
     check_prereqs(install, ask)

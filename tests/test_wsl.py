@@ -112,3 +112,21 @@ def test_bootstrap_prints_wsl_problems_and_continues(fake_home, fake_runner, mon
         b.bootstrap(install=False, yes=True, plugins=False, adopt_step=False, ask=lambda q: "", interactive=False)
     out = capsys.readouterr().out
     assert "== WSL" in out and "p1" in out and "fix: f1" in out  # printed, then bootstrap went on to prerequisites
+
+
+def test_personal_layer_symlinked_into_windows_drive(fake_home, fake_runner, mnt, tmp_path, monkeypatch):
+    link = tmp_path / "personal-link"
+    link.symlink_to(mnt / "c" / "Users" / "me", target_is_directory=True)
+    monkeypatch.setenv("LOADOUT_PERSONAL", str(link))
+    texts = [p for p, _ in wsl.problems(2, tmp_path, mount=_prefix(mnt))]
+    assert any("personal" in t and "Windows filesystem" in t for t in texts)
+
+
+def test_check_survives_a_deleted_current_folder(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+
+    def gone():
+        raise FileNotFoundError("cwd deleted")
+
+    monkeypatch.setattr(wsl.Path, "cwd", staticmethod(gone))
+    assert "WSL 2" in [r.name for r in check.run_checks()]
