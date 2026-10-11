@@ -34,7 +34,7 @@ EXTRA_COMMANDS.append(_register_restore)
 
 
 def _register_adopt(sub):
-    from . import adopt
+    from . import adopt, out
     from .__main__ import _ask
 
     p = sub.add_parser("adopt", help="review and migrate the existing Claude Code setup")
@@ -48,8 +48,11 @@ def _register_adopt(sub):
                         "A hook is named Event:matcher (Stop: has no matcher); add #n when several hooks "
                         "share a name (names: loadout configure own)")
     p.add_argument("--no-versions", action="store_true", help="skip network version checks")
+    p.add_argument("--verbose", action="store_true", help="full detail: commands, long reasons, the items that stay")
 
     def run(a):
+        if a.verbose:
+            out.VERBOSE = True
         groups = {g.strip() for g in a.groups.split(",") if g.strip()} if a.groups else None
         skip = {s.strip() for s in a.skip.split(",") if s.strip()}
         return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions, own_spec=a.own)
