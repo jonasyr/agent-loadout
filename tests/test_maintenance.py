@@ -118,3 +118,21 @@ def test_no_auto_pull_env_skips_pull(fake_home, fake_runner, monkeypatch, tmp_pa
     monkeypatch.setattr(m, "pull_if_clean", lambda root: pulled.append(root) or False)
     m.maintain(100.0)
     assert pulled == []
+
+
+def test_session_start_no_auto_pull_does_not_count_pull_as_due(fake_home, monkeypatch):
+    spawned = []
+    monkeypatch.setattr(m, "_spawn_background", lambda: spawned.append(1))
+    monkeypatch.setenv("LOADOUT_NO_AUTO_PULL", "1")
+    m.touch("last-update-check", 5.0)  # weekly check fresh, last-pull never stamped
+    m.session_start(6.0)
+    assert spawned == []
+
+
+def test_session_start_no_auto_pull_still_spawns_for_weekly_check(fake_home, monkeypatch):
+    spawned = []
+    monkeypatch.setattr(m, "_spawn_background", lambda: spawned.append(1))
+    monkeypatch.setenv("LOADOUT_NO_AUTO_PULL", "1")
+    m.touch("last-update-check", 5.0)
+    m.session_start(5.0 + m.WEEK)
+    assert spawned == [1]
