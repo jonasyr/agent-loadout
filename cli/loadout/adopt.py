@@ -45,6 +45,7 @@ DONE = {"remove": "Removed", "migrate": "Removed your copy", "scope-down": "Disa
         "update": "Updated", "install": "Installed", "review": "Removed"}
 KIND_LABEL = {"mcp": "MCP", "plugin": "plugin", "marketplace": "marketplace", "skill": "skill", "hook": "hook"}
 UNDO_LINE = "Undo any time: loadout restore --list"
+LAST_BACKUP: Path | None = None  # the backup of the last run(); bootstrap prints one undo line for both
 
 
 def prefill_settings() -> dict:
@@ -109,7 +110,12 @@ def _plural(n: int, word: str) -> str:
 
 
 def _calm_name(v: Verdict) -> str:
-    return f"{own.display_name(v.item)} {KIND_LABEL.get(v.item.kind, '')}".strip()
+    name = own.display_name(v.item)
+    if v.item.kind == "plugin":
+        name = name.split("@")[0]
+    elif v.item.kind == "marketplace" and name.endswith("-marketplace"):
+        name = name[: -len("-marketplace")]
+    return f"{name} {KIND_LABEL.get(v.item.kind, '')}".strip()
 
 
 def _calm_reason(v: Verdict) -> str:
@@ -166,7 +172,12 @@ def calm_summary(chosen: list[Verdict], acting: list) -> list[str]:
     for group in GROUP_ORDER:
         members = [v for v in chosen if v.action == group]
         if members and group in DONE:
-            lines.append(f"{ok} {DONE[group]}: " + ", ".join(_calm_name(v) for v in members))
+            line = f"{ok} {DONE[group]}: " + ", ".join(_calm_name(v) for v in members)
+            entries = [catalog.by_id(v.entry_id) for v in members if v.entry_id] if group == "scope-down" else []
+            profiles = sorted({e["profile"] for e in entries if e and e.get("profile")})
+            if profiles:
+                line += f" (turn on per repo: loadout profile {', '.join(profiles)})"
+            lines.append(line)
     where = {"global": "every machine", "remove": "removed"}
     if acting:
         lines.append(f"{ok} Your own tools: " + ", ".join(
@@ -445,8 +456,12 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
 
 
 def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask, with_versions: bool = True,
-        interactive: bool | None = None, own_spec: str | None = None) -> int:
+        interactive: bool | None = None, own_spec: str | None = None, embedded: bool = False) -> int:
+    """embedded: called by bootstrap, which prints the restart and undo lines once for the whole run."""
     import sys
+
+    global LAST_BACKUP
+    LAST_BACKUP = None
 
     if interactive is None:
         interactive = ui.is_interactive()
@@ -509,7 +524,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
                 print(redact(line))
         # --own is for scripts: an item that was skipped or failed must not look like success
         not_recorded = own_spec is not None and bool(not_done)
-        if changed:
+        if changed and not (embedded and calm):
             print(RESTART_NOTE)
         done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
         remaining = [f for f in findings if f.fixable and f.server not in done]
@@ -525,7 +540,10 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
             offer_commit(ask)
     finally:
         if not bk.empty:
-            if calm:
+            LAST_BACKUP = bk.root
+            if calm and embedded:
+                out.detail(f"backup: {bk.root} (it holds old configs, keep it private)")
+            elif calm:
                 print(f"\n{UNDO_LINE}")
                 out.detail(f"backup: {bk.root} (it holds old configs, keep it private)")
             else:

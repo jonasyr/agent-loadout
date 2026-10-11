@@ -52,3 +52,26 @@ def test_verbose_bootstrap_keeps_the_details(calm, capsys, monkeypatch):
     _run()
     text = capsys.readouterr().out
     assert "== Prerequisites" in text and "[ok  ]" in text
+
+
+def test_calm_bootstrap_prints_one_undo_line_after_adopt(calm, capsys, monkeypatch):
+    from loadout import adopt
+    calls = []
+
+    def fake_run(**kw):
+        calls.append(kw)
+        adopt.LAST_BACKUP = calm / "bk"
+        return 0
+
+    monkeypatch.setattr(adopt, "run", fake_run)
+    _run(adopt_step=True)
+    text = capsys.readouterr().out
+    assert calls and calls[0]["embedded"] is True
+    assert text.count(adopt.UNDO_LINE) == 1
+
+
+def test_calm_bootstrap_has_no_separate_new_terminal_line(calm, capsys, monkeypatch):
+    monkeypatch.setattr(bootstrap, "setup_path", lambda bk: (["added the tool folders to PATH in ~/.bashrc"], True))
+    _run()
+    text = capsys.readouterr().out
+    assert "Open a new terminal" not in text and "Next: run `claude` in a new terminal." in text

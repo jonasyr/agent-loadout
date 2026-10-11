@@ -528,13 +528,15 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         total = sum(1 for on in settings_merge.desired_settings().get("enabledPlugins", {}).values() if on)
         failed = sum(1 for line in lines if PROBLEM.search(line))
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
+    adopt.LAST_BACKUP = None
     if adopt_step:
         _step("Adopt existing setup")
         if not yes and not interactive:
             print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
         else:
             print()
-            adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive)
+            adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
+                      embedded=True)
             print()
     _step("Secrets")
     _report("Secrets", f"{_tilde(paths.secrets_file())} ready", setup_secrets(bk))
@@ -557,9 +559,9 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         if bad:
             print(text)
     todo = still_to_do(os_key())
-    if not out.VERBOSE and not bk.empty:
+    if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
         print(f"\n{adopt.UNDO_LINE}")
-    if path_changed:
+    if path_changed and out.VERBOSE:
         print("\nOpen a new terminal so the new PATH applies.")
     if todo:
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")

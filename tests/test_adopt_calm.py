@@ -72,3 +72,22 @@ def test_verbose_keeps_the_full_plan(machine, monkeypatch, capsys):
     monkeypatch.setattr(out, "VERBOSE", True)
     adopt.run(False, None, set(), False, lambda q: "", with_versions=False)
     assert "REMOVE (" in capsys.readouterr().out
+
+
+def test_calm_names_drop_the_marketplace_suffixes():
+    assert adopt._calm_name(Verdict(Item("plugin", "auto-memory@severity1-marketplace"), "remove", "")) == "auto-memory plugin"
+    assert adopt._calm_name(Verdict(Item("marketplace", "severity1-marketplace"), "remove", "")) == "severity1 marketplace"
+
+
+def test_calm_summary_names_the_profile_for_scope_down(machine):
+    v = next(x for x in _verdicts() if x.action == "scope-down")
+    line = adopt.calm_summary([v], [])[0]
+    assert "Disabled globally" in line and "loadout profile" in line
+
+
+def test_embedded_adopt_leaves_undo_and_restart_to_the_caller(machine, capsys):
+    adopt.LAST_BACKUP = None
+    adopt.run(True, None, set(), True, lambda q: "", with_versions=False, interactive=False, embedded=True)
+    text = capsys.readouterr().out
+    assert adopt.UNDO_LINE not in text and adopt.RESTART_NOTE not in text
+    assert adopt.LAST_BACKUP is not None
