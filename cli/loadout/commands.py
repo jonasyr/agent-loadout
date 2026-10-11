@@ -61,12 +61,15 @@ EXTRA_COMMANDS.append(_register_adopt)
 
 
 def _register_check(sub):
-    from . import check, settings_merge
+    from . import check, out, settings_merge
 
     p = sub.add_parser("check", help="verify this machine's loadout setup")
+    p.add_argument("--verbose", action="store_true", help="list every check, not only the problems")
 
     def run_check(a):
-        text, code = check.format_results(check.run_checks())
+        if a.verbose:
+            out.VERBOSE = True
+        text, code = (check.format_results if out.VERBOSE else check.format_summary)(check.run_checks())
         print(text)
         return code
 

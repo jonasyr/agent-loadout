@@ -133,3 +133,30 @@ def test_mcp_server_only_in_tool_dir_warns_to_open_new_terminal(fake_home, fake_
 def test_mcp_server_missing_everywhere_is_left_to_the_binary_check(fake_home, fake_runner):
     fake_runner.missing.update({"serena", "codebase-memory-mcp"})
     assert "MCP servers on PATH" not in _by(check.run_checks())  # "binary serena" already fails; an ok here would contradict it
+
+
+def test_summary_counts_and_lists_only_problems():
+    from loadout.check import CheckResult, format_summary
+    results = [CheckResult("a", True), CheckResult("b", False, "broken", "fix b"),
+               CheckResult("c", False, "meh", "fix c", "warn")]
+    text, code = format_summary(results)
+    assert text.splitlines()[0] == "Health check: 1 of 3 OK"
+    assert "[FAIL] b: broken" in text and "[warn] c: meh" in text and "[ok  ]" not in text
+    assert code == 1
+
+
+def test_summary_all_ok_is_one_line():
+    from loadout.check import CheckResult, format_summary
+    text, code = format_summary([CheckResult("a", True), CheckResult("b", True)])
+    assert (text, code) == ("Health check: 2 of 2 OK", 0)
+
+
+def test_check_verbose_flag_prints_every_line(fake_home, fake_runner, monkeypatch, capsys):
+    from loadout import __main__, check, out
+    from loadout.check import CheckResult
+    monkeypatch.setattr(out, "VERBOSE", False)
+    monkeypatch.setattr(check, "run_checks", lambda: [CheckResult("a", True), CheckResult("b", True)])
+    __main__.main(["check"])
+    assert capsys.readouterr().out.strip() == "Health check: 2 of 2 OK"
+    __main__.main(["check", "--verbose"])
+    assert "[ok  ] a" in capsys.readouterr().out

@@ -204,3 +204,11 @@ def format_results(results: list[CheckResult]) -> tuple[str, int]:
                 code = 1
         lines.append(line)
     return "\n".join(lines), code
+
+
+def format_summary(results: list[CheckResult]) -> tuple[str, int]:
+    """One count line, then only the warnings and failures (same lines as format_results)."""
+    bad = [r for r in results if not r.ok]
+    text, code = format_results(bad)
+    head = f"Health check: {len(results) - len(bad)} of {len(results)} OK"
+    return (f"{head}\n{text}" if bad else head), code
