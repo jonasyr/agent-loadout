@@ -53,7 +53,6 @@ When you change behaviour, update the page in `docs/` that owns the fact, and li
 ## Commits and pull requests
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, for example `feat(catalog): add <tool>`, `fix(adopt): ...`, `docs: ...`, `test: ...`.
-- Do not add `Co-Authored-By` or any other attribution trailer to commits or pull requests.
 - Work on a branch and open a pull request against `main`. Say what changed and why, and how you tested it.
 - CI must be green before a merge: the test suite on Linux and on Windows (including the hook scripts under Git Bash), and `claude plugin validate` for the marketplace and the plugin.
 
