@@ -1,6 +1,9 @@
 name: ci
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
@@ -18,6 +21,34 @@ jobs:
           bash plugins/loadout/hooks/run.sh loadout hook-session-start
           bash plugins/loadout/hooks/run.sh --soft no-such-tool
           bash plugins/loadout/hooks/subagent-context.sh | python -c "import json,sys; json.load(sys.stdin)"
+
+  test-wsl2:
+    name: test (wsl2)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: wsl-bash {0}
+    steps:
+      - name: check out with LF line endings, as a clone inside WSL would have
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: Vampire/setup-wsl@5fae231e29d976722de11654d8323419501bb327 # v7.0.0
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 2
+          additional-packages: python3 git curl ca-certificates
+      - name: install uv inside WSL
+        run: curl -LsSf https://astral.sh/uv/0.12.24/install.sh | sh
+      - name: tests
+        run: ~/.local/bin/uv run --python 3.12 --with pytest pytest -q
+      - name: smoke test (WSL 2 detected)
+        run: |
+          python3 -c "import sys; sys.path.insert(0, 'cli'); from loadout import wsl; v = wsl.detect(); print('detect:', v); assert v == 2"
+          out="$(python3 bin/loadout check || true)"
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -F '[ok  ] WSL 2'
+          ! printf '%s\n' "$out" | grep -F 'WSL 1:'
 
   validate:
     runs-on: ubuntu-latest

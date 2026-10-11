@@ -20,7 +20,7 @@ Plugins without a marketplace name come from `claude-plugins-official`.
 
 ## Marketplaces
 
-`settings.base.json` registers three marketplaces, each with `"autoUpdate": true`: `agent-loadout` (this repo), `impeccable` and `academic-research-skills` (used by the `thesis` profile). Claude Code updates their plugins. How to turn that off: [Security and trust](../explanation/security-and-trust.md#opting-out).
+`settings.base.json` registers four marketplaces, each with `"autoUpdate": true`: `agent-loadout` (this repo), `impeccable`, `academic-research-skills` (used by the `thesis` profile) and `life-sciences`. The `life-sciences` marketplace carries the Wiley Scholar Gateway plugin, which is known but not enabled: use the claude.ai connector or enable the plugin, not both. Claude Code updates their plugins. How to turn that off: [Security and trust](../explanation/security-and-trust.md#opting-out).
 
 ## Settings
 
@@ -55,6 +55,8 @@ From the `binary` entries in `catalog.json`. `loadout bootstrap --install` insta
 | `playwright-cli` | required | Claude checks UIs in a real browser; snapshots stay on disk. Why not a browser MCP server: [ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md). |
 | `rtk` | recommended | Shrinks noisy command output to save tokens. |
 | `pyright`, `typescript-language-server`, `rust-analyzer` | recommended | Language servers for the LSP plugins. |
+
+codebase-memory-mcp is installed and updated with its install script and `--skip-config`, so it does not register a second MCP server next to the plugin's ([ADR 0019](../adr/0019-upstream-installers-without-agent-configuration.md)). On Windows, bootstrap uses `install.ps1`.
 
 Python 3.10 or newer is needed before any of this runs; see [Getting started](../tutorials/getting-started.md#requirements). Updates: [`loadout update`](cli.md#loadout-update).
 

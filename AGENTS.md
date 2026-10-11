@@ -27,7 +27,7 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 - `catalog.py`, `versions.py`, `pkgmgr.py` tool knowledge, versions, binary updates
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
 - `preferences.py`, `configure.py` structured preferences and the wizard
-- `own.py` your own tools; `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates
+- `own.py` your own tools; `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks
 - `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker
 
 Other kit parts:
@@ -35,6 +35,6 @@ Other kit parts:
 - `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`, `.mcp.json`)
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
 
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (architecture, security), `adr/` (decisions 0001-0018), `examples/`, and `docs/superpowers/` (where agents write specs and plans).
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (architecture, security), `adr/` (decisions 0001-0019), `examples/`, and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).

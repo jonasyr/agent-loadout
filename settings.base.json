@@ -21,6 +21,13 @@
         "repo": "Imbad0202/academic-research-skills"
       },
       "autoUpdate": true
+    },
+    "life-sciences": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/life-sciences"
+      },
+      "autoUpdate": true
     }
   },
   "enabledPlugins": {

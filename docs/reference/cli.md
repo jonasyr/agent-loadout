@@ -161,6 +161,8 @@ It has no flags. Each line is `ok`, `warn` or `FAIL`.
 
 | Check | Severity when it fails |
 |---|---|
+| The Python version that runs loadout (an `ok` line; loadout needs 3.10 or newer and stops before this on older versions) | — |
+| Inside WSL: the WSL version (an ok line), then one warning per problem from [WSL 2](../how-to/wsl.md) | warn |
 | The links under `~/.claude` (rules, global skills, `hooks/personal`) | FAIL |
 | `settings.json` is valid JSON | FAIL |
 | A required binary is on `PATH` | FAIL |
@@ -168,6 +170,7 @@ It has no flags. Each line is `ok`, `warn` or `FAIL`.
 | `skills.json` is valid JSON | warn |
 | Settings drift (a kit-managed value was changed) | warn |
 | Enabled plugins are installed | warn |
+| An enabled plugin and a claude.ai connector with the same tools ("ever connected" in `~/.claude.json`, an undocumented Claude Code field) | warn |
 | Own tools that loadout does not manage | warn |
 | `gh auth status` | warn |
 | `secrets.env` exists and is readable only by you | warn |
@@ -207,7 +210,7 @@ For a tool not managed by mise, if the update command succeeds but installs noth
 
 If an installer changed `~/.claude/settings.json`, the kit-merged version is put back and the installer's version goes into a backup.
 
-Some installers re-register what the loadout plugin already provides (for example `codebase-memory-mcp update` re-adds its user-scope MCP server and `~/.claude/hooks/cbm-*` scripts). When at least one update command ran and the loadout plugin is enabled, `update` removes only exact duplicates (`maintenance.undo_reregistered`, `duplicates.py`):
+Some installers re-register what the loadout plugin already provides (for example an install of codebase-memory-mcp without `--skip-config` adds its user-scope MCP server and `~/.claude/hooks/cbm-*` scripts). When at least one update command ran and the loadout plugin is enabled, `update` removes only exact duplicates (`maintenance.undo_reregistered`, `duplicates.py`):
 
 - an MCP server with the same name, command, arguments, type and env as the plugin's, and not one of your personal-layer servers;
 - a hook that runs the same command as a plugin hook, or is exactly a legacy `~/.claude/hooks/cbm-*` script;

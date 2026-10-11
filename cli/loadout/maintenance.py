@@ -58,7 +58,8 @@ def session_start(now: float) -> str | None:
     if notice.exists():
         out = json.dumps({"systemMessage": notice.read_text(encoding="utf-8").strip()})
         notice.unlink()
-    if is_due("last-pull", DAY, now) or is_due("last-update-check", WEEK, now):
+    pull_due = os.environ.get("LOADOUT_NO_AUTO_PULL") != "1" and is_due("last-pull", DAY, now)
+    if pull_due or is_due("last-update-check", WEEK, now):
         try:
             _spawn_background()
         except Exception:  # the notice above was already taken: still show it

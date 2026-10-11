@@ -92,3 +92,12 @@ def test_load_json_rejects_non_object(tmp_path):
     p.write_text("[]")
     with pytest.raises(jsonio.InvalidJSON, match="object"):
         jsonio.load_json(p)
+
+
+def test_load_json_reports_non_utf8_as_invalid_json(tmp_path):
+    import pytest
+    from loadout.jsonio import InvalidJSON, load_json
+    p = tmp_path / "x.json"
+    p.write_bytes(b'{"a": "\xff\xfe"}')
+    with pytest.raises(InvalidJSON, match="not UTF-8"):
+        load_json(p)

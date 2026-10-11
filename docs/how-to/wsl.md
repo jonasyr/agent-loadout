@@ -2,7 +2,7 @@
 
 Use this page if you work on Windows. WSL 2 is the recommended setup for loadout. Native Windows is supported too: its steps are in the Windows part of the getting-started tutorial.
 
-loadout does not detect WSL yet and `loadout check` has no WSL checks. Everything below is a manual step.
+loadout detects WSL. `loadout check` prints `WSL 1` or `WSL 2` and warns about the problems below that it can see: WSL 1, the kit, the personal layer or the current folder under `/mnt/<drive>/`, `claude`, `node`, `npm`, `uv` or `git` resolving to a Windows program, and (WSL 2) missing bubblewrap or socat. Bootstrap prints the same warnings at its start and continues. The steps below are the fixes.
 
 Anthropic supports both native Windows and WSL 2 for Claude Code and does not name a preferred one ([setup](https://code.claude.com/docs/en/setup)). loadout recommends WSL 2 for these reasons:
 
@@ -46,10 +46,12 @@ Work in `~/`, for example `~/code/app`, not under `/mnt/c`. Projects on `/mnt/c`
 WSL imports the Windows `PATH`. `claude`, `node` or `uv` can then resolve to a Windows program under `/mnt/c`, which fails in odd ways ([troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install#npm-install-errors-in-wsl)). Check each one:
 
 ```bash
-which claude node uv
+which claude node npm uv git
 ```
 
 Each path must be inside WSL, such as `~/.local/bin/claude` or `/usr/bin/node`. A path that starts with `/mnt/c` is the Windows binary. Install the tool inside WSL (`./bootstrap.sh --install` does it for what it can), and make sure its directory comes first in your `PATH`. Re-run `loadout check` afterwards.
+
+The other fix, `appendWindowsPath = false` under `[interop]` in `/etc/wsl.conf`, stops WSL from importing the Windows `PATH` at all. It also hides Windows tools you may want, such as `code` and `explorer.exe`, and needs `wsl --shutdown` to take effect.
 
 ## 6. Install the sandbox packages
 

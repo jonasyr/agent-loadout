@@ -42,3 +42,4 @@ Template:
 | [0016](0016-your-own-tools-ask-and-remember-leave.md) | Your own tools: nothing without an answer; Enter decides later, an explicit leave is remembered | Accepted |
 | [0017](0017-hooks-merge-per-hook-with-tombstones.md) | Hooks merge per hook (event, matcher, command) with tombstones | Accepted |
 | [0018](0018-secret-guard-fails-closed.md) | The secret guard fails closed | Accepted |
+| [0019](0019-upstream-installers-without-agent-configuration.md) | Upstream installers run without agent configuration | Accepted |

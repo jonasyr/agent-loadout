@@ -8,9 +8,11 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 |---|---|
 | `loadout: command not found` | Add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal. |
 | `npm error code EACCES` when installing pyright / typescript-language-server / playwright-cli | Your global npm prefix is root-owned (for example `/usr`). Either `npm config set prefix ~/.local` (then re-run `loadout bootstrap --install`), or install them with your version manager, for example `mise use -g npm:pyright npm:typescript-language-server`. |
-| A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example codebase-memory-mcp on native Windows. |
+| `loadout needs Python 3.10 or newer (found 3.X). Install it and re-run.` | Install Python 3.10 or newer with your system package manager (on Windows from python.org or `winget install Python.Python.3.12`) and make sure `python3` (Windows: `python`) runs it. |
+| A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example rtk on native Windows. |
 | No session notices, or the daily sync never runs | `loadout` must be on the `PATH` that Claude Code's hooks see. The plugin's hook runner exits 0 silently when the command is missing (`plugins/loadout/hooks/run.sh`). Add `~/.local/bin` to the `PATH` of the environment Claude Code starts from, then restart it. |
 | A plugin or MCP server is missing in Claude Code | Restart Claude Code. Then `loadout check` lists what is missing and how to fix it. Enabled plugins install at the next Claude Code start. |
+| loadout skills or hooks are missing in a session that started before an update | Run `/reload-plugins` (loadout reminds you once per session), or start a new session. |
 
 ## Settings
 
@@ -45,6 +47,7 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 | Links were copied instead of linked | Enable Developer Mode (Settings, For developers) and re-run bootstrap, which switches back to links. Copies still work and are refreshed after each daily sync. Edit the source in your personal layer, not the copy: an edited copy is moved into a backup on the next refresh (the session notice names it). See [Links and copies](../reference/personal-layer.md#links-and-copies). |
 | "cannot take JSON arguments (Windows .cmd shim)" | The npm-installed `claude.cmd` cannot receive JSON safely, so loadout changes nothing for that server. Best fix: install the native `claude.exe` and re-run. Otherwise open the private `manual-commands.txt` (path printed): with Claude Code closed, add the JSON block it shows under `"mcpServers"` in `%USERPROFILE%\.claude.json` (the file also has the macOS/Linux shell form). |
 | `.\bootstrap.ps1` is refused ("running scripts is disabled on this system"), or secrets in `secrets.env` are not seen | PowerShell's default execution policy on Windows clients is `Restricted`: no script runs, neither `bootstrap.ps1` nor your PowerShell profiles, where bootstrap writes the secrets loader. Run bootstrap with `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`, which bypasses the policy for that one process. For the profiles, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. Bootstrap detects `Restricted` and prints that command, but does not change the policy itself (`bootstrap.POLICY_NOTE`). |
+| `loadout check` shows a `WSL` warning | Follow the fix it prints. [Use loadout on Windows with WSL 2](wsl.md) explains each one. |
 | A hook script is not found | Claude Code runs hook commands through Git Bash. Use forward slashes (`C:/Users/me/x.sh`) or quotes. |
 
 ## Secrets

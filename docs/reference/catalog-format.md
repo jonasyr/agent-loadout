@@ -16,6 +16,7 @@ The file is one JSON object with one key, `entries`, a list of entries. Ids are 
 | `by` | no | The replacement for a superseded or alternative tool. Appended to the reason as `Replacement: ...`. |
 | `profile` | for `status: profile` | Name of the kit profile (a file in `profiles/`) that carries the tool. |
 | `offer` | no | Makes the entry a global add-on in `loadout configure`. See below. |
+| `connector` | no | For a plugin: the name of the claude.ai connector with the same tools, as Claude Code lists it (for example "claude.ai Context7"). `loadout check` warns when the plugin is enabled and the connector has been connected. |
 | `category` | no | Group heading in the configure wizard. Default: `other`. |
 | `required` | no | For a `binary`: a missing one is a `FAIL` in `loadout check` and is installed by `bootstrap --install`. |
 | `version` | for `binary` | How to read and look up versions. See below. |

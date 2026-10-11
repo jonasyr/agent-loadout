@@ -36,6 +36,8 @@ def fake_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.delenv("LOADOUT_PERSONAL", raising=False)
+    from loadout import wsl
+    monkeypatch.setattr(wsl, "OSRELEASE", tmp_path / "no-osrelease")  # tests never see a real WSL machine
     return home
 
 

@@ -226,29 +226,39 @@
           [
             "sh",
             "-c",
-            "curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash"
+            "curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash -s -- --skip-config"
+          ]
+        ],
+        "windows": [
+          [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.ps1))) --skip-config"
           ]
         ]
       },
       "update": {
         "posix": [
           [
-            "codebase-memory-mcp",
-            "update",
-            "-y",
-            "--standard"
+            "sh",
+            "-c",
+            "curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash -s -- --skip-config"
           ]
         ],
         "windows": [
           [
-            "codebase-memory-mcp",
-            "update",
-            "-y",
-            "--standard"
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.ps1))) --skip-config"
           ]
         ]
-      },
-      "manual": "Windows: download the release archive from https://github.com/DeusData/codebase-memory-mcp/releases and run its install.ps1."
+      }
     },
     {
       "id": "rtk",
@@ -733,6 +743,30 @@
         ]
       },
       "reason": "About 25 skill/command descriptions in every session; enable in research repos."
+    },
+    {
+      "id": "plugin-wiley-scholar-gateway",
+      "kind": "plugin",
+      "status": "alternative",
+      "match": {
+        "names": [
+          "wiley-scholar-gateway@life-sciences"
+        ]
+      },
+      "connector": "claude.ai Wiley Scholar Gateway",
+      "reason": "Literature search across Wiley's peer-reviewed content. Use either this plugin or the claude.ai connector, not both."
+    },
+    {
+      "id": "plugin-context7",
+      "kind": "plugin",
+      "status": "core",
+      "match": {
+        "names": [
+          "context7@claude-plugins-official"
+        ]
+      },
+      "connector": "claude.ai Context7",
+      "reason": "Library documentation (enabled by the kit). Use either this plugin or the claude.ai connector, not both."
     },
     {
       "id": "plugin-cybersecurity-skills",

@@ -27,7 +27,7 @@ Go on with [What bootstrap asks](#what-bootstrap-asks).
 
 Choose one path first. Do not mix the two.
 
-- **WSL 2 (recommended).** Open a WSL terminal, not PowerShell, and follow the Linux steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) for the manual checks (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages).
+- **WSL 2 (recommended).** Open a WSL terminal, not PowerShell, and follow the Linux steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages); `loadout check` warns about each of these it can see.
 - **Native Windows.** Use PowerShell and the steps below. Native Windows needs Git for Windows.
 
 ### Native Windows
@@ -43,7 +43,7 @@ Choose one path first. Do not mix the two.
 
    If you plan to keep secrets in `secrets.env`, also run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`: `Bypass` only lets this one command run, `RemoteSigned` lets your PowerShell profiles (and with them the secrets loader) run. Why: [Troubleshooting, Windows](../how-to/troubleshooting.md#windows).
 3. Bootstrap writes the secrets loader into both your Windows PowerShell and PowerShell 7 profiles.
-4. Install codebase-memory-mcp by hand from its release archive (the `manual` hint names it); until then `loadout check` shows FAIL and bootstrap exits with 1. It has no Windows install command. The optional rtk has none either; install it the same way if you want it.
+4. Bootstrap installs codebase-memory-mcp with its `install.ps1`. The optional rtk has no Windows install command; install it by hand if you want it.
 5. Without Developer Mode, Windows cannot create the links, and loadout copies files instead. Enable Developer Mode and re-run bootstrap to switch back to links. See [Troubleshooting](../how-to/troubleshooting.md).
 
 Go on with [What bootstrap asks](#what-bootstrap-asks).

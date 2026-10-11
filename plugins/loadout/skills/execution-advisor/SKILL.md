@@ -17,7 +17,7 @@ Use the plan path from the hook message or the user; otherwise the newest file i
 |---|---|
 | **Plan completeness**: the plan already contains the complete code and exact commands | Transcription: Inline, or the cheapest model tier if delegated |
 | **Cross-task interface coupling**: later tasks depend on names, types or files from earlier ones | Continuity: Inline or the same implementer; still give risky parts an independent review |
-| **Risk**: user data, security, other people's machines, irreversible actions | Per-task independent review is worth its cost (SDD task or inline + a dedicated reviewer) |
+| **Risk**: user data, security, other people's machines, irreversible actions | Per-task independent review is worth its cost (a Delegated or Inline row with per-task review) |
 | **User interaction or real-machine actions**: publish, deploy, migration on real data, questions, credentials, anything needing a yes | Must be Inline (a subagent cannot ask the user and must not act on the real machine) |
 | **Size and count**: 1–3 small tasks | Inline: SDD overhead is not worth it |
 | **Current session context**: large or near-full context | SDD protects it; a fresh session makes Inline cheap |
@@ -64,4 +64,5 @@ Always include the Cost and Review policy lines. Then ask the user to choose, wi
   - **Delegated row**: dispatch one implementer subagent with subagent-driven-development's `implementer-prompt.md` and the row's model set explicitly. A batched dispatch covers its consecutive tasks in one brief.
   - **Per-task review**: only on rows that say so, dispatch a reviewer with subagent-driven-development's `task-reviewer-prompt.md` before moving on; fix what it finds.
   - **Ledger**: record every finished task, inline or delegated, as its own `Task <N>: complete` line in that `progress.md`.
+  - **Parallel**: independent Delegated rows that touch disjoint files may be dispatched in parallel (one message, several implementer subagents); record each as its own `Task <N>: complete` line.
   - **End**: one top-tier whole-branch review, as executing-plans prescribes, then superpowers:finishing-a-development-branch.

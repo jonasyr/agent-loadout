@@ -1,4 +1,4 @@
-"""`loadout update` undoes exact duplicates an installer re-registers (codebase-memory-mcp update)."""
+"""`loadout update` undoes exact duplicates an installer re-registers (for example the codebase-memory-mcp install script)."""
 import json
 
 from loadout import backup, catalog, maintenance as m, paths, runner, versions
@@ -43,7 +43,7 @@ def _run_update(fake_home, fake_runner, monkeypatch, side_effects=True):
     monkeypatch.setattr(versions, "local_version", lambda e: (0, 11, 0))
 
     def run(cmd, cwd=None, timeout=300, env=None):
-        if cmd[:2] == ["codebase-memory-mcp", "update"] and side_effects:
+        if "install.sh" in " ".join(cmd) and side_effects:  # an installer run without --skip-config
             _installer_side_effects(fake_home)
         return fake_runner(cmd, cwd, timeout, env)
 
