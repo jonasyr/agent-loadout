@@ -10,7 +10,7 @@ WIDTH = 18
 _FANCY = {"ok": "✓", "warn": "!", "fail": "✗", "bullet": "•", "arrow": "→"}
 _PLAIN = {"ok": "ok", "warn": "!", "fail": "x", "bullet": "-", "arrow": "->"}
 # result lines that report something the user must see even in calm mode
-PROBLEM = re.compile(r"failed|skipped|not changed|could not|cannot|do not run|by hand|left as is|^warning:")
+PROBLEM = re.compile(r"failed|skipped|not changed|not effective|could not|cannot|do not run|by hand|left as is|^warning:")
 _COLOR = {"ok": "32", "warn": "33", "fail": "31", "accent": "35", "muted": "2"}
 
 

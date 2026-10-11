@@ -228,7 +228,7 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
     bk.record_created(root / "settings.json", "created personal settings.json")
     from .configure import _about_you, ask_preferences
     _about_you(ask, bk)
-    ask_preferences(ask, fill_defaults=True, interactive=interactive, bk=bk)
+    ask_preferences(ask, fill_defaults=True, interactive=interactive, bk=bk, quick=True)
     return f"created starter personal layer at {root} (make it a git repo to sync it across machines)", True
 
 
