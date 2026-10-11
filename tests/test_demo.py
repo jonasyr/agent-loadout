@@ -95,3 +95,10 @@ def test_tape_types_the_readme_one_liner():
 def test_nothing_runs_the_real_claude_clip_recorder():
     for f in ("render.sh", "loadout.tape", "sandbox.sh"):
         assert "record-claude" not in (DEMO / f).read_text()
+
+
+def test_sandbox_never_writes_a_global_git_config():
+    """git config --global falls back to the real home when HOME is unset; the sandbox names its file instead."""
+    sandbox = (DEMO / "sandbox.sh").read_text()
+    assert "--global" not in sandbox
+    assert 'git config --file "$home/.gitconfig" user.name demo' in sandbox
