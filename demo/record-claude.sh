@@ -6,7 +6,7 @@
 set -euo pipefail
 kit="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 command -v vhs >/dev/null || { echo "needs vhs (Arch: sudo pacman -S vhs; others: https://github.com/charmbracelet/vhs)" >&2; exit 1; }
-fc-list 2>/dev/null | grep -qi "JetBrains Mono" || { echo "needs the JetBrains Mono font (Arch: sudo pacman -S ttf-jetbrains-mono)" >&2; exit 1; }
+fc-list : family 2>/dev/null | grep -i "JetBrains Mono" >/dev/null || { echo "needs the JetBrains Mono font (Arch: sudo pacman -S ttf-jetbrains-mono)" >&2; exit 1; }
 cd "$kit"
 vhs demo/claude.tape
 echo "wrote demo/claude-clip.mp4: watch it, then run demo/render.sh"
