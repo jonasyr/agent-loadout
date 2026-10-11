@@ -21,9 +21,9 @@ def test_enter_takes_the_recommended_preferences_in_one_question(fake_home, fake
     assert len(pref_questions) == 1 and "[Y/n]" in pref_questions[0]
     text = capsys.readouterr().out
     assert "answer_language" in text and "conventional" in text  # the summary lists the defaults
-    settings = json.loads((paths.personal_root() / "settings.json").read_text())
+    settings = json.loads((paths.personal_root() / "settings.json").read_text(encoding="utf-8"))
     assert settings["effortLevel"] == "medium"
-    assert "<!-- loadout:preferences:start -->" in (paths.personal_root() / "rules/me.md").read_text()
+    assert "<!-- loadout:preferences:start -->" in (paths.personal_root() / "rules/me.md").read_text(encoding="utf-8")
 
 
 def test_n_walks_through_each_preference(fake_home, fake_runner):

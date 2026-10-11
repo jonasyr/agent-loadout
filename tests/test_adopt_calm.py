@@ -97,7 +97,7 @@ def test_calm_shows_a_failed_own_tool_step_instead_of_success(machine, fake_runn
     import json
     from fixtures import FAKE_PAT
     cj = machine / ".claude.json"
-    data = json.loads(cj.read_text())
+    data = json.loads(cj.read_text(encoding="utf-8"))
     data["mcpServers"]["mytool"] = {"command": "mytool-mcp", "args": [], "env": {"MYTOOL_TOKEN": FAKE_PAT}}
     cj.write_text(json.dumps(data))
     fake_runner.responses[("claude", "mcp", "add-json")] = runner.Result(1, "", "add failed")

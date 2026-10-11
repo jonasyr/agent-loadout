@@ -11,13 +11,13 @@ DEMO = paths.kit_root() / "demo"
 
 
 def test_tape_records_only_the_sandbox_home():
-    tape = (DEMO / "loadout.tape").read_text()
+    tape = (DEMO / "loadout.tape").read_text(encoding="utf-8")
     assert "demo/sandbox.sh /home/demo" in tape and "export HOME=/home/demo" in tape
     assert tape.index("Hide") < tape.index("sandbox.sh") < tape.index("Show")
 
 
 def test_render_runs_offline_in_a_container():
-    render = (DEMO / "render.sh").read_text()
+    render = (DEMO / "render.sh").read_text(encoding="utf-8")
     assert "--network=none" in render and "/src:ro" in render
 
 
@@ -34,7 +34,7 @@ def test_demo_claude_refuses_outside_the_sandbox(tmp_path):
     p = subprocess.run([sys.executable, str(DEMO / "bin/claude"), "mcp", "remove", "-s", "user", "x"],
                        env={**os.environ, "HOME": str(tmp_path)}, capture_output=True, text=True, timeout=30)
     assert p.returncode != 0 and "sandbox" in p.stderr
-    assert '"x"' in (tmp_path / ".claude.json").read_text()
+    assert '"x"' in (tmp_path / ".claude.json").read_text(encoding="utf-8")
 
 
 def test_demo_claude_edits_the_sandbox_like_the_real_cli(tmp_path):
@@ -42,7 +42,7 @@ def test_demo_claude_edits_the_sandbox_like_the_real_cli(tmp_path):
     (tmp_path / ".claude.json").write_text('{"mcpServers": {"x": {}, "y": {}}}')
     subprocess.run([sys.executable, str(DEMO / "bin/claude"), "mcp", "remove", "-s", "user", "x"],
                    env={**os.environ, "HOME": str(tmp_path)}, check=True, timeout=30)
-    assert '"x"' not in (tmp_path / ".claude.json").read_text() and '"y"' in (tmp_path / ".claude.json").read_text()
+    assert '"x"' not in (tmp_path / ".claude.json").read_text(encoding="utf-8") and '"y"' in (tmp_path / ".claude.json").read_text(encoding="utf-8")
 
 README_URL = "https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh"
 
@@ -60,7 +60,7 @@ def test_demo_curl_serves_only_the_readme_url(tmp_path):
     (tmp_path / ".loadout-demo").touch()
     env = {**os.environ, "HOME": str(tmp_path), "LOADOUT_DEMO_KIT": str(paths.kit_root())}
     ok = subprocess.run(["sh", str(DEMO / "bin/curl"), "-fsSL", README_URL], env=env, capture_output=True, text=True, timeout=30)
-    assert ok.returncode == 0 and ok.stdout == (paths.kit_root() / "bootstrap.sh").read_text()
+    assert ok.returncode == 0 and ok.stdout == (paths.kit_root() / "bootstrap.sh").read_text(encoding="utf-8")
     bad = subprocess.run(["sh", str(DEMO / "bin/curl"), "-fsSL", "https://example.com/x"], env=env,
                          capture_output=True, text=True, timeout=30)
     assert bad.returncode != 0 and bad.stdout == ""
@@ -87,18 +87,18 @@ def test_demo_claude_lists_mcp_servers_and_plugins(tmp_path):
 
 
 def test_tape_types_the_readme_one_liner():
-    readme = (paths.kit_root() / "README.md").read_text()
+    readme = (paths.kit_root() / "README.md").read_text(encoding="utf-8")
     line = next(l for l in readme.splitlines() if l.startswith("curl -fsSL") and README_URL in l)
-    assert f'Type "{line}"' in (DEMO / "loadout.tape").read_text()
+    assert f'Type "{line}"' in (DEMO / "loadout.tape").read_text(encoding="utf-8")
 
 
 def test_nothing_runs_the_real_claude_clip_recorder():
     for f in ("render.sh", "loadout.tape", "sandbox.sh"):
-        assert "record-claude" not in (DEMO / f).read_text()
+        assert "record-claude" not in (DEMO / f).read_text(encoding="utf-8")
 
 
 def test_sandbox_never_writes_a_global_git_config():
     """git config --global falls back to the real home when HOME is unset; the sandbox names its file instead."""
-    sandbox = (DEMO / "sandbox.sh").read_text()
+    sandbox = (DEMO / "sandbox.sh").read_text(encoding="utf-8")
     assert "--global" not in sandbox
     assert 'git config --file "$home/.gitconfig" user.name demo' in sandbox
