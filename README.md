@@ -9,9 +9,24 @@
 
 Claude Code gets much better with the right plugins, MCP servers and instructions. But setups drift: every machine ends up different, old tools linger, versions go stale, and half of what is installed never gets used. loadout is a shared kit (this repo) plus a personal layer (your own folder, ideally a private git repo, with your preferences and tools). Its CLI merges both into `~/.claude` and keeps them current; [Architecture](docs/explanation/architecture.md) shows how.
 
+## The toolset
+
+The kit turns Claude Code into one workflow, from idea to merged change. Claude asks before it builds and writes a plan with tests first. A loadout skill picks how to run the plan. While building, Claude looks up structure in a code graph and edits exact symbols, sees type errors after every edit, reads current library docs, and checks UIs in a real browser. Every change ends with a review and docs that are still true. The kit's rules route each question to the right tool, so you do not have to.
+
+| Job | Tools | Kind |
+|---|---|---|
+| Plan before building | [superpowers](https://github.com/obra/superpowers) (brainstorm, plan, test-driven build, debug, verify) · `/loadout:execution-advisor` (inline or subagents, per task) | plugin · loadout skill |
+| Understand the code | [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) (code graph: callers, impact, dead code) · [Serena](https://github.com/oraios/serena) (find, rename, edit symbols) · LSP plugins for [Python](https://github.com/microsoft/pyright), [TypeScript](https://github.com/typescript-language-server/typescript-language-server), [Rust](https://github.com/rust-lang/rust-analyzer) (type errors after each edit) | MCP servers · plugins |
+| Current docs | [Context7](https://github.com/upstash/context7) (libraries and frameworks) · [Microsoft Learn](https://github.com/MicrosoftDocs/mcp) (.NET, Azure, Windows) | MCP servers via plugins |
+| UI that looks designed | [frontend-design](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/frontend-design) (direction) · [playwright-cli](https://github.com/microsoft/playwright-cli) (real browser checks) · [impeccable](https://github.com/pbakaus/impeccable) (audit and polish) | plugins · CLI |
+| Safe, documented changes | [security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance) (warnings and commit review) · `/loadout:docs-sync`, `/loadout:docs-audit`, `/loadout:onboard` (docs that match the code) · [commit-commands](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/commit-commands) (commit, push, PR) | plugins · loadout skills |
+| Fewer tokens | [rtk](https://github.com/rtk-ai/rtk) (compact command output, applied by a hook) | CLI |
+
+Domain tools (research, databases, SonarQube, Android) are added per project with profiles. How the pieces work together: [The toolset](docs/explanation/the-toolset.md). Every tool with its settings: [Included tools](docs/reference/included-tools.md).
+
 ## What you get
 
-- **Curated defaults.** A small set of plugins, MCP servers, command-line tools and rules that complement each other instead of overlapping. Every keep or drop decision has a written reason in [`catalog.json`](catalog.json). See [Included tools](docs/reference/included-tools.md).
+- **Curated defaults.** The toolset above complements itself instead of overlapping. Every keep or drop decision has a written reason in [`catalog.json`](catalog.json), and `loadout adopt` explains it when it finds an overlapping tool on your machine.
 - **Works on existing setups.** `loadout adopt` shows what it would change and why, asks first, and backs up what it removes or replaces. See [Handle your own tools](docs/how-to/your-own-tools.md).
 - **Stays up to date by itself.** Claude Code updates the plugins; loadout pulls the kit and your personal layer once a day; you get a notice when tool binaries have updates. See [The daily sync](docs/explanation/architecture.md#the-daily-sync).
 - **Yours on top.** Your preferences, own tools and profiles live in a separate personal layer, ideally a private git repo. Change them with `loadout configure` or by asking Claude (`/loadout:configure`). See [Set your working preferences](docs/how-to/set-preferences.md).
@@ -70,6 +85,7 @@ The full index is [docs/README.md](docs/README.md).
 | Fix a problem | [Troubleshooting](docs/how-to/troubleshooting.md) |
 | Look up a command, flag or exit code | [CLI reference](docs/reference/cli.md) |
 | See which tools are included and why | [Included tools](docs/reference/included-tools.md) |
+| See how the tools form one workflow | [The toolset](docs/explanation/the-toolset.md) |
 | Understand how the parts fit together | [Architecture](docs/explanation/architecture.md) |
 | Know why it was built this way | [Decision records](docs/adr/README.md) |
 | Remove loadout | [Uninstall loadout](docs/how-to/uninstall.md) |

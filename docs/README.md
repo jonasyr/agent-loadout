@@ -31,6 +31,7 @@ Which page answers which question. The pages follow [Diátaxis](https://diataxis
 
 ## Explanation
 
+- [The toolset](explanation/the-toolset.md). Read this when you want to know which plugins, MCP servers, skills and tools the kit sets up, what each is for, and how they form one workflow.
 - [Architecture](explanation/architecture.md). Read this when you want to understand how the kit, your personal layer and `~/.claude` fit together, and how the daily sync works.
 - [Security and trust](explanation/security-and-trust.md). Read this when you want to know what runs without asking, what loadout touches, where secrets go and how to opt out.
 - [Documentation strategy](explanation/documentation-strategy.md). Read this when you want to know how loadout organises a repo's documentation and what the docs skills do. A worked example is in [examples/docs-audit-before-after](examples/docs-audit-before-after/README.md).
