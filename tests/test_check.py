@@ -106,3 +106,30 @@ def test_check_mentions_unmanaged_tools(fake_home, fake_runner):
     r = _by(check.run_checks())["own tools"]
     assert not r.ok and r.severity == "warn"
     assert r.fix == "decide with `loadout adopt --apply` or `loadout configure own`"
+
+
+def test_helper_binaries_are_not_checked(fake_home, fake_runner):
+    fake_runner.missing.add("mise")
+    assert "binary mise" not in _by(check.run_checks())
+
+
+def test_mcp_servers_on_path_ok(fake_home, fake_runner):
+    fake_runner.paths.update({"serena": "/usr/bin/serena", "codebase-memory-mcp": "/usr/bin/codebase-memory-mcp"})
+    r = _by(check.run_checks())["MCP servers on PATH"]
+    assert r.ok
+
+
+def test_mcp_server_only_in_tool_dir_warns_to_open_new_terminal(fake_home, fake_runner, monkeypatch):
+    d = fake_home / ".local/bin"
+    d.mkdir(parents=True)
+    (d / "serena").write_text("")
+    fake_runner.paths["codebase-memory-mcp"] = "/usr/bin/codebase-memory-mcp"  # serena not on the current PATH
+    monkeypatch.setattr(check.paths, "tool_dirs", lambda: [d])
+    r = _by(check.run_checks())["MCP servers on PATH"]
+    assert not r.ok and r.severity == "warn"
+    assert "serena" in r.detail and "open a new terminal" in r.fix and str(d) in r.fix
+
+
+def test_mcp_server_missing_everywhere_is_left_to_the_binary_check(fake_home, fake_runner):
+    fake_runner.missing.update({"serena", "codebase-memory-mcp"})
+    assert "MCP servers on PATH" not in _by(check.run_checks())  # "binary serena" already fails; an ok here would contradict it

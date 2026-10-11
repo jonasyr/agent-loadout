@@ -74,7 +74,7 @@ def test_windows_tools_on_path(fake_home, fake_runner, mnt, tmp_path):
 def test_sandbox_packages_missing_only_on_wsl2(fake_home, fake_runner, mnt, tmp_path):
     fake_runner.missing.update({"bwrap", "socat"})
     two = wsl.problems(2, tmp_path, mount=_prefix(mnt))
-    assert ("sandbox packages missing: bubblewrap, socat", "`sudo apt-get install bubblewrap socat`") in two
+    assert ("sandbox packages missing: bubblewrap, socat (needed for Claude Code's sandbox)", "`sudo apt-get install bubblewrap socat`") in two
     one = wsl.problems(1, tmp_path, mount=_prefix(mnt))
     assert not any("sandbox packages" in p for p, _ in one)
 
@@ -155,3 +155,9 @@ def test_cwd_equal_to_kit_is_reported_once_with_rebootstrap_hint(fake_home, fake
     assert len(found) == 1
     assert found[0][0].startswith("the kit (")
     assert "re-run ./bootstrap.sh" in found[0][1]
+
+
+def test_sandbox_problem_says_what_it_is_for(fake_home, fake_runner, mnt, tmp_path):
+    fake_runner.missing.update({"bwrap", "socat"})
+    [(problem, _)] = [p for p in wsl.problems(2, tmp_path, mount=_prefix(mnt)) if "sandbox" in p[0]]
+    assert "Claude Code's sandbox" in problem

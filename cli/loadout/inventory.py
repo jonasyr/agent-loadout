@@ -107,7 +107,7 @@ def _binary_items(with_versions: bool) -> list[Item]:
         if not runner.have(name):
             out.append(Item("binary", name, "missing", "PATH", {"entry": entry, "state": "missing"}))
             continue
-        if not with_versions:
+        if not with_versions or entry.get("helper"):  # helpers (mise) only install other tools
             out.append(Item("binary", name, "installed", "PATH", {"entry": entry, "state": "ok"}))
             continue
         local = versions.local_version(entry)

@@ -32,7 +32,7 @@ Every file is optional, and a missing file counts as empty. The one exception is
 | `profiles/NAME.json` | Your own project presets. See [profile-format](profile-format.md). | Applied to a repo by `loadout profile NAME`. |
 | `profiles/skills/<name>/` | Skills used by your profiles. | Copied into a repo by `loadout profile`. They are never linked into `~/.claude`. |
 
-The kit's own rules are linked the same way, to `~/.claude/rules/loadout`. `loadout` itself is linked to `~/.local/bin/loadout` (on Windows, two small shim files are written there).
+The kit's own rules are linked the same way, to `~/.claude/rules/loadout`. `loadout` itself is a launcher script at `~/.local/bin/loadout` (on Windows, `loadout.cmd` and a Git Bash shim).
 
 ### Links and copies
 

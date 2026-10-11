@@ -87,8 +87,8 @@ def pull_if_clean(root: Path) -> bool:
 def find_outdated() -> list[tuple[dict, tuple, tuple]]:
     out = []
     for entry in catalog.binaries():
-        if not runner.have(entry["id"]):
-            continue
+        if entry.get("helper") or not runner.have(entry["id"]):
+            continue  # helpers (mise) only install other tools; they are not offered as updates
         tool = pkgmgr.mise_tool(entry)
         if tool:  # ask mise: it knows the user's minimum_release_age and pins
             status = pkgmgr.mise_outdated(tool)

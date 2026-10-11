@@ -1,0 +1,79 @@
+name: fresh-machine
+on:
+  pull_request:
+    paths: ["bootstrap.sh", "bootstrap.ps1", "catalog.json", "settings.base.json", "bin/loadout",
+            "cli/loadout/__main__.py", "cli/loadout/bootstrap.py", "cli/loadout/link.py", "cli/loadout/paths.py",
+            "cli/loadout/catalog.py", "cli/loadout/check.py", "cli/loadout/pkgmgr.py", "cli/loadout/settings_merge.py",
+            "cli/loadout/personal_mcp.py", "cli/loadout/adopt.py", "plugins/loadout/hooks/**",
+            ".github/workflows/fresh-machine.yml"]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: fresh-machine (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ubuntu:24.04
+    env:
+      REPO_URL: https://github.com/${{ github.repository }}
+      REF: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - run: apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates
+      - uses: actions/checkout@v4
+      - name: users with empty homes
+        run: |
+          useradd -m -s /bin/bash fromclone
+          useradd -m -s /bin/bash oneliner
+          cp -r "$GITHUB_WORKSPACE" /home/fromclone/agent-loadout
+          chown -R fromclone: /home/fromclone/agent-loadout
+          cp "$GITHUB_WORKSPACE/bootstrap.sh" /tmp/bootstrap.sh && chmod 644 /tmp/bootstrap.sh
+      - name: bootstrap from a clone
+        run: su - fromclone -c 'cd ~/agent-loadout && bash bootstrap.sh --install --yes --no-plugins'
+      - name: a new login shell finds everything, check has no FAIL
+        run: |
+          su - fromclone -c 'claude --version && serena --version && codebase-memory-mcp --version && node --version && loadout --help >/dev/null'
+          out="$(su - fromclone -c 'loadout check' || true)"; printf '%s\n' "$out"
+          if printf '%s\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi
+      # a fork's branch is not in this repository, so the one-liner could not clone it
+      - name: one-liner without a clone
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          LOADOUT_REPO_URL: ${{ env.REPO_URL }}
+          LOADOUT_REF: ${{ env.REF }}
+        run: su -w LOADOUT_REPO_URL,LOADOUT_REF - oneliner -c 'mkdir -p work && cd work && bash -s -- --install --yes --no-plugins < /tmp/bootstrap.sh'
+      - name: one-liner result
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          su - oneliner -c 'test -f ~/work/agent-loadout/bin/loadout && claude --version && serena --version'
+          out="$(su - oneliner -c 'loadout check' || true)"; printf '%s\n' "$out"
+          if printf '%s\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi
+
+  windows:
+    name: fresh-machine (windows, experimental)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: bootstrap with Python, Node and gh hidden
+        shell: pwsh
+        run: |
+          $env:Path = "C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;$env:LOCALAPPDATA\Microsoft\WindowsApps"
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install --yes --no-plugins
+          $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
+          $out = (loadout check) -join "`n"; Write-Output $out
+          if ($out -match '\[FAIL\]') { exit 1 }
+      - name: where the tools landed (diagnostics)
+        if: always()
+        shell: pwsh
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';C:\Windows\System32;C:\Windows'
+          Write-Output "npm prefix -g: $(npm prefix -g)"
+          Write-Output "npm config get prefix: $(npm config get prefix)"
+          Get-ChildItem "$env:LOCALAPPDATA\mise\shims" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+          Get-Command playwright-cli, pyright, typescript-language-server -ErrorAction SilentlyContinue | Format-Table Name, Source

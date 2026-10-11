@@ -25,6 +25,7 @@ jobs:
   test-wsl2:
     name: test (wsl2)
     runs-on: windows-latest
+    timeout-minutes: 30
     defaults:
       run:
         shell: wsl-bash {0}

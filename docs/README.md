@@ -4,7 +4,7 @@ Which page answers which question. The pages follow [Diátaxis](https://diataxis
 
 ## Tutorials
 
-- [Getting started](tutorials/getting-started.md). Read this when you install loadout for the first time, on Linux, macOS, WSL 2 or native Windows.
+- [Getting started](tutorials/getting-started.md). Read this when you install loadout for the first time, on Linux, macOS, WSL 2 or native Windows (experimental).
 
 ## How-to guides
 

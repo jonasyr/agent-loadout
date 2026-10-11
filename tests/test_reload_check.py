@@ -110,4 +110,4 @@ def test_hooks_json_wires_reload_check_soft_on_session_start_and_stop():
     hooks = json.loads((paths.kit_root() / "plugins/loadout/hooks/hooks.json").read_text())["hooks"]
     for event in ("SessionStart", "Stop"):
         cmds = [h["command"] for g in hooks[event] for h in g["hooks"]]
-        assert any("run.sh\" --soft python3" in c and "hooks/reload_check.py" in c for c in cmds), event
+        assert any('run.sh" --soft --python' in c and "hooks/reload_check.py" in c for c in cmds), event

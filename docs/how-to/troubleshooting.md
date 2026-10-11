@@ -6,9 +6,15 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 
 | Symptom | Fix |
 |---|---|
-| `loadout: command not found` | Add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal. |
+| `loadout` or `claude` not found right after bootstrap | Open a new terminal. Bootstrap added `~/.local/bin` and the mise shims to your profile (block `# loadout PATH`); Windows: your user PATH, which also gets npm's global folder (`%APPDATA%\npm`) and codebase-memory-mcp's folder. |
+| `note: ~/.local/bin can be written by other users (mode 0775)` after a failed install | Some installers, codebase-memory-mcp's among them, refuse to put a program into a folder that other users can write to. Debian and Ubuntu create folders like that by default (umask 002). Run `chmod go-w ~/.local/bin`, then run bootstrap again. Bootstrap creates the folder without group write access itself, so this only happens when it already existed. |
+| `missing node: not installed because mise failed to install` | mise failed to install; see the line above it. Fix that, then re-run bootstrap. |
 | `npm error code EACCES` when installing pyright / typescript-language-server / playwright-cli | Your global npm prefix is root-owned (for example `/usr`). Either `npm config set prefix ~/.local` (then re-run `loadout bootstrap --install`), or install them with your version manager, for example `mise use -g npm:pyright npm:typescript-language-server`. |
-| `loadout needs Python 3.10 or newer (found 3.X). Install it and re-run.` | Install Python 3.10 or newer with your system package manager (on Windows from python.org or `winget install Python.Python.3.12`) and make sure `python3` (Windows: `python`) runs it. |
+| `loadout needs Python 3.10 or newer (found 3.X). Install it and re-run.` | Re-run bootstrap (it installs uv, which provides Python), or install Python 3.10 or newer yourself (on Windows from python.org or `winget install Python.Python.3.12`). |
+| `loadout needs Python 3.10 or newer, or uv, on PATH` | The launcher found neither. Re-run bootstrap (it installs uv). |
+| `could not install uv (offline?). Install it from https://docs.astral.sh/uv/ and run this again.` | Bootstrap could not download uv. Check your network, or install uv from the linked page, then run bootstrap again. |
+| `could not get Python 3.10 or newer through uv (offline?). Check your connection and run this again.` | uv could not find or download a Python for loadout. Check your network and run the command again; installing Python 3.10 or newer yourself also works. |
+| `loadout needs curl to download uv. Install it, then run this again:` | Install curl (Linux: `sudo apt install curl`), then run bootstrap again. |
 | A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example rtk on native Windows. |
 | No session notices, or the daily sync never runs | `loadout` must be on the `PATH` that Claude Code's hooks see. The plugin's hook runner exits 0 silently when the command is missing (`plugins/loadout/hooks/run.sh`). Add `~/.local/bin` to the `PATH` of the environment Claude Code starts from, then restart it. |
 | A plugin or MCP server is missing in Claude Code | Restart Claude Code. Then `loadout check` lists what is missing and how to fix it. Enabled plugins install at the next Claude Code start. |

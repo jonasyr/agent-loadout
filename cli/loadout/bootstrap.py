@@ -41,23 +41,118 @@ def _step(title: str) -> None:
     print(f"\n== {title}")
 
 
+MANUAL_STEPS = {
+    "git": {"linux": "sudo apt install git   (Debian/Ubuntu; other distros: their package manager)",
+            "macos": "xcode-select --install",
+            "windows": "winget install --id Git.Git -e   (Git Bash runs the hooks)"},
+}
+
+
+def os_key() -> str:
+    import sys
+    if paths.platform_key() == "windows":
+        return "windows"
+    return "macos" if sys.platform == "darwin" else "linux"
+
+
+def _claude_logged_in() -> bool:
+    try:
+        return bool(load_json(paths.claude_json()).get("oauthAccount"))
+    except Exception:
+        return False
+
+
+def still_to_do(key: str) -> list[str]:
+    out = []
+    if not runner.have("git"):
+        out.append(f"install git: {MANUAL_STEPS['git'][key]}")
+    if runner.have("claude") and not _claude_logged_in():
+        out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
+    if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
+        out.append("log in to GitHub: gh auth login && gh auth setup-git")
+    return out
+
+
+def prepend_tool_dirs() -> None:
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    new = [str(d) for d in paths.tool_dirs() if str(d) not in parts]
+    if new:
+        os.environ["PATH"] = os.pathsep.join(new + [p for p in parts if p])
+
+
+def _wanted(entry: dict) -> bool:
+    return bool(entry.get("required") or entry["status"] == "recommended")
+
+
+def _ensure_local_bin() -> None:
+    """Installers create ~/.local/bin with the umask, which is 002 on Debian and Ubuntu;
+    codebase-memory-mcp refuses a folder that others can write to."""
+    d = paths.home() / ".local" / "bin"
+    if paths.platform_key() == "windows" or d.exists():
+        return
+    d.mkdir(parents=True)
+    d.chmod(0o755)
+
+
+def _open_local_bin_hint() -> str:
+    d = paths.home() / ".local" / "bin"
+    try:
+        mode = d.stat().st_mode & 0o777
+    except OSError:
+        return ""
+    if paths.platform_key() == "windows" or not mode & 0o022:
+        return ""
+    return (f"  note: {d} can be written by other users (mode {mode:04o}), and some installers refuse that.\n"
+            f"  fix: chmod go-w {d}   then run this again")
+
+
+def _tail(res: runner.Result, limit: int = 400) -> str:
+    text = (res.stderr.strip() or res.stdout.strip())[-limit:]
+    return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
+
+
 def check_prereqs(install: bool, ask: Ask) -> list[str]:
-    missing = []
-    for entry in catalog.binaries():
+    from . import pkgmgr
+    if install:
+        _ensure_local_bin()
+    prepend_tool_dirs()
+    entries = catalog.install_order(catalog.binaries())
+    # helpers are wanted only when a missing, wanted binary needs them
+    needed = {d for e in entries if not e.get("helper") and _wanted(e) and not runner.have(e["id"])
+              for d in e.get("needs", [])}
+    missing, failed = [], set()
+    for entry in entries:
         name = entry["id"]
-        if runner.have(name) or not (entry.get("required") or entry["status"] == "recommended"):
+        wanted = name in needed if entry.get("helper") else _wanted(entry)
+        if not wanted or runner.have(name):
             continue
         cmds = catalog.platform_cmds(entry, "install")
+        blocked = [d for d in entry.get("needs", []) if d in failed]
+        if install and cmds and blocked:
+            failed.add(name)
+            if not entry.get("helper"):
+                print(f"missing {name}: not installed because {', '.join(blocked)} failed to install")
+                missing.append(name)
+            continue
         if install and cmds:
             for cmd in cmds:
                 print("installing: " + " ".join(cmd))
-                res = runner.run(cmd, timeout=900)
+                res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
                 if not res.ok:
-                    print(f"  failed: {res.stderr.strip()[:300]}")
+                    print(f"  failed: {_tail(res)}")
+                    hint = _open_local_bin_hint()
+                    if hint:
+                        print(hint)
+            prepend_tool_dirs()
+            if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
+                runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals
+                prepend_tool_dirs()
         if not runner.have(name):
-            hint = "re-run with --install" if cmds else entry.get("manual", "")
-            print(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
-            missing.append(name)
+            failed.add(name)
+            if not entry.get("helper"):
+                hint = "re-run with --install" if cmds else entry.get("manual", "")
+                print(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
+                missing.append(name)
     if runner.have("gh"):
         if runner.run(["gh", "auth", "status"], timeout=20).ok:
             res = runner.run(["gh", "auth", "setup-git"], timeout=20)
@@ -141,12 +236,13 @@ def _powershell_profiles() -> tuple[list[Path], list[str]]:
     return list(dict.fromkeys(targets)), notes
 
 
-def _add_block(rc: Path, block: str, bk: Backup | None, windows: bool) -> str | None:
+def _add_block(rc: Path, block: str, bk: Backup | None, windows: bool,
+               marker: str = RC_MARKER, what: str = "secrets loading") -> str | None:
     if rc.exists():
         raw = rc.read_bytes()
         if windows:
             text, enc = _decode_profile(raw)
-            if RC_MARKER in text:
+            if marker in text:
                 return None
             if "\r\n" in text:
                 block = block.replace("\n", "\r\n")
@@ -154,20 +250,20 @@ def _add_block(rc: Path, block: str, bk: Backup | None, windows: bool) -> str | 
             # encode the whole text again so a UTF-16 profile stays UTF-16 (one BOM, at the start)
             data = (text + sep + block).encode(enc, errors="surrogateescape")
             if bk is not None:
-                bk.save_copy(rc, f"{rc} before adding secrets loading")
+                bk.save_copy(rc, f"{rc} before adding {what}")
             from .jsonio import write_atomic_bytes
             write_atomic_bytes(rc, data)
         else:
-            if RC_MARKER.encode() in raw:
+            if marker.encode() in raw:
                 return None
             with rc.open("ab") as fh:  # append: never re-encode the user's rc file
                 fh.write((b"" if not raw or raw.endswith(b"\n") else b"\n") + block.encode("utf-8"))
-        return f"added secrets loading to {rc}"
+        return f"added {what} to {rc}"
     rc.parent.mkdir(parents=True, exist_ok=True)
     rc.write_bytes(block.encode("utf-8"))
     if bk is not None:
         bk.record_created(rc, f"created {rc}")
-    return f"created {rc} with secrets loading"
+    return f"created {rc} with {what}"
 
 
 def setup_secrets(bk: Backup | None = None) -> list[str]:
@@ -206,6 +302,126 @@ def setup_secrets(bk: Backup | None = None) -> list[str]:
     if empty:
         out.append(f"empty secrets: {', '.join(empty)}")
     return out
+
+
+PATH_MARKER = "# loadout PATH"
+PATH_END = "# loadout PATH end"
+# One read-modify-write of the user PATH, in PowerShell. Values travel in environment variables (never
+# spliced into the command), the old value is saved as UTF-8 before anything changes, and only a fixed
+# ASCII status comes back on stdout (Windows PowerShell writes stdout in the OEM code page).
+WIN_PATH_SCRIPT = r"""$ErrorActionPreference = 'Stop'
+$k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+$old = [string]$k.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+$parts = @($old -split ';' | Where-Object { $_ })
+function Norm([string]$x) { $x.Replace('\', '/').TrimEnd('/').ToLowerInvariant() }
+$have = @{}
+foreach ($p in $parts) { $have[(Norm $p)] = 1; $have[(Norm ([Environment]::ExpandEnvironmentVariables($p)))] = 1 }
+$want = @($env:LOADOUT_PATH_ADD -split "`n" | Where-Object { $_ })
+$added = @(); $idx = @()
+for ($i = 0; $i -lt $want.Count; $i++) {
+  if (-not $have.ContainsKey((Norm $want[$i]))) { $added += $want[$i]; $idx += $i; $have[(Norm $want[$i])] = 1 }
+}
+if ($added.Count -eq 0) { 'UNCHANGED'; exit 0 }
+[IO.File]::WriteAllText($env:LOADOUT_PATH_BACKUP, $old, (New-Object System.Text.UTF8Encoding $false))
+$k.SetValue('Path', (($added + $parts) -join ';'), [Microsoft.Win32.RegistryValueKind]::ExpandString)
+$k.Close()
+[Environment]::SetEnvironmentVariable('LOADOUT_PATH_REFRESH', $null, 'User')  # broadcasts WM_SETTINGCHANGE
+'CHANGED ' + ($idx -join ' ')
+"""
+
+
+def _path_block(dirs: list[Path]) -> str:
+    home = paths.home()
+    lines = [PATH_MARKER]
+    for d in reversed(dirs):  # prepend in reverse, so the first folder ends up first
+        rel = d.relative_to(home).as_posix()
+        lines.append(f'case ":$PATH:" in *":$HOME/{rel}:"*) ;; *) PATH="$HOME/{rel}":"$PATH" ;; esac')
+    lines.append("export PATH")
+    lines.append(PATH_END)
+    return "\n".join(lines) + "\n"
+
+
+def _refresh_path_block(rc: Path, block: str, bk: Backup | None) -> str | None:
+    """A profile that already has our block gets it replaced when the content differs; the rest stays as is."""
+    raw = rc.read_bytes() if rc.exists() else b""
+    nl = b"\r\n" if raw.find(PATH_MARKER.encode() + b"\r\n") >= 0 else b"\n"  # keep a CRLF profile CRLF
+    start = raw.find(PATH_MARKER.encode() + nl)
+    if start < 0:
+        return None  # no block yet: the caller appends one
+    end_tag = PATH_END.encode() + nl
+    end = raw.find(end_tag, start)
+    if end >= 0:
+        end += len(end_tag)
+    else:  # a block without end marker ends at its `export PATH`
+        tail = b"export PATH" + nl
+        end = raw.find(tail, start)
+        if end < 0:
+            return ""
+        end += len(tail)
+    new = block.encode("utf-8").replace(b"\n", nl)
+    if raw[start:end] == new:
+        return ""
+    if bk is not None:
+        bk.save_copy(rc, f"{rc} before updating the tool folders on PATH")
+    from .jsonio import write_atomic_bytes
+    write_atomic_bytes(rc, raw[:start] + new + raw[end:])
+    return f"updated the tool folders on PATH in {rc}"
+
+
+def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
+    """Make the folders user-space installers use visible to new terminals (and to Claude Code).
+    Returns (lines to print, whether anything changed)."""
+    home = paths.home()
+    dirs = [d for d in paths.tool_dirs() if d == home or home in d.parents]
+    if not dirs:
+        return [], False
+    if paths.platform_key() == "windows":
+        return _setup_windows_path(dirs, bk)
+    shell = os.path.basename(os.environ.get("SHELL", ""))
+    targets = [r for r in (home / ".bashrc", home / ".zshrc") if r.exists()]
+    own = {"zsh": home / ".zshrc", "bash": home / ".bashrc"}.get(shell)
+    if own is not None and own not in targets:
+        targets.append(own)
+    # login shells (bash -l, hook shells, CI) skip an interactive-only .bashrc
+    login = home / ".bash_profile" if (home / ".bash_profile").exists() else home / ".profile"
+    targets.append(login)
+    block = _path_block(dirs)
+    out = []
+    for rc in dict.fromkeys(targets):
+        line = _refresh_path_block(rc, block, bk)
+        if line is None:
+            line = _add_block(rc, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH")
+        if line:
+            out.append(line)
+    return out, bool(out)
+
+
+def _win_path_command() -> list[str]:
+    import base64
+    encoded = base64.b64encode(WIN_PATH_SCRIPT.encode("utf-16-le")).decode("ascii")
+    return ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
+
+
+def _setup_windows_path(dirs: list[Path], bk: Backup | None) -> tuple[list[str], bool]:
+    failed = [f"could not update your user PATH; add {', '.join(map(str, dirs))} to it by hand"], False
+    state = paths.state_dir()
+    state.mkdir(parents=True, exist_ok=True)
+    saved = state / f"user-PATH-before-{os.getpid()}.txt"
+    env = {**os.environ, "LOADOUT_PATH_ADD": "\n".join(map(str, dirs)), "LOADOUT_PATH_BACKUP": str(saved)}
+    try:
+        res = runner.run(_win_path_command(), timeout=60, env=env)
+        words = res.stdout.split()
+        if not res.ok or not words or words[0] not in ("CHANGED", "UNCHANGED"):
+            return failed
+        if words[0] == "UNCHANGED":
+            return [], False
+        added = [str(dirs[int(i)]) for i in words[1:] if i.isdigit() and int(i) < len(dirs)] or list(map(str, dirs))
+        if saved.is_file():
+            (bk if bk is not None else Backup(description="user PATH")).keep(
+                saved, "your user PATH before loadout added the tool folders")
+        return [f"added {', '.join(added)} to your user PATH (old value saved in the backup)"], True
+    finally:
+        saved.unlink(missing_ok=True)
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
@@ -259,12 +475,23 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     _step("Secrets")
     for line in setup_secrets(bk):
         print(line)
+    _step("PATH")
+    path_lines, path_changed = setup_path(bk)
+    for line in path_lines or ["PATH already set up"]:
+        print(line)
     if not bk.empty:
         print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
     text, code = check.format_results(check.run_checks())
     print(text)
-    print("\nRestart Claude Code to load plugins and rules.")
+    todo = still_to_do(os_key())
+    if path_changed:
+        print("\nOpen a new terminal so the new PATH applies.")
+    if todo:
+        print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
+        for line in todo:
+            print(f"  - {line}")
+    print("\nThen start Claude Code." if path_changed else "\nRestart Claude Code to load plugins and rules.")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1

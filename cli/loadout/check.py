@@ -118,6 +118,8 @@ def _own() -> list[CheckResult]:
 def _binaries() -> list[CheckResult]:
     out = []
     for entry in catalog.binaries():
+        if entry.get("helper"):
+            continue
         name = entry["id"]
         ok = runner.have(name)
         severity = "error" if entry.get("required") else "warn"
@@ -125,6 +127,25 @@ def _binaries() -> list[CheckResult]:
                else entry.get("manual") or f"install {name} and make sure it is on PATH")
         out.append(CheckResult(f"binary {name}", ok, "" if ok else "not on PATH", fix, severity))
     return out
+
+
+def _mcp_path() -> list[CheckResult]:
+    """Claude Code starts the plugin's servers by name, so a new terminal's PATH must find them."""
+    hidden, absent = {}, False
+    for name in ("serena", "codebase-memory-mcp"):
+        if runner.which(name):
+            continue
+        for d in paths.tool_dirs():
+            if any((d / f).exists() for f in (name, name + ".exe", name + ".cmd")):
+                hidden[name] = d
+                break
+        else:
+            absent = True
+    if absent and not hidden:
+        return []  # its "binary" line already fails with the install hint
+    dirs = sorted({str(d) for d in hidden.values()})
+    return [CheckResult("MCP servers on PATH", not hidden, ", ".join(hidden),
+                        f"open a new terminal, or add {', '.join(dirs)} to PATH", "warn")]
 
 
 def _gh() -> list[CheckResult]:
@@ -168,7 +189,7 @@ def _wsl() -> list[CheckResult]:
 
 
 def run_checks() -> list[CheckResult]:
-    return [*_python(), *_wsl(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_connectors(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
+    return [*_python(), *_wsl(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_connectors(), *_own(), *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

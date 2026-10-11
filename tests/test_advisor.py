@@ -221,7 +221,7 @@ def test_hooks_json_wires_the_advisor():
     post = [g for g in hooks["PostToolUse"] if g["matcher"] == "Write|Edit|MultiEdit"]
     assert post and "hooks/advisor.py\" record" in post[0]["hooks"][0]["command"]
     stop = hooks["Stop"][0]["hooks"][0]["command"]
-    assert stop.startswith('"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" --soft python3 ') and stop.endswith("advisor.py\" stop")
+    assert stop.startswith('"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" --soft --python ') and stop.endswith("advisor.py\" stop")
 
 
 def test_hooks_json_commands_run_through_run_sh(home, plan):
