@@ -7,10 +7,27 @@ $repoUrl = if ($env:LOADOUT_REPO_URL) { $env:LOADOUT_REPO_URL } else { 'https://
 $ref = if ($env:LOADOUT_REF) { $env:LOADOUT_REF } else { 'main' }
 $dir = $null; $rest = @()
 for ($i = 0; $i -lt $args.Count; $i++) {
-  if ($args[$i] -eq '--dir') { $dir = $args[$i + 1]; $i++ }
+  if ($args[$i] -eq '--dir') {
+    if ($i + 1 -ge $args.Count) { Write-Error '--dir needs a path'; exit 1 }
+    $dir = $args[$i + 1]; $i++
+  }
   elseif ($args[$i] -like '--dir=*') { $dir = $args[$i].Substring(6) }
   else { $rest += $args[$i] }
 }
+function Normalize-Origin($o) { ("$o").Trim().TrimEnd('/') -replace '\.git$', '' -replace '/$', '' }
+function Test-Clone($d) {
+  if (-not (Test-Path (Join-Path $d 'bin/loadout'))) { return $false }
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try {
+    $origin = Normalize-Origin (git -C $d remote get-url origin 2>$null)
+    $top = "$(git -C $d rev-parse --show-toplevel 2>$null)"
+  } finally { $ErrorActionPreference = $prev }
+  $known = @('https://github.com/jonasyr/agent-loadout', 'git@github.com:jonasyr/agent-loadout', 'ssh://git@github.com/jonasyr/agent-loadout', (Normalize-Origin $repoUrl))
+  if (-not $origin -or $known -notcontains $origin) { return $false }
+  if (-not $top) { return $false }
+  return ([IO.Path]::GetFullPath($top).TrimEnd('\', '/') -ieq [IO.Path]::GetFullPath((Resolve-Path $d).Path).TrimEnd('\', '/'))
+}
+# Run inside an existing clone, the one-liner uses that clone instead of cloning again.
 if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
   $kit = $PSScriptRoot
 } else {
@@ -19,9 +36,11 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
     exit 1
   }
   $kit = if ($dir) { $dir } else { Join-Path (Get-Location) 'agent-loadout' }
-  if (Test-Path $kit) {
-    $origin = git -C $kit remote get-url origin 2>$null
-    if ($origin -notmatch 'jonasyr/agent-loadout' -and $origin -ne $repoUrl) {
+  if (-not $dir -and (Test-Clone (Get-Location).Path)) {
+    $kit = (Get-Location).Path
+    Write-Host "using the clone in $kit"
+  } elseif (Test-Path $kit) {
+    if (-not (Test-Clone $kit)) {
       Write-Error "$kit exists and is not a clone of agent-loadout; choose another folder with --dir PATH"
       exit 1
     }
@@ -29,7 +48,9 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
   } else {
     Write-Host "cloning agent-loadout into $kit"
     git clone -q $repoUrl $kit
+    if ($LASTEXITCODE -ne 0) { Write-Error "could not download agent-loadout from $repoUrl (offline?). Check your connection and run this again."; exit 1 }
     git -C $kit checkout -q $ref
+    if ($LASTEXITCODE -ne 0) { Write-Error "could not check out '$ref' in $kit"; exit 1 }
   }
 }
 if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
@@ -39,7 +60,12 @@ $env:Path = "$HOME\.local\bin;$env:Path"
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
   Write-Host 'installing uv (it also provides Python for loadout)'
   $env:UV_NO_MODIFY_PATH = '1'
-  Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+  try { Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression } catch { }
+  $env:Path = "$HOME\.local\bin;$env:Path"
+  if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    Write-Error 'could not install uv (offline?). Install it from https://docs.astral.sh/uv/ and run this again.'
+    exit 1
+  }
 }
 Set-Location $kit
 uv run --no-project --no-config --python '>=3.10' bin/loadout bootstrap @rest

@@ -101,3 +101,69 @@ def test_one_liner_refuses_foreign_target(env, tmp_path):
     (work / "agent-loadout").mkdir(parents=True)
     p = _run(env, ["-s"], cwd=work, stdin=SCRIPT.read_text())
     assert p.returncode == 1 and "agent-loadout" in p.stderr
+
+
+def _git_stub(env, origin, top):
+    env["stub"]("git", f'case "$*" in *"remote get-url"*) echo {origin};; *"rev-parse --show-toplevel"*) echo "{top}";; esac; exit 0')
+
+
+def _fake_clone(path):
+    (path / "bin").mkdir(parents=True)
+    (path / "bin/loadout").write_text("")
+
+
+def test_lookalike_origin_refused(env, tmp_path):
+    work = tmp_path / "work"
+    _fake_clone(work / "agent-loadout")
+    _git_stub(env, "https://evil.example/jonasyr/agent-loadout-x", work / "agent-loadout")
+    env["stub"]("uv", "exit 0")
+    p = _run(env, ["-s"], cwd=work, stdin=SCRIPT.read_text())
+    assert p.returncode == 1 and "uv run" not in (env["log"].read_text() if env["log"].exists() else "")
+
+
+def test_dot_git_origin_reused(env, tmp_path):
+    work = tmp_path / "work"
+    _fake_clone(work / "agent-loadout")
+    _git_stub(env, "https://github.com/jonasyr/agent-loadout.git", (work / "agent-loadout").resolve())
+    env["stub"]("uv", "exit 0")
+    p = _run(env, ["-s"], cwd=work, stdin=SCRIPT.read_text())
+    assert p.returncode == 0, p.stderr
+    assert f"pwd={work / 'agent-loadout'}" in env["log"].read_text()
+
+
+def test_folder_inside_other_repo_refused(env, tmp_path):
+    work = tmp_path / "work"
+    _fake_clone(work / "agent-loadout")
+    _git_stub(env, "https://github.com/jonasyr/agent-loadout", work.resolve())
+    env["stub"]("uv", "exit 0")
+    assert _run(env, ["-s"], cwd=work, stdin=SCRIPT.read_text()).returncode == 1
+
+
+def test_one_liner_in_clone_uses_cwd(env, tmp_path):
+    work = tmp_path / "work"
+    _fake_clone(work)
+    _git_stub(env, "https://github.com/jonasyr/agent-loadout", work.resolve())
+    env["stub"]("uv", "exit 0")
+    p = _run(env, ["-s"], cwd=work, stdin=SCRIPT.read_text())
+    assert p.returncode == 0, p.stderr
+    assert f"pwd={work}" in env["log"].read_text() and not (work / "agent-loadout").exists()
+
+
+def test_checkout_keeps_redirected_stdin(env, tmp_path):
+    env["stub"]("uv", 'read line; echo "stdin=$line" >> "$(dirname "$0")/../log"')
+    kit = tmp_path / "kit"
+    _fake_clone(kit)
+    shutil.copy(SCRIPT, kit / "bootstrap.sh")
+    p = _run(env, [str(kit / "bootstrap.sh")], cwd=tmp_path, stdin="hello\n")
+    assert p.returncode == 0, p.stderr
+    assert "stdin=hello" in env["log"].read_text()
+
+
+def test_uv_install_failure_is_explained(env, tmp_path):
+    env["stub"]("curl", "exit 1")
+    env["stub"]("sh", "exit 0")
+    kit = tmp_path / "kit"
+    _fake_clone(kit)
+    shutil.copy(SCRIPT, kit / "bootstrap.sh")
+    p = _run(env, [str(kit / "bootstrap.sh")], cwd=tmp_path)
+    assert p.returncode == 1 and "could not install uv" in p.stderr
