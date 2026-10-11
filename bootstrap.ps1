@@ -2,13 +2,21 @@
 # From a clone:  powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install
 # Without one:   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install
 $ErrorActionPreference = 'Stop'
-Write-Warning 'Native Windows is experimental and not recommended. WSL 2 is the recommended setup on Windows: docs/how-to/wsl.md'
+Write-Warning 'Native Windows is experimental and not recommended. WSL 2 is the recommended setup on Windows: https://github.com/jonasyr/agent-loadout/blob/main/docs/how-to/wsl.md'
+# Run as a scriptblock (the one-liner), `exit` would close the user's PowerShell window:
+# failures then set $LASTEXITCODE and `return` instead.
+$asFile = [bool]$PSCommandPath
+function Fail($msg) {
+  $host.UI.WriteErrorLine($msg)
+  $global:LASTEXITCODE = 1
+  if ($asFile) { exit 1 }
+}
 $repoUrl = if ($env:LOADOUT_REPO_URL) { $env:LOADOUT_REPO_URL } else { 'https://github.com/jonasyr/agent-loadout' }
 $ref = if ($env:LOADOUT_REF) { $env:LOADOUT_REF } else { 'main' }
 $dir = $null; $rest = @()
 for ($i = 0; $i -lt $args.Count; $i++) {
   if ($args[$i] -eq '--dir') {
-    if ($i + 1 -ge $args.Count) { Write-Error '--dir needs a path'; exit 1 }
+    if ($i + 1 -ge $args.Count) { Fail '--dir needs a path'; return }
     $dir = $args[$i + 1]; $i++
   }
   elseif ($args[$i] -like '--dir=*') { $dir = $args[$i].Substring(6) }
@@ -32,8 +40,8 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
   $kit = $PSScriptRoot
 } else {
   if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Error 'loadout needs git to download itself. Install it, then run this command again: winget install --id Git.Git -e'
-    exit 1
+    Fail 'loadout needs git to download itself. Install it, then run this command again: winget install --id Git.Git -e'
+    return
   }
   $kit = if ($dir) { $dir } else { Join-Path (Get-Location) 'agent-loadout' }
   if (-not $dir -and (Test-Clone (Get-Location).Path)) {
@@ -41,16 +49,16 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
     Write-Host "using the clone in $kit"
   } elseif (Test-Path $kit) {
     if (-not (Test-Clone $kit)) {
-      Write-Error "$kit exists and is not a clone of agent-loadout; choose another folder with --dir PATH"
-      exit 1
+      Fail "$kit exists and is not a clone of agent-loadout; choose another folder with --dir PATH"
+      return
     }
     Write-Host "using the existing clone in $kit"
   } else {
     Write-Host "cloning agent-loadout into $kit"
     git clone -q $repoUrl $kit
-    if ($LASTEXITCODE -ne 0) { Write-Error "could not download agent-loadout from $repoUrl (offline?). Check your connection and run this again."; exit 1 }
+    if ($LASTEXITCODE -ne 0) { Fail "could not download agent-loadout from $repoUrl (offline?). Check your connection and run this again."; return }
     git -C $kit checkout -q $ref
-    if ($LASTEXITCODE -ne 0) { Write-Error "could not check out '$ref' in $kit"; exit 1 }
+    if ($LASTEXITCODE -ne 0) { Fail "could not check out '$ref' in $kit"; return }
   }
 }
 if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
@@ -63,10 +71,31 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
   try { Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression } catch { }
   $env:Path = "$HOME\.local\bin;$env:Path"
   if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-    Write-Error 'could not install uv (offline?). Install it from https://docs.astral.sh/uv/ and run this again.'
-    exit 1
+    Fail 'could not install uv (offline?). Install it from https://docs.astral.sh/uv/ and run this again.'
+    return
   }
 }
-Set-Location $kit
-uv run --no-project --no-config --python '>=3.10' bin/loadout bootstrap @rest
-exit $LASTEXITCODE
+# Look Python up from a neutral folder and run it directly: uv started in a project folder would use its .venv.
+function Find-Python {
+  Push-Location $env:SystemRoot
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { "$(uv python find --system --no-config --no-project '>=3.10' 2>$null | Select-Object -First 1)".Trim() }
+  finally { $ErrorActionPreference = $prev; Pop-Location }
+}
+$py = Find-Python
+if (-not $py) {
+  Push-Location $env:SystemRoot
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { uv python install --no-config '>=3.10' 2>&1 | Out-Host }
+  finally { $ErrorActionPreference = $prev; Pop-Location }
+  $py = Find-Python
+}
+if (-not $py) {
+  Fail 'could not get Python 3.10 or newer through uv (offline?). Check your connection and run this again.'
+  return
+}
+Push-Location $kit
+try { & $py bin/loadout bootstrap @rest; $code = $LASTEXITCODE }
+finally { Pop-Location }
+if ($asFile) { exit $code }
+$global:LASTEXITCODE = $code
