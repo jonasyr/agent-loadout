@@ -41,23 +41,50 @@ def _step(title: str) -> None:
     print(f"\n== {title}")
 
 
+def prepend_tool_dirs() -> None:
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    new = [str(d) for d in paths.tool_dirs() if str(d) not in parts]
+    if new:
+        os.environ["PATH"] = os.pathsep.join(new + [p for p in parts if p])
+
+
+def _wanted(entry: dict) -> bool:
+    return bool(entry.get("required") or entry["status"] == "recommended")
+
+
 def check_prereqs(install: bool, ask: Ask) -> list[str]:
-    missing = []
-    for entry in catalog.binaries():
+    from . import pkgmgr
+    prepend_tool_dirs()
+    entries = catalog.install_order(catalog.binaries())
+    # helpers are wanted only when a missing, wanted binary needs them
+    needed = {d for e in entries if not e.get("helper") and _wanted(e) and not runner.have(e["id"])
+              for d in e.get("needs", [])}
+    missing, failed = [], set()
+    for entry in entries:
         name = entry["id"]
-        if runner.have(name) or not (entry.get("required") or entry["status"] == "recommended"):
+        wanted = name in needed if entry.get("helper") else _wanted(entry)
+        if not wanted or runner.have(name):
             continue
         cmds = catalog.platform_cmds(entry, "install")
-        if install and cmds:
+        blocked = [d for d in entry.get("needs", []) if d in failed]
+        if install and cmds and blocked:
+            print(f"missing {name}: skipped: needs {', '.join(blocked)}")
+        elif install and cmds:
             for cmd in cmds:
                 print("installing: " + " ".join(cmd))
-                res = runner.run(cmd, timeout=900)
+                res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
                 if not res.ok:
                     print(f"  failed: {res.stderr.strip()[:300]}")
+            prepend_tool_dirs()
+            if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
+                runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals
+                prepend_tool_dirs()
         if not runner.have(name):
-            hint = "re-run with --install" if cmds else entry.get("manual", "")
-            print(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
-            missing.append(name)
+            failed.add(name)
+            if not entry.get("helper"):
+                hint = "re-run with --install" if cmds else entry.get("manual", "")
+                print(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
+                missing.append(name)
     if runner.have("gh"):
         if runner.run(["gh", "auth", "status"], timeout=20).ok:
             res = runner.run(["gh", "auth", "setup-git"], timeout=20)

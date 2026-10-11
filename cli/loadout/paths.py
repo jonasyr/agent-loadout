@@ -47,3 +47,14 @@ def bin_dir() -> Path:
 
 def platform_key() -> str:
     return "windows" if os.name == "nt" else "posix"
+
+
+def tool_dirs() -> list[Path]:
+    """Where user-space installers put commands (uv, Claude Code, mise shims, npm globals), existing ones only."""
+    base = home()
+    if platform_key() == "windows":
+        local = Path(os.environ.get("LOCALAPPDATA") or base / "AppData" / "Local")
+        dirs = [base / ".local" / "bin", local / "mise" / "shims"]
+    else:
+        dirs = [base / ".local" / "bin", base / ".local" / "share" / "mise" / "shims"]
+    return [d for d in dirs if d.is_dir()]
