@@ -1,0 +1,8 @@
+#!/bin/sh
+# A stand-in for uv in the demo sandbox: `uv python find` returns the container's Python. Never put it on a real PATH.
+[ -f "$HOME/.loadout-demo" ] || { echo "demo uv: refusing to run outside the demo sandbox" >&2; exit 1; }
+if [ "$1" = "python" ] && [ "$2" = "find" ]; then
+  command -v python3
+  exit
+fi
+echo "uv 1.0.0"

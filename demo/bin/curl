@@ -1,0 +1,11 @@
+#!/bin/sh
+# A stand-in for curl in the demo sandbox: it serves only the README's bootstrap URL, from the kit itself.
+# Never put it on a real PATH.
+[ -f "$HOME/.loadout-demo" ] || { echo "demo curl: refusing to run outside the demo sandbox" >&2; exit 1; }
+url=""
+for a in "$@"; do case "$a" in -*) ;; *) url="$a" ;; esac; done
+if [ "$url" != "https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh" ]; then
+  echo "demo curl: the sandbox has no network ($url)" >&2
+  exit 22
+fi
+exec cat "${LOADOUT_DEMO_KIT:?}/bootstrap.sh"

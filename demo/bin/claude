@@ -34,3 +34,9 @@ elif args[:3] == ["plugin", "marketplace", "remove"]:
     edit(markets, lambda d: d.pop(args[3], None))
 elif args[:3] == ["plugin", "marketplace", "list"]:
     print("\n".join(json.loads(markets.read_text())) if markets.exists() else "")
+elif args[:2] == ["mcp", "list"]:
+    servers = json.loads((home / ".claude.json").read_text()).get("mcpServers", {})
+    for name, cfg in servers.items():
+        print(f"{name}: {' '.join([cfg.get('command', ''), *cfg.get('args', [])])}")
+elif args[:2] == ["plugin", "list"]:
+    print("\n".join(json.loads(plugins.read_text()).get("plugins", {})) if plugins.exists() else "")
