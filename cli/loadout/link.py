@@ -138,7 +138,7 @@ def launcher_text(script: Path) -> str:
     return (f"#!/bin/sh\n{LAUNCHER_MARKER} (written by loadout bootstrap; Python 3.10+ or uv runs it)\n"
             f"script='{s}'\n"
             f'if command -v python3 >/dev/null 2>&1 && python3 -c "{PY_OK}" 2>/dev/null; then exec python3 "$script" "$@"; fi\n'
-            'if command -v uv >/dev/null 2>&1; then exec uv run --no-project --python ">=3.10" "$script" "$@"; fi\n'
+            'if command -v uv >/dev/null 2>&1; then exec uv run --no-project --no-config --python ">=3.10" "$script" "$@"; fi\n'
             'echo "loadout needs Python 3.10 or newer, or uv, on PATH" >&2\nexit 1\n')
 
 
@@ -147,7 +147,7 @@ def write_windows_shims(target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     # newline="" / "\n": write exactly these bytes; text mode on Windows would turn \n into \r\n
     cmd = (f'@echo off\r\nwhere python >nul 2>nul && python -c "{PY_OK}" 2>nul && (python "{script}" %* & exit /b)\r\n'
-           f'uv run --no-project --python ">=3.10" "{script}" %*\r\n')
+           f'uv run --no-project --no-config --python ">=3.10" "{script}" %*\r\n')
     (target_dir / "loadout.cmd").write_text(cmd, encoding="utf-8", newline="")
     # Git Bash (used for hooks on Windows) runs extensionless scripts; a CR would break the shebang
     (target_dir / "loadout").write_text(launcher_text(script), encoding="utf-8", newline="\n")
@@ -161,7 +161,7 @@ def link_bin(bk: Backup) -> list[str]:
     dest = target_dir / "loadout"
     text = launcher_text(paths.kit_root() / "bin" / "loadout")
     ours = dest.is_file() and not dest.is_symlink() and LAUNCHER_MARKER in dest.read_text(encoding="utf-8", errors="replace")
-    if ours and dest.read_text(encoding="utf-8") == text:
+    if ours and dest.read_text(encoding="utf-8", errors="replace") == text:
         return []
     dest.parent.mkdir(parents=True, exist_ok=True)
     kit_link = dest.is_symlink() and _points_to(dest, paths.kit_root() / "bin" / "loadout")

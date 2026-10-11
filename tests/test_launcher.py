@@ -53,12 +53,12 @@ def test_launcher_falls_back_to_uv_for_old_python(tmp_path):
     launcher.write_text(link.launcher_text(tmp_path / "kit/bin/loadout"))
     launcher.chmod(0o755)
     out = subprocess.run([str(launcher), "check"], env=_env(stubs), capture_output=True, text=True).stdout
-    assert out.startswith("uv run --no-project --python >=3.10 ")
+    assert out.startswith("uv run --no-project --no-config --python >=3.10 ")
 
 
 @pytest.mark.parametrize("have,expected", [
     ({"python3": 'case "$1" in -c) exit 0;; esac; echo "python3 $*"'}, "python3 "),
-    ({"python3": 'case "$1" in -c) exit 1;; esac; echo "python3 $*"', "uv": 'echo "uv $*"'}, "uv run --no-project --python >=3.10 "),
+    ({"python3": 'case "$1" in -c) exit 1;; esac; echo "python3 $*"', "uv": 'echo "uv $*"'}, "uv run --no-project --no-config --python >=3.10 "),
     ({}, ""),
 ])
 def test_run_sh_python(tmp_path, have, expected):
@@ -70,3 +70,32 @@ def test_run_sh_python(tmp_path, have, expected):
                           env={"PATH": str(stubs), "HOME": str(tmp_path)}, capture_output=True, text=True, input="{}")
     assert proc.returncode == 0 and proc.stderr == ""
     assert proc.stdout.startswith(expected) if expected else proc.stdout == ""
+
+
+def test_uv_never_reads_the_open_projects_config(tmp_path):
+    """Hooks run in the user's project: a uv.toml or pyproject.toml there must not steer uv."""
+    texts = [link.launcher_text(tmp_path / "kit/bin/loadout"), RUN_SH.read_text()]
+    link.write_windows_shims(tmp_path / "shims")
+    texts.append((tmp_path / "shims/loadout.cmd").read_text())
+    for text in texts:
+        for line in (l for l in text.splitlines() if "uv run --" in l):
+            assert "--no-config" in line, line
+
+
+def test_run_sh_uses_python_when_there_is_no_python3(tmp_path):
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    _stub(stubs, "python", 'case "$1" in -c) exit 0;; esac; echo "python $*"')  # Windows: python.org installs only python
+    proc = subprocess.run(["/bin/bash", str(RUN_SH), "--soft", "--python", "x.py"],
+                          env={"PATH": str(stubs), "HOME": str(tmp_path)}, capture_output=True, text=True, input="{}")
+    assert proc.stdout.startswith("python x.py")
+
+
+def test_launcher_without_python_or_uv_explains(tmp_path):
+    launcher = tmp_path / "loadout"
+    launcher.write_text(link.launcher_text(tmp_path / "kit/bin/loadout"))
+    launcher.chmod(0o755)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    proc = subprocess.run(["/bin/sh", str(launcher)], env={"PATH": str(empty)}, capture_output=True, text=True)
+    assert proc.returncode == 1 and "Python 3.10 or newer, or uv" in proc.stderr

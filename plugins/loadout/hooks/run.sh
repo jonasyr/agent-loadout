@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # Run a hook command only if its binary is installed, so a machine without a tool
 # simply runs without that hook. With --soft, errors are swallowed (exit 0, no stderr).
-# With --python, the next argument is a Python script: run it with python3 (3.10+),
+# With --python, the next argument is a Python script: run it with python3 or python (3.10+),
 # else through uv, else skip the hook.
 soft=0
 if [ "${1:-}" = "--soft" ]; then soft=1; shift; fi
 if [ "${1:-}" = "--python" ]; then
   shift
-  if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
-    set -- python3 "$@"
+  py=""
+  for cand in python3 python; do  # python.org installs only `python` on Windows
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
+      py="$cand"; break
+    fi
+  done
+  if [ -n "$py" ]; then
+    set -- "$py" "$@"
   elif command -v uv >/dev/null 2>&1; then
-    set -- uv run --no-project --python '>=3.10' "$@"
+    # --no-config: hooks run in the open project; its uv.toml or pyproject.toml must not steer uv
+    set -- uv run --no-project --no-config --python '>=3.10' "$@"
   else
     exit 0
   fi
