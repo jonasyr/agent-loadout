@@ -131,7 +131,7 @@ def _binaries() -> list[CheckResult]:
 
 def _mcp_path() -> list[CheckResult]:
     """Claude Code starts the plugin's servers by name, so a new terminal's PATH must find them."""
-    hidden = {}
+    hidden, absent = {}, False
     for name in ("serena", "codebase-memory-mcp"):
         if runner.which(name):
             continue
@@ -139,6 +139,10 @@ def _mcp_path() -> list[CheckResult]:
             if any((d / f).exists() for f in (name, name + ".exe", name + ".cmd")):
                 hidden[name] = d
                 break
+        else:
+            absent = True
+    if absent and not hidden:
+        return []  # its "binary" line already fails with the install hint
     dirs = sorted({str(d) for d in hidden.values()})
     return [CheckResult("MCP servers on PATH", not hidden, ", ".join(hidden),
                         f"open a new terminal, or add {', '.join(dirs)} to PATH", "warn")]

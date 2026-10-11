@@ -50,11 +50,14 @@ def platform_key() -> str:
 
 
 def tool_dirs() -> list[Path]:
-    """Where user-space installers put commands (uv, Claude Code, mise shims, npm globals, winget portable installs), existing ones only."""
+    """Where user-space installers put commands (uv, Claude Code, mise shims, npm globals, winget portable installs, codebase-memory-mcp on Windows), existing ones only."""
     base = home()
     if platform_key() == "windows":
         local = Path(os.environ.get("LOCALAPPDATA") or base / "AppData" / "Local")
-        dirs = [base / ".local" / "bin", local / "mise" / "shims", local / "Microsoft" / "WinGet" / "Links"]
+        roaming = Path(os.environ.get("APPDATA") or base / "AppData" / "Roaming")
+        dirs = [base / ".local" / "bin", local / "mise" / "shims", local / "Microsoft" / "WinGet" / "Links",
+                roaming / "npm",  # npm's global prefix in Node.js for Windows
+                local / "Programs" / "codebase-memory-mcp"]
     else:
         dirs = [base / ".local" / "bin", base / ".local" / "share" / "mise" / "shims"]
     return [d for d in dirs if d.is_dir()]

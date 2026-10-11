@@ -84,8 +84,37 @@ def _wanted(entry: dict) -> bool:
     return bool(entry.get("required") or entry["status"] == "recommended")
 
 
+def _ensure_local_bin() -> None:
+    """Installers create ~/.local/bin with the umask, which is 002 on Debian and Ubuntu;
+    codebase-memory-mcp refuses a folder that others can write to."""
+    d = paths.home() / ".local" / "bin"
+    if paths.platform_key() == "windows" or d.exists():
+        return
+    d.mkdir(parents=True)
+    d.chmod(0o755)
+
+
+def _open_local_bin_hint() -> str:
+    d = paths.home() / ".local" / "bin"
+    try:
+        mode = d.stat().st_mode & 0o777
+    except OSError:
+        return ""
+    if paths.platform_key() == "windows" or not mode & 0o022:
+        return ""
+    return (f"  note: {d} can be written by other users (mode {mode:04o}), and some installers refuse that.\n"
+            f"  fix: chmod go-w {d}   then run this again")
+
+
+def _tail(res: runner.Result, limit: int = 400) -> str:
+    text = (res.stderr.strip() or res.stdout.strip())[-limit:]
+    return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
+
+
 def check_prereqs(install: bool, ask: Ask) -> list[str]:
     from . import pkgmgr
+    if install:
+        _ensure_local_bin()
     prepend_tool_dirs()
     entries = catalog.install_order(catalog.binaries())
     # helpers are wanted only when a missing, wanted binary needs them
@@ -110,7 +139,10 @@ def check_prereqs(install: bool, ask: Ask) -> list[str]:
                 print("installing: " + " ".join(cmd))
                 res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
                 if not res.ok:
-                    print(f"  failed: {res.stderr.strip()[:300]}")
+                    print(f"  failed: {_tail(res)}")
+                    hint = _open_local_bin_hint()
+                    if hint:
+                        print(hint)
             prepend_tool_dirs()
             if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
                 runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals

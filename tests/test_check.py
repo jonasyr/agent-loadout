@@ -132,5 +132,4 @@ def test_mcp_server_only_in_tool_dir_warns_to_open_new_terminal(fake_home, fake_
 
 def test_mcp_server_missing_everywhere_is_left_to_the_binary_check(fake_home, fake_runner):
     fake_runner.missing.update({"serena", "codebase-memory-mcp"})
-    r = _by(check.run_checks())["MCP servers on PATH"]
-    assert r.ok  # "binary serena" already fails with the install hint
+    assert "MCP servers on PATH" not in _by(check.run_checks())  # "binary serena" already fails; an ok here would contradict it

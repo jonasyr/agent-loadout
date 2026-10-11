@@ -271,3 +271,49 @@ def test_still_to_do_windows_git_line(fake_home, fake_runner):
 def test_still_to_do_empty_when_all_done(fake_home, fake_runner):
     (fake_home / ".claude.json").write_text('{"oauthAccount": {"emailAddress": "x"}}')
     assert b.still_to_do("linux") == []
+
+
+def test_windows_tool_dirs_include_npm_globals_and_codebase_memory(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "windows")
+    local, roaming = fake_home / "AppData/Local", fake_home / "AppData/Roaming"
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("APPDATA", str(roaming))
+    npm, cbm = roaming / "npm", local / "Programs/codebase-memory-mcp"
+    npm.mkdir(parents=True)
+    cbm.mkdir(parents=True)
+    assert npm in paths.tool_dirs() and cbm in paths.tool_dirs()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_local_bin_is_created_owner_writable_only(fake_home, fake_runner, monkeypatch):
+    _only(monkeypatch, [])
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    old = os.umask(0o002)  # Debian and Ubuntu default for user-private groups
+    try:
+        b.check_prereqs(True, lambda q: "")
+    finally:
+        os.umask(old)
+    assert (fake_home / ".local/bin").stat().st_mode & 0o777 == 0o755
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_group_writable_local_bin_is_explained_when_an_install_fails(fake_home, fake_runner, monkeypatch, capsys):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    d = fake_home / ".local/bin"
+    d.mkdir(parents=True)
+    d.chmod(0o775)
+    _only(monkeypatch, [_bin("codebase-memory-mcp")])
+    fake_runner.missing.add("codebase-memory-mcp")
+    fake_runner.responses[("install-codebase-memory-mcp",)] = runner.Result(1, "", "refused")
+    b.check_prereqs(True, lambda q: "")
+    out = capsys.readouterr().out
+    assert "chmod go-w" in out and str(d) in out
+    assert d.stat().st_mode & 0o777 == 0o775  # the user's folder is not changed behind their back
+
+
+def test_failed_install_shows_the_end_of_its_output(fake_home, fake_runner, monkeypatch, capsys):
+    _only(monkeypatch, [_bin("tool")])
+    fake_runner.missing.add("tool")
+    fake_runner.responses[("install-tool",)] = runner.Result(1, "", "#" * 2000 + "\nerror: the real reason")
+    b.check_prereqs(True, lambda q: "")
+    assert "error: the real reason" in capsys.readouterr().out

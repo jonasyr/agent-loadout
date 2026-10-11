@@ -108,3 +108,11 @@ def test_collect_survives_non_dict_entries(fake_home, fake_runner):
     items = inv.collect(with_versions=False)
     assert [i.name for i in items if i.kind == "mcp"] == ["ok"]
     assert [i.detail for i in items if i.kind == "hook"] == ["c"]
+
+
+def test_helpers_are_not_offered_as_updates(fake_home, fake_runner, monkeypatch):
+    from loadout import runner
+    fake_runner.responses[("mise", "--version")] = runner.Result(0, "2026.10.7 linux-x64", "")
+    monkeypatch.setattr(versions, "latest_version", lambda e: (2026, 10, 8) if e["id"] == "mise" else None)
+    v = {(x.item.kind, x.item.name): x for x in inventory.classify(inventory.collect(with_versions=True))}
+    assert v[("binary", "mise")].action == "keep"

@@ -85,6 +85,9 @@ main() {
     fi
   fi
 
+  # created before any installer does: with Ubuntu's umask 002 it would be group-writable,
+  # and codebase-memory-mcp refuses to install into such a folder
+  [ -d "$HOME/.local/bin" ] || { mkdir -p "$HOME/.local/bin" && chmod 755 "$HOME/.local/bin"; }
   export PATH="$HOME/.local/bin:$PATH"
   if ! command -v uv >/dev/null 2>&1; then
     if ! command -v curl >/dev/null 2>&1; then

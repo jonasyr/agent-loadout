@@ -6,7 +6,8 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 
 | Symptom | Fix |
 |---|---|
-| `loadout` or `claude` not found right after bootstrap | Open a new terminal. Bootstrap added `~/.local/bin` and the mise shims to your profile (block `# loadout PATH`); Windows: your user PATH. |
+| `loadout` or `claude` not found right after bootstrap | Open a new terminal. Bootstrap added `~/.local/bin` and the mise shims to your profile (block `# loadout PATH`); Windows: your user PATH, which also gets npm's global folder (`%APPDATA%\npm`) and codebase-memory-mcp's folder. |
+| `note: ~/.local/bin can be written by other users (mode 0775)` after a failed install | Some installers, codebase-memory-mcp's among them, refuse to put a program into a folder that other users can write to. Debian and Ubuntu create folders like that by default (umask 002). Run `chmod go-w ~/.local/bin`, then run bootstrap again. Bootstrap creates the folder without group write access itself, so this only happens when it already existed. |
 | `missing node: not installed because mise failed to install` | mise failed to install; see the line above it. Fix that, then re-run bootstrap. |
 | `npm error code EACCES` when installing pyright / typescript-language-server / playwright-cli | Your global npm prefix is root-owned (for example `/usr`). Either `npm config set prefix ~/.local` (then re-run `loadout bootstrap --install`), or install them with your version manager, for example `mise use -g npm:pyright npm:typescript-language-server`. |
 | `loadout needs Python 3.10 or newer (found 3.X). Install it and re-run.` | Re-run bootstrap (it installs uv, which provides Python), or install Python 3.10 or newer yourself (on Windows from python.org or `winget install Python.Python.3.12`). |

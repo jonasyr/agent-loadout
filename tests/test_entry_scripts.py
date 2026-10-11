@@ -38,7 +38,8 @@ def env(tmp_path):
 
 
 def _run(env, args, cwd, stdin=None):
-    return subprocess.run(["/bin/bash", *args], cwd=cwd, env=env["vars"], input=stdin,
+    # a new session has no controlling terminal, whether pytest runs in one or not
+    return subprocess.run(["/bin/bash", *args], cwd=cwd, env=env["vars"], input=stdin, start_new_session=True,
                           capture_output=True, text=True, timeout=60)
 
 
@@ -189,13 +190,23 @@ def _piped_clone(env, tmp_path):
     return work, script
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux") or not shutil.which("script"), reason="util-linux script(1)")
+@pytest.mark.skipif(not hasattr(os, "openpty"), reason="needs a pseudo-terminal")
 def test_one_liner_hands_the_terminal_to_bootstrap(env, tmp_path):
     """curl | bash: stdin is the script, so bootstrap must get /dev/tty to ask its questions."""
+    import fcntl
+    import termios
     work, script = _piped_clone(env, tmp_path)
-    p = subprocess.run([shutil.which("script"), "-qec", f"/bin/bash -s -- --install < {script}", "/dev/null"],
-                       cwd=work, env={**env["vars"], "SHELL": "/bin/sh"}, capture_output=True, text=True, timeout=60)
-    assert p.returncode == 0, p.stdout + p.stderr
+    master, slave = os.openpty()
+    try:
+        with open(script) as stdin:
+            # stdin is the script; the pseudo-terminal becomes the controlling terminal of a new session
+            p = subprocess.run(["/bin/bash", "-s", "--", "--install"], cwd=work, env=env["vars"], stdin=stdin,
+                               stdout=slave, stderr=slave, start_new_session=True, timeout=60,
+                               preexec_fn=lambda: fcntl.ioctl(1, termios.TIOCSCTTY, 0))
+    finally:
+        os.close(slave)
+        os.close(master)
+    assert p.returncode == 0
     assert "python bin/loadout bootstrap --install [tty=yes]" in env["log"].read_text()
 
 
@@ -253,3 +264,20 @@ def test_python_is_installed_from_a_neutral_folder_when_uv_has_none(env, tmp_pat
     log = env["log"].read_text()
     assert "uv python install --no-config >=3.10 [UV_NO_MODIFY_PATH=] [pwd=/]" in log
     assert f"python bin/loadout bootstrap [tty=no] [pwd={kit}]" in log
+
+
+def test_uv_install_creates_local_bin_owner_writable_only(env, tmp_path):
+    """Ubuntu's umask 002 would make it group-writable, and codebase-memory-mcp refuses to install there."""
+    uv = env["home"] / ".local/bin/uv"
+    staged = tmp_path / "staged-uv"
+    staged.write_text("#!/bin/sh\n" + env["uv_ok"] + "\n")
+    staged.chmod(0o755)
+    env["stub"]("curl", f'echo "mkdir -p {uv.parent}; cp {staged} {uv}"')
+    env["stub"]("sh", 'exec /bin/sh "$@"')
+    kit = tmp_path / "kit"
+    _fake_clone(kit)
+    shutil.copy(SCRIPT, kit / "bootstrap.sh")
+    p = subprocess.run(["/bin/sh", "-c", 'umask 002; exec /bin/bash "$0"', str(kit / "bootstrap.sh")], cwd=tmp_path,
+                       env=env["vars"], capture_output=True, text=True, timeout=60)
+    assert p.returncode == 0, p.stderr
+    assert (env["home"] / ".local/bin").stat().st_mode & 0o777 == 0o755
