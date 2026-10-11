@@ -5,7 +5,7 @@
                       ({path, session_id}) in ~/.claude/.loadout/advisor-pending.json and mark
                       it "written since the last Stop".
   advisor.py stop     Stop: for a plan written in this turn that is not being executed yet
-                      (no ticked box), not yet evaluated and not yet nudged about, block the stop
+                      (no ticked box and no `Task N: complete` line in its sdd-workspace ledger), not yet evaluated and not yet nudged about, block the stop
                       once and ask the agent to run /loadout:execution-advisor. Every Stop
                       clears the "written" marks, so outside edits and later turns never block.
 
@@ -30,6 +30,7 @@ PLAN_GLOBS = ("*/docs/superpowers/plans/*.md", "*/plans/*.md")
 NOT_PLANS = "/.claude/plans/"  # Claude Code plan mode: already approved when written
 HEADER_LINES = 15
 TICKED = re.compile(r"^\s*- \[[xX]\]", re.M)
+LEDGER_DONE = re.compile(r"^Task \d+: complete", re.M)
 KEEP_PENDING = 50
 KEEP_DONE = 200
 INSTRUCTION = ("A plan was just finished: {path}. Before the user picks an execution method, invoke "
@@ -87,6 +88,15 @@ def _read(path: str) -> str | None:
         return None
 
 
+def _ledger_started(plan_path: str) -> bool:
+    """An sdd-workspace ledger (<repo>/.superpowers/sdd/<plan stem>/progress.md) records a finished task."""
+    p = Path(plan_path)
+    if p.parent.parts[-3:] != ("docs", "superpowers", "plans"):
+        return False
+    text = _read(str(p.parents[3] / ".superpowers" / "sdd" / p.stem / "progress.md"))
+    return bool(text and LEDGER_DONE.search(text))
+
+
 def record(payload: dict) -> None:
     tool_input = payload.get("tool_input")
     session = payload.get("session_id")
@@ -128,7 +138,7 @@ def stop(payload: dict) -> str | None:
         for entry in written:
             path = entry.get("path")
             text = _read(path) if isinstance(path, str) else None
-            if text is None or not looks_like_plan(text) or TICKED.search(text):
+            if text is None or not looks_like_plan(text) or TICKED.search(text) or _ledger_started(path):
                 continue  # gone, not a plan, or execution has started
             h = plan_hash(text)
             if h in evaluated or entry.get("nudged") == h:

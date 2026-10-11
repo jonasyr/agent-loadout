@@ -279,3 +279,27 @@ def test_advisor_mark_is_hidden_from_help(capsys):
     with pytest.raises(SystemExit):
         main(["--help"])
     assert "advisor-mark" not in capsys.readouterr().out
+
+
+def _ledger(plan, text):
+    ledger = plan.parents[3] / ".superpowers/sdd" / plan.stem / "progress.md"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(text)
+
+
+def test_stop_skips_plan_whose_ledger_records_progress(home, plan):
+    _ledger(plan, "# progress\nTask 1: complete\n")
+    _record(home, plan)
+    assert _stop(home).stdout == ""
+
+
+def test_stop_nudges_when_ledger_has_no_completed_task(home, plan):
+    _ledger(plan, "# progress\nTask 1: started\nnotes: Task 2: complete is planned\n")
+    _record(home, plan)
+    assert json.loads(_stop(home).stdout)["decision"] == "block"
+
+
+def test_stop_handles_plan_outside_docs_superpowers(home, tmp_path):
+    other = _write(tmp_path / "x/plans/2026-10-09-export.md")
+    _record(home, other)
+    assert json.loads(_stop(home).stdout)["decision"] == "block"  # no ledger lookup, no crash
