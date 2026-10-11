@@ -1,4 +1,5 @@
-# VHS with Python and git, to render the README demo without installing anything on the host.
+# VHS with Python, git and the demo font, to render the README demo without installing anything on the host.
 FROM ghcr.io/charmbracelet/vhs:v0.12.1
-RUN apt-get update && apt-get install -y --no-install-recommends python3 git \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 git fonts-jetbrains-mono \
     && rm -rf /var/lib/apt/lists/*
+ENV LANG=C.UTF-8
