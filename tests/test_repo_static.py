@@ -149,3 +149,14 @@ def test_no_nested_claude_md():
 def test_claude_md_imports_agents_md():
     assert (ROOT / "CLAUDE.md").read_text(encoding="utf-8").strip() == "@AGENTS.md"
     assert (ROOT / "AGENTS.md").exists()
+
+
+def test_codebase_memory_installers_skip_agent_config():
+    entry = next(e for e in _json("catalog.json")["entries"] if e["id"] == "codebase-memory-mcp")
+    for key in ("install", "update"):
+        for plat in ("posix", "windows"):
+            cmds = entry[key][plat]
+            assert cmds, (key, plat)
+            for cmd in cmds:
+                assert "--skip-config" in " ".join(cmd), (key, plat, cmd)
+    assert "manual" not in entry  # Windows has a real install command now

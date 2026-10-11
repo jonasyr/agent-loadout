@@ -56,6 +56,8 @@ From the `binary` entries in `catalog.json`. `loadout bootstrap --install` insta
 | `rtk` | recommended | Shrinks noisy command output to save tokens. |
 | `pyright`, `typescript-language-server`, `rust-analyzer` | recommended | Language servers for the LSP plugins. |
 
+codebase-memory-mcp is installed and updated with its install script and `--skip-config`, so it does not register a second MCP server next to the plugin's ([ADR 0019](../adr/0019-upstream-installers-without-agent-configuration.md)). On Windows, bootstrap uses `install.ps1`.
+
 Python 3.10 or newer is needed before any of this runs; see [Getting started](../tutorials/getting-started.md#requirements). Updates: [`loadout update`](cli.md#loadout-update).
 
 ## Per-project profiles

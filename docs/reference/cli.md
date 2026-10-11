@@ -207,7 +207,7 @@ For a tool not managed by mise, if the update command succeeds but installs noth
 
 If an installer changed `~/.claude/settings.json`, the kit-merged version is put back and the installer's version goes into a backup.
 
-Some installers re-register what the loadout plugin already provides (for example `codebase-memory-mcp update` re-adds its user-scope MCP server and `~/.claude/hooks/cbm-*` scripts). When at least one update command ran and the loadout plugin is enabled, `update` removes only exact duplicates (`maintenance.undo_reregistered`, `duplicates.py`):
+Some installers re-register what the loadout plugin already provides (for example an install of codebase-memory-mcp without `--skip-config` adds its user-scope MCP server and `~/.claude/hooks/cbm-*` scripts). When at least one update command ran and the loadout plugin is enabled, `update` removes only exact duplicates (`maintenance.undo_reregistered`, `duplicates.py`):
 
 - an MCP server with the same name, command, arguments, type and env as the plugin's, and not one of your personal-layer servers;
 - a hook that runs the same command as a plugin hook, or is exactly a legacy `~/.claude/hooks/cbm-*` script;

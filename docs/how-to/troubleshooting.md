@@ -8,7 +8,7 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 |---|---|
 | `loadout: command not found` | Add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal. |
 | `npm error code EACCES` when installing pyright / typescript-language-server / playwright-cli | Your global npm prefix is root-owned (for example `/usr`). Either `npm config set prefix ~/.local` (then re-run `loadout bootstrap --install`), or install them with your version manager, for example `mise use -g npm:pyright npm:typescript-language-server`. |
-| A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example codebase-memory-mcp on native Windows. |
+| A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example rtk on native Windows. |
 | No session notices, or the daily sync never runs | `loadout` must be on the `PATH` that Claude Code's hooks see. The plugin's hook runner exits 0 silently when the command is missing (`plugins/loadout/hooks/run.sh`). Add `~/.local/bin` to the `PATH` of the environment Claude Code starts from, then restart it. |
 | A plugin or MCP server is missing in Claude Code | Restart Claude Code. Then `loadout check` lists what is missing and how to fix it. Enabled plugins install at the next Claude Code start. |
 
