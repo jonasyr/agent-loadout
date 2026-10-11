@@ -33,12 +33,15 @@ def current_dir() -> Path | None:
         return None
 
 
-def _on_windows_drive(path: Path, mount: str) -> bool:
+def _real(path: Path) -> Path:
     try:
-        path = Path(path).resolve()  # a link into /mnt/c is on the Windows drive too
+        return Path(path).resolve()  # a link into /mnt/c is on the Windows drive too
     except (OSError, RuntimeError):
-        pass
-    s = Path(path).as_posix()
+        return Path(path)
+
+
+def _on_windows_drive(path: Path, mount: str) -> bool:
+    s = _real(path).as_posix()
     if not s.startswith(mount):
         return False
     first = s[len(mount):].split("/", 1)[0]
@@ -50,11 +53,15 @@ def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple
     if version == 1:
         out.append(("WSL 1: Claude Code's sandbox needs WSL 2, and its native binary can fail with `Exec format error`",
                     "in PowerShell: `wsl --set-version <distro> 2`"))
-    for label, path in (("the kit", paths.kit_root()), ("the personal layer", paths.personal_root()),
-                        ("the current folder", cwd)):
-        if path is not None and _on_windows_drive(path, mount):
+    roots = (("the kit", paths.kit_root()), ("the personal layer", paths.personal_root()))
+    for label, path in roots:
+        if _on_windows_drive(path, mount):
             out.append((f"{label} ({Path(path).as_posix()}) is on the Windows filesystem (slow, search can be incomplete)",
-                        "move it into the Linux home, e.g. `~/code/...`"))
+                        "move it into the Linux home, e.g. `~/code/...`, then re-run ./bootstrap.sh there "
+                        "(the installed links point into it)"))
+    if cwd is not None and _on_windows_drive(cwd, mount) and _real(cwd) not in {_real(p) for _, p in roots}:
+        out.append((f"the current folder ({Path(cwd).as_posix()}) is on the Windows filesystem (slow, search can be incomplete)",
+                    "move it into the Linux home, e.g. `~/code/...`"))
     for tool in LINUX_TOOLS:
         found = runner.which(tool)
         if found and _on_windows_drive(Path(found), mount):

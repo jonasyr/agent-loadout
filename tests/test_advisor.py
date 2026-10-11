@@ -303,3 +303,10 @@ def test_stop_handles_plan_outside_docs_superpowers(home, tmp_path):
     other = _write(tmp_path / "x/plans/2026-10-09-export.md")
     _record(home, other)
     assert json.loads(_stop(home).stdout)["decision"] == "block"  # no ledger lookup, no crash
+
+
+def test_ledger_rule_applies_only_under_docs_superpowers_plans(home, tmp_path):
+    other = _write(tmp_path / "a/b/c/plans/2026-10-09-export.md")
+    _ledger(other, "Task 1: complete\n")  # a ledger where a docs/superpowers plan's would be: not this plan's
+    _record(home, other)
+    assert json.loads(_stop(home).stdout)["decision"] == "block"

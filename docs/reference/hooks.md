@@ -12,13 +12,13 @@ Most commands go through `plugins/loadout/hooks/run.sh`. It runs the command onl
 |---|---|---|---|---|
 | `SessionStart` | all | `serena-hooks activate --client=claude-code` | 15 s | Serena's own activation hook. |
 | `SessionStart` | all | `loadout hook-session-start` | 10 s | Shows queued notices (for example "updates available, run `loadout update`") and starts the background maintenance when the daily pull or the weekly update check is due. Errors never break the session. |
+| `SessionStart` | all | `--soft python3 hooks/reload_check.py` | 5 s | Tells you once per session to run `/reload-plugins` when Claude Code updated the plugin after the session started (the session keeps the old skills and hooks until then). State: `~/.claude/.loadout/reload-notified.json`. |
 | `SessionEnd` | all | `serena-hooks cleanup --client=claude-code` | 10 s | Serena's own cleanup hook. |
 | `PreToolUse` | `Bash` | `rtk hook claude` | 10 s | rtk rewrites shell commands to its token-saving form. |
 | `PreToolUse` | `mcp__plugin_loadout_serena__.*` | `serena-hooks auto-approve --client=claude-code` | 10 s | Serena's own auto-approve hook, for Serena's tools only. |
 | `PreToolUse` | `Grep\|Glob` | `--soft codebase-memory-mcp hook-augment` | 5 s | The code-graph server's hook for `Grep` and `Glob`. |
 | `PostToolUse` | `Write\|Edit\|MultiEdit` | `--soft python3 hooks/advisor.py record` | 5 s | Remembers a finished implementation plan. |
 | `Stop` | all | `--soft python3 hooks/advisor.py stop` | 5 s | Asks once for `/loadout:execution-advisor` after a plan. |
-| `SessionStart` | all | `--soft python3 hooks/reload_check.py` | 5 s | Tells you once per session to run `/reload-plugins` when Claude Code updated the plugin after the session started (the session keeps the old skills and hooks until then). State: `~/.claude/.loadout/reload-notified.json`. |
 | `Stop` | all | `--soft python3 hooks/reload_check.py` | 5 s | Same check at the end of a turn, for sessions that run long. |
 | `SubagentStart` | `*` | `hooks/subagent-context.sh` | 5 s | Gives a subagent one line of tool routing. |
 

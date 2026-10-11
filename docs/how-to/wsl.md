@@ -51,6 +51,8 @@ which claude node npm uv git
 
 Each path must be inside WSL, such as `~/.local/bin/claude` or `/usr/bin/node`. A path that starts with `/mnt/c` is the Windows binary. Install the tool inside WSL (`./bootstrap.sh --install` does it for what it can), and make sure its directory comes first in your `PATH`. Re-run `loadout check` afterwards.
 
+The other fix, `appendWindowsPath = false` under `[interop]` in `/etc/wsl.conf`, stops WSL from importing the Windows `PATH` at all. It also hides Windows tools you may want, such as `code` and `explorer.exe`, and needs `wsl --shutdown` to take effect.
+
 ## 6. Install the sandbox packages
 
 Sandboxing needs bubblewrap and socat:

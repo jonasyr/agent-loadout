@@ -6,7 +6,7 @@ import sys
 def require_python(version=None):
     version = version or sys.version_info
     if tuple(version[:2]) < (3, 10):
-        sys.stderr.write("loadout needs Python 3.10 or newer (found %d.%d)\n" % (version[0], version[1]))
+        sys.stderr.write("loadout needs Python 3.10 or newer (found %d.%d). Install it and re-run.\n" % (version[0], version[1]))
         sys.exit(1)
 
 

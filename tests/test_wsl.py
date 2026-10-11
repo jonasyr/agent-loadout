@@ -146,3 +146,12 @@ def test_detect_reads_the_module_osrelease(tmp_path, monkeypatch):
 
 def test_fake_home_hides_the_real_osrelease(fake_home):
     assert wsl.detect(platform="linux") is None
+
+
+def test_cwd_equal_to_kit_is_reported_once_with_rebootstrap_hint(fake_home, fake_runner, mnt, monkeypatch):
+    kit = mnt / "c" / "Users" / "me"
+    monkeypatch.setenv("LOADOUT_ROOT", str(kit))
+    found = wsl.problems(2, kit, mount=_prefix(mnt))
+    assert len(found) == 1
+    assert found[0][0].startswith("the kit (")
+    assert "re-run ./bootstrap.sh" in found[0][1]

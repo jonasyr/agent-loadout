@@ -1,4 +1,4 @@
-"""`loadout update` undoes exact duplicates an installer re-registers (codebase-memory-mcp update)."""
+"""`loadout update` undoes exact duplicates an installer re-registers (for example the codebase-memory-mcp install script)."""
 import json
 
 from loadout import backup, catalog, maintenance as m, paths, runner, versions

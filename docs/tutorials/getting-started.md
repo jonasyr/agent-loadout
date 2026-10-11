@@ -27,7 +27,7 @@ Go on with [What bootstrap asks](#what-bootstrap-asks).
 
 Choose one path first. Do not mix the two.
 
-- **WSL 2 (recommended).** Open a WSL terminal, not PowerShell, and follow the Linux steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) for the manual checks (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages).
+- **WSL 2 (recommended).** Open a WSL terminal, not PowerShell, and follow the Linux steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages); `loadout check` warns about each of these it can see.
 - **Native Windows.** Use PowerShell and the steps below. Native Windows needs Git for Windows.
 
 ### Native Windows
