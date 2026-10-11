@@ -68,3 +68,12 @@ jobs:
           $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
           $out = (loadout check) -join "`n"; Write-Output $out
           if ($out -match '\[FAIL\]') { exit 1 }
+      - name: where the tools landed (diagnostics)
+        if: always()
+        shell: pwsh
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';C:\Windows\System32;C:\Windows'
+          Write-Output "npm prefix -g: $(npm prefix -g)"
+          Write-Output "npm config get prefix: $(npm config get prefix)"
+          Get-ChildItem "$env:LOCALAPPDATA\mise\shims" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+          Get-Command playwright-cli, pyright, typescript-language-server -ErrorAction SilentlyContinue | Format-Table Name, Source

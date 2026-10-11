@@ -55,8 +55,9 @@ main() {
     esac
   done
 
+  # run from a file, $0 is that file; piped, bash 5.2 sets BASH_SOURCE to "main" and 5.3 leaves it empty
   src="${BASH_SOURCE[0]:-}"
-  if [ -n "$src" ] && [ -f "$(dirname "$src")/bin/loadout" ]; then
+  if [ -n "$src" ] && [ "$src" = "$0" ] && [ -f "$src" ] && [ -f "$(dirname "$src")/bin/loadout" ]; then
     kit="$(cd "$(dirname "$src")" && pwd)"
   else
     piped=1
