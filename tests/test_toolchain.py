@@ -1,5 +1,10 @@
 import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 from loadout import bootstrap as b, catalog, paths, runner
 
@@ -82,23 +87,29 @@ def test_without_install_flag_nothing_runs(fake_home, fake_runner, monkeypatch):
     assert not any(c[0].startswith("install-") for c in fake_runner.calls)
 
 
-def test_path_block_goes_to_rc_and_login_profile(fake_home, fake_runner, monkeypatch):
+GET = ("powershell", "-NoProfile", "-Command", b.WIN_PATH_GET)
+
+
+def _posix(monkeypatch, shell="/bin/bash"):
     monkeypatch.setattr(paths, "platform_key", lambda: "posix")
-    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setenv("SHELL", shell)
+
+
+def test_path_block_goes_to_rc_and_login_profile(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch)
     (fake_home / ".local/bin").mkdir(parents=True)
     (fake_home / ".bashrc").write_text("case $- in *i*) ;; *) return;; esac\n")
-    out = b.setup_path(None)
-    assert out
+    out, changed = b.setup_path(None)
+    assert out and changed
     for f in (".bashrc", ".profile"):
         text = (fake_home / f).read_text()
-        assert text.count(b.PATH_MARKER) == 1
+        assert text.count(b.PATH_MARKER + "\n") == 1 and b.PATH_END in text
         assert '"$HOME/.local/bin"' in text
-    assert b.setup_path(None) == []  # idempotent: nothing changed, nothing to say
+    assert b.setup_path(None) == ([], False)  # idempotent: nothing changed, nothing to say
 
 
 def test_path_block_prefers_existing_bash_profile(fake_home, fake_runner, monkeypatch):
-    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
-    monkeypatch.setenv("SHELL", "/bin/bash")
+    _posix(monkeypatch)
     (fake_home / ".local/bin").mkdir(parents=True)
     (fake_home / ".bash_profile").write_text("# mine\n")
     b.setup_path(None)
@@ -107,17 +118,112 @@ def test_path_block_prefers_existing_bash_profile(fake_home, fake_runner, monkey
 
 
 def test_path_block_skips_folders_outside_home_and_missing_ones(fake_home, fake_runner, monkeypatch):
-    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    _posix(monkeypatch)
     monkeypatch.setattr(paths, "tool_dirs", lambda: [Path("/opt/elsewhere/bin")])
-    assert b.setup_path(None) == []
+    assert b.setup_path(None) == ([], False)
 
 
-def test_windows_user_path_is_extended_once(fake_home, fake_runner, monkeypatch):
-    monkeypatch.setattr(paths, "platform_key", lambda: "windows")
+def test_path_block_keeps_the_first_folder_first(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch)
+    dirs = [fake_home / ".local/bin", fake_home / ".local/share/mise/shims"]
+    monkeypatch.setattr(paths, "tool_dirs", lambda: dirs)
+    block = b._path_block(dirs)
+    assert block.index(".local/share/mise/shims") < block.index('PATH="$HOME/.local/bin"')  # prepended last, so first
+
+
+@pytest.mark.skipif(sys.platform == "win32" or not shutil.which("sh"), reason="needs a POSIX sh")
+def test_sourcing_the_block_twice_adds_no_duplicates(fake_home, fake_runner):
+    dirs = [fake_home / ".local/bin", fake_home / ".local/share/mise/shims"]
+    script = fake_home / "blk.sh"
+    script.write_text(b._path_block(dirs))
+    res = subprocess.run(["sh", "-c", f'PATH=/usr/bin; HOME={fake_home}; . {script}; . {script}; echo "$PATH"'],
+                         capture_output=True, text=True)
+    parts = res.stdout.strip().split(":")
+    assert parts == [f"{fake_home}/.local/share/mise/shims", f"{fake_home}/.local/bin", "/usr/bin"] or \
+        parts == [f"{fake_home}/.local/bin", f"{fake_home}/.local/share/mise/shims", "/usr/bin"]
+    assert len(parts) == len(set(parts))
+
+
+def test_path_block_with_changed_folders_is_replaced_in_place(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch)
     (fake_home / ".local/bin").mkdir(parents=True)
-    get = ("powershell", "-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('Path', 'User')")
-    fake_runner.responses[get] = runner.Result(0, "C:\\Tools\r\n", "")
-    out = b.setup_path(None)
-    sets = [c for c in fake_runner.calls if "SetEnvironmentVariable" in " ".join(c)]
-    assert len(sets) == 1 and str(fake_home / ".local/bin") in sets[0][-1] and "C:\\Tools" in sets[0][-1]
-    assert out
+    old = f"{b.PATH_MARKER}\nPATH=\"$HOME/old\":\"$PATH\"\nexport PATH\n{b.PATH_END}\n"
+    (fake_home / ".bashrc").write_text("# top\n" + old + "# bottom\n")
+    (fake_home / ".profile").write_text("# p\n")
+    out, changed = b.setup_path(None)
+    assert changed
+    text = (fake_home / ".bashrc").read_text()
+    assert text.startswith("# top\n" + b.PATH_MARKER) and text.endswith(b.PATH_END + "\n# bottom\n")
+    assert "$HOME/old" not in text and '"$HOME/.local/bin"' in text and text.count(b.PATH_MARKER + "\n") == 1
+    assert b.setup_path(None) == ([], False)
+
+
+def _win(monkeypatch, fake_home):
+    monkeypatch.setattr(paths, "platform_key", lambda: "windows")
+    monkeypatch.setenv("LOCALAPPDATA", str(fake_home / "AppData/Local"))
+    (fake_home / ".local/bin").mkdir(parents=True)
+
+
+def _sets(fake_runner):
+    return [c for c in fake_runner.calls if "SetValue" in " ".join(c)]
+
+
+def test_windows_user_path_is_extended_once_and_keeps_expand_entries(fake_home, fake_runner, monkeypatch):
+    _win(monkeypatch, fake_home)
+    fake_runner.responses[GET] = runner.Result(0, "C:\\Tools;%USERPROFILE%\\bin\r\n", "")
+    out, changed = b.setup_path(None)
+    sets = _sets(fake_runner)
+    assert len(sets) == 1 and changed and out
+    assert str(fake_home / ".local/bin") in sets[0][-1] and "%USERPROFILE%\\bin" in sets[0][-1]
+    assert "ExpandString" in sets[0][-1]
+    assert "was: C:\\Tools;%USERPROFILE%\\bin" in out[0]
+
+
+def test_windows_entry_written_with_variable_counts_as_present(fake_home, fake_runner, monkeypatch):
+    _win(monkeypatch, fake_home)
+    fake_runner.responses[GET] = runner.Result(0, "%userprofile%\\.LOCAL\\bin\r\n", "")
+    assert b.setup_path(None) == ([], False)
+    assert not _sets(fake_runner)
+
+
+def test_windows_already_present_entry_does_not_write(fake_home, fake_runner, monkeypatch):
+    _win(monkeypatch, fake_home)
+    fake_runner.responses[GET] = runner.Result(0, str(fake_home / ".local/bin").upper() + ";C:\\x", "")
+    assert b.setup_path(None) == ([], False)
+    assert not _sets(fake_runner)
+
+
+def test_windows_empty_user_path(fake_home, fake_runner, monkeypatch):
+    _win(monkeypatch, fake_home)
+    fake_runner.responses[GET] = runner.Result(0, "\r\n", "")
+    out, changed = b.setup_path(None)
+    assert changed and "was: empty" in out[0]
+    assert _sets(fake_runner)[0][-1].count(str(fake_home / ".local/bin")) == 1
+
+
+def test_windows_single_quote_in_value_is_doubled(fake_home, fake_runner, monkeypatch):
+    _win(monkeypatch, fake_home)
+    fake_runner.responses[GET] = runner.Result(0, "C:\\O'Brien\\bin", "")
+    b.setup_path(None)
+    assert "C:\\O''Brien\\bin" in _sets(fake_runner)[0][-1]
+
+
+def test_windows_failed_write_is_not_reported_as_success(fake_home, fake_runner, monkeypatch):
+    _win(monkeypatch, fake_home)
+    fake_runner.responses[GET] = runner.Result(0, "C:\\Tools", "")
+    real = runner.run
+    def run(cmd, *a, **k):
+        if "SetValue" in " ".join(cmd):
+            fake_runner.calls.append(list(cmd))
+            return runner.Result(1, "", "denied")
+        return real(cmd, *a, **k)
+    monkeypatch.setattr(runner, "run", run)
+    out, changed = b.setup_path(None)
+    assert not changed and out and out[0].startswith("could not update your user PATH; add ")
+
+
+def test_windows_read_failure_changes_nothing(fake_home, fake_runner, monkeypatch):
+    _win(monkeypatch, fake_home)
+    fake_runner.responses[GET] = runner.Result(1, "", "boom")
+    out, changed = b.setup_path(None)
+    assert not changed and out and not _sets(fake_runner)

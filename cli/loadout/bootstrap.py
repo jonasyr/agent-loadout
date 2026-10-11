@@ -4,6 +4,7 @@ from __future__ import annotations
 import codecs
 import locale
 import os
+import re
 from pathlib import Path
 from typing import Callable
 
@@ -237,6 +238,9 @@ def setup_secrets(bk: Backup | None = None) -> list[str]:
 
 
 PATH_MARKER = "# loadout PATH"
+PATH_END = "# loadout PATH end"
+WIN_PATH_GET = ("[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment').GetValue('Path', '', "
+                "[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)")
 
 
 def _path_block(dirs: list[Path]) -> str:
@@ -246,15 +250,43 @@ def _path_block(dirs: list[Path]) -> str:
         rel = d.relative_to(home).as_posix()
         lines.append(f'case ":$PATH:" in *":$HOME/{rel}:"*) ;; *) PATH="$HOME/{rel}":"$PATH" ;; esac')
     lines.append("export PATH")
+    lines.append(PATH_END)
     return "\n".join(lines) + "\n"
 
 
-def setup_path(bk: Backup | None = None) -> list[str]:
-    """Make the folders user-space installers use visible to new terminals (and to Claude Code)."""
+def _refresh_path_block(rc: Path, block: str, bk: Backup | None) -> str | None:
+    """A profile that already has our block gets it replaced when the content differs; the rest stays as is."""
+    raw = rc.read_bytes() if rc.exists() else b""
+    start = raw.find(PATH_MARKER.encode() + b"\n")
+    if start < 0:
+        return None  # no block yet: the caller appends one
+    end_tag = PATH_END.encode() + b"\n"
+    end = raw.find(end_tag, start)
+    if end >= 0:
+        end += len(end_tag)
+    else:  # a block without end marker ends at its `export PATH`
+        tail = b"export PATH\n"
+        end = raw.find(tail, start)
+        if end < 0:
+            return ""
+        end += len(tail)
+    new = block.encode("utf-8")
+    if raw[start:end] == new:
+        return ""
+    if bk is not None:
+        bk.save_copy(rc, f"{rc} before updating the tool folders on PATH")
+    from .jsonio import write_atomic_bytes
+    write_atomic_bytes(rc, raw[:start] + new + raw[end:])
+    return f"updated the tool folders on PATH in {rc}"
+
+
+def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
+    """Make the folders user-space installers use visible to new terminals (and to Claude Code).
+    Returns (lines to print, whether anything changed)."""
     home = paths.home()
     dirs = [d for d in paths.tool_dirs() if d == home or home in d.parents]
     if not dirs:
-        return []
+        return [], False
     if paths.platform_key() == "windows":
         return _setup_windows_path(dirs)
     shell = os.path.basename(os.environ.get("SHELL", ""))
@@ -266,23 +298,41 @@ def setup_path(bk: Backup | None = None) -> list[str]:
     login = home / ".bash_profile" if (home / ".bash_profile").exists() else home / ".profile"
     targets.append(login)
     block = _path_block(dirs)
-    return [line for rc in dict.fromkeys(targets)
-            if (line := _add_block(rc, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH"))]
+    out = []
+    for rc in dict.fromkeys(targets):
+        line = _refresh_path_block(rc, block, bk)
+        if line is None:
+            line = _add_block(rc, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH")
+        if line:
+            out.append(line)
+    return out, bool(out)
 
 
-def _setup_windows_path(dirs: list[Path]) -> list[str]:
-    get = ["powershell", "-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('Path', 'User')"]
-    res = runner.run(get, timeout=30)
+def _expand_user_vars(entry: str) -> str:
+    local = os.environ.get("LOCALAPPDATA") or str(paths.home() / "AppData" / "Local")
+    for var, value in (("%USERPROFILE%", str(paths.home())), ("%LOCALAPPDATA%", local)):
+        entry = re.sub(re.escape(var), lambda _m, v=value: v, entry, flags=re.IGNORECASE)
+    return entry
+
+
+def _setup_windows_path(dirs: list[Path]) -> tuple[list[str], bool]:
+    hand = f"add {', '.join(map(str, dirs))} to it by hand"
+    res = runner.run(["powershell", "-NoProfile", "-Command", WIN_PATH_GET], timeout=30)
     if not res.ok:
-        return [f"could not read your user PATH; add {', '.join(map(str, dirs))} to it by hand"]
-    current = [p for p in res.stdout.strip().split(";") if p]
-    new = [str(d) for d in dirs if str(d).lower() not in {p.lower() for p in current}]
+        return [f"could not read your user PATH; {hand}"], False
+    current = [p for p in res.stdout.strip().split(";") if p]  # raw: %VARS% stay unexpanded
+    def norm(x: str) -> str:
+        return x.replace("\\", "/").rstrip("/").lower()
+    present = {norm(x) for p in current for x in (p, _expand_user_vars(p))}
+    new = [str(d) for d in dirs if norm(str(d)) not in present]
     if not new:
-        return []
+        return [], False
     value = ";".join(new + current).replace("'", "''")
-    runner.run(["powershell", "-NoProfile", "-Command",
-                f"[Environment]::SetEnvironmentVariable('Path', '{value}', 'User')"], timeout=30)
-    return [f"added {', '.join(new)} to your user PATH (was: {';'.join(current) or 'empty'})"]
+    set_cmd = ("$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true); "
+               f"$k.SetValue('Path', '{value}', [Microsoft.Win32.RegistryValueKind]::ExpandString)")
+    if not runner.run(["powershell", "-NoProfile", "-Command", set_cmd], timeout=30).ok:
+        return [f"could not update your user PATH; {hand}"], False
+    return [f"added {', '.join(new)} to your user PATH (was: {';'.join(current) or 'empty'})"], True
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
@@ -337,7 +387,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     for line in setup_secrets(bk):
         print(line)
     _step("PATH")
-    path_lines = setup_path(bk)
+    path_lines, path_changed = setup_path(bk)
     for line in path_lines or ["PATH already set up"]:
         print(line)
     if not bk.empty:
@@ -345,7 +395,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     _step("Check")
     text, code = check.format_results(check.run_checks())
     print(text)
-    print("\nOpen a new terminal so the new PATH applies, then start Claude Code." if path_lines
+    print("\nOpen a new terminal so the new PATH applies, then start Claude Code." if path_changed
           else "\nRestart Claude Code to load plugins and rules.")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
