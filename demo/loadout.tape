@@ -13,7 +13,7 @@ Type `card loadout 'A reviewed Claude Code setup in one command'`
 Enter
 Sleep 500ms
 Show
-Sleep 3500ms
+Sleep 4000ms
 Hide
 Type " "
 Sleep 300ms
@@ -25,7 +25,7 @@ Type `card '① An existing Claude Code setup' 'MCP servers, plugins and a skill
 Enter
 Sleep 300ms
 Show
-Sleep 2800ms
+Sleep 3800ms
 Hide
 Type " "
 Sleep 300ms
@@ -45,7 +45,7 @@ Type `card '② One command' 'installs what is missing, then reviews what you al
 Enter
 Sleep 300ms
 Show
-Sleep 2800ms
+Sleep 3800ms
 Hide
 Type " "
 Sleep 300ms
@@ -76,59 +76,40 @@ Sleep 250ms
 Enter
 Sleep 500ms
 Enter
-Sleep 450ms
+# the recommended preferences on one screen; Enter takes them
+Sleep 4s
 Enter
-Sleep 450ms
+Sleep 1200ms
 Enter
-Sleep 450ms
-Enter
-Sleep 450ms
-Enter
-Sleep 450ms
-Enter
-Sleep 450ms
-Enter
-Sleep 450ms
-Enter
-Sleep 450ms
-Enter
-Sleep 450ms
-Type "2"
-Sleep 250ms
-Enter
-Sleep 450ms
-Enter
-Sleep 900ms
-Enter
-Sleep 2500ms
+Sleep 3000ms
 Type "a"
 Sleep 250ms
 Enter
-Sleep 1800ms
+Sleep 2300ms
 Type "a"
 Sleep 250ms
 Enter
-Sleep 1800ms
+Sleep 2300ms
 Type "a"
 Sleep 250ms
 Enter
-Sleep 1800ms
+Sleep 2300ms
 Type "c"
 Sleep 250ms
 Enter
-Sleep 1200ms
+Sleep 1700ms
 Type "g"
 Sleep 250ms
 Enter
-Sleep 1000ms
+Sleep 1300ms
 Type "g"
 Sleep 250ms
 Enter
-Sleep 1500ms
+Sleep 2000ms
 Type "y"
 Sleep 250ms
 Enter
-Sleep 9s
+Sleep 10s
 
 # ③ the Quick start's last terminal steps: the health check, then a project
 Hide
@@ -136,7 +117,7 @@ Type `card '③ Check, then start a project' 'loadout check · loadout init'`
 Enter
 Sleep 300ms
 Show
-Sleep 2800ms
+Sleep 3800ms
 Hide
 Type " "
 Sleep 300ms
@@ -144,13 +125,13 @@ Show
 Type "loadout check"
 Sleep 300ms
 Enter
-Sleep 3500ms
+Sleep 4500ms
 Type "cd ~/my-app && loadout init"
 Sleep 300ms
 Enter
 Sleep 2000ms
 Enter
-Sleep 6s
+Sleep 7s
 
 # ④ the real Claude Code clip follows (demo/claude-clip.mp4)
 Hide
@@ -158,4 +139,4 @@ Type `card '④ Claude Code starts with the kit' 'then /loadout:onboard sets up 
 Enter
 Sleep 300ms
 Show
-Sleep 2800ms
+Sleep 3800ms

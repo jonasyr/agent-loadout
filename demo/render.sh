@@ -19,7 +19,7 @@ if [ -n "${DEMO_KEEP_DIR:-}" ]; then mkdir -p "$DEMO_KEEP_DIR"; keep=(-v "$DEMO_
   mkdir /kit && cd /src && git ls-files -co --exclude-standard -z | xargs -0 cp --parents -t /kit
   cd /kit && git init -q && git add -A && git commit -qm demo
   vhs demo/loadout.tape
-  W=1200 H=800 FILL=0x181a24
+  W=1280 H=800 FILL=0x181a24
   if [ -f demo/claude-clip.mp4 ]; then
     ffmpeg -y -loglevel error -i demo.mp4 -i demo/claude-clip.mp4 -filter_complex \
       "[0:v]fps=20,setsar=1[a];[1:v]scale=$W:$H:force_original_aspect_ratio=decrease,pad=$W:$H:(ow-iw)/2:(oh-ih)/2:color=$FILL,fps=20,setsar=1[b];[a][b]concat=n=2:v=1[v]" \
