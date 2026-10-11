@@ -130,7 +130,7 @@ EXTRA_COMMANDS.append(_register_maintenance)
 
 
 def _register_bootstrap(sub):
-    from . import bootstrap
+    from . import bootstrap, out
     from .__main__ import _ask
 
     p = sub.add_parser("bootstrap", help="set up (or repair) this machine")
@@ -138,7 +138,14 @@ def _register_bootstrap(sub):
     p.add_argument("--yes", action="store_true", help="accept defaults without asking (adopt applies remove/migrate/scope-down; never binary updates)")
     p.add_argument("--no-plugins", action="store_true", help="skip adding marketplaces and installing plugins (offline/CI)")
     p.add_argument("--no-adopt", action="store_true", help="skip reviewing the existing setup")
-    p.set_defaults(func=lambda a: bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask))
+    p.add_argument("--verbose", action="store_true", help="print every detail of every step")
+
+    def run(a):
+        if a.verbose:
+            out.VERBOSE = True
+        return bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask)
+
+    p.set_defaults(func=run)
 
 
 EXTRA_COMMANDS.append(_register_bootstrap)

@@ -4,10 +4,11 @@ from __future__ import annotations
 import codecs
 import locale
 import os
+import re
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, catalog, check, link, paths, runner, secrets, settings_merge, ui, wsl
+from . import adopt, catalog, check, link, out, paths, runner, secrets, settings_merge, ui, wsl
 from .backup import Backup
 from .jsonio import load_json
 from .secrets import redact
@@ -37,8 +38,39 @@ POLICY_NOTE = ("PowerShell's execution policy is Restricted, so profiles (and th
                "To allow them: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned")
 
 
+INTRO = "loadout sets up Claude Code with a reviewed kit of plugins, rules and tools."
+# lines that report something the user must see even in calm mode
+PROBLEM = re.compile(r"failed|skipped|not changed|could not|cannot|do not run")
+
+
 def _step(title: str) -> None:
-    print(f"\n== {title}")
+    if out.VERBOSE:
+        print(f"\n== {title}")
+
+
+def _tilde(path: Path) -> str:
+    home = str(paths.home())
+    return "~" + str(path)[len(home):] if str(path).startswith(home) else str(path)
+
+
+def _report(name: str, summary: str, lines: list[str] = (), level: str = "ok") -> None:
+    """One status line; problem lines always follow it, the rest only with --verbose."""
+    bad = [line for line in lines if PROBLEM.search(line)]
+    out.status(name, summary, "warn" if bad and level == "ok" else level)
+    for line in lines:
+        (out.problem if line in bad else out.detail)(line)
+
+
+def _prereq_summary(missing: list[str], installed: list[str]) -> tuple[str, str]:
+    entries = [e for e in catalog.binaries() if not e.get("helper") and _wanted(e)]
+    ready = sum(1 for e in entries if runner.have(e["id"]))
+    text = f"{ready} tools ready"
+    if installed:
+        text += f", installed {', '.join(installed)}"
+    if missing:
+        text += f", missing {', '.join(missing)}"
+    required = {e["id"] for e in entries if e.get("required")}
+    return text, ("fail" if set(missing) & required else "warn" if missing else "ok")
 
 
 MANUAL_STEPS = {
@@ -121,7 +153,7 @@ def _tail(res: runner.Result, limit: int = 400) -> str:
     return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
 
 
-def check_prereqs(install: bool, ask: Ask) -> list[str]:
+def check_prereqs(install: bool, ask: Ask, installed: list | None = None) -> list[str]:
     from . import pkgmgr
     if install:
         _ensure_local_bin()
@@ -146,18 +178,23 @@ def check_prereqs(install: bool, ask: Ask) -> list[str]:
             continue
         if install and cmds:
             for cmd in cmds:
-                print("installing: " + " ".join(cmd))
+                if out.VERBOSE:
+                    print("installing: " + " ".join(cmd))
+                elif cmd is cmds[0]:
+                    print(f"  installing {name}…")
                 res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
                 if not res.ok:
-                    print(f"  failed: {_tail(res)}")
+                    out.problem(f"failed: {_tail(res)}")
                     hint = _open_local_bin_hint()
                     if hint:
-                        print(hint)
+                        out.problem(hint)
             npm = npm_global_dir() if any(cmd[0] == "npm" for cmd in cmds) else None
             prepend_tool_dirs([npm] if npm else None)
             if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
                 runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals
                 prepend_tool_dirs()
+            if installed is not None and runner.have(name) and not entry.get("helper"):
+                installed.append(name)
         if not runner.have(name):
             failed.add(name)
             if not entry.get("helper"):
@@ -168,9 +205,9 @@ def check_prereqs(install: bool, ask: Ask) -> list[str]:
         if runner.run(["gh", "auth", "status"], timeout=20).ok:
             res = runner.run(["gh", "auth", "setup-git"], timeout=20)
             if res.ok:
-                print("git uses your gh login for GitHub (gh auth setup-git; undo: git config --global --unset-all credential.https://github.com.helper)")
+                out.detail("git uses your gh login for GitHub (gh auth setup-git; undo: git config --global --unset-all credential.https://github.com.helper)")
         else:
-            print("gh is not logged in: run `gh auth login` (needed for private marketplaces)")
+            out.problem("gh is not logged in: run `gh auth login` (needed for private marketplaces)")
     return missing
 
 
@@ -439,25 +476,37 @@ def _setup_windows_path(dirs: list[Path], bk: Backup | None) -> tuple[list[str],
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
     if interactive is None:
         interactive = ui.is_interactive()
+    print(INTRO)
+    if not out.VERBOSE:
+        print()
     version = wsl.detect()
     if version is not None:
         _step("WSL")
+        out.status("WSL", f"WSL {version}")
         for line in wsl.report_lines(version, wsl.current_dir()):
-            print(line)
+            out.problem(line)
     _step("Prerequisites")
-    check_prereqs(install, ask)
+    installed: list[str] = []
+    missing = check_prereqs(install, ask, installed=installed)
+    summary, level = _prereq_summary(missing, installed)
+    out.status("Prerequisites", summary, level)
     bk = Backup(description="bootstrap")
     _step("Personal layer")
     fresh = not paths.personal_root().exists()
     message, personal_ok = ensure_personal(ask, bk, interactive)
     # a starter layer was just created and its preference questions asked (a clone has .git)
     starter = fresh and personal_ok and paths.personal_root().exists() and not (paths.personal_root() / ".git").exists()
-    print(message)
+    where = _tilde(paths.personal_root())
+    if personal_ok:
+        _report("Personal layer", f"created {where}" if starter else f"cloned into {where}" if fresh else f"using {where}",
+                [message])
+    else:
+        out.status("Personal layer", "clone failed", "fail")
+        out.problem(message)
     _step("Links")
-    for line in link.link_all(bk, retry_symlinks=True) + link.link_bin(bk):
-        print(line)
+    link_lines = link.link_all(bk, retry_symlinks=True) + link.link_bin(bk)
     if not yes and not interactive:
-        print("\nnon-interactive: skipping the configure prompt (run `loadout configure` later)")
+        print("non-interactive: skipping the configure prompt (run `loadout configure` later)")
     elif not yes and ui.confirm(ask, "\nCustomize preferences and global add-ons now? [y/N] "):
         from .configure import wizard
         wizard(ask, first_run=False, setup=False, interactive=interactive, preferences_asked=starter)  # settings, MCP servers and plugins are applied below
@@ -467,43 +516,60 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         bk.save_copy(settings_path, "settings.json before loadout merge")
     settings_merge.backup_snapshot(bk)
     before, after = settings_merge.apply_settings()
-    print("settings updated" if before != after else "settings already up to date")
     from .personal_mcp import apply_mcp
-    for line in apply_mcp():
-        print(line)
+    merged = "settings updated" if before != after else "settings already up to date"
+    _report("Rules and settings", "linked, " + ("settings merged" if before != after else "settings up to date"),
+            link_lines + [merged] + apply_mcp())
     if plugins:
         _step("Marketplaces and plugins")
         lines = setup_plugins()
-        for line in lines:
-            print(line)
         if any(line.endswith(": added") for line in lines):
             settings_merge.apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
+        total = sum(1 for on in settings_merge.desired_settings().get("enabledPlugins", {}).values() if on)
+        failed = sum(1 for line in lines if PROBLEM.search(line))
+        _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     if adopt_step:
         _step("Adopt existing setup")
         if not yes and not interactive:
             print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
         else:
+            print()
             adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive)
+            print()
     _step("Secrets")
-    for line in setup_secrets(bk):
-        print(line)
+    _report("Secrets", f"{_tilde(paths.secrets_file())} ready", setup_secrets(bk))
     _step("PATH")
     path_lines, path_changed = setup_path(bk)
-    for line in path_lines or ["PATH already set up"]:
-        print(line)
+    _report("PATH", "tool folders added (new terminals)" if path_changed else "already set up",
+            path_lines or ["PATH already set up"])
     if not bk.empty:
-        print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root})")
+        out.detail(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
-    text, code = check.format_results(check.run_checks())
-    print(text)
+    results = check.run_checks()
+    if out.VERBOSE:
+        text, code = check.format_results(results)
+        print(text)
+    else:
+        bad = [r for r in results if not r.ok]
+        text, code = check.format_results(bad)
+        out.status("Health check", f"{len(results) - len(bad)} of {len(results)} OK",
+                   "fail" if code else "warn" if bad else "ok")
+        if bad:
+            print(text)
     todo = still_to_do(os_key())
+    if not out.VERBOSE and not bk.empty:
+        print(f"\n{adopt.UNDO_LINE}")
     if path_changed:
         print("\nOpen a new terminal so the new PATH applies.")
     if todo:
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
-    print("\nThen start Claude Code." if path_changed else "\nRestart Claude Code to load plugins and rules.")
+    if out.VERBOSE:
+        print("\nThen start Claude Code." if path_changed else "\nRestart Claude Code to load plugins and rules.")
+    else:
+        print("\nNext: run `claude` in a new terminal." if path_changed
+              else "\nNext: run `claude` (restart it if it is open). The kit loads automatically.")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1
