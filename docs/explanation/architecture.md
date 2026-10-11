@@ -3,14 +3,78 @@
 loadout has three parts: the kit repo (shared), your personal layer (yours) and `~/.claude` (where Claude Code reads its configuration). The CLI merges the first two into the third and keeps it current.
 
 ```mermaid
+---
+config:
+  look: neo
+  flowchart:
+    curve: basis
+    nodeSpacing: 24
+    rankSpacing: 80
+    wrappingWidth: 320
+---
 flowchart LR
-  kit["Kit repo<br/>plugin marketplace and CLI"] -->|marketplace auto-update| plugin["loadout plugin<br/>hooks, MCP, skills"]
-  kit -->|links rules| rules["~/.claude/rules/loadout"]
-  personal["Personal layer<br/>your git repo"] -->|links| prules["~/.claude/rules/personal, skills, hooks"]
-  kit -->|settings.base.json| merge(("three-way<br/>merge"))
-  personal -->|settings.json| merge
-  merge --> settings["~/.claude/settings.json"]
-  personal -->|mcp.json| mcp["user MCP servers"]
+  subgraph KIT["Kit repo · shared by everyone"]
+    direction TB
+    kPlugin["`**plugins/loadout/**
+    hooks · skills · MCP servers`"]
+    kRules["`**rules/**
+    how Claude uses the tools`"]
+    kBase["`**settings.base.json**
+    the keys loadout manages`"]
+  end
+
+  subgraph PER["Personal layer · your git repo"]
+    direction TB
+    pRules["`**rules/**
+    me.md, your preferences`"]
+    pSkills["`**skills/ · hooks/**`"]
+    pSet["`**settings.json**
+    your overrides`"]
+    pMcp["`**mcp.json**
+    your MCP servers`"]
+  end
+
+  merge{{"`**three-way merge**`"}}
+  snap[("`**~/.claude/.loadout/**
+  snapshot of the last merge`")]
+
+  subgraph CC["Claude Code configuration"]
+    direction TB
+    cPlugin["`**~/.claude/plugins/**
+    the loadout plugin`"]
+    cRulesK["`**~/.claude/rules/loadout**`"]
+    cRulesP["`**~/.claude/rules/personal**`"]
+    cSkills["`**~/.claude/skills/**
+    **~/.claude/hooks/personal/**`"]
+    cSet["`**~/.claude/settings.json**`"]
+    cMcp["`**~/.claude.json**
+    user-scope MCP servers`"]
+  end
+
+  kPlugin -. "Claude Code installs and auto-updates" .-> cPlugin
+  kRules -- link --> cRulesK
+  pRules -- link --> cRulesP
+  pSkills -- link --> cSkills
+  kBase ==> merge
+  pSet ==> merge
+  snap <-. "read, then rewrite" .-> merge
+  merge ==> cSet
+  pMcp -- "claude mcp add-json" --> cMcp
+
+  classDef kit fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#0f172a
+  classDef personal fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#0f172a
+  classDef claude fill:#ffedd5,stroke:#ea580c,stroke-width:1.5px,color:#0f172a
+  classDef engine fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a
+  classDef state fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:4 3,color:#0f172a
+  class kPlugin,kRules,kBase kit
+  class pRules,pSkills,pSet,pMcp personal
+  class cPlugin,cRulesK,cRulesP,cSkills,cSet,cMcp claude
+  class merge engine
+  class snap state
+  style KIT fill:#2563eb0f,stroke:#2563eb,stroke-width:1.5px
+  style PER fill:#16a34a0f,stroke:#16a34a,stroke-width:1.5px
+  style CC fill:#ea580c0f,stroke:#ea580c,stroke-width:1.5px
+  linkStyle 4,5,7 stroke:#d97706,stroke-width:2.5px
 ```
 
 ## The parts
@@ -40,20 +104,42 @@ At each session start the plugin runs `loadout hook-session-start`. It prints qu
 
 ```mermaid
 sequenceDiagram
-  participant S as Claude Code session
-  participant H as hook-session-start
-  participant M as maintenance process
-  participant G as kit and personal repos
-  participant C as ~/.claude
+  autonumber
+  box rgba(234, 88, 12, 0.10) Claude Code
+    participant S as Session
+  end
+  box rgba(37, 99, 235, 0.10) loadout
+    participant H as hook-session-start
+    participant M as maintenance
+  end
+  box rgba(22, 163, 74, 0.10) Your machine
+    participant G as Kit and personal repos
+    participant C as ~/.claude
+  end
+
   S->>H: session starts
-  H-->>S: queued notice, if any
-  H->>M: start detached when a pull or check is due
-  M->>G: git pull --ff-only, only if clean
-  G-->>M: new commits or none
-  M->>C: apply settings and personal MCP, after new commits only
-  M->>C: relink skills and hook scripts
-  M->>M: weekly: look for outdated tool binaries
-  M-->>H: queue a notice for the next session
+  H-->>S: queued notices
+  opt daily pull or weekly check due
+    H-)M: start detached
+    Note over S,H: the session does not wait
+    activate M
+    Note over M: one run at a time
+    opt daily, unless LOADOUT_NO_AUTO_PULL=1
+      M->>G: git pull --ff-only
+      Note over G: skips a checkout with<br/>uncommitted changes
+      G-->>M: new commits, or none
+      opt new commits arrived
+        M->>C: merge settings, add personal MCP
+        M->>C: relink skills and hook scripts
+      end
+    end
+    opt weekly
+      M->>M: check tool versions
+      Note right of M: notice only,<br/>never installs
+    end
+    M--)H: queue notices for the next session
+    deactivate M
+  end
 ```
 
 Details, from `maintenance._maintain`:

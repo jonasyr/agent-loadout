@@ -11,15 +11,65 @@ The merge uses three inputs:
 | current | Your `~/.claude/settings.json` as it is now. |
 
 ```mermaid
-flowchart LR
-  base["settings.base.json<br/>(kit)"] --> desired(["desired"])
-  personal["personal settings.json"] --> desired
-  snap["previous<br/>managed-settings.json"] --> merge{"merge per key<br/>and per hook"}
-  desired --> merge
-  current["current<br/>~/.claude/settings.json"] --> merge
-  merge -->|"key merge: desired wins,<br/>dropped kit values removed"| result["new settings.json"]
-  merge -->|"hook merge: add, update,<br/>keep yours, tombstone deletions"| result
-  merge -->|"desired keys,<br/>applied hooks, tombstones"| newsnap["new snapshot"]
+---
+config:
+  look: neo
+  flowchart:
+    curve: basis
+    nodeSpacing: 30
+    rankSpacing: 45
+    wrappingWidth: 320
+---
+flowchart TB
+  base["`**settings.base.json**
+  from the kit`"]
+  pers["`**settings.json**
+  from your personal layer`"]
+  des(["`**desired**
+  your values win`"])
+  prev[("`**previous**
+  managed-settings.json
+  applied last time`")]
+  cur["`**current**
+  ~/.claude/settings.json`"]
+
+  subgraph ENG["merge"]
+    direction LR
+    km["`**Key merge** (every key except hooks)
+    desired wins
+    drops what the kit dropped, unless you changed it`"]
+    hm["`**Hook merge** (per hook)
+    add · update · keep yours
+    tombstones keep deleted hooks deleted`"]
+  end
+
+  out["`**~/.claude/settings.json**
+  written only if it changed`"]
+  snap[("`**new snapshot**
+  desired keys · applied hooks
+  tombstones`")]
+
+  base --> des
+  pers --> des
+  des ==> ENG
+  prev --> ENG
+  cur --> ENG
+  ENG ==> out
+  ENG -.-> snap
+
+  classDef kit fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#0f172a
+  classDef personal fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#0f172a
+  classDef claude fill:#ffedd5,stroke:#ea580c,stroke-width:1.5px,color:#0f172a
+  classDef engine fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a
+  classDef state fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:4 3,color:#0f172a
+  class base kit
+  class pers personal
+  class des engine
+  class cur,out claude
+  class km,hm engine
+  class prev,snap state
+  style ENG fill:#d977060f,stroke:#d97706,stroke-width:1.5px
+  linkStyle 2,5 stroke:#d97706,stroke-width:2.5px
 ```
 
 The result is written to `settings.json` only if it differs from current. The snapshot is rewritten on every run. If `settings.json` or the snapshot is not valid JSON, the run stops with an error before anything is written.
