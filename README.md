@@ -7,7 +7,9 @@
 [![Platforms: Linux, macOS, Windows (WSL 2)](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows%20%28WSL%202%29-informational.svg)](docs/tutorials/getting-started.md)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757.svg)](.claude-plugin/marketplace.json)
 
-![loadout adopt shows what it would change on an existing setup and why, applies the chosen groups with a backup, then loadout check is green and loadout restore --list shows the undo](docs/assets/demo.gif)
+![The Quick start on a machine that already has Claude Code: the one-liner installs what is missing, reviews the existing setup with a reason for each change, applies the choices with an undo, then loadout check and loadout init, and Claude Code starts with the kit](docs/assets/demo.gif)
+
+<sub>The Quick start below, on a machine that already has Claude Code. Recorded in a sandbox with fake data.</sub>
 
 Claude Code gets much better with the right plugins, MCP servers and instructions. But setups drift: every machine ends up different, old tools linger, versions go stale, and half of what is installed never gets used. loadout is a shared kit (this repo) plus a personal layer (your own folder, ideally a private git repo, with your preferences and tools). Its CLI merges both into `~/.claude` and keeps them current; [Architecture](docs/explanation/architecture.md) shows how.
 
@@ -71,7 +73,7 @@ cd $HOME
 Git for Windows is required (Git Bash runs the hooks). Details: [Native Windows](docs/tutorials/getting-started.md#experimental-native-windows).
 </details>
 
-Keep the clone where it is: the installed links point into it. Bootstrap walks you through three steps (your personal layer, preferences, your existing setup), and, if it replaced anything, names the backup and the undo command. Then open a new terminal (bootstrap added `~/.local/bin` to your shell profile), log in with `claude` and `gh auth login && gh auth setup-git`, restart Claude Code and run the read-only health check:
+Keep the clone where it is: the installed links point into it. Bootstrap walks you through three steps (your personal layer, preferences, your existing setup), and, if it replaced anything, names the undo command. Then open a new terminal (bootstrap added `~/.local/bin` to your shell profile), log in with `claude` and `gh auth login && gh auth setup-git`, restart Claude Code and run the read-only health check:
 
 ```bash
 loadout check

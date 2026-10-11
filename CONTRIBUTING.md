@@ -48,7 +48,12 @@ When you change behaviour, update the page in `docs/` that owns the fact, and li
 
 ## The README demo
 
-`docs/assets/demo.gif` is recorded from [`demo/loadout.tape`](demo/loadout.tape) with [VHS](https://github.com/charmbracelet/vhs). `demo/render.sh` renders it in a container without network access (podman, or `DEMO_ENGINE=docker`), so nothing is installed on your machine. The recording runs the real `loadout` in a new sandbox HOME that `demo/sandbox.sh` fills with fake data and stand-in binaries. Re-render it when the output of `adopt`, `check` or `restore` changes, and before each release.
+`docs/assets/demo.gif` follows the README Quick start: an existing Claude Code setup, the one-liner, `loadout check`, `loadout init`, then real Claude Code running `/loadout:onboard`. It has two parts:
+
+- **The terminal part** is recorded from [`demo/loadout.tape`](demo/loadout.tape) with [VHS](https://github.com/charmbracelet/vhs). `demo/render.sh` runs it in a container without network access (podman, or `DEMO_ENGINE=docker`), so nothing is installed on your machine. The recording runs the real `loadout` and the real `bootstrap.sh` in a new sandbox HOME that `demo/sandbox.sh` fills with fake data and stand-in binaries (`demo/bin/`: `claude`, `curl` and `uv` refuse to run outside the sandbox).
+- **The Claude Code part** (`demo/claude-clip.mp4`) is recorded by the maintainer with `demo/record-claude.sh`, because it needs a real Claude Code login. It works in a throwaway project in `/tmp` and uses a little plan usage. Watch the clip before committing it: it shows the recording machine's plugins and paths. `render.sh` appends it when it exists.
+
+Both tapes share [`demo/style.tape`](demo/style.tape) (font, size, theme, window); title cards come from `demo/card.sh`. Re-render when the output of `bootstrap`, `adopt`, `check` or `init` changes, and before each release. Keep the GIF under 5 MB (lower the framerate in `render.sh` before shortening pauses). VHS's `Wait` reads the top of the scrollback, so the tapes pace answers with `Sleep` instead; check a render by looking at frames (`DEMO_KEEP_DIR=DIR demo/render.sh` keeps the mp4).
 
 ## Commits and pull requests
 
