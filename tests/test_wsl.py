@@ -130,3 +130,19 @@ def test_check_survives_a_deleted_current_folder(fake_home, fake_runner, monkeyp
 
     monkeypatch.setattr(wsl.Path, "cwd", staticmethod(gone))
     assert "WSL 2" in [r.name for r in check.run_checks()]
+
+
+def test_tool_under_mnt_but_not_a_drive_is_fine(fake_home, fake_runner, mnt, tmp_path):
+    fake_runner.paths["git"] = (mnt / "cache" / "bin" / "git").as_posix()
+    assert wsl.problems(2, tmp_path, mount=_prefix(mnt)) == []
+
+
+def test_detect_reads_the_module_osrelease(tmp_path, monkeypatch):
+    f = tmp_path / "osrelease"
+    f.write_text("5.15.153.1-microsoft-standard-WSL2")
+    monkeypatch.setattr(wsl, "OSRELEASE", f)
+    assert wsl.detect(platform="linux") == 2
+
+
+def test_fake_home_hides_the_real_osrelease(fake_home):
+    assert wsl.detect(platform="linux") is None

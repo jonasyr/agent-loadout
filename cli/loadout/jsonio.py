@@ -16,7 +16,10 @@ class InvalidJSON(Exception):
 def load_json(path: Path) -> dict:
     if not path.exists():
         return {}
-    text = path.read_text(encoding="utf-8-sig").strip()  # -sig: Windows editors add a BOM
+    try:
+        text = path.read_text(encoding="utf-8-sig").strip()  # -sig: Windows editors add a BOM
+    except UnicodeDecodeError as exc:
+        raise InvalidJSON(f"invalid JSON in {path}: not UTF-8 text ({exc.reason})") from exc
     if not text:
         return {}
     try:

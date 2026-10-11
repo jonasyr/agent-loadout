@@ -78,7 +78,7 @@ def _connectors() -> list[CheckResult]:
     try:
         enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins", {})
         connected = load_json(paths.claude_json()).get("claudeAiMcpEverConnected", [])
-    except InvalidJSON:
+    except (InvalidJSON, OSError, UnicodeDecodeError):
         return []  # settings.json errors are reported by _settings; ~/.claude.json is Claude Code's
     if not isinstance(enabled, dict) or not isinstance(connected, list):
         return []
@@ -91,10 +91,9 @@ def _connectors() -> list[CheckResult]:
             if enabled.get(plugin) is True:
                 out.append(CheckResult(
                     f"duplicate {plugin}", False,
-                    f"the plugin and the claude.ai connector {name} provide the same tools "
+                    f"the plugin and the connector {name} provide the same tools "
                     "(if the connector is still connected)",
-                    "disconnect the connector on claude.ai, or disable the plugin (for a plugin the kit enables: "
-                    f'"enabledPlugins": {{"{plugin}": false}} in your personal settings.json, then loadout apply-settings)',
+                    f"disconnect the connector on claude.ai, or run loadout configure set plugin {plugin} off",
                     "warn"))
     return out
 

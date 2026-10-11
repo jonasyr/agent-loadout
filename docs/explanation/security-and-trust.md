@@ -6,7 +6,7 @@ loadout keeps itself current, so you should know what runs without asking, what 
 
 | What | When | Who runs it |
 |---|---|---|
-| Plugin and marketplace updates | Whenever Claude Code decides: Claude Code updates plugins from `claude-plugins-official` (on by default) and from the marketplaces `settings.base.json` sets to `autoUpdate: true` (agent-loadout, impeccable, academic-research-skills) | Claude Code |
+| Plugin and marketplace updates | Whenever Claude Code decides: Claude Code updates plugins from `claude-plugins-official` (on by default) and from the marketplaces `settings.base.json` sets to `autoUpdate: true` (listed under [Marketplaces](../reference/included-tools.md#marketplaces)) | Claude Code |
 | The session hook | Start of every session | Claude Code runs `loadout hook-session-start` |
 | Pull of the kit and the personal layer | At most once a day, in a detached background process started by the session hook | `maintenance._maintain` |
 | Version check of tool binaries | At most once a week, same process | `maintenance._maintain` |
@@ -41,7 +41,7 @@ It does not touch:
 - Your `~/.claude/CLAUDE.md`, apart from the adopt choice above. Rules are linked as a folder instead.
 - Settings keys it does not manage, unless you ask (`adopt`).
 - Project files, except through `loadout init` and `loadout profile`. Scaffold files are never overwritten. Profiles merge into the repo's `.claude/settings.json` and `.mcp.json` (the profile's value wins on the same key), may run the profile's `commands`, and are not backed up; use git.
-- Your Claude login or claude.ai connectors. It does not read or change them.
+- Your Claude login or claude.ai connectors. It does not change them. `loadout check` reads only the connector names in `~/.claude.json` (`claudeAiMcpEverConnected`) to warn about a plugin that duplicates one, and prints only names from the kit's catalog.
 
 Items you own that loadout removes or replaces are moved to a backup first. The routine sync of what the kit itself manages (managed settings keys, your personal MCP servers) is not backed up, and neither is the shell startup file bootstrap appends to on Linux and macOS; your personal layer's git history is the record. See [What restore does not undo](../how-to/undo-and-restore.md#what-restore-does-not-undo).
 

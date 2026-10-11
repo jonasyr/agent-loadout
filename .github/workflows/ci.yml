@@ -1,6 +1,9 @@
 name: ci
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
@@ -30,7 +33,7 @@ jobs:
         shell: pwsh
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
-      - uses: Vampire/setup-wsl@v7
+      - uses: Vampire/setup-wsl@5fae231e29d976722de11654d8323419501bb327 # v7.0.0
         with:
           distribution: Ubuntu-24.04
           wsl-version: 2

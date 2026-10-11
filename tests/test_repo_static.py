@@ -169,7 +169,8 @@ def test_connector_field_only_on_plugins():
     for e in with_connector.values():
         assert e["kind"] == "plugin" and e["connector"].startswith("claude.ai "), e["id"]
     wiley = with_connector["plugin-wiley-scholar-gateway"]
-    assert wiley["status"] == "profile" and wiley["profile"] == "thesis"
+    # kept, not scoped down: the thesis profile does not enable it, so "loadout profile thesis" would drop it
+    assert wiley["status"] == "alternative" and "profile" not in wiley
     thesis = _json("profiles/thesis.json")
     assert "wiley-scholar-gateway@life-sciences" not in thesis["settings"]["enabledPlugins"]
     assert "wiley-scholar-gateway@life-sciences" in thesis["notes"]

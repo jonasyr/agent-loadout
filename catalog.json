@@ -747,8 +747,7 @@
     {
       "id": "plugin-wiley-scholar-gateway",
       "kind": "plugin",
-      "status": "profile",
-      "profile": "thesis",
+      "status": "alternative",
       "match": {
         "names": [
           "wiley-scholar-gateway@life-sciences"

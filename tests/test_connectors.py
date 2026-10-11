@@ -24,8 +24,6 @@ def test_enabled_plugin_and_connected_connector_warn(fake_home, fake_runner):
     assert r.name == "duplicate context7@claude-plugins-official"
     assert not r.ok and r.severity == "warn"
     assert "claude.ai Context7" in r.detail and "still connected" in r.detail
-    assert '"enabledPlugins": {"context7@claude-plugins-official": false}' in r.fix
-    assert "loadout apply-settings" in r.fix
 
 
 def test_disabled_plugin_or_unconnected_connector_is_quiet(fake_home, fake_runner):
@@ -65,3 +63,17 @@ def test_personal_false_overrides_kit_true(fake_home, fake_runner):
     settings_merge.apply_settings()
     data = json.loads((fake_home / ".claude/settings.json").read_text())
     assert data["enabledPlugins"]["context7@claude-plugins-official"] is False
+
+
+def test_fix_points_at_configure_and_names_connector_once(fake_home, fake_runner):
+    _settings(fake_home, {"context7@claude-plugins-official": True})
+    _claude_json(fake_home, {"claudeAiMcpEverConnected": ["claude.ai Context7"]})
+    [r] = _dupes()
+    assert "loadout configure set plugin context7@claude-plugins-official off" in r.fix
+    assert "claude.ai connector claude.ai" not in r.detail
+
+
+def test_unreadable_claude_json_is_quiet(fake_home, fake_runner):
+    _settings(fake_home, {"context7@claude-plugins-official": True})
+    (fake_home / ".claude.json").write_bytes(b'{"claudeAiMcpEverConnected": ["\xff\xfe"]}')
+    assert _dupes() == []

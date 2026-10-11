@@ -11,8 +11,9 @@ LINUX_TOOLS = ("claude", "node", "npm", "uv", "git")
 SANDBOX = (("bwrap", "bubblewrap"), ("socat", "socat"))
 
 
-def detect(osrelease: Path = OSRELEASE, platform: str | None = None) -> int | None:
+def detect(osrelease: Path | None = None, platform: str | None = None) -> int | None:
     """2 for WSL 2, 1 for WSL 1, None outside WSL."""
+    osrelease = osrelease or OSRELEASE
     if not (platform or sys.platform).startswith("linux"):
         return None
     try:
@@ -56,7 +57,7 @@ def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple
                         "move it into the Linux home, e.g. `~/code/...`"))
     for tool in LINUX_TOOLS:
         found = runner.which(tool)
-        if found and Path(found).as_posix().startswith(mount):
+        if found and _on_windows_drive(Path(found), mount):
             out.append((f"{tool} resolves to the Windows program {found}",
                         "install it inside WSL and put its directory first in PATH, "
                         "or set `appendWindowsPath = false` in `/etc/wsl.conf`"))
