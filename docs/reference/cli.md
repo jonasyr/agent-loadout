@@ -20,7 +20,7 @@ Some commands return their own codes. They are listed per command and add to the
 Set up or repair this machine. Safe to re-run.
 
 ```
-loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt]
+loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose]
 ```
 
 | Flag | Meaning |
@@ -29,6 +29,9 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt]
 | `--yes` | Accept defaults without asking. Adopt applies remove, migrate and scope-down; binary updates are never applied. |
 | `--no-plugins` | Skip adding marketplaces and installing plugins (offline or CI). |
 | `--no-adopt` | Skip reviewing the existing setup. |
+| `--verbose` | Print every detail of every step (links, commands, the full check list, the backup path). |
+
+By default bootstrap prints one status line per step (`✓`, `!` for a warning, `✗` for a failure), the adopt questions, and at the end the health-check count, `Undo any time: loadout restore --list` when it made a backup, and the next step. Problem lines (a failed install or plugin, a check that failed) are always printed in full. Without a terminal, colour is off; where the console cannot show `✓`, ASCII stands in.
 
 Without a terminal and without `--yes`, bootstrap skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates a starter personal layer with default preferences if none exists, merges settings, applies personal MCP servers and sets up plugins.
 
@@ -47,7 +50,7 @@ Review an existing Claude Code setup and migrate it. It is a dry run unless `--a
 
 ```
 loadout adopt [--apply] [--groups GROUPS] [--skip SKIP] [--yes]
-              [--own NAME=CHOICE,...] [--no-versions]
+              [--own NAME=CHOICE,...] [--no-versions] [--verbose]
 ```
 
 | Flag | Meaning |
@@ -58,6 +61,9 @@ loadout adopt [--apply] [--groups GROUPS] [--skip SKIP] [--yes]
 | `--yes` | No questions: apply `--groups`, or `remove,migrate,scope-down` when no groups are given, and move secrets. Your own tools stay as they are. |
 | `--own NAME=CHOICE,...` | Decide for your own tools. Example: `my-db=project:mydb,foo@bar=global`. Choices: `global`, `project:<profile>`, `leave`, `remove`. Other items stay as they are. Hook naming: see [hooks](hooks.md#naming-hooks-of-your-own-tools). |
 | `--no-versions` | Skip network version checks. |
+| `--verbose` | Full detail: each item's command line, long reason, replacement and notes, the items that stay, and the backup path. |
+
+By default adopt prints a count line (`Your existing setup: 7 suggestions (25 other items are fine)`), then each group under a plain heading (for example "Remove: superseded by something better") with one line per item and its short reason. With `--apply` in a terminal, each group is shown right before its question; then one `✓` line per group that was applied, or every result line when something did not complete.
 
 Exit codes:
 
@@ -154,10 +160,10 @@ The file format is in [profile-format](profile-format.md). Exit codes: 0 on succ
 Verify this machine. Read-only: it reports problems and names the fix, and never changes anything.
 
 ```
-loadout check
+loadout check [--verbose]
 ```
 
-It has no flags. Each line is `ok`, `warn` or `FAIL`.
+By default it prints `Health check: N of M OK`, then only the warnings and failures. `--verbose` lists every check. Each listed line is `ok`, `warn` or `FAIL`.
 
 | Check | Severity when it fails |
 |---|---|

@@ -2,7 +2,7 @@
 
 Use this page when `loadout adopt` or `loadout check` lists tools that loadout does not manage, and you want them to follow you to other machines, live in one project, stay put, or go away.
 
-`loadout adopt` looks at every user-scope plugin, marketplace, MCP server (`~/.claude.json`, `~/.claude/.mcp.json`), skill (`~/.claude/skills`) and hook (`~/.claude/settings.json`). What the [catalog](../reference/catalog-format.md) does not know is listed under **YOUR OWN TOOLS**. Items already in your personal layer show as keep, and so does a plugin that a personal profile holds while it is disabled globally. Project-level config is not inspected.
+`loadout adopt` looks at every user-scope plugin, marketplace, MCP server (`~/.claude.json`, `~/.claude/.mcp.json`), skill (`~/.claude/skills`) and hook (`~/.claude/settings.json`). What the [catalog](../reference/catalog-format.md) does not know is listed under **Your own tools: loadout doesn't know these** (`--verbose`: **YOUR OWN TOOLS**). Items already in your personal layer show as keep, and so does a plugin that a personal profile holds while it is disabled globally. Project-level config is not inspected.
 
 `loadout configure own` lists the same items. Flags and exit codes of the commands are in the [CLI reference](../reference/cli.md#loadout-adopt).
 
