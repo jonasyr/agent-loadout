@@ -95,7 +95,7 @@
           [
             "sh",
             "-c",
-            "curl -LsSf https://astral.sh/uv/install.sh | sh"
+            "curl -LsSf https://astral.sh/uv/install.sh | UV_NO_MODIFY_PATH=1 sh"
           ]
         ],
         "windows": [
@@ -103,7 +103,7 @@
             "powershell",
             "-NoProfile",
             "-Command",
-            "irm https://astral.sh/uv/install.ps1 | iex"
+            "$env:UV_NO_MODIFY_PATH='1'; irm https://astral.sh/uv/install.ps1 | iex"
           ]
         ]
       },

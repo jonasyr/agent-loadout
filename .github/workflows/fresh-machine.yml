@@ -1,8 +1,11 @@
 name: fresh-machine
 on:
   pull_request:
-    paths: ["bootstrap.sh", "bootstrap.ps1", "catalog.json", "cli/loadout/bootstrap.py", "cli/loadout/link.py",
-            "cli/loadout/paths.py", "cli/loadout/catalog.py", "cli/loadout/check.py", "cli/loadout/pkgmgr.py", "plugins/loadout/hooks/run.sh", ".github/workflows/fresh-machine.yml"]
+    paths: ["bootstrap.sh", "bootstrap.ps1", "catalog.json", "settings.base.json", "bin/loadout",
+            "cli/loadout/__main__.py", "cli/loadout/bootstrap.py", "cli/loadout/link.py", "cli/loadout/paths.py",
+            "cli/loadout/catalog.py", "cli/loadout/check.py", "cli/loadout/pkgmgr.py", "cli/loadout/settings_merge.py",
+            "cli/loadout/personal_mcp.py", "cli/loadout/adopt.py", "plugins/loadout/hooks/**",
+            ".github/workflows/fresh-machine.yml"]
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:
@@ -35,14 +38,20 @@ jobs:
         run: |
           su - fromclone -c 'claude --version && serena --version && codebase-memory-mcp --version && node --version && loadout --help >/dev/null'
           out="$(su - fromclone -c 'loadout check' || true)"; printf '%s\n' "$out"
-          ! printf '%s\n' "$out" | grep -F '[FAIL]'
+          if printf '%s\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi
+      # a fork's branch is not in this repository, so the one-liner could not clone it
       - name: one-liner without a clone
-        run: su - oneliner -c "mkdir -p work && cd work && LOADOUT_REPO_URL=$REPO_URL LOADOUT_REF=$REF bash -s -- --install --yes --no-plugins < /tmp/bootstrap.sh"
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          LOADOUT_REPO_URL: ${{ env.REPO_URL }}
+          LOADOUT_REF: ${{ env.REF }}
+        run: su -w LOADOUT_REPO_URL,LOADOUT_REF - oneliner -c 'mkdir -p work && cd work && bash -s -- --install --yes --no-plugins < /tmp/bootstrap.sh'
       - name: one-liner result
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
           su - oneliner -c 'test -f ~/work/agent-loadout/bin/loadout && claude --version && serena --version'
           out="$(su - oneliner -c 'loadout check' || true)"; printf '%s\n' "$out"
-          ! printf '%s\n' "$out" | grep -F '[FAIL]'
+          if printf '%s\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi
 
   windows:
     name: fresh-machine (windows, experimental)
