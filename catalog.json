@@ -32,6 +32,25 @@
             "update"
           ]
         ]
+      },
+      "install": {
+        "posix": [
+          [
+            "sh",
+            "-c",
+            "curl -fsSL https://claude.ai/install.sh | bash"
+          ]
+        ],
+        "windows": [
+          [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "irm https://claude.ai/install.ps1 | iex"
+          ]
+        ]
       }
     },
     {
@@ -106,6 +125,63 @@
       }
     },
     {
+      "id": "mise",
+      "kind": "binary",
+      "status": "core",
+      "helper": true,
+      "match": {
+        "names": [
+          "mise"
+        ]
+      },
+      "reason": "Installs Node.js, gh and rust-analyzer in your home folder when they are missing (no sudo).",
+      "version": {
+        "cmd": [
+          "mise",
+          "--version"
+        ],
+        "github": "jdx/mise"
+      },
+      "install": {
+        "posix": [
+          [
+            "sh",
+            "-c",
+            "curl -fsSL https://mise.run | sh"
+          ]
+        ],
+        "windows": [
+          [
+            "winget",
+            "install",
+            "--id",
+            "jdx.mise",
+            "-e",
+            "--accept-source-agreements",
+            "--accept-package-agreements"
+          ]
+        ]
+      },
+      "update": {
+        "posix": [
+          [
+            "mise",
+            "self-update",
+            "-y"
+          ]
+        ],
+        "windows": [
+          [
+            "winget",
+            "upgrade",
+            "--id",
+            "jdx.mise",
+            "-e"
+          ]
+        ]
+      }
+    },
+    {
       "id": "node",
       "kind": "binary",
       "status": "core",
@@ -122,7 +198,28 @@
           "--version"
         ]
       },
-      "manual": "Install Node.js LTS (e.g. via mise, nvm or your package manager)."
+      "manual": "Install Node.js LTS (e.g. via mise, nvm or your package manager).",
+      "needs": [
+        "mise"
+      ],
+      "install": {
+        "posix": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "node@lts"
+          ]
+        ],
+        "windows": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "node@lts"
+          ]
+        ]
+      }
     },
     {
       "id": "gh",
@@ -142,7 +239,28 @@
         ],
         "github": "cli/cli"
       },
-      "manual": "Install GitHub CLI, then `gh auth login` and `gh auth setup-git`."
+      "manual": "Install GitHub CLI, then `gh auth login` and `gh auth setup-git`.",
+      "needs": [
+        "mise"
+      ],
+      "install": {
+        "posix": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "gh"
+          ]
+        ],
+        "windows": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "gh"
+          ]
+        ]
+      }
     },
     {
       "id": "serena",
@@ -201,7 +319,10 @@
             "serena-agent"
           ]
         ]
-      }
+      },
+      "needs": [
+        "uv"
+      ]
     },
     {
       "id": "codebase-memory-mcp",
@@ -350,7 +471,10 @@
             "@playwright/cli@latest"
           ]
         ]
-      }
+      },
+      "needs": [
+        "node"
+      ]
     },
     {
       "id": "pyright",
@@ -404,7 +528,10 @@
             "pyright@latest"
           ]
         ]
-      }
+      },
+      "needs": [
+        "node"
+      ]
     },
     {
       "id": "typescript-language-server",
@@ -462,7 +589,10 @@
             "typescript@latest"
           ]
         ]
-      }
+      },
+      "needs": [
+        "node"
+      ]
     },
     {
       "id": "rust-analyzer",
@@ -480,7 +610,28 @@
           "--version"
         ]
       },
-      "manual": "Install with `rustup component add rust-analyzer` or your package manager."
+      "manual": "Install with `rustup component add rust-analyzer` or your package manager.",
+      "needs": [
+        "mise"
+      ],
+      "install": {
+        "posix": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "rust-analyzer"
+          ]
+        ],
+        "windows": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "rust-analyzer"
+          ]
+        ]
+      }
     },
     {
       "id": "mcp-serena",

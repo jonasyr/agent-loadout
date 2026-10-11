@@ -174,3 +174,20 @@ def test_connector_field_only_on_plugins():
     thesis = _json("profiles/thesis.json")
     assert "wiley-scholar-gateway@life-sciences" not in thesis["settings"]["enabledPlugins"]
     assert "wiley-scholar-gateway@life-sciences" in thesis["notes"]
+
+
+def test_toolchain_installs_in_user_space():
+    entries = {e["id"]: e for e in _json("catalog.json")["entries"]}
+    for tool in ("claude", "node", "gh", "rust-analyzer", "mise"):
+        for plat in ("posix", "windows"):
+            assert entries[tool]["install"][plat], (tool, plat)
+    for cmds in (e.get("install", {}) for e in entries.values()):
+        for cmd in (c for plat in cmds.values() for c in plat):
+            assert "sudo" not in cmd and "sudo" not in " ".join(cmd), cmd
+    assert entries["mise"]["helper"] is True
+    assert entries["node"]["needs"] == ["mise"] and entries["serena"]["needs"] == ["uv"]
+    for tool in ("playwright-cli", "pyright", "typescript-language-server"):
+        assert entries[tool]["needs"] == ["node"]
+    known = set(entries)
+    for e in entries.values():
+        assert set(e.get("needs", [])) <= known, e["id"]

@@ -118,6 +118,8 @@ def _own() -> list[CheckResult]:
 def _binaries() -> list[CheckResult]:
     out = []
     for entry in catalog.binaries():
+        if entry.get("helper"):
+            continue
         name = entry["id"]
         ok = runner.have(name)
         severity = "error" if entry.get("required") else "warn"

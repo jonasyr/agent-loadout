@@ -106,3 +106,8 @@ def test_check_mentions_unmanaged_tools(fake_home, fake_runner):
     r = _by(check.run_checks())["own tools"]
     assert not r.ok and r.severity == "warn"
     assert r.fix == "decide with `loadout adopt --apply` or `loadout configure own`"
+
+
+def test_helper_binaries_are_not_checked(fake_home, fake_runner):
+    fake_runner.missing.add("mise")
+    assert "binary mise" not in _by(check.run_checks())
