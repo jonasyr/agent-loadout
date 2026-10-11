@@ -4,7 +4,6 @@ from __future__ import annotations
 import codecs
 import locale
 import os
-import re
 from pathlib import Path
 from typing import Callable
 
@@ -39,8 +38,7 @@ POLICY_NOTE = ("PowerShell's execution policy is Restricted, so profiles (and th
 
 
 INTRO = "loadout sets up Claude Code with a reviewed kit of plugins, rules and tools."
-# lines that report something the user must see even in calm mode
-PROBLEM = re.compile(r"failed|skipped|not changed|could not|cannot|do not run")
+PROBLEM = out.PROBLEM
 
 
 def _step(title: str) -> None:

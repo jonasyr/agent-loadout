@@ -119,6 +119,8 @@ def _calm_name(v: Verdict) -> str:
 
 
 def _calm_reason(v: Verdict) -> str:
+    if v.item.kind == "claude-md":
+        return "its content moves into your personal layer (not deleted)"
     entry = catalog.by_id(v.entry_id) if v.entry_id else None
     if entry and entry.get("short"):
         reason = entry["short"]
@@ -171,6 +173,10 @@ def calm_summary(chosen: list[Verdict], acting: list) -> list[str]:
     lines = []
     for group in GROUP_ORDER:
         members = [v for v in chosen if v.action == group]
+        moved = [v for v in members if v.item.kind == "claude-md"]
+        members = [v for v in members if v not in moved]
+        if moved:
+            lines.append(f"{ok} Moved into your personal layer: " + ", ".join(_calm_name(v) for v in moved))
         if members and group in DONE:
             line = f"{ok} {DONE[group]}: " + ", ".join(_calm_name(v) for v in members)
             entries = [catalog.by_id(v.entry_id) for v in members if v.entry_id] if group == "scope-down" else []
@@ -204,7 +210,9 @@ def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask
         default = "a" if group in DEFAULT_ALL else "n"
         if calm:
             print(calm_group(group, members))
-            question = (f"  {CALM[group][1]} [a]ll / [n]one / [p]ick "
+            ask_text = ("Move it? (CLAUDE.md goes into your personal layer, nothing is deleted)"
+                        if all(v.item.kind == "claude-md" for v in members) else CALM[group][1])
+            question = (f"  {ask_text} [a]ll / [n]one / [p]ick "
                         f"(Enter: {'all' if default == 'a' else 'none'}) ")
         else:
             question = (f"{group}: {len(members)} item(s) — {GROUP_HELP[group]} "
@@ -514,7 +522,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         not_done: list = []
         lines, new_profiles = apply_own(own_pairs, bk, chosen, ask if interactive else (lambda q: ""),
                                         confirm_cmds=not (yes and explicit), changed=changed, not_done=not_done)
-        if calm and not not_done:
+        if calm and not not_done and not any(out.PROBLEM.search(line) for line in lines):
             for line in calm_summary(chosen, acting):
                 print(line)
         else:
@@ -528,8 +536,9 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
             print(RESTART_NOTE)
         done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
         remaining = [f for f in findings if f.fixable and f.server not in done]
-        if remaining and asks_each_group:
-            print(calm_secrets(remaining))
+        by_hand = [f for f in findings if not f.fixable]
+        if asks_each_group and (remaining or by_hand):
+            print(calm_secrets(remaining + by_hand))
         if remaining and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
             for line in fix_secrets(remaining, bk):
                 print(redact(line))

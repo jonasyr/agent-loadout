@@ -91,3 +91,35 @@ def test_embedded_adopt_leaves_undo_and_restart_to_the_caller(machine, capsys):
     text = capsys.readouterr().out
     assert adopt.UNDO_LINE not in text and adopt.RESTART_NOTE not in text
     assert adopt.LAST_BACKUP is not None
+
+
+def test_calm_shows_a_failed_own_tool_step_instead_of_success(machine, fake_runner, capsys):
+    import json
+    from fixtures import FAKE_PAT
+    cj = machine / ".claude.json"
+    data = json.loads(cj.read_text())
+    data["mcpServers"]["mytool"] = {"command": "mytool-mcp", "args": [], "env": {"MYTOOL_TOKEN": FAKE_PAT}}
+    cj.write_text(json.dumps(data))
+    fake_runner.responses[("claude", "mcp", "add-json")] = runner.Result(1, "", "add failed")
+    adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False, own_spec="mytool=global")
+    text = capsys.readouterr().out
+    assert "Some changes did not complete" in text and "failed" in text
+
+
+def test_calm_interactive_lists_secrets_to_move_by_hand(machine, capsys):
+    adopt.run(True, None, set(), False, lambda q: "n", with_versions=False, interactive=True)
+    assert "move it to secrets.env by hand" in capsys.readouterr().out
+
+
+def test_calm_claude_md_is_moved_not_removed(machine):
+    v = next(x for x in _verdicts() if x.item.kind == "claude-md")
+    shown = adopt.calm_group(v.action, [v])
+    assert "personal layer" in shown
+    assert adopt.calm_summary([v], [])[0].endswith("Moved into your personal layer: CLAUDE.md")
+
+
+def test_calm_question_for_claude_md_says_move(machine):
+    v = next(x for x in _verdicts() if x.item.kind == "claude-md")
+    asked = []
+    adopt.select([v], None, set(), lambda q: asked.append(q) or "n", calm=True)
+    assert "Remove" not in asked[0] and "personal layer" in asked[0]
