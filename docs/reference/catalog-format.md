@@ -13,6 +13,7 @@ The file is one JSON object with one key, `entries`, a list of entries. Ids are 
 | `status` | yes | One of the values below. |
 | `match` | yes | How an installed item is recognised. `names` and `contains` are lists of strings; at least one must be non-empty. |
 | `reason` | yes | Why the entry has this status. Shown to the user, and the place where the "why" lives. |
+| `short` | no | The one-line reason `loadout adopt` shows (at most 60 characters, no trailing period). `reason` stays the full explanation, shown with `--verbose`. Required for entries that can be suggested for removal (`mcp-`, `plugin-`, `marketplace-`, `skill-`, `skills-`, `hook-` ids). |
 | `by` | no | The replacement for a superseded or alternative tool. Appended to the reason as `Replacement: ...`. |
 | `profile` | for `status: profile` | Name of the kit profile (a file in `profiles/`) that carries the tool. |
 | `offer` | no | Makes the entry a global add-on in `loadout configure`. See below. |

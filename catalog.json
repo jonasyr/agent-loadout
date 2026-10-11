@@ -645,7 +645,8 @@
           "start-mcp-server"
         ]
       },
-      "reason": "loadout provides the Serena MCP server; a user-level copy duplicates it."
+      "reason": "loadout provides the Serena MCP server; a user-level copy duplicates it.",
+      "short": "your copy would run twice"
     },
     {
       "id": "mcp-codebase-memory",
@@ -657,7 +658,8 @@
           "codebase-memory"
         ]
       },
-      "reason": "loadout provides the codebase-memory MCP server; a user-level copy duplicates it."
+      "reason": "loadout provides the codebase-memory MCP server; a user-level copy duplicates it.",
+      "short": "your copy would run twice"
     },
     {
       "id": "mcp-context7",
@@ -672,7 +674,8 @@
           "@upstash/context7-mcp"
         ]
       },
-      "reason": "The official context7 plugin (enabled by the kit) provides it."
+      "reason": "The official context7 plugin (enabled by the kit) provides it.",
+      "short": "the kit's context7 plugin provides it"
     },
     {
       "id": "mcp-github-reference",
@@ -687,7 +690,8 @@
           "@modelcontextprotocol/server-github"
         ]
       },
-      "reason": "Archived reference server; the gh CLI is cheaper in context and well known to the model."
+      "reason": "Archived reference server; the gh CLI is cheaper in context and well known to the model.",
+      "short": "the gh CLI does this with less context"
     },
     {
       "id": "mcp-sequential-thinking",
@@ -702,7 +706,8 @@
           "server-sequential-thinking"
         ]
       },
-      "reason": "Current models think natively; the server only adds tool overhead."
+      "reason": "Current models think natively; the server only adds tool overhead.",
+      "short": "current models think natively"
     },
     {
       "id": "mcp-memory-reference",
@@ -714,7 +719,8 @@
           "@modelcontextprotocol/server-memory"
         ]
       },
-      "reason": "Superseded by Claude Code auto memory and repo docs."
+      "reason": "Superseded by Claude Code auto memory and repo docs.",
+      "short": "Claude Code's built-in memory replaces it"
     },
     {
       "id": "mcp-filesystem",
@@ -726,7 +732,8 @@
           "@modelcontextprotocol/server-filesystem"
         ]
       },
-      "reason": "Duplicates built-in file tools."
+      "reason": "Duplicates built-in file tools.",
+      "short": "duplicates the built-in file tools"
     },
     {
       "id": "mcp-puppeteer",
@@ -738,7 +745,8 @@
           "server-puppeteer"
         ]
       },
-      "reason": "Archived; playwright-cli is maintained and cheaper in context."
+      "reason": "Archived; playwright-cli is maintained and cheaper in context.",
+      "short": "archived; playwright-cli replaces it"
     },
     {
       "id": "mcp-playwright",
@@ -753,7 +761,8 @@
           "@playwright/mcp"
         ]
       },
-      "reason": "Works, but pushes snapshots into context; playwright-cli is the kit default."
+      "reason": "Works, but pushes snapshots into context; playwright-cli is the kit default.",
+      "short": "playwright-cli is cheaper in context"
     },
     {
       "id": "mcp-sonarqube",
@@ -768,7 +777,8 @@
           "sonar run mcp"
         ]
       },
-      "reason": "Only useful in repos with a Sonar project; enable via the sonar profile."
+      "reason": "Only useful in repos with a Sonar project; enable via the sonar profile.",
+      "short": "only for repos with a Sonar project"
     },
     {
       "id": "mcp-dbhub",
@@ -783,7 +793,8 @@
           "@bytebase/dbhub"
         ]
       },
-      "reason": "Database access belongs to the projects that have a database."
+      "reason": "Database access belongs to the projects that have a database.",
+      "short": "only for repos with a database"
     },
     {
       "id": "mcp-docker-gateway",
@@ -797,7 +808,8 @@
           "mcp gateway run"
         ]
       },
-      "reason": "Docker MCP gateway exposes a broad tool catalog; keep only if you use it, otherwise add specific servers per project."
+      "reason": "Docker MCP gateway exposes a broad tool catalog; keep only if you use it, otherwise add specific servers per project.",
+      "short": "a broad tool catalog in every session"
     },
     {
       "id": "plugin-superpowers",
@@ -808,7 +820,8 @@
           "superpowers@claude-plugins-official"
         ]
       },
-      "reason": "Process skills."
+      "reason": "Process skills.",
+      "short": "process skills"
     },
     {
       "id": "plugin-auto-memory",
@@ -820,7 +833,8 @@
           "auto-memory@severity1-marketplace"
         ]
       },
-      "reason": "Runs a memory-updater agent after most turns and rewrites CLAUDE.md; duplicates native memory."
+      "reason": "Runs a memory-updater agent after most turns and rewrites CLAUDE.md; duplicates native memory.",
+      "short": "duplicates Claude Code's built-in memory"
     },
     {
       "id": "plugin-claude-mem",
@@ -832,7 +846,8 @@
           "claude-mem"
         ]
       },
-      "reason": "AI-compresses every tool observation (ongoing cost, data may leave the machine)."
+      "reason": "AI-compresses every tool observation (ongoing cost, data may leave the machine).",
+      "short": "ongoing cost; data may leave the machine"
     },
     {
       "id": "plugin-cct-testing-suite",
@@ -844,7 +859,8 @@
           "testing-suite@claude-code-templates"
         ]
       },
-      "reason": "Unversioned snapshot from 2025, never updated."
+      "reason": "Unversioned snapshot from 2025, never updated.",
+      "short": "a 2025 snapshot, never updated"
     },
     {
       "id": "plugin-cct-documentation-generator",
@@ -856,7 +872,8 @@
           "documentation-generator@claude-code-templates"
         ]
       },
-      "reason": "Unversioned snapshot of a whole repo; generic agents."
+      "reason": "Unversioned snapshot of a whole repo; generic agents.",
+      "short": "an unversioned snapshot with generic agents"
     },
     {
       "id": "plugin-code-review",
@@ -869,7 +886,8 @@
           "pr-review-toolkit@claude-plugins-official"
         ]
       },
-      "reason": "Built-in /code-review covers it."
+      "reason": "Built-in /code-review covers it.",
+      "short": "the built-in /code-review covers it"
     },
     {
       "id": "plugin-sonarqube",
@@ -881,7 +899,8 @@
           "sonarqube@claude-plugins-official"
         ]
       },
-      "reason": "Adds a 30s SessionStart hook and ~10 skills to every session; enable per project."
+      "reason": "Adds a 30s SessionStart hook and ~10 skills to every session; enable per project.",
+      "short": "a 30 s startup hook in every session"
     },
     {
       "id": "plugin-ars",
@@ -893,7 +912,8 @@
           "academic-research-skills@academic-research-skills"
         ]
       },
-      "reason": "About 25 skill/command descriptions in every session; enable in research repos."
+      "reason": "About 25 skill/command descriptions in every session; enable in research repos.",
+      "short": "about 25 skills in every session"
     },
     {
       "id": "plugin-wiley-scholar-gateway",
@@ -905,7 +925,8 @@
         ]
       },
       "connector": "claude.ai Wiley Scholar Gateway",
-      "reason": "Literature search across Wiley's peer-reviewed content. Use either this plugin or the claude.ai connector, not both."
+      "reason": "Literature search across Wiley's peer-reviewed content. Use either this plugin or the claude.ai connector, not both.",
+      "short": "use this or the claude.ai connector, not both"
     },
     {
       "id": "plugin-context7",
@@ -917,7 +938,8 @@
         ]
       },
       "connector": "claude.ai Context7",
-      "reason": "Library documentation (enabled by the kit). Use either this plugin or the claude.ai connector, not both."
+      "reason": "Library documentation (enabled by the kit). Use either this plugin or the claude.ai connector, not both.",
+      "short": "use this or the claude.ai connector, not both"
     },
     {
       "id": "plugin-cybersecurity-skills",
@@ -929,7 +951,8 @@
           "cybersecurity-skills@"
         ]
       },
-      "reason": "817 skills in one plugin (about 25k tokens of descriptions per session); copy single skills into a project instead."
+      "reason": "817 skills in one plugin (about 25k tokens of descriptions per session); copy single skills into a project instead.",
+      "short": "817 skills, about 25k tokens per session"
     },
     {
       "id": "marketplace-claude-code-templates",
@@ -940,7 +963,8 @@
           "claude-code-templates"
         ]
       },
-      "reason": "Only provided the superseded testing-suite/documentation-generator plugins."
+      "reason": "Only provided the superseded testing-suite/documentation-generator plugins.",
+      "short": "only provided superseded plugins"
     },
     {
       "id": "marketplace-severity1",
@@ -951,7 +975,8 @@
           "severity1-marketplace"
         ]
       },
-      "reason": "Only provided the superseded auto-memory plugin."
+      "reason": "Only provided the superseded auto-memory plugin.",
+      "short": "only provided auto-memory"
     },
     {
       "id": "skills-taste",
@@ -978,7 +1003,8 @@
           "/.agents/skills/"
         ]
       },
-      "reason": "taste-skill: several skills target Codex or image generation, the core skill loads ~22k tokens per use, and there is no auto-update."
+      "reason": "taste-skill: several skills target Codex or image generation, the core skill loads ~22k tokens per use, and there is no auto-update.",
+      "short": "about 22k tokens per use, no auto-update"
     },
     {
       "id": "skills-omarchy",
@@ -989,7 +1015,8 @@
           "/usr/share/omarchy/"
         ]
       },
-      "reason": "Provided by the Omarchy distribution."
+      "reason": "Provided by the Omarchy distribution.",
+      "short": "provided by Omarchy"
     },
     {
       "id": "skill-codebase-memory",
@@ -1000,7 +1027,8 @@
           "codebase-memory"
         ]
       },
-      "reason": "Installed by codebase-memory-mcp; a useful how-to for graph queries that complements the kit's tool-routing rule."
+      "reason": "Installed by codebase-memory-mcp; a useful how-to for graph queries that complements the kit's tool-routing rule.",
+      "short": "a useful how-to for graph queries"
     },
     {
       "id": "hook-serena-remind",
@@ -1011,7 +1039,8 @@
           "serena-hooks remind"
         ]
       },
-      "reason": "Fires on every tool call; kit rules route tools instead."
+      "reason": "Fires on every tool call; kit rules route tools instead.",
+      "short": "fires on every tool call"
     },
     {
       "id": "hook-serena",
@@ -1024,7 +1053,8 @@
           "serena-hooks auto-approve"
         ]
       },
-      "reason": "loadout provides these hooks."
+      "reason": "loadout provides these hooks.",
+      "short": "loadout provides these hooks"
     },
     {
       "id": "hook-rtk",
@@ -1035,7 +1065,8 @@
           "rtk hook"
         ]
       },
-      "reason": "loadout provides the rtk hook."
+      "reason": "loadout provides the rtk hook.",
+      "short": "loadout provides the rtk hook"
     },
     {
       "id": "hook-codebase-memory",
@@ -1049,7 +1080,8 @@
           "codebase-memory-mcp hook"
         ]
       },
-      "reason": "loadout provides the codebase-memory hooks (with rule-aligned wording)."
+      "reason": "loadout provides the codebase-memory hooks (with rule-aligned wording).",
+      "short": "loadout provides these hooks"
     },
     {
       "id": "hook-auto-memory",
@@ -1061,7 +1093,8 @@
           "auto-memory/"
         ]
       },
-      "reason": "Belongs to the superseded auto-memory plugin."
+      "reason": "Belongs to the superseded auto-memory plugin.",
+      "short": "belongs to the superseded auto-memory plugin"
     },
     {
       "id": "hook-sonar-secrets",
@@ -1073,7 +1106,8 @@
           "sonar-secrets"
         ]
       },
-      "reason": "Global 60s secret-scan hooks on every Read and prompt; install per repo with `sonar integrate`."
+      "reason": "Global 60s secret-scan hooks on every Read and prompt; install per repo with `sonar integrate`.",
+      "short": "60 s scans on every read; install per repo"
     },
     {
       "id": "addon-playwright-mcp",
