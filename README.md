@@ -7,6 +7,8 @@
 [![Platforms: Linux, macOS, Windows (WSL 2)](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows%20%28WSL%202%29-informational.svg)](docs/tutorials/getting-started.md)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757.svg)](.claude-plugin/marketplace.json)
 
+![loadout adopt shows what it would change on an existing setup and why, applies the chosen groups with a backup, then loadout check is green and loadout restore --list shows the undo](docs/assets/demo.gif)
+
 Claude Code gets much better with the right plugins, MCP servers and instructions. But setups drift: every machine ends up different, old tools linger, versions go stale, and half of what is installed never gets used. loadout is a shared kit (this repo) plus a personal layer (your own folder, ideally a private git repo, with your preferences and tools). Its CLI merges both into `~/.claude` and keeps them current; [Architecture](docs/explanation/architecture.md) shows how.
 
 ## The toolset

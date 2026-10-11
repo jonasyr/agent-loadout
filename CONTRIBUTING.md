@@ -46,6 +46,10 @@ They make real model calls with your own Claude credential and use your plan's u
 
 When you change behaviour, update the page in `docs/` that owns the fact, and link to it from other pages instead of copying it. The index is [docs/README.md](docs/README.md). A decision with alternatives becomes an ADR in [`docs/adr/`](docs/adr/README.md).
 
+## The README demo
+
+`docs/assets/demo.gif` is recorded from [`demo/loadout.tape`](demo/loadout.tape) with [VHS](https://github.com/charmbracelet/vhs). `demo/render.sh` renders it in a container without network access (podman, or `DEMO_ENGINE=docker`), so nothing is installed on your machine. The recording runs the real `loadout` in a new sandbox HOME that `demo/sandbox.sh` fills with fake data and stand-in binaries. Re-render it when the output of `adopt`, `check` or `restore` changes, and before each release.
+
 ## Commits and pull requests
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, for example `feat(catalog): add <tool>`, `fix(adopt): ...`, `docs: ...`, `test: ...`.

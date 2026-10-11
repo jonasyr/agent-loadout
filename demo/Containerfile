@@ -1,0 +1,4 @@
+# VHS with Python and git, to render the README demo without installing anything on the host.
+FROM ghcr.io/charmbracelet/vhs:v0.12.1
+RUN apt-get update && apt-get install -y --no-install-recommends python3 git \
+    && rm -rf /var/lib/apt/lists/*
