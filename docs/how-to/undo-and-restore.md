@@ -4,13 +4,13 @@ Use this page when something went wrong after `bootstrap`, `adopt` or `configure
 
 ## Backups
 
-Before loadout removes or replaces a tool, file or link you own, it moves the old item into a backup folder `~/.claude/backups/loadout-<timestamp>` and records how to undo each step in `manifest.json`. These commands make backups: `bootstrap`, `adopt`, `configure` (preference choices and own-tool decisions), `update` (when it undoes an installer's changes) and the daily maintenance (when it refreshes copied links). The routine sync of kit-managed state is not backed up; see [What restore does not undo](#what-restore-does-not-undo). The command ends with:
+Before loadout removes or replaces a tool, file or link you own, it moves the old item into a backup folder `~/.claude/backups/loadout-<timestamp>` and records how to undo each step in `manifest.json`. These commands make backups: `bootstrap`, `adopt`, `configure` (preference choices and own-tool decisions), `update` (when it undoes an installer's changes) and the daily maintenance (when it refreshes copied links). The routine sync of kit-managed state is not backed up; see [What restore does not undo](#what-restore-does-not-undo). `bootstrap` and `adopt` end with:
 
 ```
 Undo any time: loadout restore --list
 ```
 
-`loadout restore --list` shows the backup with its path. With `--verbose`, bootstrap and adopt print the path directly:
+`loadout restore --list` shows the backup with its path. With `--verbose`, bootstrap and adopt print the path directly, and `configure`, `update` and the maintenance always do:
 
 ```
 backup: ~/.claude/backups/loadout-20261010-093000  (undo: loadout restore ~/.claude/backups/loadout-20261010-093000)

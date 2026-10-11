@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with `loadout check`. It is read-only, names what is wrong and prints the fix. Each line is `ok`, `warn` or `FAIL`; see [loadout check](../reference/cli.md#loadout-check) for what it tests. On WSL, see also [WSL](wsl.md).
+Start with `loadout check`. It is read-only, names what is wrong and prints the fix. It prints `Health check: N of M OK` and then only the problems (`loadout check --verbose` lists every check as `ok`, `warn` or `FAIL`); see [loadout check](../reference/cli.md#loadout-check) for what it tests. On WSL, see also [WSL](wsl.md).
 
 ## Install and PATH
 
