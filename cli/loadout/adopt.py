@@ -72,6 +72,11 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
             if bins:
                 lines.append("  binaries: " + ", ".join(f"{v.item.name} {v.item.detail}".rstrip() for v in bins))
             members = [v for v in members if v.item.kind != "binary"]
+            for kind, reason in (("plugin", "Enabled by the kit."), ("marketplace", "Declared by the kit.")):
+                kit = [v for v in members if v.item.kind == kind and v.reason == reason]
+                if kit:
+                    lines.append(f"  kit {kind}s: " + ", ".join(v.item.name for v in kit))
+                members = [v for v in members if v not in kit]
         for v in members:
             lines.append(redact(f"  [{v.item.kind}] {v.item.name}  {v.item.detail}".rstrip()))
             lines.append(redact(f"      {v.reason}"))

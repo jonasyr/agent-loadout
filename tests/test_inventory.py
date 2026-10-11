@@ -116,3 +116,9 @@ def test_helpers_are_not_offered_as_updates(fake_home, fake_runner, monkeypatch)
     monkeypatch.setattr(versions, "latest_version", lambda e: (2026, 10, 8) if e["id"] == "mise" else None)
     v = {(x.item.kind, x.item.name): x for x in inventory.classify(inventory.collect(with_versions=True))}
     assert v[("binary", "mise")].action == "keep"
+
+
+def test_missing_helper_is_not_listed(fake_home, fake_runner):
+    fake_runner.missing.add("mise")
+    names = {(i.kind, i.name) for i in inventory.collect(with_versions=False)}
+    assert ("binary", "mise") not in names
