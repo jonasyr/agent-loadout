@@ -168,12 +168,13 @@ def _powershell_profiles() -> tuple[list[Path], list[str]]:
     return list(dict.fromkeys(targets)), notes
 
 
-def _add_block(rc: Path, block: str, bk: Backup | None, windows: bool) -> str | None:
+def _add_block(rc: Path, block: str, bk: Backup | None, windows: bool,
+               marker: str = RC_MARKER, what: str = "secrets loading") -> str | None:
     if rc.exists():
         raw = rc.read_bytes()
         if windows:
             text, enc = _decode_profile(raw)
-            if RC_MARKER in text:
+            if marker in text:
                 return None
             if "\r\n" in text:
                 block = block.replace("\n", "\r\n")
@@ -181,20 +182,20 @@ def _add_block(rc: Path, block: str, bk: Backup | None, windows: bool) -> str | 
             # encode the whole text again so a UTF-16 profile stays UTF-16 (one BOM, at the start)
             data = (text + sep + block).encode(enc, errors="surrogateescape")
             if bk is not None:
-                bk.save_copy(rc, f"{rc} before adding secrets loading")
+                bk.save_copy(rc, f"{rc} before adding {what}")
             from .jsonio import write_atomic_bytes
             write_atomic_bytes(rc, data)
         else:
-            if RC_MARKER.encode() in raw:
+            if marker.encode() in raw:
                 return None
             with rc.open("ab") as fh:  # append: never re-encode the user's rc file
                 fh.write((b"" if not raw or raw.endswith(b"\n") else b"\n") + block.encode("utf-8"))
-        return f"added secrets loading to {rc}"
+        return f"added {what} to {rc}"
     rc.parent.mkdir(parents=True, exist_ok=True)
     rc.write_bytes(block.encode("utf-8"))
     if bk is not None:
         bk.record_created(rc, f"created {rc}")
-    return f"created {rc} with secrets loading"
+    return f"created {rc} with {what}"
 
 
 def setup_secrets(bk: Backup | None = None) -> list[str]:
@@ -233,6 +234,55 @@ def setup_secrets(bk: Backup | None = None) -> list[str]:
     if empty:
         out.append(f"empty secrets: {', '.join(empty)}")
     return out
+
+
+PATH_MARKER = "# loadout PATH"
+
+
+def _path_block(dirs: list[Path]) -> str:
+    home = paths.home()
+    lines = [PATH_MARKER]
+    for d in reversed(dirs):  # prepend in reverse, so the first folder ends up first
+        rel = d.relative_to(home).as_posix()
+        lines.append(f'case ":$PATH:" in *":$HOME/{rel}:"*) ;; *) PATH="$HOME/{rel}":"$PATH" ;; esac')
+    lines.append("export PATH")
+    return "\n".join(lines) + "\n"
+
+
+def setup_path(bk: Backup | None = None) -> list[str]:
+    """Make the folders user-space installers use visible to new terminals (and to Claude Code)."""
+    home = paths.home()
+    dirs = [d for d in paths.tool_dirs() if d == home or home in d.parents]
+    if not dirs:
+        return []
+    if paths.platform_key() == "windows":
+        return _setup_windows_path(dirs)
+    shell = os.path.basename(os.environ.get("SHELL", ""))
+    targets = [r for r in (home / ".bashrc", home / ".zshrc") if r.exists()]
+    own = {"zsh": home / ".zshrc", "bash": home / ".bashrc"}.get(shell)
+    if own is not None and own not in targets:
+        targets.append(own)
+    # login shells (bash -l, hook shells, CI) skip an interactive-only .bashrc
+    login = home / ".bash_profile" if (home / ".bash_profile").exists() else home / ".profile"
+    targets.append(login)
+    block = _path_block(dirs)
+    return [line for rc in dict.fromkeys(targets)
+            if (line := _add_block(rc, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH"))]
+
+
+def _setup_windows_path(dirs: list[Path]) -> list[str]:
+    get = ["powershell", "-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('Path', 'User')"]
+    res = runner.run(get, timeout=30)
+    if not res.ok:
+        return [f"could not read your user PATH; add {', '.join(map(str, dirs))} to it by hand"]
+    current = [p for p in res.stdout.strip().split(";") if p]
+    new = [str(d) for d in dirs if str(d).lower() not in {p.lower() for p in current}]
+    if not new:
+        return []
+    value = ";".join(new + current).replace("'", "''")
+    runner.run(["powershell", "-NoProfile", "-Command",
+                f"[Environment]::SetEnvironmentVariable('Path', '{value}', 'User')"], timeout=30)
+    return [f"added {', '.join(new)} to your user PATH (was: {';'.join(current) or 'empty'})"]
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
@@ -286,12 +336,17 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     _step("Secrets")
     for line in setup_secrets(bk):
         print(line)
+    _step("PATH")
+    path_lines = setup_path(bk)
+    for line in path_lines or ["PATH already set up"]:
+        print(line)
     if not bk.empty:
         print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
     text, code = check.format_results(check.run_checks())
     print(text)
-    print("\nRestart Claude Code to load plugins and rules.")
+    print("\nOpen a new terminal so the new PATH applies, then start Claude Code." if path_lines
+          else "\nRestart Claude Code to load plugins and rules.")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1

@@ -80,3 +80,44 @@ def test_without_install_flag_nothing_runs(fake_home, fake_runner, monkeypatch):
     fake_runner.missing.update({"node", "mise"})
     assert b.check_prereqs(False, lambda q: "") == ["node"]
     assert not any(c[0].startswith("install-") for c in fake_runner.calls)
+
+
+def test_path_block_goes_to_rc_and_login_profile(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    (fake_home / ".bashrc").write_text("case $- in *i*) ;; *) return;; esac\n")
+    out = b.setup_path(None)
+    assert out
+    for f in (".bashrc", ".profile"):
+        text = (fake_home / f).read_text()
+        assert text.count(b.PATH_MARKER) == 1
+        assert '"$HOME/.local/bin"' in text
+    assert b.setup_path(None) == []  # idempotent: nothing changed, nothing to say
+
+
+def test_path_block_prefers_existing_bash_profile(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    (fake_home / ".bash_profile").write_text("# mine\n")
+    b.setup_path(None)
+    assert b.PATH_MARKER in (fake_home / ".bash_profile").read_text()
+    assert not (fake_home / ".profile").exists()
+
+
+def test_path_block_skips_folders_outside_home_and_missing_ones(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    monkeypatch.setattr(paths, "tool_dirs", lambda: [Path("/opt/elsewhere/bin")])
+    assert b.setup_path(None) == []
+
+
+def test_windows_user_path_is_extended_once(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(paths, "platform_key", lambda: "windows")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    get = ("powershell", "-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('Path', 'User')")
+    fake_runner.responses[get] = runner.Result(0, "C:\\Tools\r\n", "")
+    out = b.setup_path(None)
+    sets = [c for c in fake_runner.calls if "SetEnvironmentVariable" in " ".join(c)]
+    assert len(sets) == 1 and str(fake_home / ".local/bin") in sets[0][-1] and "C:\\Tools" in sets[0][-1]
+    assert out
