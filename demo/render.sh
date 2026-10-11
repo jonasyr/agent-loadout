@@ -22,7 +22,7 @@ if [ -n "${DEMO_KEEP_DIR:-}" ]; then mkdir -p "$DEMO_KEEP_DIR"; keep=(-v "$DEMO_
   W=1280 H=800 FILL=0x181a24
   if [ -f demo/claude-clip.mp4 ]; then
     ffmpeg -y -loglevel error -i demo.mp4 -i demo/claude-clip.mp4 -filter_complex \
-      "[0:v]fps=20,setsar=1[a];[1:v]scale=$W:$H:force_original_aspect_ratio=decrease,pad=$W:$H:(ow-iw)/2:(oh-ih)/2:color=$FILL,fps=20,setsar=1[b];[a][b]concat=n=2:v=1[v]" \
+      "[0:v]fps=20,setsar=1[a];[1:v]scale=$W:$H:force_original_aspect_ratio=decrease,pad=$W:$H:(ow-iw)/2:(oh-ih)/2:color=$FILL,fps=20,setsar=1,tpad=stop_mode=clone:stop_duration=3[b];[a][b]concat=n=2:v=1[v]" \
       -map "[v]" joined.mp4
   else
     echo "no demo/claude-clip.mp4 yet: rendering the sandbox part alone (the maintainer records it; see CONTRIBUTING.md)" >&2
