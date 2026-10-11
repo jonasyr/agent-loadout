@@ -12,6 +12,8 @@
 
 ## Global Constraints
 
+- Ruling (plan writing): uv runs loadout with `--python ">=3.10"` instead of the spec's `3.12`, so an existing suitable Python is reused and 3.12 is downloaded only when none exists (the spec's intent: "if no suitable one exists").
+
 - No step uses sudo or administrator rights. Installers write to the user's home only.
 - A tool already on `PATH` (after the PATH update) is never installed again or replaced.
 - Python 3.10+, standard library only in `cli/loadout/` and hook scripts.
