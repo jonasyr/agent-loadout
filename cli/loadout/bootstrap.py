@@ -73,9 +73,19 @@ def still_to_do(key: str) -> list[str]:
     return out
 
 
-def prepend_tool_dirs() -> None:
+def npm_global_dir() -> Path | None:
+    """Windows: npm puts global commands into its prefix, which can be anywhere (mise's Node, Node's installer,
+    an npmrc), and mise's shims do not cover them. POSIX needs no lookup: mise reshim and ~/.local/bin cover it."""
+    if paths.platform_key() != "windows" or not runner.have("npm"):
+        return None
+    res = runner.run(["npm", "prefix", "-g"], cwd=str(paths.home()), timeout=60)
+    found = Path(res.stdout.strip()) if res.ok and res.stdout.strip() else None
+    return found if found and found.is_dir() else None
+
+
+def prepend_tool_dirs(extra: list[Path] | None = None) -> None:
     parts = os.environ.get("PATH", "").split(os.pathsep)
-    new = [str(d) for d in paths.tool_dirs() if str(d) not in parts]
+    new = [str(d) for d in [*paths.tool_dirs(), *(extra or [])] if str(d) not in parts]
     if new:
         os.environ["PATH"] = os.pathsep.join(new + [p for p in parts if p])
 
@@ -143,7 +153,8 @@ def check_prereqs(install: bool, ask: Ask) -> list[str]:
                     hint = _open_local_bin_hint()
                     if hint:
                         print(hint)
-            prepend_tool_dirs()
+            npm = npm_global_dir() if any(cmd[0] == "npm" for cmd in cmds) else None
+            prepend_tool_dirs([npm] if npm else None)
             if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
                 runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals
                 prepend_tool_dirs()
@@ -376,7 +387,8 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
     if not dirs:
         return [], False
     if paths.platform_key() == "windows":
-        return _setup_windows_path(dirs, bk)
+        npm = npm_global_dir()  # may be outside home (e.g. C:\npm\prefix from an npmrc)
+        return _setup_windows_path(dirs + [npm] if npm and npm not in dirs else dirs, bk)
     shell = os.path.basename(os.environ.get("SHELL", ""))
     targets = [r for r in (home / ".bashrc", home / ".zshrc") if r.exists()]
     own = {"zsh": home / ".zshrc", "bash": home / ".bashrc"}.get(shell)
