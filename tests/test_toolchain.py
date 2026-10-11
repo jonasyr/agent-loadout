@@ -164,6 +164,8 @@ def _win(monkeypatch, fake_home):
 def _ps(monkeypatch, fake_runner, rc, out, old=None):
     """A fake powershell: records the call, writes the backup file like the real script, prints `out`."""
     def run(cmd, cwd=None, timeout=300, env=None):
+        if cmd[0] == "npm":
+            return runner.Result(1, "", "")  # no npm prefix in these tests
         fake_runner.calls.append(list(cmd))
         fake_runner.envs.append(env)
         if old is not None and env:
@@ -331,3 +333,46 @@ def test_path_block_in_a_crlf_profile_is_replaced_in_place(fake_home, fake_runne
     assert b"$HOME/old" not in raw and b'"$HOME/.local/bin"' in raw and raw.count(b.PATH_MARKER.encode() + b"\r\n") == 1
     assert raw.startswith(b"# top\r\n") and raw.endswith(b"# bottom\r\n") and b"\n" not in raw.replace(b"\r\n", b"")
     assert b.setup_path(None) == ([], False)
+
+
+def _npm_prefix(fake_runner, prefix):
+    fake_runner.responses[("npm", "prefix", "-g")] = runner.Result(0, f"{prefix}\r\n", "")
+
+
+def test_windows_npm_installs_put_npm_global_folder_on_path(fake_home, fake_runner, monkeypatch, tmp_path):
+    """Windows keeps npm's global commands in the prefix itself, which can be anywhere (mise, Node's installer, npmrc)."""
+    _win(monkeypatch, fake_home)
+    prefix = tmp_path / "npm-prefix"
+    prefix.mkdir()
+    e = _bin("pyright", ["node"])
+    e["install"]["windows"] = [["npm", "install", "-g", "pyright"]]
+    _only(monkeypatch, [e, _bin("node")])
+    fake_runner.missing.add("pyright")
+    _npm_prefix(fake_runner, prefix)
+    monkeypatch.setenv("PATH", "C:\\Windows")
+    b.check_prereqs(True, lambda q: "")
+    assert str(prefix) in os.environ["PATH"].split(os.pathsep)
+
+
+def test_windows_user_path_gets_npm_global_folder_even_outside_home(fake_home, fake_runner, monkeypatch, tmp_path):
+    _win(monkeypatch, fake_home)
+    prefix = tmp_path / "npm-prefix"
+    prefix.mkdir()
+
+    def run(cmd, cwd=None, timeout=300, env=None):
+        fake_runner.calls.append(list(cmd))
+        fake_runner.envs.append(env)
+        if cmd[:3] == ["npm", "prefix", "-g"]:
+            return runner.Result(0, f"{prefix}\r\n", "")
+        return runner.Result(0, "UNCHANGED\r\n", "")
+    monkeypatch.setattr(runner, "run", run)
+    b.setup_path(None)
+    env = [e for e in fake_runner.envs if e and "LOADOUT_PATH_ADD" in e][0]
+    assert env["LOADOUT_PATH_ADD"].split("\n") == [str(fake_home / ".local/bin"), str(prefix)]
+
+
+def test_posix_does_not_ask_npm_for_its_prefix(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch)
+    (fake_home / ".local/bin").mkdir(parents=True)
+    b.setup_path(None)
+    assert ["npm", "prefix", "-g"] not in fake_runner.calls
