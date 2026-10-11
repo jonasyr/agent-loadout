@@ -18,6 +18,8 @@ Most commands go through `plugins/loadout/hooks/run.sh`. It runs the command onl
 | `PreToolUse` | `Grep\|Glob` | `--soft codebase-memory-mcp hook-augment` | 5 s | The code-graph server's hook for `Grep` and `Glob`. |
 | `PostToolUse` | `Write\|Edit\|MultiEdit` | `--soft python3 hooks/advisor.py record` | 5 s | Remembers a finished implementation plan. |
 | `Stop` | all | `--soft python3 hooks/advisor.py stop` | 5 s | Asks once for `/loadout:execution-advisor` after a plan. |
+| `SessionStart` | all | `--soft python3 hooks/reload_check.py` | 5 s | Tells you once per session to run `/reload-plugins` when Claude Code updated the plugin after the session started (the session keeps the old skills and hooks until then). State: `~/.claude/.loadout/reload-notified.json`. |
+| `Stop` | all | `--soft python3 hooks/reload_check.py` | 5 s | Same check at the end of a turn, for sessions that run long. |
 | `SubagentStart` | `*` | `hooks/subagent-context.sh` | 5 s | Gives a subagent one line of tool routing. |
 
 The plugin also declares two MCP servers in `plugins/loadout/.mcp.json`: `serena` and `codebase-memory-mcp`.

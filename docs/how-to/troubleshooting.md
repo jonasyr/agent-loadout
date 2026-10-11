@@ -12,6 +12,7 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 | A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example rtk on native Windows. |
 | No session notices, or the daily sync never runs | `loadout` must be on the `PATH` that Claude Code's hooks see. The plugin's hook runner exits 0 silently when the command is missing (`plugins/loadout/hooks/run.sh`). Add `~/.local/bin` to the `PATH` of the environment Claude Code starts from, then restart it. |
 | A plugin or MCP server is missing in Claude Code | Restart Claude Code. Then `loadout check` lists what is missing and how to fix it. Enabled plugins install at the next Claude Code start. |
+| loadout skills or hooks are missing in a session that started before an update | Run `/reload-plugins` (loadout reminds you once per session), or start a new session. |
 
 ## Settings
 
