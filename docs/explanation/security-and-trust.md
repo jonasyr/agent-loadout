@@ -18,6 +18,9 @@ A plugin can ship hooks, so a plugin update can run new code in your next sessio
 ## What runs when you ask
 
 - **`bootstrap --install`** runs the catalog's install commands without a further prompt, including `curl … | sh` installers fetched from the upstream default branch (uv, codebase-memory-mcp, rtk), on Windows a PowerShell `irm` script for codebase-memory-mcp, and an unpinned `npm install -g @playwright/cli@latest` (`bootstrap.check_prereqs`, `catalog.json`). Leave out `--install` to install tools yourself.
+- **The one-liner** (`curl … | bash`, or the PowerShell `irm` form) runs `bootstrap.sh` or `bootstrap.ps1` from this repo's `main` branch, so you trust this repo.
+- **Installers `--install` also runs:** uv's installer (Astral), Claude Code's native installer (Anthropic), mise's installer and `mise use -g` for Node.js, gh and rust-analyzer (mise and each tool's upstream). They install into your home folder, without sudo.
+- **To avoid them:** run bootstrap without `--install`, or clone the repo and read the code first.
 - **`loadout update`** shows each update command and asks first (`--yes` skips the question).
 - **`loadout profile` and `loadout init` with a profile** run the profile's plugin installs and `commands` in the repo unless you pass `--no-install` (`project._install`).
 

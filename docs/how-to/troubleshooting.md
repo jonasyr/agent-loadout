@@ -6,7 +6,8 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 
 | Symptom | Fix |
 |---|---|
-| `loadout: command not found` | Add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal. |
+| `loadout` or `claude` not found right after bootstrap | Open a new terminal. Bootstrap added `~/.local/bin` and the mise shims to your profile (block `# loadout PATH`); Windows: your user PATH. |
+| `missing node: skipped: needs mise` | mise failed to install; see the line above it. |
 | `npm error code EACCES` when installing pyright / typescript-language-server / playwright-cli | Your global npm prefix is root-owned (for example `/usr`). Either `npm config set prefix ~/.local` (then re-run `loadout bootstrap --install`), or install them with your version manager, for example `mise use -g npm:pyright npm:typescript-language-server`. |
 | `loadout needs Python 3.10 or newer (found 3.X). Install it and re-run.` | Install Python 3.10 or newer with your system package manager (on Windows from python.org or `winget install Python.Python.3.12`) and make sure `python3` (Windows: `python`) runs it. |
 | A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example rtk on native Windows. |

@@ -51,6 +51,7 @@ From the `binary` entries in `catalog.json`. `loadout bootstrap --install` insta
 | Tool | Status | For | Project |
 |---|---|---|---|
 | `claude`, `git`, `uv`, `node`, `gh` | required | Claude Code itself, repo sync, Serena's installer, npm-based servers, GitHub access. | [uv](https://github.com/astral-sh/uv), [gh](https://github.com/cli/cli) |
+| `mise` | helper | Installs Node.js, gh and rust-analyzer (`mise use -g`) when they are missing. Not installed otherwise, and `loadout check` does not report it. | [jdx/mise](https://github.com/jdx/mise) |
 | `serena`, `codebase-memory-mcp` | required | The plugin's two MCP servers. | [oraios/serena](https://github.com/oraios/serena), [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) |
 | `playwright-cli` | required | Claude checks UIs in a real browser; snapshots stay on disk. Why not a browser MCP server: [ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md). | [microsoft/playwright-cli](https://github.com/microsoft/playwright-cli) |
 | `rtk` | recommended | Shrinks noisy command output to save tokens. | [rtk-ai/rtk](https://github.com/rtk-ai/rtk) |
@@ -58,7 +59,7 @@ From the `binary` entries in `catalog.json`. `loadout bootstrap --install` insta
 
 codebase-memory-mcp is installed and updated with its install script and `--skip-config`, so it does not register a second MCP server next to the plugin's ([ADR 0019](../adr/0019-upstream-installers-without-agent-configuration.md)). On Windows, bootstrap uses `install.ps1`.
 
-Python 3.10 or newer is needed before any of this runs; see [Getting started](../tutorials/getting-started.md#requirements). Updates: [`loadout update`](cli.md#loadout-update).
+Python is provided by uv; git is the only prerequisite ([Before you start](../tutorials/getting-started.md#before-you-start)). Updates: [`loadout update`](cli.md#loadout-update).
 
 ## Per-project profiles
 

@@ -53,13 +53,15 @@ Each path must be inside WSL, such as `~/.local/bin/claude` or `/usr/bin/node`. 
 
 The other fix, `appendWindowsPath = false` under `[interop]` in `/etc/wsl.conf`, stops WSL from importing the Windows `PATH` at all. It also hides Windows tools you may want, such as `code` and `explorer.exe`, and needs `wsl --shutdown` to take effect.
 
-## 6. Install the sandbox packages
+## 6. Install the sandbox packages (optional)
 
-Sandboxing needs bubblewrap and socat:
+These packages are needed only if you turn on Claude Code's sandbox. The sandbox needs bubblewrap and socat:
 
 ```bash
 sudo apt-get install bubblewrap socat
 ```
+
+After bootstrap, open a new terminal so the PATH changes take effect.
 
 On Ubuntu 24.04 and later, bubblewrap may also need an AppArmor profile; see [sandboxing](https://code.claude.com/docs/en/sandboxing).
 

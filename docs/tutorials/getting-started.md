@@ -2,38 +2,49 @@
 
 This tutorial takes you from nothing to a first Claude Code session with loadout. It follows one path. For details on any step, follow the links to the how-to and reference pages.
 
-## Requirements
+## Before you start
 
-- Linux, macOS or Windows.
-- You need Claude Code, git, Python 3.10+, Node.js and gh; `--install` adds uv and the rest of the tools where it has an install command for your platform. What it cannot install is listed with instructions. Python must be there first: `bootstrap.sh` and `bootstrap.ps1` need it before anything else runs.
-- `--install` runs the installers without a further prompt, some of them `curl … | sh` scripts. See [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
-- On native Windows, Git for Windows (Git Bash). Claude Code runs hooks through it.
+| | Linux / WSL | macOS | Windows (experimental) |
+|---|---|---|---|
+| git | `sudo apt install git` (Debian/Ubuntu; other distros: their package manager) | `xcode-select --install` | `winget install --id Git.Git -e` (Git Bash runs the hooks) |
+| After bootstrap | `claude` (log in), `gh auth login` | same | same |
 
-## Linux and macOS
+Bootstrap installs everything else that is missing, in your home folder and without sudo: uv (which also provides Python), Claude Code, Node.js, gh and the tools in [Included tools](../reference/included-tools.md#command-line-tools). It never replaces a tool you already have. The installers run without a further prompt; see [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
 
-Clone the kit and run bootstrap:
+Optional, only if you turn on Claude Code's sandbox (Linux, WSL 2): `sudo apt-get install bubblewrap socat`.
+
+## Step 1: Run bootstrap
+
+On Linux, macOS and WSL 2, run the one-liner. It clones the kit into `./agent-loadout` (use `--dir PATH` after `--` to choose another folder) and runs bootstrap:
 
 ```bash
-git clone https://github.com/jonasyr/agent-loadout ~/agent-loadout
-cd ~/agent-loadout
-./bootstrap.sh --install
+curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install
 ```
 
-Keep the clone where it is. The installed links point into it.
+Prefer to read the code first? Clone it and run the same script:
+
+```bash
+git clone https://github.com/jonasyr/agent-loadout && cd agent-loadout && ./bootstrap.sh --install
+```
+
+Keep the clone where it is. The installed links point into it. Bootstrap adds `~/.local/bin` and the folders of the tools it installed to your shell profile (block `# loadout PATH`), so open a new terminal when it is done. It ends with the steps still open on your machine.
+
+On Windows, use WSL 2: open a WSL terminal, not PowerShell, and follow the steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages); `loadout check` warns about each of these it can see.
 
 Go on with [What bootstrap asks](#what-bootstrap-asks).
 
-## Windows
+## Experimental: native Windows
 
-Choose one path first. Do not mix the two.
+Native Windows is experimental and not recommended. Use WSL 2 if you can.
 
-- **WSL 2 (recommended).** Open a WSL terminal, not PowerShell, and follow the Linux steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages); `loadout check` warns about each of these it can see.
-- **Native Windows.** Use PowerShell and the steps below. Native Windows needs Git for Windows.
+1. Install Git for Windows (`winget install --id Git.Git -e`). `bootstrap.ps1` only warns when `bash` is missing, but Claude Code hooks need Git Bash. Python is not needed: uv provides it.
+2. In PowerShell, run the one-liner (it clones into `.\agent-loadout`):
 
-### Native Windows
+   ```powershell
+   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install
+   ```
 
-1. Install Python 3.10 or newer (for example `winget install Python.Python.3.12`) and Git for Windows. `bootstrap.ps1` stops without Python and only warns when `bash` is missing, but Claude Code hooks need Git Bash.
-2. In PowerShell:
+   Or clone and run the script, bypassing the execution policy for this one command:
 
    ```powershell
    git clone https://github.com/jonasyr/agent-loadout $HOME\agent-loadout
@@ -42,7 +53,7 @@ Choose one path first. Do not mix the two.
    ```
 
    If you plan to keep secrets in `secrets.env`, also run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`: `Bypass` only lets this one command run, `RemoteSigned` lets your PowerShell profiles (and with them the secrets loader) run. Why: [Troubleshooting, Windows](../how-to/troubleshooting.md#windows).
-3. Bootstrap writes the secrets loader into both your Windows PowerShell and PowerShell 7 profiles.
+3. Bootstrap writes the secrets loader into both your Windows PowerShell and PowerShell 7 profiles, and adds the tool folders to your user PATH.
 4. Bootstrap installs codebase-memory-mcp with its `install.ps1`. The optional rtk has no Windows install command; install it by hand if you want it.
 5. Without Developer Mode, Windows cannot create the links, and loadout copies files instead. Enable Developer Mode and re-run bootstrap to switch back to links. See [Troubleshooting](../how-to/troubleshooting.md).
 
@@ -68,7 +79,7 @@ Restart Claude Code. Then run:
 loadout check
 ```
 
-It is read-only. Each line is `ok`, `warn` or `FAIL`, and a problem line names the fix. If you see `loadout: command not found`, add `~/.local/bin` to your `PATH` (Windows: `%USERPROFILE%\.local\bin`) and open a new terminal. More in [Troubleshooting](../how-to/troubleshooting.md). What each check means is in the [CLI reference](../reference/cli.md#loadout-check).
+It is read-only. Each line is `ok`, `warn` or `FAIL`, and a problem line names the fix. If you see `loadout: command not found`, open a new terminal: bootstrap added `~/.local/bin` to your profile (Windows: your user PATH). More in [Troubleshooting](../how-to/troubleshooting.md). What each check means is in the [CLI reference](../reference/cli.md#loadout-check).
 
 ## Prepare a project
 

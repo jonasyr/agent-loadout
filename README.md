@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/jonasyr/agent-loadout/actions/workflows/ci.yml/badge.svg)](https://github.com/jonasyr/agent-loadout/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Platforms: Linux, macOS, Windows (WSL 2 or native)](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows%20%28WSL%202%20or%20native%29-informational.svg)](docs/tutorials/getting-started.md)
+[![Platforms: Linux, macOS, Windows (WSL 2)](https://img.shields.io/badge/platforms-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows%20%28WSL%202%29-informational.svg)](docs/tutorials/getting-started.md)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757.svg)](.claude-plugin/marketplace.json)
 
 Claude Code gets much better with the right plugins, MCP servers and instructions. But setups drift: every machine ends up different, old tools linger, versions go stale, and half of what is installed never gets used. loadout is a shared kit (this repo) plus a personal layer (your own folder, ideally a private git repo, with your preferences and tools). Its CLI merges both into `~/.claude` and keeps them current; [Architecture](docs/explanation/architecture.md) shows how.
@@ -43,27 +43,31 @@ What runs automatically, what loadout touches and where the trust boundary is: [
 
 ## Quick start
 
-You need Claude Code, git, Python 3.10+, Node.js and gh; `--install` adds uv and the rest of the tools where it has an install command for your platform. `--install` runs those installers without a further prompt (see [Security and trust](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). Full requirements and every step: [Getting started](docs/tutorials/getting-started.md).
-
 **Linux, macOS and WSL 2** (WSL 2 is the recommended setup on Windows; read [Use loadout on Windows with WSL 2](docs/how-to/wsl.md) first):
 
 ```bash
-git clone https://github.com/jonasyr/agent-loadout ~/agent-loadout
-cd ~/agent-loadout
-./bootstrap.sh --install
+curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install
 ```
 
-**Native Windows** (PowerShell, with Git for Windows installed; see [Native Windows](docs/tutorials/getting-started.md#native-windows)):
+This clones the kit into `./agent-loadout` and installs everything that is missing, in your home folder, without sudo: uv (which also provides Python), Claude Code, Node.js, gh and every tool in [the toolset](#the-toolset). `--install` runs those installers without a further prompt (see [Security and trust](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). Prefer to read the code first? Clone it and run the same script:
+
+```bash
+git clone https://github.com/jonasyr/agent-loadout && cd agent-loadout && ./bootstrap.sh --install
+```
+
+**Before you start:** you need git; after bootstrap you log in to Claude Code and gh. The one line per OS is in [Before you start](docs/tutorials/getting-started.md#before-you-start), and bootstrap ends with the steps still open on your machine.
+
+<details>
+<summary>Experimental: native Windows (not recommended; use WSL 2)</summary>
 
 ```powershell
-git clone https://github.com/jonasyr/agent-loadout $HOME\agent-loadout
-cd $HOME\agent-loadout
-powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install
 ```
 
-If you plan to keep secrets in `secrets.env`, also run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`: `Bypass` only lets this one command run, `RemoteSigned` lets your PowerShell profiles (and with them the secrets loader) run.
+Git for Windows is required (Git Bash runs the hooks). Details: [Native Windows](docs/tutorials/getting-started.md#experimental-native-windows).
+</details>
 
-Keep the clone where it is: the installed links point into it. Bootstrap walks you through three steps (your personal layer, preferences, your existing setup), and, if it replaced anything, names the backup and the undo command. Then restart Claude Code and run the read-only health check (if `loadout` is not found, add `~/.local/bin` to your `PATH`; on Windows `%USERPROFILE%\.local\bin`):
+Keep the clone where it is: the installed links point into it. Bootstrap walks you through three steps (your personal layer, preferences, your existing setup), and, if it replaced anything, names the backup and the undo command. Then restart Claude Code and run the read-only health check (if `loadout` is not found, open a new terminal: bootstrap added `~/.local/bin` to your shell profile):
 
 ```bash
 loadout check

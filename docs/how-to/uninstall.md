@@ -14,11 +14,13 @@ On Linux, macOS and WSL:
 ```bash
 claude plugin uninstall loadout@agent-loadout
 claude plugin marketplace remove agent-loadout
-rm ~/.claude/rules/loadout ~/.claude/rules/personal ~/.local/bin/loadout
+rm ~/.claude/rules/loadout ~/.claude/rules/personal ~/.local/bin/loadout   # the launcher
 rm -r ~/.claude/.loadout          # loadout's state (snapshots, timestamps)
 ```
 
-On Windows, delete `loadout` and `loadout.cmd` in `%USERPROFILE%\.local\bin`, and delete the folders `%USERPROFILE%\.claude\rules\loadout`, `%USERPROFILE%\.claude\rules\personal` and `%USERPROFILE%\.claude\.loadout`. If loadout copied instead of linking (see [Links and copies](../reference/personal-layer.md#links-and-copies)), these are folders, not links.
+Remove the block between `# loadout PATH` and `# loadout PATH end` from `~/.bashrc`, `~/.zshrc` and `~/.profile` (or `~/.bash_profile`).
+
+On Windows, delete `loadout` and `loadout.cmd` in `%USERPROFILE%\.local\bin`, remove the folders bootstrap added from your user PATH (Settings, Environment Variables), and delete the folders `%USERPROFILE%\.claude\rules\loadout`, `%USERPROFILE%\.claude\rules\personal` and `%USERPROFILE%\.claude\.loadout`. If loadout copied instead of linking (see [Links and copies](../reference/personal-layer.md#links-and-copies)), these are folders, not links.
 
 You can then delete the clone (`~/agent-loadout`).
 
