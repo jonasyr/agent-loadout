@@ -167,6 +167,7 @@ It has no flags. Each line is `ok`, `warn` or `FAIL`.
 | `settings.json` is valid JSON | FAIL |
 | A required binary is on `PATH` | FAIL |
 | Any other binary on `PATH` | warn |
+| `serena` and `codebase-memory-mcp` are on the PATH a new terminal gets (Claude Code starts them by name) | warn |
 | `skills.json` is valid JSON | warn |
 | Settings drift (a kit-managed value was changed) | warn |
 | Enabled plugins are installed | warn |
