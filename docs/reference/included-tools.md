@@ -1,20 +1,20 @@
 # Included tools
 
-What the kit sets up on a machine: the plugins and settings it manages, what the loadout plugin brings, the command-line tools, the per-project profiles and the optional add-ons. The sources are `settings.base.json`, `plugins/loadout/`, `rules/`, `catalog.json` and `profiles/`. Why each tool was kept or dropped is the `reason` of its entry in [`catalog.json`](../../catalog.json) (format: [Catalog format](catalog-format.md)).
+What the kit sets up on a machine (how the tools work together: [The toolset](../explanation/the-toolset.md)): the plugins and settings it manages, what the loadout plugin brings, the command-line tools, the per-project profiles and the optional add-ons. The sources are `settings.base.json`, `plugins/loadout/`, `rules/`, `catalog.json` and `profiles/`. Why each tool was kept or dropped is the `reason` of its entry in [`catalog.json`](../../catalog.json) (format: [Catalog format](catalog-format.md)).
 
 ## Global plugins
 
 All are enabled by `settings.base.json`. Switch one off with `loadout configure set plugin ID off`, or with `"enabledPlugins": {"ID": false}` in your personal `settings.json` (see [Personal layer](personal-layer.md)).
 
-| Plugin | What it does for you |
-|---|---|
-| `loadout@agent-loadout` | The kit's own plugin. See [The loadout plugin](#the-loadout-plugin). |
-| `superpowers` | A disciplined workflow: brainstorm, plan, test-driven build, verify. |
-| `frontend-design`, `impeccable@impeccable` | Distinctive UI, then audit and polish it. Why both: [ADR 0009](../adr/0009-design-tooling-frontend-design-and-impeccable.md). |
-| `security-guidance` | Warns about security mistakes while code is written, and reviews each `git commit`. Its per-turn diff review is off by default to save usage (`ENABLE_STOP_REVIEW=0`, see [Settings](#settings)). |
-| `pyright-lsp`, `typescript-lsp`, `rust-analyzer-lsp` | Claude sees type errors right after each edit. They need the language servers listed under [Command-line tools](#command-line-tools). |
-| `context7`, `microsoft-docs` | Current library documentation instead of outdated training data. |
-| `commit-commands`, `claude-md-management` | Commits and pull requests; keeping `CLAUDE.md` and `AGENTS.md` healthy. |
+| Plugin | What it does for you | Project |
+|---|---|---|
+| `loadout@agent-loadout` | The kit's own plugin. See [The loadout plugin](#the-loadout-plugin). | this repo |
+| `superpowers` | A disciplined workflow: brainstorm, plan, test-driven build, verify. | [obra/superpowers](https://github.com/obra/superpowers) |
+| `frontend-design`, `impeccable@impeccable` | Distinctive UI, then audit and polish it. Why both: [ADR 0009](../adr/0009-design-tooling-frontend-design-and-impeccable.md). | [frontend-design](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/frontend-design), [pbakaus/impeccable](https://github.com/pbakaus/impeccable) |
+| `security-guidance` | Warns about security mistakes while code is written, and reviews each `git commit`. Its per-turn diff review is off by default to save usage (`ENABLE_STOP_REVIEW=0`, see [Settings](#settings)). | [security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance) |
+| `pyright-lsp`, `typescript-lsp`, `rust-analyzer-lsp` | Claude sees type errors right after each edit. They need the language servers listed under [Command-line tools](#command-line-tools). | [Anthropic's official plugins](https://github.com/anthropics/claude-plugins-official) |
+| `context7`, `microsoft-docs` | Current library documentation instead of outdated training data. | [upstash/context7](https://github.com/upstash/context7), [MicrosoftDocs/mcp](https://github.com/MicrosoftDocs/mcp) |
+| `commit-commands`, `claude-md-management` | Commits and pull requests; keeping `CLAUDE.md` and `AGENTS.md` healthy. | [commit-commands](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/commit-commands), [claude-md-management](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management) |
 
 Plugins without a marketplace name come from `claude-plugins-official`.
 
@@ -48,13 +48,13 @@ The kit's `rules/` folder is linked to `~/.claude/rules/loadout` and loaded in e
 
 From the `binary` entries in `catalog.json`. `loadout bootstrap --install` installs every missing required and recommended tool that has an install command for your platform, and lists the rest with instructions. `loadout check` fails for a missing required tool and warns for the others.
 
-| Tool | Status | For |
-|---|---|---|
-| `claude`, `git`, `uv`, `node`, `gh` | required | Claude Code itself, repo sync, Serena's installer, npm-based servers, GitHub access. |
-| `serena`, `codebase-memory-mcp` | required | The plugin's two MCP servers. |
-| `playwright-cli` | required | Claude checks UIs in a real browser; snapshots stay on disk. Why not a browser MCP server: [ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md). |
-| `rtk` | recommended | Shrinks noisy command output to save tokens. |
-| `pyright`, `typescript-language-server`, `rust-analyzer` | recommended | Language servers for the LSP plugins. |
+| Tool | Status | For | Project |
+|---|---|---|---|
+| `claude`, `git`, `uv`, `node`, `gh` | required | Claude Code itself, repo sync, Serena's installer, npm-based servers, GitHub access. | [uv](https://github.com/astral-sh/uv), [gh](https://github.com/cli/cli) |
+| `serena`, `codebase-memory-mcp` | required | The plugin's two MCP servers. | [oraios/serena](https://github.com/oraios/serena), [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) |
+| `playwright-cli` | required | Claude checks UIs in a real browser; snapshots stay on disk. Why not a browser MCP server: [ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md). | [microsoft/playwright-cli](https://github.com/microsoft/playwright-cli) |
+| `rtk` | recommended | Shrinks noisy command output to save tokens. | [rtk-ai/rtk](https://github.com/rtk-ai/rtk) |
+| `pyright`, `typescript-language-server`, `rust-analyzer` | recommended | Language servers for the LSP plugins. | [pyright](https://github.com/microsoft/pyright), [typescript-language-server](https://github.com/typescript-language-server/typescript-language-server), [rust-analyzer](https://github.com/rust-lang/rust-analyzer) |
 
 codebase-memory-mcp is installed and updated with its install script and `--skip-config`, so it does not register a second MCP server next to the plugin's ([ADR 0019](../adr/0019-upstream-installers-without-agent-configuration.md)). On Windows, bootstrap uses `install.ps1`.
 
