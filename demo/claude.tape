@@ -15,8 +15,10 @@ Sleep 500ms
 Type "claude"
 Sleep 500ms
 Enter
-# the folder is new, so Claude Code asks whether to trust it; Enter accepts
+# the folder is new, so Claude Code asks whether to trust it ("No, exit" is preselected): Down, then Enter
 Sleep 5s
+Down
+Sleep 1s
 Enter
 Sleep 4s
 Type "/loadout:onboard"
