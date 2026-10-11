@@ -170,7 +170,8 @@ def test_git_bash_shim_has_lf_only_and_uses_current_python(fake_home):
     raw = (fake_home / ".local/bin/loadout").read_bytes()
     assert b"\r" not in raw
     assert link.LAUNCHER_MARKER.encode() in raw
-    assert b"uv run" in (fake_home / ".local/bin/loadout.cmd").read_bytes()
+    cmd = (fake_home / ".local/bin/loadout.cmd").read_bytes()
+    assert b"uv python find" in cmd and b"uv run" not in cmd and cmd.count(b"\r\n") == cmd.count(b"\n")
 
 
 # --- restore safety (R-C) ---
