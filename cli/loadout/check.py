@@ -73,6 +73,32 @@ def _plugins() -> list[CheckResult]:
                         "they install automatically at the next Claude Code start (or run loadout bootstrap)", "warn")]
 
 
+def _connectors() -> list[CheckResult]:
+    """A kit-known plugin enabled next to the claude.ai connector with the same tools."""
+    try:
+        enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins", {})
+        connected = load_json(paths.claude_json()).get("claudeAiMcpEverConnected", [])
+    except InvalidJSON:
+        return []  # settings.json errors are reported by _settings; ~/.claude.json is Claude Code's
+    if not isinstance(enabled, dict) or not isinstance(connected, list):
+        return []
+    out = []
+    for entry in catalog.load():
+        name = entry.get("connector")
+        if entry["kind"] != "plugin" or not name or name not in connected:
+            continue
+        for plugin in entry["match"].get("names", []):
+            if enabled.get(plugin) is True:
+                out.append(CheckResult(
+                    f"duplicate {plugin}", False,
+                    f"the plugin and the claude.ai connector {name} provide the same tools "
+                    "(if the connector is still connected)",
+                    "disconnect the connector on claude.ai, or disable the plugin (for a plugin the kit enables: "
+                    f'"enabledPlugins": {{"{plugin}": false}} in your personal settings.json, then loadout apply-settings)',
+                    "warn"))
+    return out
+
+
 def _json_fix(exc: InvalidJSON) -> str:
     """Fix text for an InvalidJSON error; jsonio puts the file in the message as `invalid JSON in <path>: ...`."""
     m = re.match(r"invalid JSON in (.+?): (?:Expecting|Extra|Invalid|Unterminated|expected)", str(exc))
@@ -143,7 +169,7 @@ def _wsl() -> list[CheckResult]:
 
 
 def run_checks() -> list[CheckResult]:
-    return [*_python(), *_wsl(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
+    return [*_python(), *_wsl(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_connectors(), *_own(), *_binaries(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

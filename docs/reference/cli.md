@@ -170,6 +170,7 @@ It has no flags. Each line is `ok`, `warn` or `FAIL`.
 | `skills.json` is valid JSON | warn |
 | Settings drift (a kit-managed value was changed) | warn |
 | Enabled plugins are installed | warn |
+| An enabled plugin and a claude.ai connector with the same tools ("ever connected" in `~/.claude.json`, an undocumented Claude Code field) | warn |
 | Own tools that loadout does not manage | warn |
 | `gh auth status` | warn |
 | `secrets.env` exists and is readable only by you | warn |

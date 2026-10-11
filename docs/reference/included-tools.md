@@ -20,7 +20,7 @@ Plugins without a marketplace name come from `claude-plugins-official`.
 
 ## Marketplaces
 
-`settings.base.json` registers three marketplaces, each with `"autoUpdate": true`: `agent-loadout` (this repo), `impeccable` and `academic-research-skills` (used by the `thesis` profile). Claude Code updates their plugins. How to turn that off: [Security and trust](../explanation/security-and-trust.md#opting-out).
+`settings.base.json` registers four marketplaces, each with `"autoUpdate": true`: `agent-loadout` (this repo), `impeccable`, `academic-research-skills` (used by the `thesis` profile) and `life-sciences`. The `life-sciences` marketplace carries the Wiley Scholar Gateway plugin, which is known but not enabled: use the claude.ai connector or enable the plugin, not both. Claude Code updates their plugins. How to turn that off: [Security and trust](../explanation/security-and-trust.md#opting-out).
 
 ## Settings
 

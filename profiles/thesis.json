@@ -12,5 +12,5 @@
       "huggingface-skills@claude-plugins-official": true
     }
   },
-  "notes": "Prefer the targeted ARS modes (/ars-lit-review, /ars-citation-check, /ars-reviewer); a full /ars-full pipeline run costs a few dollars. Literature search: Scholar Gateway connector or the deep-research skill."
+  "notes": "Prefer the targeted ARS modes (/ars-lit-review, /ars-citation-check, /ars-reviewer); a full /ars-full pipeline run costs a few dollars. Literature search: the claude.ai Wiley Scholar Gateway connector, or the deep-research skill. Without a claude.ai login, enable the wiley-scholar-gateway@life-sciences plugin instead (not both)."
 }

@@ -160,3 +160,16 @@ def test_codebase_memory_installers_skip_agent_config():
             for cmd in cmds:
                 assert "--skip-config" in " ".join(cmd), (key, plat, cmd)
     assert "manual" not in entry  # Windows has a real install command now
+
+
+def test_connector_field_only_on_plugins():
+    entries = _json("catalog.json")["entries"]
+    with_connector = {e["id"]: e for e in entries if "connector" in e}
+    assert set(with_connector) >= {"plugin-wiley-scholar-gateway", "plugin-context7"}
+    for e in with_connector.values():
+        assert e["kind"] == "plugin" and e["connector"].startswith("claude.ai "), e["id"]
+    wiley = with_connector["plugin-wiley-scholar-gateway"]
+    assert wiley["status"] == "profile" and wiley["profile"] == "thesis"
+    thesis = _json("profiles/thesis.json")
+    assert "wiley-scholar-gateway@life-sciences" not in thesis["settings"]["enabledPlugins"]
+    assert "wiley-scholar-gateway@life-sciences" in thesis["notes"]

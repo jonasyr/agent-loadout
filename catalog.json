@@ -745,6 +745,31 @@
       "reason": "About 25 skill/command descriptions in every session; enable in research repos."
     },
     {
+      "id": "plugin-wiley-scholar-gateway",
+      "kind": "plugin",
+      "status": "profile",
+      "profile": "thesis",
+      "match": {
+        "names": [
+          "wiley-scholar-gateway@life-sciences"
+        ]
+      },
+      "connector": "claude.ai Wiley Scholar Gateway",
+      "reason": "Literature search across Wiley's peer-reviewed content. Use either this plugin or the claude.ai connector, not both."
+    },
+    {
+      "id": "plugin-context7",
+      "kind": "plugin",
+      "status": "core",
+      "match": {
+        "names": [
+          "context7@claude-plugins-official"
+        ]
+      },
+      "connector": "claude.ai Context7",
+      "reason": "Library documentation (enabled by the kit). Use either this plugin or the claude.ai connector, not both."
+    },
+    {
       "id": "plugin-cybersecurity-skills",
       "kind": "plugin",
       "status": "deprecated",
