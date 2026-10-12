@@ -9,6 +9,7 @@ class FakeRunner:
     def __init__(self):
         self.calls = []
         self.envs = []
+        self.cwds = []
         self.responses = {}
         self.missing = set()
         self.paths = {}  # binary -> resolved path (runner.which); default: not found, so no package manager
@@ -17,6 +18,7 @@ class FakeRunner:
     def __call__(self, cmd, cwd=None, timeout=300, env=None):
         self.calls.append(list(cmd))
         self.envs.append(env)
+        self.cwds.append(cwd)
         for prefix, result in self.responses.items():
             if tuple(cmd[: len(prefix)]) == prefix:
                 return result
