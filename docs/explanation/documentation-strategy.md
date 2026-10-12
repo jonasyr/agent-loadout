@@ -236,7 +236,7 @@ Preprints and reports:
 - [Gloaguen 2026] Gloaguen, Mündler-Sasahara, Müller, Raychev, Vechev. *Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?* arXiv:2602.11988. <https://arxiv.org/abs/2602.11988>
 - [Lulla 2026] Lulla, Mohsenimofidi, Galster, Zhang, Baltes, Treude. *On the Impact of AGENTS.md Files on the Efficiency of AI Coding Agents.* arXiv:2601.20404. <https://arxiv.org/abs/2601.20404>
 - [Shahbazian 2017] Shahbazian, Lee, Le, Medvidovic. *Uncovering Architectural Design Decisions.* arXiv:1704.04798. <https://arxiv.org/abs/1704.04798>
-- [Hong 2025] Hong, Troynikov, Huber. *Context Rot: How Increasing Input Tokens Impacts LLM Performance.* Chroma technical report, 2025. <https://research.trychroma.com/context-rot>
+- [Hong 2025] Hong, Troynikov, Huber. *Context Rot: How Increasing Input Tokens Impacts LLM Performance.* Chroma technical report, 2025. <https://www.trychroma.com/research/context-rot>
 
 Practitioner sources:
 
