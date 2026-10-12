@@ -23,3 +23,34 @@ def test_prerequisite_notes_follow_their_status_line(fake_home, fake_runner, mon
     status = next(i for i, line in enumerate(lines) if "Prerequisites" in line)
     note = next(i for i, line in enumerate(lines) if line.strip().startswith("missing rtk:"))
     assert note > status, "\n".join(lines[: note + 2])
+
+
+def test_demo_sandbox_commits_as_demo_with_a_relative_home(tmp_path):
+    """The sandbox's git identity must come from its own file, whatever HOME_DIR looks like (relative paths too)."""
+    import os
+    import subprocess
+    import pytest
+    from loadout import paths
+    if os.name == "nt":
+        pytest.skip("bash script")
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path / "outer-home")}  # never the real home
+    p = subprocess.run(["bash", str(paths.kit_root() / "demo/sandbox.sh"), "demo-home"], cwd=tmp_path, env=env,
+                       capture_output=True, text=True, timeout=60)
+    assert p.returncode == 0, p.stderr
+    author = subprocess.run(["git", "-C", str(tmp_path / "demo-home/my-app"), "log", "-1", "--format=%an <%ae>"],
+                            capture_output=True, text=True, env=env).stdout.strip()
+    assert author == "demo <demo@example.com>"
+    assert not (tmp_path / "outer-home/.gitconfig").exists()
+
+
+def test_calm_bootstrap_says_once_that_files_are_copied(fake_home, fake_runner, monkeypatch, capsys):
+    """Without symlinks loadout copies files, which behaves differently (edits in place are lost on refresh)."""
+    from loadout import link, out
+    monkeypatch.setattr(out, "VERBOSE", False)
+    (fake_home / ".config/loadout/personal").mkdir(parents=True)
+    copied = [f"copied /kit/rules/{n}.md -> /home/.claude/rules/loadout/{n}.md (symlinks unavailable)" for n in ("a", "b")]
+    monkeypatch.setattr(link, "link_all", lambda bk, retry_symlinks=False: copied)
+    bootstrap.bootstrap(install=False, yes=True, plugins=False, adopt_step=False, ask=lambda q: "", interactive=False)
+    text = capsys.readouterr().out
+    warnings = [line for line in text.splitlines() if "symlinks unavailable" in line]
+    assert len(warnings) == 1 and "copies" in warnings[0] and "Developer Mode" in warnings[0], text

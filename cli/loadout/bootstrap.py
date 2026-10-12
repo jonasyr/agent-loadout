@@ -525,6 +525,11 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         out.problem(message)
     _step("Links")
     link_lines = link.link_all(bk, retry_symlinks=True) + link.link_bin(bk)
+    if any(line.endswith("(symlinks unavailable)") for line in link_lines):
+        # one visible line for what changes in practice; the per-file lines stay with --verbose
+        link_lines.append("warning: symlinks unavailable, so rules, skills and hooks are copies, refreshed by bootstrap "
+                          "and the daily sync; edit them in the kit or your personal layer (Windows: turn on Developer "
+                          "Mode for links)")
     # after a failed clone nothing may write into the personal layer: a partial folder would stop the next run
     # from asking for the URL again (the wizard and adopt both write there)
     if not personal_ok:
