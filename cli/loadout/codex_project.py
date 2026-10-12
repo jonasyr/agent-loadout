@@ -121,11 +121,21 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     if dry_run:
         return lines + [f"would install plugin {name} for Codex (from {src})" for src, names in routes.items() for name in names]
     bk = backup.Backup(description=f"loadout profile {prof.name} (Codex)")
-    out, installed = codex._install_routes(routes, bk, False, lambda line: None, codex.installed_plugins())
+    listed = codex.installed_plugins()
+    out, installed = codex._install_routes(routes, bk, False, lambda line: None, listed)
     lines += out
     on = desired.get("enabledPlugins", {})
     for pid in wanted:
-        if pid in installed and on.get(pid) is not True:
+        if on.get(pid) is True or pid in codex.project_plugins():
+            continue
+        if pid in (listed or ()):  # installed by the user: their switch stays as it is
+            lines.append(f"plugin {pid}: already installed in Codex, left on everywhere")
+        elif pid in installed:
+            record = codex.record_path()
+            if record.exists():
+                bk.save_copy(record, "codex-config.json before recording a project plugin")
+            else:
+                bk.record_created(record, "codex-config.json")
             codex.add_project_plugin(pid)
     return lines + codex.apply_config(bk)
 

@@ -115,3 +115,21 @@ def test_leave_silences_codex_items_in_drift(fake_home, fake_runner, monkeypatch
     monkeypatch.setattr(codex, "_plugin_servers", lambda: set())
     own.remember_leave(Item("mcp", "solo", "", codex.CONFIG_LOCATION, {}))
     assert codex.drift() == []
+
+
+def test_update_never_removes_codex_servers_as_duplicates(fake_home, fake_runner, monkeypatch):
+    from loadout import duplicates, inventory, maintenance
+    item = Item("mcp", "codebase-memory-mcp", "codebase-memory-mcp", codex.CONFIG_LOCATION, {"config": {"command": "c"}})
+    monkeypatch.setattr(inventory, "collect", lambda with_versions=False: [item])
+    monkeypatch.setattr(duplicates, "plugin_enabled", lambda: True)
+    monkeypatch.setattr(duplicates, "is_duplicate_mcp", lambda i: True)
+    monkeypatch.setattr(duplicates, "would_refuse_undo", lambda i: False)
+    removed, _ = maintenance.undo_reregistered(backup.Backup(description="t"))
+    assert removed == []
+    assert not any(c[:3] == ["codex", "mcp", "remove"] for c in fake_runner.calls)
+
+
+def test_codex_mcp_remove_runs_from_home(fake_home, fake_runner):
+    codex.remove_server("mine", backup.Backup(description="t"))
+    i = next(i for i, c in enumerate(fake_runner.calls) if c[:3] == ["codex", "mcp", "remove"])
+    assert fake_runner.cwds[i] == str(paths.home())

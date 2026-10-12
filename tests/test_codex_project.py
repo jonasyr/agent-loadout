@@ -162,3 +162,30 @@ def test_a_symlinked_skills_folder_outside_the_repo_is_refused(repo, tmp_path):
     lines = codex_project.skills(repo, dry_run=False)
     assert any("points outside" in l for l in lines)
     assert list((tmp_path / "elsewhere").iterdir()) == []
+
+
+def test_a_plugin_the_user_installed_in_codex_is_not_switched_off(repo, fake_runner, monkeypatch):
+    import json
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(
+        0, json.dumps({"installed": [{"pluginId": "deepeval@claude-plugins-official"}]}), "")
+    fake_runner.responses[("codex", "plugin", "marketplace", "add", codex.OFFICIAL)] = runner.Result(
+        0, json.dumps({"marketplaceName": "claude-plugins-official", "alreadyAdded": True}), "")
+    lines = codex_project.plugins(THESIS, dry_run=False)
+    assert codex.project_plugins() == []
+    assert any("already installed in Codex" in l for l in lines)
+
+
+def test_recording_a_project_plugin_is_undoable(repo, fake_runner, monkeypatch):
+    import json
+    from loadout import backup
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    seen = []
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: seen.append(bk) or [])
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(0, json.dumps({"installed": []}), "")
+    fake_runner.responses[("codex", "plugin", "marketplace", "add", codex.OFFICIAL)] = runner.Result(
+        0, json.dumps({"marketplaceName": "claude-plugins-official", "alreadyAdded": True}), "")
+    codex_project.plugins(THESIS, dry_run=False)
+    labels = [s["label"] for s in seen[0].steps]
+    assert any("codex-config.json" in l for l in labels)

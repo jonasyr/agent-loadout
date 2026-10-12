@@ -293,9 +293,9 @@ def _stray_hook_scripts(bk: Backup) -> list[str]:
 
 def undo_reregistered(bk: Backup) -> tuple[list[str], list[str]]:
     """(removed, reported). Removes only exact duplicates of MCP servers/hooks the enabled loadout plugin ships."""
-    from . import adopt, duplicates, inventory
-    try:
-        items = [i for i in inventory.collect(with_versions=False) if i.kind in ("mcp", "hook")]
+    from . import adopt, duplicates, inventory, own
+    try:  # Claude Code's entries only: a Codex server is never a duplicate of the Claude plugin
+        items = [i for i in inventory.collect(with_versions=False) if i.kind in ("mcp", "hook") and not own.is_codex(i)]
         enabled = duplicates.plugin_enabled()
         verdicts = {(v.item.kind, v.item.name, v.item.location, v.item.detail): v.action
                     for v in inventory.classify(items)}

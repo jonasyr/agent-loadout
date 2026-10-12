@@ -659,7 +659,7 @@ def remove_server(name: str, bk) -> str:
     path = paths.codex_home() / "config.toml"
     if path.exists():
         bk.save_copy(path, f"Codex config.toml before removing mcp {name}")
-    res = runner.run(["codex", "mcp", "remove", name], timeout=120)
+    res = runner.run(["codex", "mcp", "remove", name], cwd=str(paths.home()), timeout=120)
     return f"mcp {name}: removed from Codex" if res.ok else f"mcp {name}: failed: {_tail(res)}"
 
 
