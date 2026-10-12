@@ -56,3 +56,18 @@ def test_drift_without_codex_answer_is_empty(fake_home, fake_runner):
     fake_runner.responses[("codex", "mcp", "list")] = runner.Result(1, "", "boom")
     paths.claude_json().write_text(json.dumps({"mcpServers": {"x": {}}}), encoding="utf-8")
     assert codex.drift() == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlinks need Developer Mode on Windows")
+def test_recommended_catalog_skills_from_claude_reach_codex(fake_home, fake_runner):
+    """codebase-memory's installer puts its skill into ~/.claude/skills; the catalog recommends it, so Codex gets it too."""
+    src = paths.claude_home() / "skills" / "codebase-memory"
+    src.mkdir(parents=True)
+    (src / "SKILL.md").write_text("---\nname: codebase-memory\ndescription: x\n---\n", encoding="utf-8")
+    (paths.claude_home() / "skills" / "my-own").mkdir()  # not in the catalog: drift, not linked
+    codex.apply_skills(backup.Backup(description="t"))
+    dest = paths.agents_skills() / "codebase-memory"
+    assert dest.is_symlink() and dest.resolve() == src.resolve()
+    assert not (paths.agents_skills() / "my-own").exists()
+    _codex_mcp(fake_runner, [])
+    assert not any("codebase-memory" in l for l in codex.drift())
