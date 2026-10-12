@@ -428,3 +428,70 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     record_path().parent.mkdir(parents=True, exist_ok=True)
     save_json(record_path(), new_record)
     return lines
+
+
+OFFICIAL = "anthropics/claude-plugins-official"
+
+
+def _json(text: str):
+    """codex prints warnings before its JSON on some setups; read from the first brace."""
+    start = min((i for i in (text.find("{"), text.find("[")) if i >= 0), default=-1)
+    return json.loads(text[start:]) if start >= 0 else None
+
+
+def _tail(res: runner.Result) -> str:
+    return (res.stderr.strip() or res.stdout.strip())[-300:]
+
+
+def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
+    """{GitHub source: [plugin names]} for every plugin enabled for Claude Code, and those without a GitHub source."""
+    markets = settings.get("extraKnownMarketplaces", {})
+    routes: dict[str, list[str]] = {}
+    missing = []
+    for pid, on in settings.get("enabledPlugins", {}).items():
+        if on is not True or "@" not in pid:
+            continue
+        name, market = pid.rsplit("@", 1)
+        source = markets.get(market, {}).get("source", {})
+        src = OFFICIAL if market == "claude-plugins-official" else (
+            source.get("repo") if source.get("source") == "github" else None)
+        if src is None:
+            missing.append(pid)
+        else:
+            routes.setdefault(src, []).append(name)
+    return routes, missing
+
+
+def installed_plugins() -> set[str] | None:
+    res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
+    data = _json(res.stdout) if res.ok else None
+    return {p.get("pluginId") for p in data.get("installed", [])} if isinstance(data, dict) else None
+
+
+def apply_plugins(bk, refresh: bool = False) -> list[str]:
+    from .settings_merge import desired_settings
+    routes, missing = plugin_routes(desired_settings())
+    lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
+    installed = installed_plugins() or set()
+    for src, plugins in routes.items():
+        res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
+        info = _json(res.stdout) if res.ok else None
+        if not isinstance(info, dict) or "marketplaceName" not in info:
+            lines.append(f"marketplace {src}: failed: {_tail(res)}")
+            continue
+        market = info["marketplaceName"]
+        if not info.get("alreadyAdded"):
+            bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
+        elif refresh:
+            runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=900)
+        for name in plugins:
+            pid = f"{name}@{market}"
+            if pid in installed and not refresh:
+                continue
+            res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
+            if not res.ok:
+                lines.append(f"plugin {pid}: failed: {_tail(res)}")
+            elif pid not in installed:
+                bk.record_command(f"codex plugin {pid}", ["codex", "plugin", "remove", pid])
+                lines.append(f"plugin {pid}: installed")
+    return lines
