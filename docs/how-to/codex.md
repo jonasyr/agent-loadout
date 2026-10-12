@@ -4,13 +4,18 @@ Use this page when you also work with OpenAI's Codex CLI and want it set up exac
 
 ## Switch it on
 
-Bootstrap asks once when it finds `codex` on your PATH. To switch it on or off later:
+On a new machine, bootstrap first asks which coding agents to set up: Claude Code, Codex, or both. With Codex it installs Codex too (through mise). Scripts can pass the choice: `bootstrap.sh --install --agents codex` (or `claude`, or `claude,codex`). On a machine set up before this choice existed, bootstrap asks only when `codex` is on your PATH.
+
+To switch an agent on or off later:
 
 ```bash
 loadout configure set target codex on
+loadout configure set target claude off
 ```
 
-The choice is stored in your personal layer (`targets.json`), so it follows you to every machine. loadout needs codex 0.161 or newer.
+One agent must stay on. Switching an agent off uninstalls nothing; loadout just stops setting it up. The choice is stored in your personal layer (`targets.json`), so it follows you to every machine. loadout needs codex 0.161 or newer.
+
+**Codex only.** Without Claude Code, bootstrap does not install Claude Code and skips everything that belongs to it: the links under `~/.claude`, the Claude settings, its plugins and `adopt`. `loadout check` and the daily sync then look at Codex only. Codex still gets the plugins the kit enables, the rules, your personal layer and the tools. Add Claude Code later with `loadout configure set target claude on`.
 
 The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; it prints every step. Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
 
