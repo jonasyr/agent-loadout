@@ -1,0 +1,11 @@
+{
+  "name": "loadout",
+  "description": "Core of agent-loadout for Codex: Serena and codebase-memory MCP servers, Codex hooks with a type check after edits, onboarding and documentation skills.",
+  "author": { "name": "Jonas Weirauch" },
+  "homepage": "https://github.com/jonasyr/agent-loadout",
+  "repository": "https://github.com/jonasyr/agent-loadout",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/codex.json"
+}
