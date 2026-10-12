@@ -104,8 +104,7 @@ def still_to_do(key: str) -> list[str]:
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    if codex.enabled() and runner.have("codex"):
-        out.append(codex.HOOKS_TODO)
+    out += codex.open_steps()
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out

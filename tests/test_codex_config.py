@@ -68,7 +68,7 @@ def test_writes_servers_serena_and_keys(fake_home):
     assert text.startswith('model_reasoning_effort = "medium"\n')
     assert "[tui]\nnotifications = true\n" in text
     record = json.loads(codex.record_path().read_text())
-    assert set(record["tables"]) == {"gh", "serena"} and set(record["keys"]) == {"model_reasoning_effort", "tui.notifications"}
+    assert set(record["tables"]) == {"gh", "serena", "context7"}  # context7: the kit enables it and set(record["keys"]) == {"model_reasoning_effort", "tui.notifications"}
 
 
 @needs_tomllib
