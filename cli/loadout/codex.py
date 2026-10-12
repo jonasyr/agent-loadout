@@ -707,6 +707,19 @@ def hooks_status(remember: bool = False) -> str | None:
     return "trusted"
 
 
+def _not_logged_in() -> list[str]:
+    res = runner.run(["codex", "mcp", "list", "--json"], timeout=120)
+    data = _json(res.stdout) if res.ok else None
+    return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"] \
+        if isinstance(data, list) else []
+
+
+def logins_optional() -> list[str]:
+    """loadout's own servers that work without a login but allow more with one (Context7's rate limits)."""
+    owned = set(load_json(record_path()).get("tables", {}))
+    return [name for name in _not_logged_in() if name in owned]
+
+
 def logins_needed() -> list[str]:
     """Codex MCP servers that wait for an OAuth login (`codex mcp login NAME`)."""
     res = runner.run(["codex", "mcp", "list", "--json"], timeout=120)
@@ -725,4 +738,5 @@ def open_steps() -> list[str]:
     status = hooks_status(remember=True)
     # unknown (no tomllib on Python 3.10, unreadable config): remind, since the approval cannot be confirmed
     steps = [HOOKS_CHANGED] if status == "changed" else [] if status == "trusted" else [HOOKS_TODO]
-    return steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
+    return (steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
+            + [f"optional: log in to {name} in Codex for higher limits: codex mcp login {name}" for name in logins_optional()])

@@ -81,3 +81,7 @@ def test_servers_loadout_set_up_are_not_reported_as_needing_a_login(fake_home, f
     fake_runner.responses[("codex", "mcp", "list")] = runner.Result(0, json.dumps([
         {"name": "context7", "auth_status": "not_logged_in"}, {"name": "other", "auth_status": "not_logged_in"}]), "")
     assert codex.logins_needed() == ["other"]
+    assert codex.logins_optional() == ["context7"]
+    steps = codex.open_steps()
+    assert any("optional" in s and "codex mcp login context7" in s and "higher limits" in s for s in steps)
+    assert any(s.startswith("log in to other") for s in steps)
