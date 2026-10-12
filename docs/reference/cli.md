@@ -94,6 +94,7 @@ loadout configure [--all] [--first-run] [show | prefs | own | set KIND NAME VALU
 | `loadout configure set pref KEY JSON` | Set a key in your personal `settings.json`. `JSON` is parsed as JSON; if that fails, it is stored as a string. |
 | `loadout configure own [--all]` | List the tools loadout does not manage. Read-only. |
 | `loadout configure set own NAME CHOICE` | Decide one own tool. `CHOICE` is `global`, `project:<profile>`, `leave` or `remove`. |
+| `loadout configure set target codex on\|off` | Set up Codex too, or stop doing so. Stored in `<personal>/targets.json`. See [Use loadout with Codex](../how-to/codex.md). |
 
 | Flag | Meaning |
 |---|---|
@@ -184,6 +185,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 | `gh auth status` | warn |
 | `secrets.env` exists and is readable only by you | warn |
 | The kit and personal git repos have no uncommitted changes | warn |
+| With Codex on: `codex` found and new enough (`Codex`), the loadout plugin installed (`Codex plugin`), the block in `~/.codex/AGENTS.md` current and not shadowed by `AGENTS.override.md` (`Codex instructions`), loadout's entries in `config.toml` current (`Codex config`), enabled plugins without a Codex route (`Codex plugins`), MCP servers and skills present in only one agent (`Codex drift`) | warn, except `Codex plugin` and `Codex instructions`: FAIL |
 
 Exit codes: 0 when nothing failed (warnings do not count); 1 when at least one `FAIL` line was printed.
 

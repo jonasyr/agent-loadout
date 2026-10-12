@@ -103,6 +103,9 @@ def still_to_do(key: str) -> list[str]:
         out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
+    from . import codex
+    if codex.enabled() and runner.have("codex"):
+        out.append(codex.HOOKS_TODO)
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
@@ -557,6 +560,18 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         total = sum(1 for on in settings_merge.desired_settings().get("enabledPlugins", {}).values() if on)
         failed = sum(1 for line in lines if PROBLEM.search(line))
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
+    from . import codex
+    if personal_ok and not yes and interactive and runner.have("codex") and not codex.decided():
+        codex.set_enabled(ui.confirm(ask, "\nCodex found. Set it up with loadout too? [y/N] "))
+    if codex.enabled():
+        _step("Codex")
+        problem = codex.unavailable()
+        if problem:
+            out.status("Codex", problem, "warn")
+        else:
+            lines = codex.apply_all(bk)
+            failed = sum(1 for line in lines if PROBLEM.search(line))
+            _report("Codex", "rules, plugins, MCP servers and skills set up" if not failed else f"{failed} problem(s) (below)", lines)
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok:
         _step("Adopt existing setup")

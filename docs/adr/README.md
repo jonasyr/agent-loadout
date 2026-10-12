@@ -45,3 +45,4 @@ Template:
 | [0019](0019-upstream-installers-without-agent-configuration.md) | Upstream installers run without agent configuration | Accepted |
 | [0020](0020-bootstrap-installs-the-toolchain-in-user-space.md) | Bootstrap installs the toolchain in user space | Accepted |
 | [0021](0021-diagrams-as-code-rendered-to-svg.md) | Diagrams as code, rendered to committed SVGs | Accepted |
+| [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted |

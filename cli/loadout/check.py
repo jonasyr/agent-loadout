@@ -188,8 +188,14 @@ def _wsl() -> list[CheckResult]:
             *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in wsl.problems(version, wsl.current_dir()))]
 
 
+def _codex() -> list[CheckResult]:
+    from . import codex
+    return codex.checks()
+
+
 def run_checks() -> list[CheckResult]:
-    return [*_python(), *_wsl(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_connectors(), *_own(), *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
+    return [*_python(), *_wsl(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_codex(), *_connectors(),
+            *_own(), *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

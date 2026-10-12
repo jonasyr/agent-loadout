@@ -20,6 +20,8 @@ uv run --python 3.12 --with pytest pytest -q
 claude plugin validate . && claude plugin validate plugins/loadout
 ```
 
+`dev/codex-sandbox.sh` runs loadout's Codex setup against the real `codex` CLI in a temporary home and shows what Codex sees (needs codex and network; never touches your `~/.codex`).
+
 The tests include static checks of the repo: JSON files parse, catalog entries are well formed, no secrets are tracked, every relative link in the Markdown resolves, and no `CLAUDE.md` exists outside the repo root.
 
 ## Test rules
