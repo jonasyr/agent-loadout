@@ -88,3 +88,37 @@ def test_broken_targets_file_does_not_kill_the_background_sync(fake_home, fake_r
 def test_codex_has_no_update_command_that_could_install_a_second_copy():
     from loadout import catalog
     assert "update" not in catalog.by_id("codex")
+
+
+def test_update_leaves_claude_alone_on_codex_only(fake_home, fake_runner, monkeypatch):
+    targets.set_agents({"claude": False, "codex": True})
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
+    maintenance._update(True, lambda q: "")
+    assert not any(c[0] == "claude" for c in fake_runner.calls)
+
+
+def test_configure_changes_reach_codex_and_skip_claude_on_codex_only(fake_home, fake_runner, monkeypatch, capsys):
+    from loadout import configure
+    targets.set_agents({"claude": False, "codex": True})
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: None)
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    applied = []
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: applied.append(1) or ["plugin x@y: installed"])
+    configure.apply_all(lambda q: "")
+    out_text = capsys.readouterr().out
+    assert applied == [1] and "plugin x@y: installed" in out_text
+    assert not any(c[0] == "claude" for c in fake_runner.calls)
+    assert not (paths.claude_home() / "settings.json").exists()
+    assert "Codex" in out_text and "Claude Code" not in out_text
+
+
+def test_configure_changes_reach_both_agents(fake_home, fake_runner, monkeypatch):
+    from loadout import bootstrap as b, configure
+    targets.set_agents({"claude": True, "codex": True})
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: None)
+    monkeypatch.setattr(b, "setup_plugins", lambda **kw: [])
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    applied = []
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: applied.append(1) or [])
+    configure.apply_all(lambda q: "")
+    assert applied == [1]

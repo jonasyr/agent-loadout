@@ -329,7 +329,9 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
 
 
 def _update(yes: bool, ask: Callable[[str], str]) -> int:
-    runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
+    from . import targets
+    if targets.claude_enabled():  # Codex only: no Claude Code marketplaces to refresh
+        runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
     settings_path = paths.claude_home() / "settings.json"
     before = load_json(settings_path)
     outdated = find_outdated()
