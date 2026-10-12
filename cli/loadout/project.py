@@ -36,6 +36,10 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         print(line)
     if install:
         _install(prof, project, dry_run)
+    from . import codex_project, targets
+    if targets.codex_enabled():
+        for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
+            print(line)
     if prof.notes:
         print(f"note ({name}): {prof.notes}")
     return 0
@@ -75,5 +79,9 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         print(("would add to .gitignore: " if dry_run else "added to .gitignore: ") + line)
     for note in notes:
         print(f"note: {note}")
-    print("next: start Claude Code here and run /loadout:onboard")
+    from . import targets
+    if targets.claude_enabled():
+        print("next: start Claude Code here and run /loadout:onboard")
+    else:
+        print("next: start Codex here and ask it to use the loadout:onboard skill")
     return 0

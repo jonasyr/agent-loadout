@@ -526,14 +526,10 @@ def installed_plugins() -> set[str] | None:
     return {p.get("pluginId") for p in data.get("installed", [])} if isinstance(data, dict) else None
 
 
-def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
-    """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs)."""
-    say = say or (lambda line: None)
-    from .settings_merge import desired_settings
-    routes, missing = plugin_routes(desired_settings())
-    lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
-    listed = installed_plugins()
-    installed = listed or set()  # unknown when the list failed: then nothing counts as installed by loadout
+def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None
+                    ) -> tuple[list[str], set[str]]:
+    """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards."""
+    lines, installed = [], set(listed or ())
     for src, plugins in routes.items():
         say(f"  marketplace {src} (a git clone the first time; can take a few minutes)…")
         res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
@@ -554,10 +550,21 @@ def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
             res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
-            elif pid not in installed and listed is not None:
+                continue
+            if pid not in installed and listed is not None:
                 bk.record_command(f"codex plugin {pid}", ["codex", "plugin", "remove", pid])
                 lines.append(f"plugin {pid}: installed")
-    return lines
+            installed.add(pid)
+    return lines, installed
+
+
+def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
+    """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs)."""
+    say = say or (lambda line: None)
+    from .settings_merge import desired_settings
+    routes, missing = plugin_routes(desired_settings())
+    lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
+    return lines + _install_routes(routes, bk, refresh, say, installed_plugins())[0]
 
 
 def skill_links() -> list[tuple[Path, Path]]:
