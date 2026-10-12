@@ -62,21 +62,27 @@ All Codex-specific code; the Claude modules stay unchanged except for the calls 
 2. **Plugins.** `apply_plugins()` runs, through `runner.py`: `codex plugin marketplace add <kit root> --json` and
    `codex plugin add loadout@agent-loadout --json`, then each catalog entry with a `codex` field whose tool is wanted.
    Idempotent (Codex reports `alreadyAdded`; `codex plugin list --json` tells what is installed). After a daily pull
-   that changed the kit, it refreshes the cached copy of the local plugin (`codex plugin marketplace upgrade
-   agent-loadout`, else remove and add; the build verifies which works).
-3. **MCP servers.** `apply_mcp(bk)` writes the personal layer's `mcp.json` servers as `[mcp_servers.NAME]` tables into
-   `~/.codex/config.toml` between `# loadout:start` and `# loadout:end` comment lines. A small writer serialises only
-   strings, lists of strings and tables of strings (basic strings with TOML escapes); anything else in a server config
-   is reported and that server skipped. `${VAR}` references become `env_vars = ["VAR"]` (stdio) or
-   `bearer_token_env_var` / `env_http_headers` (HTTP `Authorization` and other headers); a plaintext value that looks
-   like a secret (`secrets.looks_secret`) is refused for that server, with the fix (move it to `secrets.env`). Before
-   writing, the whole new file is parsed with `tomllib` when available (Python 3.11+); on 3.10 the marker edit runs
-   without that check. A server name that already exists outside the markers is left alone and reported.
+   that changed the kit, it refreshes the cached copy of the local plugin by running `codex plugin add` again (see 6).
+3. **MCP servers.** `apply_mcp(bk)` writes the personal layer's `mcp.json` servers into `~/.codex/config.toml`, each as
+   one self-contained `[mcp_servers.NAME]` table (nested values as inline tables, so a server is exactly the lines from
+   its header to the next header). Marker comments are not used: a sandbox run showed Codex's own writes drop and move
+   them. Ownership is tracked like Claude's `managed-mcp.json`: `~/.claude/.loadout/codex-mcp.json` records, per server
+   name, the exact table text loadout wrote. loadout replaces or removes only tables whose current text equals what it
+   recorded; a table the user changed, or a same-named table loadout never wrote, is left alone and reported. A small
+   writer serialises only strings, lists of strings and tables of strings (TOML basic strings with escapes); anything
+   else in a server config is reported and that server skipped. `${VAR}` references become `env_vars = ["VAR"]`
+   (stdio) or `bearer_token_env_var` / `env_http_headers` (HTTP `Authorization` and other headers); a plaintext value
+   that looks like a secret (`secrets.looks_secret`) is refused for that server, with the fix (move it to
+   `secrets.env`). Before writing, the new file is parsed with `tomllib` when available (Python 3.11+); on 3.10 the
+   edit runs without that check.
 4. **Skills.** The personal layer's `skills/<name>/` and `skills.json` pointers are linked into `~/.agents/skills/<name>`
    with `link.py`'s existing link, copy-mode and backup logic.
-5. **Serena context.** The build tests whether a user-level `[mcp_servers.serena]` with `--context=codex` cleanly
-   replaces the plugin's `--context=claude-code` server. If yes, `apply_mcp` adds it inside the markers; if not, v1
-   keeps the plugin's server and the how-to says so.
+5. **Serena context.** A user-level `[mcp_servers.serena]` replaces the plugin's server of the same name (sandbox run:
+   `codex mcp list` showed only the user-level one). `apply_mcp` therefore also writes `serena` with
+   `--context=codex`, owned like the personal servers.
+6. **Plugin refresh.** `codex plugin marketplace upgrade` works only for git marketplaces; running `codex plugin add
+   loadout@agent-loadout` again refreshes the cached copy of the local plugin (sandbox run). The daily sync does that
+   after a pull that changed the kit.
 
 ### Catalog
 
@@ -110,7 +116,7 @@ the field.
 - `codex` missing or older than the tested version (0.161): skip with one line; Claude Code is unaffected.
 - A plugin command fails: reported like Claude plugin failures (`failed: …`), retried at the next sync.
 - `config.toml` that does not parse after the edit: nothing is written; the message names the file.
-- Unbalanced markers in either file: nothing is written; the message says which file to fix.
+- Unbalanced markers in `AGENTS.md`: nothing is written; the message says which file to fix. A managed `config.toml` table the user changed: left alone and reported.
 
 ### Undo
 
