@@ -194,13 +194,13 @@ def _register_configure(sub):
         if a.kind == "own":
             return configure.set_own(a.name, a.value)
         if a.kind == "target":
-            if a.name != "codex":
-                raise ValueError("usage: loadout configure set target codex on|off")
-            from . import codex
+            from . import codex, targets
             on = configure.parse_switch(a.value, "target")
-            print(codex.set_enabled(on))
+            print(targets.set_target(a.name, on))  # ValueError (unknown agent, last one off) -> exit 1
             configure.offer_commit(_ask)  # targets.json lives in the personal layer; uncommitted it pauses the sync
-            if on:  # set Codex up now, not at the next bootstrap; Claude Code's setup is unaffected
+            if on and a.name == "claude":
+                configure.apply_all(_ask)
+            if on and a.name == "codex":  # set Codex up now, not at the next bootstrap
                 problem = codex.unavailable()
                 if problem:
                     print(f"note: {problem}; Codex is set up once that is fixed (loadout bootstrap)")

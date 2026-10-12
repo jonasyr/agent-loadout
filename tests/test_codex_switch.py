@@ -22,7 +22,7 @@ def test_configure_set_target_records_the_choice(fake_home, fake_runner, monkeyp
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
     assert main(["configure", "set", "target", "codex", "on"]) == 0
-    assert json.loads(codex.targets_path().read_text()) == {"codex": True}
+    assert json.loads(codex.targets_path().read_text()) == {"claude": True, "codex": True}
     assert codex.enabled() and codex.decided()
     assert main(["configure", "set", "target", "codex", "off"]) == 0
     assert not codex.enabled() and codex.decided()
@@ -30,7 +30,7 @@ def test_configure_set_target_records_the_choice(fake_home, fake_runner, monkeyp
 
 def test_configure_show_names_the_codex_switch(fake_home):
     from loadout import configure
-    assert "Codex: off (set with: loadout configure set target codex on|off)" in configure.show()
+    assert "Agents: Claude Code on, Codex off (set with: loadout configure set target claude|codex on|off)" in configure.show()
 
 
 def test_unavailable_names_missing_and_old_codex(fake_home, fake_runner):

@@ -12,23 +12,23 @@ MIN_VERSION = (0, 161)
 
 
 def targets_path() -> Path:
-    return paths.personal_root() / "targets.json"
+    from . import targets
+    return targets.path()
 
 
 def enabled() -> bool:
-    return load_json(targets_path()).get("codex") is True
+    from . import targets
+    return targets.codex_enabled()
 
 
 def decided() -> bool:
-    return "codex" in load_json(targets_path())
+    from . import targets
+    return "codex" in load_json(targets.path())
 
 
 def set_enabled(on: bool) -> str:
-    data = load_json(targets_path())
-    data["codex"] = on
-    targets_path().parent.mkdir(parents=True, exist_ok=True)
-    save_json(targets_path(), data)
-    return f"codex: {'on' if on else 'off'}"
+    from . import targets
+    return targets.set_target("codex", on)
 
 
 def unavailable() -> str | None:

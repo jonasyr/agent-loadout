@@ -133,8 +133,9 @@ def set_pref_choice(pid: str, value: str, ask: Ask, interactive: bool) -> list[s
 
 def show() -> str:
     lines = ["Change one with: loadout configure set <plugin|mcp> <id> on|off"]
-    from . import codex
-    lines.append(f"Codex: {'on' if codex.enabled() else 'off'} (set with: loadout configure set target codex on|off)")
+    from . import targets
+    lines.append(f"Agents: Claude Code {'on' if targets.claude_enabled() else 'off'}, Codex {'on' if targets.codex_enabled() else 'off'}"
+                 " (set with: loadout configure set target claude|codex on|off)")
     for a in addons():
         on = is_on(a)
         source = "default" if on == a.default_on else "personal"
