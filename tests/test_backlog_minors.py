@@ -59,14 +59,17 @@ def test_calm_bootstrap_says_once_that_files_are_copied(fake_home, fake_runner, 
 def test_failed_install_line_names_the_tool(fake_home, fake_runner):
     """The note prints after the status line, away from its "installing …" line, so it must say which tool failed."""
     from loadout import catalog
-    entry = next(e for e in catalog.binaries() if e["id"] == "rtk")
-    fake_runner.missing.add("rtk")
+    # a wanted tool with an install command on this platform and no prerequisites (rtk has none on Windows)
+    entry = next(e for e in catalog.binaries() if e["status"] in ("core", "recommended") and not e.get("helper") and not e.get("needs")
+                 and catalog.platform_cmds(e, "install"))
+    name = entry["id"]
+    fake_runner.missing.add(name)
     for cmd in catalog.platform_cmds(entry, "install"):
         fake_runner.responses[tuple(cmd[:2])] = runner.Result(1, "", "network down")
     notes = []
     bootstrap.check_prereqs(True, lambda q: "", notes=notes)
     failed = [n for n in notes if n.startswith("failed")]
-    assert failed and all("rtk" in n for n in failed), notes
+    assert failed and all(name in n for n in failed), notes
     assert all(not line.startswith(" ") for note in notes for line in note.splitlines()[:1])
 
 
