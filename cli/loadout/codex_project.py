@@ -130,7 +130,7 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
             continue
         if pid in (listed or ()):  # installed by the user: their switch stays as it is
             lines.append(f"plugin {pid}: already installed in Codex, left on everywhere")
-        elif pid in installed:
+        elif listed is not None and pid in installed:  # a failed list proves nothing: leave the switch alone
             record = codex.record_path()
             if record.exists():
                 bk.save_copy(record, "codex-config.json before recording a project plugin")

@@ -10,7 +10,8 @@ Ask = Callable[[str], str]
 
 
 def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> None:
-    for plugin_id in profile.install:
+    from . import targets
+    for plugin_id in (profile.install if targets.claude_enabled() else []):  # Codex: codex_project.plugins
         cmd = ["claude", "plugin", "install", plugin_id, "--scope", "project"]
         print(("would run: " if dry_run else "running: ") + " ".join(cmd))
         if not dry_run:

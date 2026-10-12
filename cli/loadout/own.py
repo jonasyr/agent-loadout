@@ -710,8 +710,8 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
         else:
             bk.record_created(record, "codex-config.json")
         out = [codex.remove_server(name, bk)]  # loadout writes its own table from the personal layer next
-        if ": failed:" in out[0]:
-            return out
+        if ": failed:" in out[0]:  # adopt counts it as not done; the section stays the user's until removed
+            raise OSError(f"{out[0]}; run `codex mcp remove {name}`, then `loadout update`")
         out += codex.apply_config(bk)
         if targets.claude_enabled():
             out += personal_mcp.apply_mcp()

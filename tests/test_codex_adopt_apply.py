@@ -133,3 +133,11 @@ def test_codex_mcp_remove_runs_from_home(fake_home, fake_runner):
     codex.remove_server("mine", backup.Backup(description="t"))
     i = next(i for i, c in enumerate(fake_runner.calls) if c[:3] == ["codex", "mcp", "remove"])
     assert fake_runner.cwds[i] == str(paths.home())
+
+
+def test_a_failed_codex_handoff_is_reported_as_not_done(codex_on, fake_runner, monkeypatch):
+    fake_runner.responses[("codex", "mcp", "remove")] = runner.Result(1, "", "boom")
+    monkeypatch.setattr(codex, "desired_tables", lambda: ({"mine": "x"}, []))
+    rec = own.record_global(_mcp({"type": "stdio", "command": "m"}), backup.Backup(description="t"))
+    with pytest.raises(OSError, match="codex mcp remove mine"):
+        rec.machine()

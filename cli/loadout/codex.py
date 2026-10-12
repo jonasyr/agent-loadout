@@ -619,11 +619,22 @@ def user_servers() -> dict[str, dict]:
     return {n: t for n, t in servers.items() if isinstance(t, dict) and n not in owned}
 
 
+def _strs(value, kind) -> bool:
+    if kind is list:
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    return isinstance(value, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in value.items())
+
+
 def to_claude(name: str, table: dict) -> dict:
     """A Codex server table in the Claude Code format of the personal mcp.json; variables stay variables."""
     extra = sorted(set(table) - _CODEX_KEYS)
     if extra:
         raise Refused(f"mcp {name}: {', '.join(extra)} has no Claude Code equivalent; leave it in Codex or remove it")
+    shapes = {"command": str, "url": str, "bearer_token_env_var": str, "args": list, "env_vars": list,
+              "env": dict, "http_headers": dict, "env_http_headers": dict}
+    for key, kind in shapes.items():
+        if key in table and not (isinstance(table[key], str) if kind is str else _strs(table[key], kind)):
+            raise Refused(f"mcp {name}: {key} has an unexpected shape; leave it in Codex or remove it")
     if "url" in table:
         headers = dict(table.get("http_headers") or {})
         if table.get("bearer_token_env_var"):

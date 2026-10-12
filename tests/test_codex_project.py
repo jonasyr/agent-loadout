@@ -191,3 +191,23 @@ def test_recording_a_project_plugin_is_undoable(repo, fake_runner, monkeypatch):
     codex_project.plugins(THESIS, dry_run=False)
     labels = [s["label"] for s in seen[0].steps]
     assert any("codex-config.json" in l for l in labels)
+
+
+def test_codex_only_machine_never_runs_claude_plugin_install(repo, fake_runner, monkeypatch):
+    monkeypatch.setattr(profiles, "load_profile", lambda name: THESIS)
+    monkeypatch.setattr(targets, "claude_enabled", lambda: False)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: [])
+    project.add_profile(repo, "thesis", install=True)
+    assert not any(c[:2] == ["claude", "plugin"] for c in fake_runner.calls)
+
+
+def test_a_failed_plugin_list_makes_nothing_project_only(repo, fake_runner, monkeypatch):
+    import json
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(1, "", "boom")
+    fake_runner.responses[("codex", "plugin", "marketplace", "add", codex.OFFICIAL)] = runner.Result(
+        0, json.dumps({"marketplaceName": "claude-plugins-official", "alreadyAdded": True}), "")
+    codex_project.plugins(THESIS, dry_run=False)
+    assert codex.project_plugins() == []

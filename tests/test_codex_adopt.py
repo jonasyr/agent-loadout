@@ -83,3 +83,11 @@ def test_codex_items_are_own_tools_not_catalog_matches(codex_on):
     item = inventory.Item("mcp", "serena", "serena", codex.CONFIG_LOCATION, {"config": {"command": "serena"}})
     (verdict,) = inventory.classify([item])
     assert verdict.action == "own"
+
+
+@pytest.mark.parametrize("table", [{"command": "x", "env": ["x"]}, {"command": "x", "env_vars": "T"},
+                                   {"command": "x", "args": "-y"}, {"url": "u", "http_headers": ["a"]},
+                                   {"command": ["x"]}, {"url": 3}])
+def test_to_claude_refuses_odd_shapes(table):
+    with pytest.raises(codex.Refused):
+        codex.to_claude("a", table)
