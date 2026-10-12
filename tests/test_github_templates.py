@@ -61,3 +61,11 @@ def test_pr_template_asks_for_testing_and_docs_and_stays_short():
     text = _text(GITHUB / "pull_request_template.md")
     assert [h for h in re.findall(r"^## (.+)$", text, re.M)] == ["Summary", "How I tested", "Docs"]
     assert text.count("- [ ]") == 2 and len(text.splitlines()) <= 20
+
+
+def test_code_of_conduct_is_filled_in():
+    """Contributor Covenant 3.0 ships with [NOTE: ...] placeholders for the reporting channel and enforcement."""
+    text = _text(paths.kit_root() / "CODE_OF_CONDUCT.md")
+    assert text.startswith("# Contributor Covenant 3.0 Code of Conduct")
+    assert "[NOTE:" not in text
+    assert "mailto:loadout-conduct.culminate208@passmail.net" in text

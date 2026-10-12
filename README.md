@@ -167,7 +167,7 @@ Other agents (Codex, Gemini CLI, Cursor) are not supported yet; the plan is in [
 
 ## Contributing
 
-Contributions are very welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first and follow it: it covers setup, tests, the documentation rules and how to open a pull request.
+Contributions are very welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first and follow it: it covers setup, tests, the documentation rules and how to open a pull request. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
