@@ -495,3 +495,57 @@ def apply_plugins(bk, refresh: bool = False) -> list[str]:
                 bk.record_command(f"codex plugin {pid}", ["codex", "plugin", "remove", pid])
                 lines.append(f"plugin {pid}: installed")
     return lines
+
+
+def skill_links() -> list[tuple[Path, Path]]:
+    """The same personal skills (folders and skills.json pointers) that link.py links for Claude Code."""
+    from . import link
+    claude_skills = paths.claude_home() / "skills"
+    return [(paths.agents_skills() / dest.name, src) for dest, src in link.LINKS() if dest.parent == claude_skills]
+
+
+def apply_skills(bk) -> list[str]:
+    from . import link
+    return [line for dest, src in skill_links() if (line := link._link_one(dest, src, bk))]
+
+
+def mcp_names() -> set[str] | None:
+    res = runner.run(["codex", "mcp", "list", "--json"], timeout=120)
+    data = _json(res.stdout) if res.ok else None
+    return {s.get("name") for s in data if isinstance(s, dict)} if isinstance(data, list) else None
+
+
+def _skill_names(folder: Path) -> set[str]:
+    return {p.name for p in folder.iterdir() if not p.name.startswith(".") and p.name != "synced"} if folder.is_dir() else set()
+
+
+def drift() -> list[str]:
+    """Names present in only one agent and accounted for by neither the kit, the personal layer nor a 'leave'."""
+    from . import own
+    in_codex = mcp_names()
+    if in_codex is None:
+        return []
+    left = {key.split(":")[-1] for key in own.decisions()}
+    personal = set(load_json(paths.personal_root() / "mcp.json").get("mcpServers", {}))
+    owned = set(load_json(record_path()).get("tables", {}))
+    in_claude = set(load_json(paths.claude_json()).get("mcpServers", {}))
+    accounted = left | personal | owned
+    out = [f'MCP server "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
+           for n in sorted(in_claude - in_codex - accounted)]
+    out += [f'MCP server "{n}" only in Codex (add it to your personal layer\'s mcp.json, see docs/how-to/codex.md)'
+            for n in sorted(in_codex - in_claude - accounted - _plugin_servers())]
+    claude_skills, codex_skills = _skill_names(paths.claude_home() / "skills"), _skill_names(paths.agents_skills())
+    personal_skills = {dest.name for dest, _ in skill_links()}
+    out += [f'skill "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
+            for n in sorted(claude_skills - codex_skills - personal_skills - left)]
+    out += [f'skill "{n}" only in Codex (copy it into your personal layer\'s skills/, see docs/how-to/codex.md)'
+            for n in sorted(codex_skills - claude_skills - personal_skills - left)]
+    return out
+
+
+def _plugin_servers() -> set[str]:
+    """MCP servers that Codex has from installed plugins (their .mcp.json), not from the user."""
+    names: set[str] = set()
+    for mcp in (paths.codex_home() / "plugins" / "cache").glob("*/*/*/.mcp.json"):
+        names |= set(load_json(mcp).get("mcpServers", {}))
+    return names
