@@ -1,0 +1,55 @@
+---
+config:
+  look: neo
+  flowchart:
+    curve: basis
+    nodeSpacing: 30
+    rankSpacing: 45
+    wrappingWidth: 320
+---
+flowchart TB
+  base["`**settings.base.json**
+  from the kit`"]
+  pers["`**settings.json**
+  from your personal layer`"]
+  des(["`**desired**
+  your values win`"])
+  prev[("`**previous**
+  managed-settings.json
+  applied last time`")]
+  cur["`**current**
+  ~/.claude/settings.json`"]
+
+  subgraph ENG["merge"]
+    direction LR
+    km["`**Key merge** (every key except hooks)
+    desired wins
+    drops what the kit dropped, unless you changed it`"]
+    hm["`**Hook merge** (per hook)
+    add · update · keep yours
+    tombstones keep deleted hooks deleted`"]
+  end
+
+  out["`**~/.claude/settings.json**
+  written only if it changed`"]
+  snap[("`**new snapshot**
+  desired keys · applied hooks
+  tombstones`")]
+
+  base --> des
+  pers --> des
+  des e2@==> ENG
+  prev --> ENG
+  cur --> ENG
+  ENG e5@==> out
+  ENG -.-> snap
+
+  class base kit
+  class pers personal
+  class des engine
+  class cur,out claude
+  class km,hm engine
+  class prev,snap state
+  class ENG engineGroup
+  class e2,e5 emph
+%% palette

@@ -1,0 +1,68 @@
+---
+config:
+  look: neo
+  flowchart:
+    curve: basis
+    nodeSpacing: 24
+    rankSpacing: 80
+    wrappingWidth: 320
+---
+flowchart LR
+  subgraph KIT["Kit repo · shared by everyone"]
+    direction TB
+    kPlugin["`**plugins/loadout/**
+    hooks · skills · MCP servers`"]
+    kRules["`**rules/**
+    how Claude uses the tools`"]
+    kBase["`**settings.base.json**
+    the keys loadout manages`"]
+  end
+
+  subgraph PER["Personal layer · your git repo"]
+    direction TB
+    pRules["`**rules/**
+    me.md, your preferences`"]
+    pSkills["`**skills/ · hooks/**`"]
+    pSet["`**settings.json**
+    your overrides`"]
+    pMcp["`**mcp.json**
+    your MCP servers`"]
+  end
+
+  merge{{"`**three-way merge**`"}}
+  snap[("`**~/.claude/.loadout/**
+  snapshot of the last merge`")]
+
+  subgraph CC["Claude Code configuration"]
+    direction TB
+    cPlugin["`**~/.claude/plugins/**
+    the loadout plugin`"]
+    cRulesK["`**~/.claude/rules/loadout**`"]
+    cRulesP["`**~/.claude/rules/personal**`"]
+    cSkills["`**~/.claude/skills/**
+    **~/.claude/hooks/personal/**`"]
+    cSet["`**~/.claude/settings.json**`"]
+    cMcp["`**~/.claude.json**
+    user-scope MCP servers`"]
+  end
+
+  kPlugin -. "Claude Code installs and auto-updates" .-> cPlugin
+  kRules -- link --> cRulesK
+  pRules -- link --> cRulesP
+  pSkills -- link --> cSkills
+  kBase e4@==> merge
+  pSet e5@==> merge
+  snap <-. "read, then rewrite" .-> merge
+  merge e7@==> cSet
+  pMcp -- "claude mcp add-json" --> cMcp
+
+  class kPlugin,kRules,kBase kit
+  class pRules,pSkills,pSet,pMcp personal
+  class cPlugin,cRulesK,cRulesP,cSkills,cSet,cMcp claude
+  class merge engine
+  class snap state
+  class KIT kitGroup
+  class PER personalGroup
+  class CC claudeGroup
+  class e4,e5,e7 emph
+%% palette
