@@ -1,5 +1,7 @@
 """loadout init / profile also set up Codex in the repo."""
+import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -90,7 +92,7 @@ def test_repo_skills_are_linked_for_codex(repo):
     (repo / ".agents" / "skills" / "mine").mkdir(parents=True)
     lines = codex_project.skills(repo, dry_run=False)
     link = repo / ".agents" / "skills" / "pw"
-    assert link.is_symlink() and str(link.readlink()) == "../../.claude/skills/pw"
+    assert link.is_symlink() and Path(os.readlink(link)) == Path("../../.claude/skills/pw")
     assert (repo / ".agents" / "skills" / "mine").is_dir()  # never replaced
     assert codex_project.skills(repo, dry_run=False) == []  # second run: nothing to do
     assert lines == ["linked skill pw for Codex -> .agents/skills/pw"]
@@ -139,7 +141,7 @@ def test_trust_note_unless_the_project_is_trusted(repo, monkeypatch):
     assert codex_project.TRUST_NOTE in codex_project.apply(WEB, repo, install=False, dry_run=False)
     cfg = paths.codex_home() / "config.toml"
     cfg.parent.mkdir(parents=True)
-    cfg.write_text(f'[projects."{repo.resolve()}"]\ntrust_level = "trusted"\n')
+    cfg.write_text(f'[projects.{codex.toml_value(str(repo.resolve()))}]\ntrust_level = "trusted"\n')  # Windows paths need escaping
     if codex._tomllib() is not None:
         assert codex_project.TRUST_NOTE not in codex_project.apply(WEB, repo, install=False, dry_run=False)
 
