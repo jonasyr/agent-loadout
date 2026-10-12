@@ -102,7 +102,7 @@ def still_to_do(key: str) -> list[str]:
     if runner.have("claude") and not _claude_logged_in():
         out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
-        out.append("log in to GitHub: gh auth login && gh auth setup-git")
+        out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
@@ -147,8 +147,8 @@ def _open_local_bin_hint() -> str:
         return ""
     if paths.platform_key() == "windows" or not mode & 0o022:
         return ""
-    return (f"  note: {d} can be written by other users (mode {mode:04o}), and some installers refuse that.\n"
-            f"  fix: chmod go-w {d}   then run this again")
+    return (f"note: {d} can be written by other users (mode {mode:04o}), and some installers refuse that.\n"
+            f"fix: chmod go-w {d}   then run this again")
 
 
 def _tail(res: runner.Result, limit: int = 400) -> str:
@@ -156,8 +156,18 @@ def _tail(res: runner.Result, limit: int = 400) -> str:
     return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
 
 
-def check_prereqs(install: bool, ask: Ask, installed: list | None = None) -> list[str]:
+def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None) -> list[str]:
+    """notes: collects the missing and failed lines for the caller to print under its status line (else printed now).
+    Progress lines ("installing …") always print at once: an install can take minutes."""
     from . import pkgmgr
+
+    def note(line: str, problem: bool = False) -> None:
+        if notes is not None:
+            notes.append(line)
+        elif problem:
+            out.problem(line)
+        else:
+            print(line)
     if install:
         _ensure_local_bin()
     prepend_tool_dirs()
@@ -176,7 +186,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None) -> lis
         if install and cmds and blocked:
             failed.add(name)
             if not entry.get("helper"):
-                print(f"missing {name}: not installed because {', '.join(blocked)} failed to install")
+                note(f"missing {name}: not installed because {', '.join(blocked)} failed to install")
                 missing.append(name)
             continue
         if install and cmds:
@@ -187,10 +197,10 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None) -> lis
                     print(f"  installing {name}…")
                 res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
                 if not res.ok:
-                    out.problem(f"failed: {_tail(res)}")
+                    note(f"failed to install {name}: {_tail(res)}", problem=True)
                     hint = _open_local_bin_hint()
                     if hint:
-                        out.problem(hint)
+                        note(hint, problem=True)
             npm = npm_global_dir() if any(cmd[0] == "npm" for cmd in cmds) else None
             prepend_tool_dirs([npm] if npm else None)
             if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
@@ -202,7 +212,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None) -> lis
             failed.add(name)
             if not entry.get("helper"):
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
-                print(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
+                note(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
                 missing.append(name)
     if runner.have("gh"):
         if runner.run(["gh", "auth", "status"], timeout=20).ok:
@@ -210,7 +220,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None) -> lis
             if res.ok:
                 out.detail("git uses your gh login for GitHub (gh auth setup-git; undo: git config --global --unset-all credential.https://github.com.helper)")
         else:
-            out.problem("gh is not logged in: run `gh auth login` (needed for private marketplaces)")
+            note("gh is not logged in: run `gh auth login` (needed for private marketplaces)", problem=True)
     return missing
 
 
@@ -494,9 +504,12 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
             out.problem(line)
     _step("Prerequisites")
     installed: list[str] = []
-    missing = check_prereqs(install, ask, installed=installed)
+    notes: list[str] = []
+    missing = check_prereqs(install, ask, installed=installed, notes=notes)
     summary, level = _prereq_summary(missing, installed)
     out.status("Prerequisites", summary, level)
+    for line in notes:
+        out.problem(line)
     bk = Backup(description="bootstrap")
     _step("Personal layer")
     fresh = not paths.personal_root().exists()
@@ -512,6 +525,11 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         out.problem(message)
     _step("Links")
     link_lines = link.link_all(bk, retry_symlinks=True) + link.link_bin(bk)
+    if any(line.endswith("(symlinks unavailable)") for line in link_lines):
+        # one visible line for what changes in practice; the per-file lines stay with --verbose
+        link_lines.append("warning: symlinks unavailable, so rules, skills and hooks are copies, refreshed by bootstrap "
+                          "and the daily sync; edit them in the kit or your personal layer (Windows: turn on Developer "
+                          "Mode for links)")
     # after a failed clone nothing may write into the personal layer: a partial folder would stop the next run
     # from asking for the URL again (the wizard and adopt both write there)
     if not personal_ok:

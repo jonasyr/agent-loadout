@@ -12,6 +12,9 @@ fi
 kit="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 mkdir -p "$home/.claude/plugins" "$home/.claude/skills/commit-style" "$home/.local/bin"
+home="$(cd "$home" && pwd)"  # absolute, so it stays right after the cd below
+# git reads only the sandbox's own config: never the real ~/.gitconfig or the system one
+export GIT_CONFIG_GLOBAL="$home/.gitconfig" GIT_CONFIG_NOSYSTEM=1
 touch "$home/.loadout-demo"
 
 # a fake token, assembled here so the repo's secret scan does not flag this file
@@ -60,4 +63,5 @@ mkdir -p "$home/my-app/src"
 printf '{\n  "name": "my-app",\n  "private": true,\n  "scripts": {"dev": "vite"},\n  "dependencies": {"react": "^19.0.0"},\n  "devDependencies": {"typescript": "^5.6.0", "vite": "^6.0.0"}\n}\n' > "$home/my-app/package.json"
 printf '{ "compilerOptions": { "strict": true, "jsx": "react-jsx" } }\n' > "$home/my-app/tsconfig.json"
 printf 'export function App() {\n  return <h1>Hello</h1>;\n}\n' > "$home/my-app/src/App.tsx"
+# HOME too: git before 2.32 ignores GIT_CONFIG_GLOBAL
 (cd "$home/my-app" && HOME="$home" git init -q && HOME="$home" git add -A && HOME="$home" git commit -qm "first commit")

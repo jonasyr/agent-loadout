@@ -1,11 +1,12 @@
 """The README's hero, link row and install routes, and the wordmark it shows."""
+import importlib.util
 import re
 import subprocess
-import sys
 
 import pytest
 
 from loadout import paths
+from test_repo_static import _anchors  # GitHub's heading anchors, the same rules as the link check
 
 ROOT = paths.kit_root()
 ASSETS = ROOT / "docs" / "assets"
@@ -26,21 +27,47 @@ def test_wordmark_variants_use_the_agreed_colours():
     assert all(c in dark for c in ('fill="#a78bfa"', 'stroke="#0f1117"', 'fill="#e6e6eb"'))
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="uses fc-match from fontconfig")
-def test_font_lookup_refuses_other_fonts(tmp_path):
-    """fc-match falls back to any font; the script must not draw the wordmark in it."""
-    fake = tmp_path / "bin"
-    fake.mkdir()
-    (fake / "fc-match").write_text("#!/bin/sh\nprintf /usr/share/fonts/TTF/DejaVuSans-Bold.ttf\n", encoding="utf-8")
-    (fake / "fc-match").chmod(0o755)
-    # font_path sits above the fontTools imports, so it runs without fontTools (tests have only pytest)
-    code = (
-        "src = open('docs/assets/wordmark.py').read().split('from fontTools')[0];"
-        "ns = {'__name__': 'wordmark'}; exec(src, ns); ns['font_path'](['wordmark.py'])"
-    )
-    p = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True,
-                       env={"PATH": f"{fake}:/usr/bin:/bin"}, timeout=30)
-    assert p.returncode != 0 and "JetBrains Mono" in p.stderr
+def _wordmark_module():
+    spec = importlib.util.spec_from_file_location("wordmark", ASSETS / "wordmark.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # imports fontTools only when it draws, so tests need no fontTools
+    return module
+
+
+@pytest.mark.parametrize("offered", [
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",  # fc-match falls back to any font
+    "/usr/share/fonts/TTF/JetBrainsMono-Regular.ttf",  # only Regular installed: a lighter wordmark
+    "/usr/share/fonts/TTF/JetBrainsMono[wght].ttf",  # the variable font draws its default instance, Regular
+])
+def test_font_lookup_refuses_anything_but_jetbrains_mono_bold(offered, monkeypatch):
+    wordmark = _wordmark_module()
+    monkeypatch.setattr(wordmark.subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a, 0, offered, ""))
+    with pytest.raises(SystemExit) as exit_:
+        wordmark.font_path(["wordmark.py"])
+    assert "JetBrains Mono Bold" in str(exit_.value)
+
+
+def test_font_lookup_accepts_the_bold_file(monkeypatch):
+    wordmark = _wordmark_module()
+    bold = "/usr/share/fonts/TTF/JetBrainsMono-Bold.ttf"
+    monkeypatch.setattr(wordmark.subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a, 0, bold, ""))
+    assert wordmark.font_path(["wordmark.py"]) == bold
+
+
+def test_font_lookup_without_fontconfig_says_what_to_do(monkeypatch):
+    wordmark = _wordmark_module()
+
+    def missing(*a, **kw):
+        raise FileNotFoundError("fc-match")
+    monkeypatch.setattr(wordmark.subprocess, "run", missing)
+    with pytest.raises(SystemExit) as exit_:
+        wordmark.font_path(["wordmark.py"])
+    assert "pass the .ttf path" in str(exit_.value)
+
+
+def test_wordmark_numbers_are_rounded():
+    for svg in WORDMARKS:
+        assert not re.search(r"\d\.\d{4,}", svg.read_text(encoding="utf-8")), f"{svg.name}: unrounded coordinates"
 
 
 README = ROOT / "README.md"
@@ -58,11 +85,6 @@ def _hero(text):
     return m.group(1)
 
 
-def _slugs(text):
-    text = re.sub(r"```.*?```", "", text, flags=re.S)
-    return {re.sub(r"[^\w\- ]", "", h.strip().lower()).replace(" ", "-") for h in re.findall(r"^#{1,6}\s+(.*)$", text, re.M)}
-
-
 def test_hero_shows_the_wordmark_in_both_variants():
     hero = _hero(_readme())
     assert '<source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark.dark.svg">' in hero
@@ -71,22 +93,36 @@ def test_hero_shows_the_wordmark_in_both_variants():
     assert "Claude Code, fully set up in one command." in hero
 
 
+def _hero_problems(hero):
+    """GitHub parses Markdown inside an HTML block only after a blank line: one block may not mix HTML and Markdown."""
+    problems = [] if hero.startswith("\n") and hero.endswith("\n") else ["no blank line after <div> or before </div>"]
+    for block in hero.strip("\n").split("\n\n"):
+        lines = block.splitlines()
+        if block.startswith(" "):
+            problems.append(f"indented block renders as code: {block[:40]!r}")
+        if len({line.lstrip().startswith("<") for line in lines}) > 1:
+            problems.append(f"HTML and Markdown in one block (the Markdown shows as text): {block[:40]!r}")
+    return problems
+
+
+def test_hero_check_catches_markdown_glued_to_html():
+    assert _hero_problems("\n<sub>agent-loadout</sub>\n### Claude Code, fully set up in one command.\n")
+    assert _hero_problems("<picture></picture>\n")
+    assert not _hero_problems("\n<sub>agent-loadout</sub>\n\n### Claude Code\n")
+
+
 def test_hero_markdown_is_separated_by_blank_lines():
-    """GitHub parses Markdown inside an HTML block only after a blank line."""
     hero = _hero(_readme())
-    assert hero.startswith("\n") and hero.endswith("\n"), "blank lines after <div> and before </div>"
-    blocks = hero.strip("\n").split("\n\n")
-    assert blocks[0].startswith("<picture>") and blocks[0].endswith("</picture>")
-    for block in blocks[1:]:
-        assert not block.startswith(" "), f"indented hero block renders as code: {block[:40]!r}"
+    assert hero.strip("\n").split("\n\n")[0].startswith("<picture>")
+    assert not _hero_problems(hero)
 
 
 def test_link_row_points_to_headings():
     text = _readme()
     row = next(line for line in _hero(text).splitlines() if line.startswith("**[Quick start]"))
     targets = re.findall(r"\]\(#([^)]+)\)", row)
-    assert [t for t in targets] and len(targets) == 5
-    missing = [t for t in targets if t not in _slugs(text)]
+    assert len(targets) == 5
+    missing = [t for t in targets if t not in _anchors(README)]
     assert not missing, f"link row targets without a heading: {missing}"
 
 

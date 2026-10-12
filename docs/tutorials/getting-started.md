@@ -7,7 +7,7 @@ This tutorial takes you from nothing to a first Claude Code session with loadout
 | | Linux / WSL | macOS | Windows (experimental) |
 |---|---|---|---|
 | git and curl | `sudo apt install git curl` (Debian/Ubuntu; other distros: their package manager) | `xcode-select --install` (provides git; curl is included) | `winget install --id Git.Git -e`, then open a new PowerShell (Git Bash runs the hooks) |
-| After bootstrap | `claude` (log in), `gh auth login && gh auth setup-git` | same | same |
+| After bootstrap | `claude` (log in), then `gh auth login` and `gh auth setup-git` | same | same |
 
 Bootstrap installs everything else that is missing, in your home folder and without sudo: uv (which also provides Python), Claude Code, Node.js, gh and the tools in [Included tools](../reference/included-tools.md#command-line-tools). It never replaces a tool you already have. The installers run without a further prompt; see [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
 
@@ -15,7 +15,7 @@ Optional, only if you turn on Claude Code's sandbox (Linux, WSL 2): `sudo apt-ge
 
 ## Step 1: Run bootstrap
 
-On Linux, macOS and WSL 2, run the one-liner. It clones the kit into `./agent-loadout` (use `--dir PATH` after `--` to choose another folder) and runs bootstrap:
+On Linux, macOS and WSL 2, run the one-liner. It clones the kit into `./agent-loadout` (to choose another folder, add `--dir PATH` after the `--`, for example `bash -s -- --install --dir ~/tools/agent-loadout`) and runs bootstrap:
 
 ```bash
 cd ~

@@ -59,7 +59,7 @@ Bootstrap's first question is your personal layer, the folder for your own prefe
 <details>
 <summary>What the installer does</summary>
 
-It installs what is missing, in your home folder and without sudo: uv (which also provides Python), Claude Code, Node.js, gh and every tool in [the toolset](#the-toolset). It never replaces a tool you already have. `--install` runs those installers without a further prompt ([what runs when you ask](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). The one-liner clones into `./agent-loadout`; add `--dir PATH` after `--install` to choose another folder.
+It installs what is missing, in your home folder and without sudo: uv (which also provides Python), Claude Code, Node.js, gh and every tool in [the toolset](#the-toolset). It never replaces a tool you already have. `--install` runs those installers without a further prompt ([what runs when you ask](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). The one-liner clones into `./agent-loadout`; to choose another folder, add `--dir PATH` after the `--`, for example `bash -s -- --install --dir ~/tools/agent-loadout`.
 
 Then it walks you through three steps (your personal layer, preferences, your existing setup) and, if it replaced anything, names the undo command. It ends with the steps still open on your machine. Step by step: [Getting started](docs/tutorials/getting-started.md).
 
