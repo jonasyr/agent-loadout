@@ -92,6 +92,9 @@ def _claude_logged_in() -> bool:
         return False
 
 
+PERSONAL_REPO_HOWTO = "docs/how-to/personal-repo.md"
+
+
 def still_to_do(key: str) -> list[str]:
     out = []
     if not runner.have("git"):
@@ -100,6 +103,8 @@ def still_to_do(key: str) -> list[str]:
         out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: gh auth login && gh auth setup-git")
+    if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
+        out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
 
 
@@ -218,18 +223,22 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
         return f"personal layer: {root}", True
     url = ask("Personal layer: git URL to clone (empty = create a starter one): ").strip()
     if url:
-        res = runner.run(["git", "clone", "--", url, str(root)], timeout=300)
+        # no prompt: output is captured, so git's password prompt would be invisible and wait until the timeout
+        res = runner.run(["git", "clone", "--", url, str(root)], timeout=300,
+                         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         if res.ok:
             return f"cloned {url} -> {root}", True
+        access = ("log in with `gh auth login`, then `gh auth setup-git`, or use an SSH URL" if runner.have("gh")
+                  else "use an SSH URL, or install gh (bootstrap --install) and log in")
         return (f"clone failed: {redact(res.stderr.strip())}\n"
-                f"  fix access (e.g. `gh auth login`), then re-run bootstrap; continuing without a personal layer"), False
+                f"  {access}, then re-run bootstrap; continuing without a personal layer"), False
     root.mkdir(parents=True, exist_ok=True)
     (root / "settings.json").write_text("{}\n", encoding="utf-8")
     bk.record_created(root / "settings.json", "created personal settings.json")
     from .configure import _about_you, ask_preferences
     _about_you(ask, bk)
     ask_preferences(ask, fill_defaults=True, interactive=interactive, bk=bk, quick=True)
-    return f"created starter personal layer at {root} (make it a git repo to sync it across machines)", True
+    return f"created starter personal layer at {root} (to sync it across machines, make it a private git repo: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)})", True
 
 
 def setup_plugins() -> list[str]:
@@ -503,7 +512,11 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         out.problem(message)
     _step("Links")
     link_lines = link.link_all(bk, retry_symlinks=True) + link.link_bin(bk)
-    if not yes and not interactive:
+    # after a failed clone nothing may write into the personal layer: a partial folder would stop the next run
+    # from asking for the URL again (the wizard and adopt both write there)
+    if not personal_ok:
+        print("no personal layer yet: skipping the preferences prompt and adopt until bootstrap runs again")
+    elif not yes and not interactive:
         print("non-interactive: skipping the configure prompt (run `loadout configure` later)")
     elif not yes and ui.confirm(ask, "\nCustomize preferences and global add-ons now? [y/N] "):
         from .configure import wizard
@@ -527,7 +540,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         failed = sum(1 for line in lines if PROBLEM.search(line))
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     adopt.LAST_BACKUP = None
-    if adopt_step:
+    if adopt_step and personal_ok:
         _step("Adopt existing setup")
         if not yes and not interactive:
             print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
