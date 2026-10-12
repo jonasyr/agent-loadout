@@ -71,3 +71,47 @@ def test_drift_points_codex_only_items_to_adopt(fake_home, fake_runner, monkeypa
     monkeypatch.setattr(codex, "_plugin_servers", lambda: set())
     lines = codex.drift()
     assert lines == ['MCP server "solo" only in Codex (record it with loadout adopt, then both get it)']
+
+
+def test_a_server_codex_could_not_take_back_is_not_recorded_or_removed(codex_on, fake_runner):
+    v = _mcp({"type": "stdio", "command": "m", "env": {"API_KEY": "sk-abcdefghijklmnopqrstuvwxyz0123456789"}})
+    rec = own.record_global(v, backup.Backup(description="t"))
+    assert not rec.ok and "API_KEY" in rec.lines[0]
+    assert not (paths.personal_root() / "mcp.json").exists()
+    assert not any(c[:3] == ["codex", "mcp", "remove"] for c in fake_runner.calls)
+
+
+def test_restore_after_record_global_gives_the_server_back_to_the_user(fake_home, fake_runner, monkeypatch):
+    import sys
+    if sys.version_info < (3, 11):
+        pytest.skip("config edits need tomllib")
+    from loadout import settings_merge
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    monkeypatch.setattr(targets, "claude_enabled", lambda: False)
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    cfg = paths.codex_home() / "config.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text('[mcp_servers.mine]\ncommand = "m"\n')
+    codex.apply_config(backup.Backup(description="first"))  # loadout already manages other entries
+
+    def fake_remove(cmd, cwd=None, timeout=300, env=None):
+        if cmd[:3] == ["codex", "mcp", "remove"]:
+            cfg.write_text(cfg.read_text().replace('[mcp_servers.mine]\ncommand = "m"\n', ""))
+        return runner.Result(0, "", "")
+    monkeypatch.setattr(runner, "run", fake_remove)
+    bk = backup.Backup(description="adopt")
+    rec = own.record_global(_mcp({"type": "stdio", "command": "m"}), bk)
+    rec.machine()
+    assert "mine" in json.loads(codex.record_path().read_text())["tables"]
+    backup.restore(bk.root)
+    (paths.personal_root() / "mcp.json").unlink(missing_ok=True)
+    codex.apply_config(backup.Backup(description="sync"))
+    assert '[mcp_servers.mine]\ncommand = "m"' in cfg.read_text()
+
+
+def test_leave_silences_codex_items_in_drift(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(targets, "claude_enabled", lambda: True)
+    fake_runner.responses[("codex", "mcp", "list")] = runner.Result(0, json.dumps([{"name": "solo"}]), "")
+    monkeypatch.setattr(codex, "_plugin_servers", lambda: set())
+    own.remember_leave(Item("mcp", "solo", "", codex.CONFIG_LOCATION, {}))
+    assert codex.drift() == []

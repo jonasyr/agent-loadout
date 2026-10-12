@@ -672,6 +672,12 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
         raise Collision(f"mcp {name}: only user-scope servers in ~/.claude.json can be recorded")
     new, lines = _secret_free(name, original)
     _refuse_if_secret(f"mcp {name}", json.dumps(new))
+    if is_codex(v.item):  # loadout must be able to write it back to Codex before the user's section goes
+        from . import codex
+        try:
+            codex.server(name, new)
+        except codex.Refused as exc:
+            raise Collision(f"{exc} (record it by hand, or leave it)") from None
     path = paths.personal_root() / "mcp.json"
 
     def change(data):
@@ -696,7 +702,16 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
 
     def codex_machine() -> list[str]:
         from . import codex, targets
+        if name not in codex.desired_tables()[0]:
+            return [f"mcp {name}: left in Codex as is (loadout cannot write it from the personal layer)"]
+        record = codex.record_path()  # restore must also give the section back to the user
+        if record.exists():
+            bk.save_copy(record, "codex-config.json before recording a Codex server")
+        else:
+            bk.record_created(record, "codex-config.json")
         out = [codex.remove_server(name, bk)]  # loadout writes its own table from the personal layer next
+        if ": failed:" in out[0]:
+            return out
         out += codex.apply_config(bk)
         if targets.claude_enabled():
             out += personal_mcp.apply_mcp()

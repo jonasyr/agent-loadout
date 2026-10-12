@@ -309,7 +309,7 @@ def _apply_marketplace(v: Verdict, bk: Backup) -> str:
 
 
 def _apply_skill(v: Verdict, bk: Backup) -> str:
-    # only the ~/.claude/skills entry: a shared ~/.agents/skills source also serves Codex and other agents
+    # only the listed entry (~/.claude/skills/NAME, or ~/.agents/skills/NAME for a Codex-only skill)
     bk.move(Path(v.item.location), f"skill {v.item.name}")
     return f"skill {v.item.name} moved to backup"
 
