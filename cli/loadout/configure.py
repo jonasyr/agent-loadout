@@ -179,7 +179,7 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
 
     if setup:
         apply_settings()
-        plugin_lines = bootstrap.setup_plugins()
+        plugin_lines = bootstrap.setup_plugins(say=lambda line: print(line, flush=True))
         if any(line.endswith(": added") for line in plugin_lines):
             apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
         for line in plugin_lines + apply_mcp():

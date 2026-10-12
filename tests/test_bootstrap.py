@@ -174,7 +174,7 @@ def test_bootstrap_new_personal_layer_is_recorded_as_created(fake_home, fake_run
 def test_bootstrap_wizard_does_not_set_up_plugins_twice(fake_home, fake_runner, monkeypatch):
     from loadout import configure
     calls = []
-    monkeypatch.setattr(b, "setup_plugins", lambda: calls.append(1) or [])
+    monkeypatch.setattr(b, "setup_plugins", lambda **kw: calls.append(1) or [])
     monkeypatch.setattr(configure, "addons", lambda: [])
     answers = iter(["", "", "", "", "", "y"] + [""] * 20)
     b.bootstrap(False, False, True, False, lambda q: next(answers), interactive=True)
