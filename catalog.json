@@ -95,24 +95,6 @@
           ]
         ]
       },
-      "update": {
-        "posix": [
-          [
-            "mise",
-            "use",
-            "-g",
-            "codex@latest"
-          ]
-        ],
-        "windows": [
-          [
-            "mise",
-            "use",
-            "-g",
-            "codex@latest"
-          ]
-        ]
-      },
       "mise": "codex"
     },
     {

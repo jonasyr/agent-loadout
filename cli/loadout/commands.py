@@ -198,9 +198,18 @@ def _register_configure(sub):
             from . import codex, targets
             on = configure.parse_switch(a.value, "target")
             print(targets.set_target(a.name, on))  # ValueError (unknown agent, last one off) -> exit 1
-            configure.offer_commit(_ask)  # targets.json lives in the personal layer; uncommitted it pauses the sync
             if on and a.name == "claude":
-                configure.apply_all(_ask)
+                from . import runner
+                if not runner.have("claude"):  # Codex only so far: Claude Code needs installing and linking first
+                    configure.offer_commit(_ask)
+                    print("Claude Code is not installed yet: run `loadout bootstrap --install` to install and set it up")
+                    return 0
+                from . import link
+                from .backup import Backup
+                link.link_all(Backup(description="configure: link rules and skills for Claude Code"))
+                configure.apply_all(_ask)  # includes the commit offer
+                return 0
+            configure.offer_commit(_ask)  # targets.json lives in the personal layer; uncommitted it pauses the sync
             if on and a.name == "codex":  # set Codex up now, not at the next bootstrap
                 problem = codex.unavailable()
                 if problem:

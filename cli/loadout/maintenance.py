@@ -223,7 +223,13 @@ def _maintain(now: float) -> None:
         pulled = [pull_if_clean(root) for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
         if any(pulled):
             from . import targets
-            if targets.claude_enabled():  # Codex only: nothing of Claude Code to refresh
+            from .jsonio import InvalidJSON
+            try:
+                claude_on = targets.claude_enabled()
+            except InvalidJSON as exc:  # never die silently in the background: say so next session, keep Claude
+                notify(f"loadout: {targets.path()} is not valid JSON ({exc}); fix it, then run loadout bootstrap")
+                claude_on = True
+            if claude_on:  # Codex only: nothing of Claude Code to refresh
                 try:
                     apply_settings()
                     from . import personal_mcp

@@ -22,13 +22,13 @@ Some commands return their own codes. They are listed per command and add to the
 Set up or repair this machine. Safe to re-run.
 
 ```
-loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose]
+loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [--agents LIST]
 ```
 
 | Flag | Meaning |
 |---|---|
 | `--install` | Install missing tool binaries. |
-| `--yes` | Accept defaults without asking. Adopt applies remove, migrate and scope-down; binary updates are never applied. |
+| `--yes` | Accept defaults without asking. Adopt applies remove, migrate and scope-down; binary updates are never applied. Without `--agents`, a machine that has not chosen gets Claude Code. |
 | `--no-plugins` | Skip adding marketplaces and installing plugins (offline or CI). |
 | `--no-adopt` | Skip reviewing the existing setup. |
 | `--agents LIST` | `claude`, `codex` or `claude,codex`: the coding agents to set up, without asking. Stored in `<personal>/targets.json`; it wins over the personal layer's choice. |

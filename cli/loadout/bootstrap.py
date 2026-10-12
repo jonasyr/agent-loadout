@@ -503,21 +503,28 @@ _ANSWERS = {"1": {"claude": True, "codex": False}, "2": {"claude": False, "codex
 
 
 def choose_agents(ask, interactive: bool, flag) -> dict:
-    """--agents first, then a decided personal layer, then the question (interactive), else Claude Code as before."""
+    return _choose_agents(ask, interactive, flag)[0]
+
+
+def _choose_agents(ask, interactive: bool, flag) -> tuple[dict, bool]:
+    """(choice, store it): --agents first, then a decided personal layer, then the question (interactive), else
+    Claude Code as before. Only an explicit choice is stored: writing the default into an existing git-backed
+    personal layer would leave it dirty and pause the daily sync."""
     from . import targets
-    if flag:
-        return targets.parse_agents(flag)
-    if targets.decided():
-        return {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
+    if flag is not None:
+        return targets.parse_agents(flag), True
+    stored = targets.from_file()
+    if stored is not None:
+        return stored, False
     existing = paths.personal_root().exists()
     if not interactive or (existing and not runner.have("codex")):
-        return {"claude": True, "codex": False}  # as before this change: no new question without Codex
+        return {"claude": True, "codex": False}, False  # as before this change: no new question without Codex
     default = "3" if runner.have("codex") else "1"
-    while True:
-        answer = ask("\n" + AGENT_QUESTION.format(default=default)).strip() or default
-        if answer in _ANSWERS:
-            return dict(_ANSWERS[answer])
-        print("answer 1, 2 or 3")
+    answer = ask("\n" + AGENT_QUESTION.format(default=default)).strip() or default
+    if answer not in _ANSWERS:
+        print(f"no such choice ({answer!r}); using {default} (change it later: loadout configure set target)")
+        answer = default
+    return dict(_ANSWERS[answer]), True
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
@@ -543,7 +550,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         out.status("WSL", f"WSL {version}")
         for line in wsl.report_lines(version, wsl.current_dir()):
             out.problem(line)
-    chosen = choose_agents(ask, interactive and not yes, agents)
+    chosen, store = _choose_agents(ask, interactive and not yes, agents)
     targets.OVERRIDE = chosen  # the right tools get installed before the personal layer exists to store the choice
     _step("Prerequisites")
     installed: list[str] = []
@@ -571,11 +578,14 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if stored is not None and agents is None and stored != chosen:  # a cloned layer chose: its choice wins
             chosen = stored
             targets.OVERRIDE = chosen
+            names = " and ".join(n for n, on in (("Claude Code", chosen["claude"]), ("Codex", chosen["codex"])) if on)
+            print(f"using your personal layer's agents: {names}")
             more_notes: list[str] = []
             check_prereqs(install, ask, installed=installed, notes=more_notes)  # install what the layer adds
             for line in more_notes:
-                out.problem(line)
-        else:
+                if line not in notes:  # the first run already showed the rest
+                    out.problem(line)
+        elif store:
             targets.set_agents(chosen)
     claude_on = chosen["claude"]
     _step("Links")
@@ -663,10 +673,11 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
+    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if chosen[a])
+    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if chosen[a])
     if out.VERBOSE:
-        print("\nThen start Claude Code." if path_changed else "\nRestart Claude Code to load plugins and rules.")
+        print(f"\nThen start {names}." if path_changed else f"\nRestart {names} to load plugins and rules.")
     else:
-        run = " or ".join(f"`{a}`" for a in ("claude", "codex") if chosen[a])
         print(f"\nNext: run {run} in a new terminal." if path_changed
               else f"\nNext: run {run} (restart it if it is open). The kit loads automatically.")
     if not personal_ok:
