@@ -525,10 +525,19 @@ def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
 
 
 def skill_links() -> list[tuple[Path, Path]]:
-    """The same personal skills (folders and skills.json pointers) that link.py links for Claude Code."""
-    from . import link
+    """The personal skills that link.py links for Claude Code, plus the catalog's recommended skills that a tool's
+    installer put into ~/.claude/skills (codebase-memory's), so Codex gets the same skills."""
+    from . import catalog, link
     claude_skills = paths.claude_home() / "skills"
-    return [(paths.agents_skills() / dest.name, src) for dest, src in link.LINKS() if dest.parent == claude_skills]
+    pairs = [(paths.agents_skills() / dest.name, src) for dest, src in link.LINKS() if dest.parent == claude_skills]
+    linked = {dest.name for dest, _ in pairs}
+    if claude_skills.is_dir():
+        for entry in sorted(claude_skills.iterdir()):
+            known = catalog.match("skill", entry.name, str(entry))
+            if (entry.name not in linked and entry.is_dir() and not entry.is_symlink()
+                    and known and known.get("status") in ("core", "recommended")):
+                pairs.append((paths.agents_skills() / entry.name, entry))
+    return pairs
 
 
 def apply_skills(bk) -> list[str]:
