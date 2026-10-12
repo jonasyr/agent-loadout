@@ -119,8 +119,30 @@ def _binary_items(with_versions: bool) -> list[Item]:
     return out
 
 
+def _codex_items() -> list[Item]:
+    from . import codex, targets
+    if not targets.codex_enabled():
+        return []
+    items = []
+    claude = load_json(paths.claude_json()).get("mcpServers", {})
+    skip = codex._plugin_servers() | (set(claude) if isinstance(claude, dict) else set())
+    for name, table in codex.user_servers().items():
+        if name in skip:
+            continue
+        try:
+            cfg, problem = codex.to_claude(name, table), ""
+        except codex.Refused as exc:
+            cfg, problem = None, str(exc)
+        detail = " ".join([str(table.get("command") or ""), *map(str, table.get("args") or []), str(table.get("url") or "")]).strip()
+        items.append(Item("mcp", name, detail, codex.CONFIG_LOCATION, {"config": cfg, "problem": problem}))
+    for path in codex.codex_only_skills():
+        target = os.readlink(path) if path.is_symlink() else str(path)
+        items.append(Item("skill", path.name, str(target), str(path), {}))
+    return items
+
+
 def collect(with_versions: bool = True) -> list[Item]:
-    return [*_mcp_items(), *_plugin_items(), *_marketplace_items(), *_skill_items(),
+    return [*_mcp_items(), *_plugin_items(), *_marketplace_items(), *_skill_items(), *_codex_items(),
             *_hook_items(), *_claude_md_items(), *_binary_items(with_versions)]
 
 
@@ -163,6 +185,9 @@ def classify(items: list[Item]) -> list[Verdict]:
             continue
         if own.decided(left, item) == "leave":
             out.append(Verdict(item, "keep", own.LEFT_REASON))
+            continue
+        if own.is_codex(item):
+            out.append(Verdict(item, "own", own.own_reason(item)))
             continue
         entry = catalog.match(item.kind, item.name, item.detail)
         if entry is None:

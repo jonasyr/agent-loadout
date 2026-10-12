@@ -598,6 +598,58 @@ def _skill_names(folder: Path) -> set[str]:
     return {p.name for p in folder.iterdir() if not p.name.startswith(".") and p.name != "synced"} if folder.is_dir() else set()
 
 
+CONFIG_LOCATION = "~/.codex/config.toml"
+_CODEX_KEYS = {"command", "args", "env", "env_vars", "url", "bearer_token_env_var", "http_headers", "env_http_headers"}
+
+
+def user_servers() -> dict[str, dict]:
+    """The user's [mcp_servers.*] tables in ~/.codex/config.toml, without the ones loadout wrote."""
+    tl = _tomllib()
+    path = paths.codex_home() / "config.toml"
+    if tl is None or not path.exists():
+        return {}
+    try:
+        servers = tl.loads(path.read_text(encoding="utf-8")).get("mcp_servers", {})
+    except Exception:
+        return {}
+    owned = set(load_json(record_path()).get("tables", {}))
+    return {n: t for n, t in servers.items() if isinstance(t, dict) and n not in owned}
+
+
+def to_claude(name: str, table: dict) -> dict:
+    """A Codex server table in the Claude Code format of the personal mcp.json; variables stay variables."""
+    extra = sorted(set(table) - _CODEX_KEYS)
+    if extra:
+        raise Refused(f"mcp {name}: {', '.join(extra)} has no Claude Code equivalent; leave it in Codex or remove it")
+    if "url" in table:
+        headers = dict(table.get("http_headers") or {})
+        if table.get("bearer_token_env_var"):
+            headers["Authorization"] = f"Bearer ${{{table['bearer_token_env_var']}}}"
+        headers.update({k: f"${{{v}}}" for k, v in (table.get("env_http_headers") or {}).items()})
+        return {"type": "http", "url": table["url"], **({"headers": headers} if headers else {})}
+    if not isinstance(table.get("command"), str):
+        raise Refused(f"mcp {name}: neither a command nor a url")
+    out = {"type": "stdio", "command": table["command"]}
+    if table.get("args"):
+        out["args"] = list(table["args"])
+    env = dict(table.get("env") or {})
+    env.update({k: f"${{{k}}}" for k in table.get("env_vars") or []})
+    if env:
+        out["env"] = env
+    return out
+
+
+def codex_only_skills() -> list[Path]:
+    """Skills in ~/.agents/skills that neither loadout linked nor Claude Code has."""
+    root = paths.agents_skills()
+    if not root.is_dir():
+        return []
+    ours = {dest.name for dest, _ in skill_links()}
+    claude = _skill_names(paths.claude_home() / "skills")
+    return [p for p in sorted(root.iterdir())
+            if not p.name.startswith(".") and p.name != "synced" and p.name not in ours | claude]
+
+
 def drift() -> list[str]:
     """Names present in only one agent and accounted for by neither the kit, the personal layer nor a 'leave'."""
     from . import own, targets

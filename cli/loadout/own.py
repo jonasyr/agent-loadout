@@ -45,6 +45,14 @@ def label(item: Item) -> str:
     return f"{item.kind} {display_name(item)}"
 
 
+def is_codex(item: Item) -> bool:
+    """An item found in Codex's config (~/.codex/config.toml or ~/.agents/skills), not in Claude Code's."""
+    from . import codex
+    if item.kind == "mcp":
+        return item.location == codex.CONFIG_LOCATION
+    return item.kind == "skill" and bool(item.location) and Path(item.location).parent == paths.agents_skills()
+
+
 def decision_key(item: Item) -> str:
     """Hooks are keyed by a hash of their command, so the decisions file never holds a command line."""
     if item.kind == "hook":
@@ -52,6 +60,8 @@ def decision_key(item: Item) -> str:
         return f"hook:{item.name}:{digest}"
     if item.kind == "mcp" and item.location == "~/.claude/.mcp.json":
         return f"mcp:.mcp.json:{item.name}"  # same name as a user-scope server is a different item
+    if is_codex(item):
+        return f"{item.kind}:codex:{item.name}"
     return f"{item.kind}:{item.name}"
 
 
@@ -714,6 +724,8 @@ def _global_skill(v: Verdict, bk) -> Recorded:
 
 def options(item: Item) -> list[str]:
     """Choices that apply to this item, in prompt order."""
+    if is_codex(item):
+        return ["global", "leave", "remove"]
     if item.kind == "mcp" and item.location != "~/.claude.json":
         return ["leave", "remove"]
     if item.kind == "marketplace" or (item.kind == "skill" and Path(item.location).is_symlink()):
