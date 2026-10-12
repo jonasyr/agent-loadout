@@ -28,7 +28,7 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
 - `preferences.py`, `configure.py` structured preferences and the wizard
 - `own.py` your own tools; `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks
-- `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift)
+- `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_project.py` the Codex side of `init` and `profile`
 - `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker
 
 Other kit parts:

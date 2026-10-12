@@ -50,6 +50,7 @@ Exit codes:
 ## loadout adopt
 
 Review an existing Claude Code setup and migrate it. It is a dry run unless `--apply` is given.
+With Codex on, it also lists the MCP servers and skills that only Codex has; their choices are `global`, `leave` and `remove` (see [Use loadout with Codex](../how-to/codex.md#keep-both-the-same)).
 
 ```
 loadout adopt [--apply] [--groups GROUPS] [--skip SKIP] [--yes]
@@ -157,7 +158,7 @@ loadout profile [--no-install] NAME
 | `NAME` | Profile name, for example `thesis`, `web`, `db`, `sonar`, `android`, or one in `<personal>/profiles`. |
 | `--no-install` | Do not install the profile's plugins or run its commands. |
 
-The file format is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name.
+With Codex on, `init` and `profile` also write the repo's `.codex/config.toml`, link `.claude/skills` into `.agents/skills` and install the profile's plugins in Codex for that repo only (see [Use loadout with Codex](../how-to/codex.md#projects)). The file format is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name.
 
 ## loadout check
 

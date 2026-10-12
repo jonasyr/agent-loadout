@@ -1,7 +1,8 @@
 # Codex as a second target
 
 Date: 2026-10-12. Status: design approved in conversation (approach 1, scope widened to full parity, drift option 1,
-two PRs), awaiting spec review.
+two PRs), approved. PR 1 merged; PR 2 built per `docs/superpowers/plans/2026-10-13-codex-target-pr2.md` (project
+plugins stay off at user level by a forced `enabled` key; repo skills are relative links into `.agents/skills`).
 
 ## Why
 
