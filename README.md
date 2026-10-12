@@ -109,6 +109,7 @@ Then open Claude Code there and run `/loadout:onboard`: it reads the project and
 - **Works on existing setups.** `loadout adopt` shows what it would change and why, asks first, and backs up what it replaces ([your own tools](docs/how-to/your-own-tools.md)).
 - **Stays up to date by itself.** Claude Code updates the plugins, loadout pulls the kit and your personal layer daily, and you get a notice when tools have updates ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
 - **Yours on top.** Your preferences, own tools and profiles live in your personal layer, ideally a private git repo, so they follow you to every machine ([set it up](docs/how-to/personal-repo.md)); change them with `loadout configure` or `/loadout:configure` ([preferences](docs/how-to/set-preferences.md)).
+- **Codex too.** Turn on Codex and it gets the same rules, tools and preferences, kept current the same way ([Use loadout with Codex](docs/how-to/codex.md)).
 - **Projects too.** `loadout init` prepares any repo for agent work, profiles add domain tools only where needed, and three skills keep the docs true ([documentation strategy](docs/explanation/documentation-strategy.md)).
 
 ## The toolset
@@ -152,6 +153,7 @@ The full index is [docs/README.md](docs/README.md).
 | Decide what happens to tools I already have | [Handle your own tools](docs/how-to/your-own-tools.md) |
 | Undo something loadout changed | [Undo what loadout changed](docs/how-to/undo-and-restore.md) |
 | Change my preferences or add tools globally | [Set your working preferences](docs/how-to/set-preferences.md) |
+| Set up Codex the same way | [Use loadout with Codex](docs/how-to/codex.md) |
 | Use my preferences and own tools on every machine | [Keep your personal layer in a private git repo](docs/how-to/personal-repo.md) |
 | Add domain tools to one repo | [Write a personal profile](docs/how-to/write-a-profile.md), [Profile format](docs/reference/profile-format.md) |
 | Fix a problem | [Troubleshooting](docs/how-to/troubleshooting.md) |
@@ -163,7 +165,7 @@ The full index is [docs/README.md](docs/README.md).
 | Remove loadout | [Uninstall loadout](docs/how-to/uninstall.md) |
 | Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-Other agents (Codex, Gemini CLI, Cursor) are not supported yet; the plan is in [Architecture](docs/explanation/architecture.md#other-agents-planned).
+Gemini CLI and Cursor are not supported yet; how Codex is set up and how others could follow is in [Architecture](docs/explanation/architecture.md#codex-and-other-agents).
 
 ## Contributing
 

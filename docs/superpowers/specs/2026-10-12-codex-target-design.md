@@ -127,12 +127,21 @@ All Codex-specific code; the Claude modules change only where they call into it.
   checker is missing or the file is clean; reports "type check skipped (timeout)" when it runs out of time. Standard
   library only, like the other hooks.
 
-### Catalog
+### Catalog (changed while planning)
 
-Optional `codex` field per entry: `{"plugin": "ID@MARKETPLACE", "marketplace": "SOURCE"}` (a Codex plugin route) or
-`{"skills": "COMMAND"}` (a tool's own skills install into `~/.agents/skills`, e.g. playwright-cli). An entry without
-`codex` has no Codex counterpart; `loadout check` lists those for enabled entries so a gap is never silent.
-`tests/test_repo_static.py` validates the field.
+No catalog field: Codex reads Claude Code marketplaces, so every plugin enabled in the merged Claude settings maps
+through its marketplace's GitHub source (`claude-plugins-official` → `anthropics/claude-plugins-official`). A plugin
+whose marketplace is not on GitHub is reported by `check` as "no Codex route". playwright-cli installs no skills for
+Claude Code, so there is nothing to map.
+
+### Rulings from planning and building
+
+- The `/hooks` reminder is a line in bootstrap's "Still to do" while Codex is enabled, not a failing check: loadout
+  cannot see whether the hooks were approved.
+- `reload_check.py` is not in the Codex hooks: it compares Claude's `installed_plugins.json`; Codex loads plugins per
+  session.
+- `config.toml` is edited only with `tomllib` (Python 3.11+): the edit proves that the parsed file minus loadout's own
+  entries is unchanged before it writes; on Python 3.10 loadout reports that it needs 3.11 instead of editing.
 
 ### Callers (PR 1)
 

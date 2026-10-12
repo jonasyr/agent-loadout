@@ -32,6 +32,10 @@ What `loadout hook-session-start` and the background `loadout maintenance` job d
 
 When `advisor.py record` and `advisor.py stop` act, and where they keep state: [When the hook nudges](../explanation/execution-advisor.md#when-the-hook-nudges).
 
+### In Codex
+
+Codex reads the plugin's `.codex-plugin/plugin.json`, which points to `hooks/codex.json` instead of `hooks/hooks.json`. The Codex hooks are the same with Codex arguments (`rtk hook codex`, `serena-hooks … --client=codex`, Serena's tools matched as `mcp__serena__.*`, edits matched as `Edit|Write`), without the `Grep|Glob` codebase-memory hook (Codex has no such tools) and without the reload notice (Codex loads plugins per session). They add `typecheck.py` after each edit: it runs `pyright`, `tsc --noEmit` or `cargo check` on the changed files (at most 20 seconds each) and reports the errors to the agent, because Codex has no LSP plugins. Codex runs plugin hooks only after you approve them once in `/hooks`. See [Use loadout with Codex](../how-to/codex.md).
+
 ## Naming hooks of your own tools
 
 [`loadout adopt --own`](cli.md#loadout-adopt) and [`loadout configure set own`](cli.md#loadout-configure) take a name for each tool. A hook has no name of its own, so loadout builds one from its event and matcher:

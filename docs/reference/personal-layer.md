@@ -27,6 +27,7 @@ Every file is optional, and a missing file counts as empty. The one exception is
 | `settings.json` | Your overrides of the kit's settings, for example `"effortLevel": "high"` or `"enabledPlugins": {"impeccable@impeccable": false}`. Also the hooks you recorded as global. | Merged with the kit's `settings.base.json` and written into `~/.claude/settings.json`. See [settings-merge](settings-merge.md). |
 | `mcp.json` | `{"mcpServers": {...}}`: extra MCP servers you want everywhere. Secrets are written as `${VAR}`. | Applied as user-scope servers with `claude mcp add-json -s user`. |
 | `skills/<name>/` | Skill folders you recorded as global. | Each is linked to `~/.claude/skills/<name>`. |
+| `targets.json` | `{"codex": true}`: whether loadout also sets up Codex. | Read by bootstrap, the daily sync and `loadout check`; set it with `loadout configure set target codex on\|off`. See [Use loadout with Codex](../how-to/codex.md). |
 | `skills.json` | `{name: path}`: skills you recorded as a pointer to a shared source. | Each is linked to `~/.claude/skills/<name>` on machines where the path exists. `loadout check` warns if the file is not valid JSON. |
 | `hooks/` | Scripts of hooks you recorded as global. | Linked as `~/.claude/hooks/personal`. The recorded commands point to `$HOME/.claude/hooks/personal/<file>`. |
 | `profiles/NAME.json` | Your own project presets. See [profile-format](profile-format.md). | Applied to a repo by `loadout profile NAME`. |
@@ -58,6 +59,7 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 | File | Holds |
 |---|---|
 | `managed-settings.json` | The snapshot of what the settings merge last applied. Under `hooks` it records exactly the hooks loadout applied. Under `loadoutDeletedHooks` it records hooks you deleted, so they are not added back. Written by every settings merge; which runs back it up is in [Undo](../how-to/undo-and-restore.md#what-restore-does-not-undo). |
+| `codex-config.json` | `{"tables": {...}, "keys": {...}}`: the exact text loadout wrote into `~/.codex/config.toml`. loadout changes only entries that still match it. |
 | `managed-mcp.json` | `{"mcpServers": {...}}`: the personal MCP servers loadout added successfully. A same-named server that is not in this file and differs from the personal one is left alone. |
 | `own-decisions.json` | Your `leave` decisions for own tools. Hooks are keyed by a hash of the command, so a command line is never stored. |
 | `copy-mode` | Marker for copy instead of link mode. |

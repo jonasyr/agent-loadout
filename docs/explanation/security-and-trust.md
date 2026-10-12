@@ -24,6 +24,7 @@ A plugin can ship hooks, so a plugin update can run new code in your next sessio
   - **codebase-memory-mcp** and **rtk**: `curl … | sh` installers from the upstream default branch (on Windows a PowerShell `irm` script for codebase-memory-mcp; rtk has no Windows installer).
   - **npm tools**: an unpinned `npm install -g @playwright/cli@latest` and similar global packages.
 - **The one-liner** (`curl … | bash`, or the PowerShell `irm` form) runs `bootstrap.sh` or `bootstrap.ps1` from this repo's `main` branch, so you trust this repo. It clones the kit into `./agent-loadout`. An existing clone is used as it is: its GitHub origin is checked, its contents are not, and it is not pulled.
+- **With Codex on** ([Use loadout with Codex](../how-to/codex.md)), bootstrap and the daily sync run `codex plugin marketplace add` for the GitHub marketplaces of the plugins you enabled for Claude Code (so you trust those repos in Codex too) and `codex plugin add` for the plugins.
 - **`loadout update`** shows each update command and asks first (`--yes` skips the question).
 - **`loadout profile` and `loadout init` with a profile** run the profile's plugin installs and `commands` in the repo unless you pass `--no-install` (`project._install`).
 
@@ -41,6 +42,7 @@ It changes:
 - A `# loadout PATH` … `# loadout PATH end` block appended to each existing `.bashrc` and `.zshrc` (and your shell's file) and to `~/.profile` (or `~/.bash_profile`). On native Windows bootstrap adds the folders to your user PATH instead and saves the old value in the backup.
 - Once the mise shims are on your `PATH`, `node`, `gh` and the other mise tools follow a project's `.tool-versions` or `mise.toml`, and mise may install the version it names.
 - Git's credential helper for `github.com`: when `gh` is logged in, bootstrap runs `gh auth setup-git` so git uses your `gh` login, and prints the undo command (`bootstrap.check_prereqs`).
+- With Codex on: its own marked block in `~/.codex/AGENTS.md`, only the `[mcp_servers.*]` tables and keys it wrote in `~/.codex/config.toml` (recorded in `~/.claude/.loadout/codex-config.json`), links in `~/.agents/skills`, and plugins and marketplaces through the `codex` CLI. In Codex, `serena-hooks auto-approve` approves Serena's tools (`mcp__serena__.*`) and `rtk hook codex` rewrites shell commands, after you approve the hooks in `/hooks`.
 - `~/.claude/CLAUDE.md`, only if you pick it in adopt's `review` group (or pass `--groups review`): its content moves into `<personal>/rules/me.md`, the original goes into the backup, and the file keeps a one-line marker (`adopt.migrate_claude_md`).
 - **Permissions.** Three things approve or rewrite tool calls without a prompt: the plugin hook `serena-hooks auto-approve` approves Serena's MCP tools (`mcp__plugin_loadout_serena__.*`), the plugin hook `rtk hook claude` rewrites every Bash command into rtk's form, and `settings.base.json` pre-approves `Bash(loadout advisor-mark:*)`. See [Hooks](../reference/hooks.md#hooks-of-the-loadout-plugin).
 
