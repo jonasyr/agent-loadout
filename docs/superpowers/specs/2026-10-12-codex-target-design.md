@@ -1,152 +1,199 @@
 # Codex as a second target
 
-Date: 2026-10-12. Status: design approved in conversation (approach 1, scope, structure, drift option 1, errors/undo/tests), awaiting spec review.
+Date: 2026-10-12. Status: design approved in conversation (approach 1, scope widened to full parity, drift option 1,
+two PRs), awaiting spec review.
 
 ## Why
 
-The user works with Claude Code and OpenAI's Codex CLI on the same machine. Both should work the same way: the same
-rules and preferences, the same MCP servers, skills and plugins, from the same kit and personal layer, kept current by
-the same daily sync. Today loadout configures Claude Code only; `docs/explanation/architecture.md` ("Other agents
-(planned)") already names Codex as the first other target.
+The user works with Claude Code and OpenAI's Codex CLI on the same machine. Codex has to work exactly as well as Claude
+Code with agent-loadout: the same rules and preferences, the same tools (plugins, MCP servers, skills, hooks), the
+same per-project setup, installed and configured automatically, kept current by the same daily sync. Today loadout
+configures Claude Code only; `docs/explanation/architecture.md` ("Other agents (planned)") already names Codex.
 
-**Success:** on a machine with `targets` = claude + codex, after bootstrap and every daily sync, Codex has the kit's
-and the personal layer's rules, the loadout plugin (skills, hooks, Serena, codebase-memory), the third-party tools that
-have a Codex route, the personal MCP servers and skills; anything present in only one agent is reported with the
-command that fixes it.
+**Success:** with Codex enabled, after bootstrap and every daily sync, a Codex session in any repo has everything a
+Claude Code session has (table below), or the documented Codex-only replacement; anything present in only one agent is
+reported with the command that fixes it; nothing needs a manual step except Codex's own one-time hook approval.
 
-**Non-goals (v1):** Codex settings in `config.toml` (model, effort, approvals, notifications); `loadout adopt` for a
-whole existing Codex setup beyond the drift items below; project profiles for Codex (`.codex/config.toml`); global
-hooks outside the plugin; Gemini CLI, Cursor; automatic copying between the agents.
+**Non-goals:** Gemini CLI, Cursor and other agents; copying changes made directly in one agent to the other
+automatically (drift is reported instead, see below); changing anything for Claude Code users who do not enable Codex.
 
 ## Facts this design rests on
 
-Checked on codex-cli 0.161.0 (sources: `codex … --help`, developers.openai.com/codex, openai/codex source) and, where
-marked, by a sandbox run with a temporary `HOME` and `CODEX_HOME`:
+Checked on codex-cli 0.161.0 and 0.162.1 (sources: `codex … --help`, developers.openai.com/codex, the openai/codex
+source) and, where marked "sandbox", by runs with a temporary `HOME` and `CODEX_HOME`:
 
-- Codex accepts a Claude Code marketplace as is: `codex plugin marketplace add <kit folder>` registered `agent-loadout`,
-  `codex plugin add loadout@agent-loadout` installed the plugin into `$CODEX_HOME/plugins/cache/agent-loadout/loadout/local`,
-  and `codex mcp list --json` then listed Serena and codebase-memory from the plugin's `.mcp.json` (sandbox run). It
-  wrote only `[marketplaces.agent-loadout]` and `[plugins."loadout@agent-loadout"]` into `config.toml`.
-- Plugin hooks get `CLAUDE_PLUGIN_ROOT`/`CLAUDE_PLUGIN_DATA`; hooks use the same JSON shape and similar events; every
-  non-managed hook must be approved once in `/hooks` (and again after it changes).
-- Global instructions: `~/.codex/AGENTS.md` (shadowed by `AGENTS.override.md`); no `@include`, no rules directory.
-- Skills: the Agent Skills format (`SKILL.md`); user skills in `~/.agents/skills` (`~/.codex/skills` is deprecated);
+- **Claude marketplaces work in Codex.** `codex plugin marketplace add <kit folder>` and `codex plugin add
+  loadout@agent-loadout` installed the kit plugin, and Codex then listed Serena and codebase-memory from its `.mcp.json`
+  (sandbox). `codex plugin marketplace add anthropics/claude-plugins-official` made every kit plugin available under its
+  usual id (superpowers, context7, microsoft-docs, frontend-design, commit-commands, security-guidance,
+  claude-md-management, the LSP plugins); installing them gave Context7 and Microsoft Learn as MCP servers (sandbox).
+- **Commands become skills.** Codex migrates a plugin's `commands/` into skills (`source-command-…`) and rewrites
+  Claude-specific terms (openai/codex `core-plugins/src/command_migration.rs`).
+- **No LSP in Codex.** Plugins that declare `lspServers` install, but Codex does not start language servers (no LSP code
+  in openai/codex).
+- **Plugin hooks.** A plugin's `.codex-plugin/plugin.json` may set `hooks` to its own file, which replaces the default
+  `hooks/hooks.json` discovery for Codex; Claude Code does not read `.codex-plugin/`. Codex sets `PLUGIN_ROOT` and also
+  `CLAUDE_PLUGIN_ROOT`. Hooks use the same JSON shape; Codex matches its shell tool as `Bash` and `apply_patch` as
+  `Edit|Write`. Every non-managed hook must be approved once in `/hooks` (and again after it changes).
+  `rtk hook codex` and `serena-hooks … --client=codex` exist.
+- **Instructions.** Global `~/.codex/AGENTS.md` (shadowed by `AGENTS.override.md`); no `@include`, no rules directory.
+- **Skills.** Agent Skills format (`SKILL.md`); user skills in `~/.agents/skills`, repo skills in `.agents/skills`;
   symlinks are followed.
-- MCP servers: `[mcp_servers.NAME]` in `config.toml`; no `${VAR}` interpolation; secrets are forwarded by name with
-  `env_vars` (stdio) or `bearer_token_env_var` / `env_http_headers` (HTTP); `codex mcp add` takes no JSON and cannot set
-  `env_vars`. Codex edits `config.toml` format-preserving (comments survive).
-- Commit attribution (`Co-authored-by: Codex`) is an account setting fetched from the ChatGPT backend; no config key.
-- Native Codex routes exist for superpowers, Context7 and Microsoft Learn (Codex plugins), rtk (`rtk init -g --codex`),
-  playwright-cli (skills into `~/.agents/skills`); Serena and codebase-memory come with the loadout plugin.
+- **MCP servers.** `[mcp_servers.NAME]` in `config.toml`; no `${VAR}` interpolation; secrets are forwarded by name with
+  `env_vars` (stdio) or `bearer_token_env_var` / `env_http_headers` (HTTP). A user-level `serena` replaces the plugin's
+  server of the same name (sandbox). Codex's own writes to `config.toml` drop and move comment lines, so marker comments
+  cannot delimit a managed region (sandbox).
+- **Plugin refresh.** `codex plugin marketplace upgrade` works only for git marketplaces; `codex plugin add` again
+  refreshes the cached copy of a local plugin (sandbox).
+- **Settings.** `model_reasoning_effort` (low/medium/high), `tui.notifications`; project `.codex/config.toml` loads only
+  in trusted projects.
+- **Commit attribution** (`Co-authored-by: Codex`) is an account setting fetched from the ChatGPT backend; no config key.
+
+## Parity
+
+| Kit part | Claude Code | Codex |
+|---|---|---|
+| Rules, `me.md` | `~/.claude/rules/` links | Managed block in `~/.codex/AGENTS.md` |
+| loadout plugin (skills, Serena, codebase-memory) | kit marketplace | The same marketplace and plugin; Serena with `--context=codex` |
+| loadout plugin hooks | `hooks/hooks.json` | `hooks/codex.json` via `.codex-plugin/plugin.json`: `rtk hook codex`, `serena-hooks --client=codex`, the session-start notice, the advisor and reload hooks, the type-check hook |
+| superpowers, context7, microsoft-docs, frontend-design, security-guidance, claude-md-management, commit-commands | `claude-plugins-official` | The same marketplace and ids |
+| impeccable | its marketplace | Its Codex route (verified during the build) |
+| LSP plugins | type errors after each edit | Codex-only `PostToolUse` hook running pyright, `tsc --noEmit` or `cargo check` for the changed file; Serena's `get_diagnostics_for_file` on request |
+| playwright-cli skills | `~/.claude/skills` | `~/.agents/skills` |
+| Settings from preferences | `settings.json` | `model_reasoning_effort` (effort_level), `tui.notifications` (agent_push_notifications); preferences without a Codex equivalent are listed in the how-to |
+| Personal MCP servers, skills | `claude mcp add-json`, `~/.claude/skills` | Owned `[mcp_servers.*]` tables, `~/.agents/skills` |
+| Project profiles | `.claude/settings.json`, `.mcp.json` | `.codex/config.toml`, `.agents/skills` (PR 2) |
+| adopt, drift | existing | Codex-only items in adopt (PR 2); drift reported both ways (PR 1) |
+| What stays different | | One-time `/hooks` approval; commit attribution is an account setting; the type check runs per edit instead of a resident language server |
 
 ## Design
 
 ### Switching it on
 
-- New preference `targets` in `preferences.json`: `claude` (default) or `claude,codex`. Stored in the personal layer like
-  every preference, so it follows the user to every machine.
-- Bootstrap: when `codex` is on PATH and `targets` is unset, it asks once ("Also set up Codex? [y/N]"); without a terminal
-  it does not enable Codex. `loadout configure` can change it.
-- A machine without `codex` skips the Codex step with one line; nothing else changes.
+- `<personal>/targets.json`: `{"codex": true}`. A file of its own rather than an entry in `preferences.json`, because
+  every preference must write a `me.md` line or a setting, and the quick first-run screen would set it without asking.
+  It lives in the personal layer, so it follows the user to every machine.
+- `loadout configure set target codex on|off`; `loadout configure show` lists it.
+- Bootstrap: when `codex` is on PATH and `targets.json` has no `codex` key, it asks once ("Codex found. Set it up with
+  loadout too? [y/N]") and records the answer; without a terminal it records nothing and does not enable Codex.
+- Without `codex` on PATH the Codex step is skipped with one line.
 
-### `cli/loadout/codex.py`
+### `cli/loadout/codex.py` (PR 1)
 
-All Codex-specific code; the Claude modules stay unchanged except for the calls into it.
+All Codex-specific code; the Claude modules change only where they call into it.
 
 1. **Instructions.** `render_instructions()` concatenates the kit's `rules/*.md` and the personal layer's `rules/*.md`
-   (sorted, each under its file name as a heading) under a one-line header saying the block is managed and where its
-   sources are. `apply_instructions(bk)` writes it between `<!-- loadout:start -->` and `<!-- loadout:end -->` in
-   `~/.codex/AGENTS.md`: creates the file if missing; replaces the block if exactly one pair of markers exists; appends
-   the block if none exists; leaves the file alone and reports if the markers are unbalanced or duplicated. Text
-   outside the markers is never changed. If `AGENTS.override.md` exists, `check` warns that it shadows the block.
-2. **Plugins.** `apply_plugins()` runs, through `runner.py`: `codex plugin marketplace add <kit root> --json` and
-   `codex plugin add loadout@agent-loadout --json`, then each catalog entry with a `codex` field whose tool is wanted.
-   Idempotent (Codex reports `alreadyAdded`; `codex plugin list --json` tells what is installed). After a daily pull
-   that changed the kit, it refreshes the cached copy of the local plugin by running `codex plugin add` again (see 6).
-3. **MCP servers.** `apply_mcp(bk)` writes the personal layer's `mcp.json` servers into `~/.codex/config.toml`, each as
-   one self-contained `[mcp_servers.NAME]` table (nested values as inline tables, so a server is exactly the lines from
-   its header to the next header). Marker comments are not used: a sandbox run showed Codex's own writes drop and move
-   them. Ownership is tracked like Claude's `managed-mcp.json`: `~/.claude/.loadout/codex-mcp.json` records, per server
-   name, the exact table text loadout wrote. loadout replaces or removes only tables whose current text equals what it
-   recorded; a table the user changed, or a same-named table loadout never wrote, is left alone and reported. A small
-   writer serialises only strings, lists of strings and tables of strings (TOML basic strings with escapes); anything
-   else in a server config is reported and that server skipped. `${VAR}` references become `env_vars = ["VAR"]`
-   (stdio) or `bearer_token_env_var` / `env_http_headers` (HTTP `Authorization` and other headers); a plaintext value
-   that looks like a secret (`secrets.looks_secret`) is refused for that server, with the fix (move it to
-   `secrets.env`). Before writing, the new file is parsed with `tomllib` when available (Python 3.11+); on 3.10 the
-   edit runs without that check.
-4. **Skills.** The personal layer's `skills/<name>/` and `skills.json` pointers are linked into `~/.agents/skills/<name>`
-   with `link.py`'s existing link, copy-mode and backup logic.
-5. **Serena context.** A user-level `[mcp_servers.serena]` replaces the plugin's server of the same name (sandbox run:
-   `codex mcp list` showed only the user-level one). `apply_mcp` therefore also writes `serena` with
-   `--context=codex`, owned like the personal servers.
-6. **Plugin refresh.** `codex plugin marketplace upgrade` works only for git marketplaces; running `codex plugin add
-   loadout@agent-loadout` again refreshes the cached copy of the local plugin (sandbox run). The daily sync does that
-   after a pull that changed the kit.
+   (sorted) under a header naming the sources. `apply_instructions(bk)` writes it between `<!-- loadout:start -->` and
+   `<!-- loadout:end -->` in `~/.codex/AGENTS.md`: creates the file if missing; replaces the block if exactly one pair
+   exists; appends it if none exists; leaves the file alone and reports if the markers are unbalanced or duplicated.
+   Text outside the markers is never changed. The first change to an existing file saves a copy in the backup.
+2. **Plugins.** `apply_plugins(bk, refresh=False)` runs through `runner.py`: `codex plugin marketplace add <kit root>`
+   and `anthropics/claude-plugins-official` (and the marketplace of each further plugin with a Codex route), then
+   `codex plugin add ID@MARKETPLACE` for the loadout plugin and every kit plugin that is enabled in the merged Claude
+   settings and has a `codex` field in the catalog. Idempotent: `codex plugin list --json` tells what is installed.
+   Newly added items are recorded with their undo (`codex plugin remove`, `codex plugin marketplace remove`). With
+   `refresh=True` (after a pull that changed the kit) it runs `codex plugin add loadout@agent-loadout` again.
+3. **Config keys and MCP servers.** `apply_config(bk)` edits `~/.codex/config.toml`:
+   - **Owned tables.** Each personal MCP server, and `serena` with `--context=codex`, is written as one self-contained
+     `[mcp_servers.NAME]` table (nested values as inline tables). Ownership is tracked in
+     `~/.claude/.loadout/codex-config.json`, which records the exact text loadout wrote for each table and key. loadout
+     replaces or removes only what still matches that record; a table or key the user changed, or a same-named one
+     loadout never wrote, is left alone and reported.
+   - **Owned keys.** `model_reasoning_effort` and `tui.notifications` from the preferences, written into their table
+     (top level, or `[tui]`, created when missing), owned the same way.
+   - **Values.** A small writer serialises only strings, booleans, lists of strings and tables of strings (TOML basic
+     strings with escapes); anything else in a server config is reported and that server skipped. `${VAR}` becomes
+     `env_vars = ["VAR"]` when the variable has the env key's name, `bearer_token_env_var` for an HTTP `Authorization:
+     Bearer ${VAR}` header, `env_http_headers` for other headers; a reference under a different name is reported (the
+     fix: rename it in `secrets.env`). A plaintext value that looks like a secret (`secrets.looks_secret`) is refused
+     for that server, with the fix (move it to `secrets.env`).
+   - **Safety.** The new file is parsed with `tomllib` before it replaces the old one when Python is 3.11+; on 3.10 the
+     edit runs without that check. The first change to an existing file saves a copy in the backup.
+4. **Skills.** The personal layer's `skills/<name>/` and `skills.json` pointers, and playwright-cli's skills, are linked
+   into `~/.agents/skills/<name>` with `link.py`'s existing link, copy-mode and backup logic.
+5. **Drift report.** `drift()` compares by name: user-scope MCP servers (`~/.claude.json` vs `codex mcp list --json`)
+   and user skills (`~/.claude/skills` vs `~/.agents/skills`), ignoring what the kit, the personal layer or a remembered
+   "leave" accounts for. It returns lines such as `MCP server "x" only in Claude Code (record it: loadout adopt)`.
+
+### Plugin side (PR 1)
+
+- `plugins/loadout/.codex-plugin/plugin.json` with `"hooks": "./hooks/codex.json"`.
+- `plugins/loadout/hooks/codex.json`: the Claude hooks with Codex arguments (`rtk hook codex`, `serena-hooks …
+  --client=codex`, the Serena tool matcher in Codex's naming), without the `Grep|Glob` codebase-memory hook (Codex has
+  no such tools), plus the type-check hook.
+- `plugins/loadout/hooks/typecheck.py`: on `PostToolUse` for `Edit|Write`, finds the changed files in the hook input,
+  runs `pyright <file>` for Python, `tsc --noEmit -p <nearest tsconfig>` for TypeScript, `cargo check` for Rust, each
+  with a time limit (20 s), and returns the errors to the agent in the hook's feedback format; prints nothing when the
+  checker is missing or the file is clean; reports "type check skipped (timeout)" when it runs out of time. Standard
+  library only, like the other hooks.
 
 ### Catalog
 
 Optional `codex` field per entry: `{"plugin": "ID@MARKETPLACE", "marketplace": "SOURCE"}` (a Codex plugin route) or
-`{"command": {"posix": [...], "windows": [...]}}` (a tool's own Codex setup, e.g. rtk) or `{"skills": true}` (skills
-linked into `~/.agents/skills`). An entry without `codex` is not set up for Codex. `tests/test_repo_static.py` validates
-the field.
+`{"skills": "COMMAND"}` (a tool's own skills install into `~/.agents/skills`, e.g. playwright-cli). An entry without
+`codex` has no Codex counterpart; `loadout check` lists those for enabled entries so a gap is never silent.
+`tests/test_repo_static.py` validates the field.
 
-### Drift (one source, reported both ways)
+### Callers (PR 1)
 
-- `codex.drift()` compares, by name only: user-level MCP servers (`~/.claude.json` user scope vs `codex mcp list --json`),
-  user skills (`~/.claude/skills` vs `~/.agents/skills`), and plugins that have a Codex route. Items that come from the
-  kit or the personal layer on both sides are not drift.
-- The daily sync queues a notice (`drift: MCP server "x" only in Claude Code — record it with loadout adopt`);
-  `loadout check` shows the same as warnings.
-- `loadout adopt` additionally lists Codex-only MCP servers and skills with the existing choices "record globally" or
-  "leave" (and "remove"). Recording writes to the personal layer; the next sync applies it to both agents. A "leave"
-  is remembered per machine in `own-decisions.json` and silences that item's drift notice.
+- `bootstrap`: a "Codex" step after "Marketplaces and plugins" when Codex is enabled; one status line in calm mode.
+- Daily maintenance: after new commits, `apply_instructions`, `apply_config`, skill links and
+  `apply_plugins(refresh=True)`; the drift report is queued as a notice.
+- `loadout check`: a Codex group (codex found and version, plugin installed, instruction block current, owned config
+  current, skills linked, catalog entries without a Codex route, drift, a reminder about `/hooks`,
+  `AGENTS.override.md` shadowing).
+- `loadout configure`: `set target codex on|off`, `show`.
+- `loadout restore`: replays recorded `codex plugin …` undo commands; the command allowlist (today `claude` only) gets
+  exactly `codex` added.
 
-### Callers
+### Projects and adopt (PR 2)
 
-- `bootstrap`: a "Codex" step after "Marketplaces and plugins" when `codex` is a target: instructions, plugins, MCP,
-  skills; one status line in calm mode, like the other steps.
-- Daily maintenance: after new commits, re-apply instructions, MCP and skills and refresh the plugin; compute drift.
-- `loadout check`: a Codex group: `codex` found, plugin installed, instruction block current, MCP block current, skills
-  linked, drift, a reminder that plugin hooks need approval in `/hooks`, `AGENTS.override.md` shadowing.
-- `loadout configure`: the `targets` preference.
+- `loadout init` / `loadout profile`: for a profile's MCP servers, also owned tables in the repo's
+  `.codex/config.toml`; for its skills, also `.agents/skills`; the profile's plugins also through `codex plugin add`
+  where a Codex route exists. A note says the project must be trusted in Codex for project config to load.
+- `loadout adopt`: Codex-only MCP servers and skills appear with the choices "record globally", "leave", "remove".
+  Recording writes the personal layer; the next sync applies it to both agents. "leave" is remembered per machine and
+  silences that item's drift line. "remove" saves `config.toml` (or moves the skill) into the backup first.
 
 ### Errors
 
-- `codex` missing or older than the tested version (0.161): skip with one line; Claude Code is unaffected.
-- A plugin command fails: reported like Claude plugin failures (`failed: …`), retried at the next sync.
-- `config.toml` that does not parse after the edit: nothing is written; the message names the file.
-- Unbalanced markers in `AGENTS.md`: nothing is written; the message says which file to fix. A managed `config.toml` table the user changed: left alone and reported.
+- `codex` missing or older than 0.161: skip with one line; Claude Code is unaffected.
+- A plugin or marketplace command fails: reported like Claude plugin failures (`failed: …`), retried at the next sync.
+- `config.toml` that would not parse after the edit: nothing is written; the message names the file.
+- Unbalanced markers in `AGENTS.md`: nothing is written; the message says which file to fix.
 
 ### Undo
 
 The first change to `~/.codex/AGENTS.md` and `~/.codex/config.toml` by bootstrap or adopt saves a copy in the backup;
-plugin installs are recorded with their undo command (`codex plugin remove`, `codex plugin marketplace remove`).
-`loadout restore` replays them. The routine re-application of the managed blocks by the daily sync is not backed up,
-like the Claude settings merge.
+plugin and marketplace installs are recorded with their undo command. `loadout restore` replays them. The routine
+re-application by the daily sync is not backed up, like the Claude settings merge.
 
 ## What loadout cannot do, and says so
 
-- Hooks run only after the user approves them in Codex's `/hooks`; `check` reminds.
+- Codex runs plugin hooks only after the user approves them once in `/hooks`; `check` reminds.
 - Commit attribution is an account setting; the how-to says where to turn it off. The kit's rule against AI
   attribution reaches Codex through the instruction block, but cannot stop the account-level trailer.
+- Type errors come from a per-edit check, not a resident language server.
 
 ## Documentation
 
-- New how-to `docs/how-to/codex.md` ("Use loadout with Codex"): switching it on, what is mapped, `/hooks`, attribution,
-  drift.
-- `docs/explanation/architecture.md`: "Other agents (planned)" becomes "Codex" (what is shared, what is mapped).
-- `docs/reference/cli.md` (`targets`, Codex step, check group), `docs/reference/catalog-format.md` (`codex` field),
-  `docs/reference/preferences-format.md` (`targets`), `docs/explanation/security-and-trust.md` (what loadout touches in
-  `~/.codex` and `~/.agents`), README "What you get" (one line), `docs/README.md` index.
-- ADR 0022: "Codex as a second target: one source, drift reported".
+- New how-to `docs/how-to/codex.md` ("Use loadout with Codex"): switching it on, the parity table, `/hooks`,
+  attribution, drift, preferences without a Codex equivalent.
+- `docs/explanation/architecture.md`: "Other agents (planned)" becomes "Codex".
+- `docs/reference/cli.md`, `catalog-format.md` (`codex` field), `personal-layer.md` (`targets.json`,
+  `codex-config.json`), `hooks.md` (Codex hooks, type check), `docs/explanation/security-and-trust.md` (what loadout
+  touches in `~/.codex` and `~/.agents`), README ("What you get", one line), `docs/README.md` index.
+- ADR 0022: "Codex as a second target: one source, drift reported, Codex-only replacements".
 
 ## Testing
 
 - Unit tests with `fake_home` and `fake_runner` (a fake `codex` answering `--json` commands); never the real `~/.codex`:
-  instruction block (create, replace, append, preserve outside text, unbalanced markers, override warning); TOML writer
-  (escaping, refusal of non-string values and plaintext secrets, markers, idempotence, parse check); `env_vars` and
-  header mapping; plugin commands idempotent; skills links; drift both ways and the "leave" silencing; bootstrap and
-  check with and without `codex` on PATH; `targets` preference.
-- A maintainer-only sandbox script (`demo/`-style, never run by CI or agents on the real home) that installs the real
-  plugin into a temporary `CODEX_HOME`, as done for this design.
+  the instruction block (create, replace, append, outside text kept, unbalanced markers); the TOML writer (escaping,
+  refusal of unsupported values and plaintext secrets, `env_vars` and header mapping, owned tables and keys,
+  user-changed items left alone, idempotence, parse check); plugin commands and their undo records; skill links; the
+  type-check hook (finds files in `apply_patch` input, clean file silent, errors reported, timeout, missing checker);
+  the Codex hooks file (every Claude hook has a Codex counterpart or a stated reason); drift both ways; `targets.json`
+  and `configure set target`; bootstrap and check with and without `codex`; restore of a `codex` undo; PR 2's project
+  and adopt paths.
+- A maintainer-only sandbox script, never run by CI or agents on the real home, that installs the real plugins into a
+  temporary `CODEX_HOME` and lists what Codex sees.
