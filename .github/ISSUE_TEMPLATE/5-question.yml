@@ -1,0 +1,22 @@
+name: Question
+description: How do I...? Why does loadout...? Check the docs first; they may answer it.
+labels: ["question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you want to do, what you tried, and which docs page you read.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Optional.
+      options:
+        - Linux
+        - macOS
+        - Windows with WSL 2
+        - Windows (native, experimental)
+        - Other

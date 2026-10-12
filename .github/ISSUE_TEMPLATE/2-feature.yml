@@ -1,0 +1,21 @@
+name: Feature request
+description: An idea for loadout, bootstrap or the plugin's skills and hooks.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and where does loadout get in the way or fall short?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Optional. How you would like it to work.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Optional. Workarounds, other tools, or doing nothing.

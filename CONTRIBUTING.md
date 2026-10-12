@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. This page covers setup, tests, evals, catalog changes and the pull request flow. How the code fits together is in [Architecture](docs/explanation/architecture.md); the documentation rules are in [Documentation strategy](docs/explanation/documentation-strategy.md).
+Thanks for helping. This page covers setup, tests, evals, catalog changes, issues and the pull request flow. How the code fits together is in [Architecture](docs/explanation/architecture.md); the documentation rules are in [Documentation strategy](docs/explanation/documentation-strategy.md).
 
 ## Setup
 
@@ -76,10 +76,23 @@ Both tapes share [`demo/style.tape`](demo/style.tape) (font, size, theme, window
 
 The hero's wordmark (`docs/assets/wordmark.light.svg` and `.dark.svg`) is generated with the letters as outlines: `uv run --with fonttools docs/assets/wordmark.py` (needs JetBrains Mono Bold installed, or pass its `.ttf` path).
 
+## Issues
+
+Open an issue with one of the forms on the [New issue](https://github.com/jonasyr/agent-loadout/issues/new/choose) page; each one asks only for what is needed to act on it:
+
+| Form | Use it for | Asks for |
+|---|---|---|
+| Bug report | Something does not work as documented | What happened, steps, platform, `loadout --version` and `claude --version`, the output of `loadout check --verbose` |
+| Feature request | An idea for the CLI, bootstrap or the plugin | The problem or use case; optionally a solution and alternatives |
+| Propose a tool for the catalog | Adding, replacing or dropping a tool | Kind, why, what it overlaps, license, install method, maintenance (what a [catalog](docs/how-to/add-to-catalog.md) decision needs) |
+| Docs problem | A wrong, missing or unclear page | The page and the problem |
+| Question | Anything else | Your question and what you read |
+
+Blank issues are off. Read command output before you paste it, and replace tokens and private paths. Security problems never go in an issue: use the private advisory form linked on the New issue page (details in [SECURITY.md](SECURITY.md)).
+
 ## Commits and pull requests
 
-- Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, for example `feat(catalog): add <tool>`, `fix(adopt): ...`, `docs: ...`, `test: ...`.
-- Work on a branch and open a pull request against `main`. Say what changed and why, and how you tested it.
+- Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, for example `feat(catalog): add <tool>`, `fix(adopt): ...`, `docs: ...`, `test: ...`. The PR title follows the same format.
+- Work on a branch and open a pull request against `main`. The [template](.github/pull_request_template.md) asks for three things: a summary with the issue it fixes, how you tested it (only what you actually ran, and on which platform), and which docs page you updated or why none was needed.
+- Whatever tools you use to write a change, you must understand it and have tested it yourself.
 - CI must be green before a merge: the test suite on Linux and on Windows (including the hook scripts under Git Bash), and `claude plugin validate` for the marketplace and the plugin.
-
-Security problems: do not open a public issue with details. See [SECURITY.md](SECURITY.md).
