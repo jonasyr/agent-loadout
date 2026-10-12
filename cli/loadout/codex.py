@@ -557,7 +557,9 @@ def _skill_names(folder: Path) -> set[str]:
 
 def drift() -> list[str]:
     """Names present in only one agent and accounted for by neither the kit, the personal layer nor a 'leave'."""
-    from . import own
+    from . import own, targets
+    if not targets.claude_enabled():  # drift compares the two agents; with one agent there is none
+        return []
     in_codex = mcp_names()
     if in_codex is None:
         return []

@@ -61,3 +61,35 @@ def test_codex_installs_through_mise():
     entry = catalog.by_id("codex")
     assert entry["install"]["posix"] == [["mise", "use", "-g", "codex"]] and entry["needs"] == ["mise"]
     assert entry["target"] == "codex" and entry["required"] is True
+
+
+def test_check_without_claude_has_no_claude_groups(fake_home, fake_runner, monkeypatch):
+    from loadout import check
+    targets.set_agents({"claude": False, "codex": True})
+    monkeypatch.setattr(codex, "checks", lambda: [])
+    fake_runner.missing.add("claude")
+    names = [r.name for r in check.run_checks()]
+    assert not any(n.startswith(("link ", "settings", "plugin", "duplicate", "own")) for n in names), names
+    assert not any(n == "claude" for n in names)
+
+
+def test_sync_without_claude_skips_claude_parts(fake_home, fake_runner, monkeypatch):
+    from loadout import link, maintenance, personal_mcp, settings_merge
+    targets.set_agents({"claude": False, "codex": True})
+    called = []
+    monkeypatch.setattr(settings_merge, "apply_settings", lambda: called.append("settings") or (None, None))
+    monkeypatch.setattr(personal_mcp, "apply_mcp", lambda: called.append("mcp") or [])
+    monkeypatch.setattr(link, "link_all", lambda bk, retry_symlinks=False: called.append("links") or [])
+    monkeypatch.setattr(maintenance, "pull_if_clean", lambda root: True)
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: called.append("codex") or [])
+    monkeypatch.setattr(codex, "drift", lambda: [])
+    (__import__("loadout").paths.personal_root() / ".git").mkdir(parents=True)
+    maintenance._maintain(0)
+    assert called == ["codex"]
+
+
+def test_drift_is_empty_without_claude(fake_home, fake_runner):
+    targets.set_agents({"claude": False, "codex": True})
+    assert codex.drift() == []

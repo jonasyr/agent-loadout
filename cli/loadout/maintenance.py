@@ -222,21 +222,23 @@ def _maintain(now: float) -> None:
         touch("last-pull", now)
         pulled = [pull_if_clean(root) for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
         if any(pulled):
-            try:
-                apply_settings()
-                from . import personal_mcp
-                for line in personal_mcp.apply_mcp():
-                    notify(f"loadout: {line}")
-            except Exception as exc:  # never crash in the background; surface next session
-                notify(f"loadout: could not apply settings after sync: {exc}")
-            try:
-                bk = Backup(description="maintenance: links refreshed after a pull")
-                link.link_all(bk)  # every mode: pulled skills and hook scripts must be linked for merged hooks to run
-                if not bk.empty:
-                    notify(f"loadout: refreshed links and copies; replaced or edited ones are in {bk.root} "
-                           f"(undo: loadout restore {bk.root})")
-            except Exception as exc:  # never crash in the background; surface next session
-                notify(f"loadout: could not link after sync: {exc}")
+            from . import targets
+            if targets.claude_enabled():  # Codex only: nothing of Claude Code to refresh
+                try:
+                    apply_settings()
+                    from . import personal_mcp
+                    for line in personal_mcp.apply_mcp():
+                        notify(f"loadout: {line}")
+                except Exception as exc:  # never crash in the background; surface next session
+                    notify(f"loadout: could not apply settings after sync: {exc}")
+                try:
+                    bk = Backup(description="maintenance: links refreshed after a pull")
+                    link.link_all(bk)  # every mode: pulled skills and hook scripts must be linked for merged hooks to run
+                    if not bk.empty:
+                        notify(f"loadout: refreshed links and copies; replaced or edited ones are in {bk.root} "
+                               f"(undo: loadout restore {bk.root})")
+                except Exception as exc:  # never crash in the background; surface next session
+                    notify(f"loadout: could not link after sync: {exc}")
             try:
                 from . import codex
                 if codex.enabled() and codex.unavailable() is None:
