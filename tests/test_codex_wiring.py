@@ -22,22 +22,6 @@ def test_bootstrap_without_codex_is_unchanged(fake_home, fake_runner, capsys):
     assert "Codex" not in text and not any(c[0] == "codex" for c in fake_runner.calls)
 
 
-def test_bootstrap_asks_once_when_codex_is_found(fake_home, fake_runner, monkeypatch):
-    _personal(fake_home)
-    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: ["instructions written"])
-    monkeypatch.setattr(codex, "unavailable", lambda: None)
-    asked = []
-
-    def ask(q):
-        asked.append(q)
-        return "y" if "Codex found" in q else ""
-    _run(yes=False, interactive=True, ask=ask)
-    assert sum("Codex found" in q for q in asked) == 1 and codex.enabled()
-    asked.clear()
-    _run(yes=False, interactive=True, ask=ask)
-    assert not any("Codex found" in q for q in asked), "asked only once"
-
-
 def test_bootstrap_sets_up_codex_and_lists_the_hooks_step(fake_home, fake_runner, monkeypatch, capsys):
     _personal(fake_home)
     codex.set_enabled(True)

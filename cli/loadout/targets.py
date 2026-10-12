@@ -7,17 +7,30 @@ from . import paths
 from .jsonio import load_json, save_json
 
 AGENTS = ("claude", "codex")
+OVERRIDE: dict | None = None  # bootstrap's choice while it runs, before the personal layer exists to store it
 
 
 def path() -> Path:
     return paths.personal_root() / "targets.json"
 
 
+def from_file() -> dict | None:
+    """The stored choice, or None when the personal layer has not chosen."""
+    data = load_json(path())
+    if "claude" not in data and "codex" not in data:
+        return None
+    return {"claude": data.get("claude", True) is not False, "codex": data.get("codex") is True}
+
+
 def claude_enabled() -> bool:
+    if OVERRIDE is not None:
+        return OVERRIDE["claude"]
     return load_json(path()).get("claude", True) is not False  # missing: every machine from before the choice
 
 
 def codex_enabled() -> bool:
+    if OVERRIDE is not None:
+        return OVERRIDE["codex"]
     return load_json(path()).get("codex") is True
 
 

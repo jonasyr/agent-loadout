@@ -59,7 +59,7 @@ def test_failed_clone_leaves_no_personal_folder_so_the_next_run_asks_again(fake_
     monkeypatch.setattr(configure, "wizard", lambda *a, **kw: ran.append("wizard"))
     answers = iter(["https://github.com/me/loadout-personal"])
     code = bootstrap.bootstrap(install=False, yes=False, plugins=False, adopt_step=True,
-                               ask=lambda q: next(answers, "y"), interactive=True)
+                               ask=lambda q: next(answers, "y"), interactive=True, agents="claude")
     assert code == 1
     assert not paths.personal_root().exists()
     assert ran == [], "neither the wizard nor adopt may run without a personal layer"
