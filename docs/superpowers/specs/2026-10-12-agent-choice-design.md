@@ -25,9 +25,10 @@ set up before (switching a target off stops loadout managing it, nothing is unin
   small `cli/loadout/targets.py` (`claude_enabled`, `codex_enabled`, `decided`, `set_target(name, on)`), and `codex.py`
   keeps thin wrappers so PR 1's callers stay valid.
 - **Bootstrap's first question** (after the WSL step, before Prerequisites, so the right tools get installed):
-  `Which coding agents should loadout set up?  1) Claude Code  2) Codex  3) both  [1]`. It is asked only when
-  `targets.json` has neither key (a fresh personal layer or one from before this change that never chose); the default
-  is 1, or 3 when `codex` is already on PATH. A cloned personal layer that already has the keys is not asked.
+  `Which coding agents should loadout set up?  1) Claude Code  2) Codex  3) both  [1]`. It is asked on a fresh machine
+  (no personal layer yet), and on an existing machine without a choice only when `codex` is on PATH (this replaces the
+  earlier "Codex found" question); otherwise an existing machine keeps Claude Code without a new question. The
+  default is 1, or 3 when `codex` is on PATH. A personal layer that already has the keys is not asked.
 - **Without a terminal:** no question; existing keys, else Claude Code (today's behaviour).
 - **Flag:** `bootstrap --agents claude|codex|claude,codex` sets the choice without asking (scripts, CI); it also
   writes `targets.json`.
