@@ -24,7 +24,7 @@ def test_bootstrap_without_codex_is_unchanged(fake_home, fake_runner, capsys):
 
 def test_bootstrap_asks_once_when_codex_is_found(fake_home, fake_runner, monkeypatch):
     _personal(fake_home)
-    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False: ["instructions written"])
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: ["instructions written"])
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     asked = []
 
@@ -42,7 +42,7 @@ def test_bootstrap_sets_up_codex_and_lists_the_hooks_step(fake_home, fake_runner
     _personal(fake_home)
     codex.set_enabled(True)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
-    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False: ["instructions written"])
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: ["instructions written"])
     monkeypatch.setattr(out, "VERBOSE", False)
     _run()
     text = capsys.readouterr().out
@@ -76,7 +76,7 @@ def test_sync_reapplies_codex_after_a_pull(fake_home, fake_runner, monkeypatch):
     codex.set_enabled(True)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     seen = []
-    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False: seen.append(refresh) or ["skipped mcp x: no"])
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: seen.append(refresh) or ["skipped mcp x: no"])
     monkeypatch.setattr(codex, "drift", lambda: ["skill \"y\" only in Codex (…)"])
     monkeypatch.setattr(maintenance, "pull_if_clean", lambda root: True)
     monkeypatch.setattr(maintenance, "find_outdated", lambda: [])  # the weekly check would ask the network

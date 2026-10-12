@@ -206,7 +206,8 @@ def _register_configure(sub):
                     return 1
                 from .backup import Backup
                 bk = Backup(description="configure: set up Codex")
-                for line in codex.apply_all(bk):
+                print("setting up Codex…")
+                for line in codex.apply_all(bk, say=lambda line: print(line, flush=True)):
                     print(line)
                 print(f"Still to do: {codex.HOOKS_TODO}")
                 if not bk.empty:

@@ -12,6 +12,8 @@ loadout configure set target codex on
 
 The choice is stored in your personal layer (`targets.json`), so it follows you to every machine. loadout needs codex 0.161 or newer.
 
+The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; it prints every step. Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
+
 Then approve loadout's hooks once in Codex: start `codex` and run `/hooks`. Codex runs plugin hooks only after you approve them, and again after they change.
 
 ## What Codex gets
