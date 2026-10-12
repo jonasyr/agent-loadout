@@ -9,6 +9,7 @@ Which page answers which question. The pages follow [Diátaxis](https://diataxis
 ## How-to guides
 
 - [Handle your own tools](how-to/your-own-tools.md). Read this when `adopt` or `check` lists tools loadout does not manage and you want to keep, move, leave or remove them.
+- [Keep your personal layer in a private git repo](how-to/personal-repo.md). Read this when you want your preferences and own tools on more than one machine.
 - [Undo what loadout changed](how-to/undo-and-restore.md). Read this when something went wrong, or you want a removed tool back.
 - [Set your working preferences](how-to/set-preferences.md). Read this when you want to change answer language, commit style, effort or another preference everywhere.
 - [Write a personal profile](how-to/write-a-profile.md). Read this when you want your own preset of tools for a kind of project.

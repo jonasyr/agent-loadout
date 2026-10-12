@@ -2,7 +2,7 @@
 
 The personal layer is your own folder of preferences. It is separate from the kit, so the kit can update without touching it. By default it is `~/.config/loadout/personal`. Set `LOADOUT_PERSONAL` to use another folder. The code is `cli/loadout/paths.py`, `link.py`, `settings_merge.py`, `personal_mcp.py` and `own.py`.
 
-`loadout bootstrap` clones it from a git URL you give, or creates a starter layer: `settings.json` containing `{}`, plus a `rules/me.md` written from the "about you" questions and the working preferences. Make the folder a private git repo to sync it across machines. See [Sync](#sync).
+`loadout bootstrap` clones it from a git URL you give, or creates a starter layer: `settings.json` containing `{}`, plus a `rules/me.md` written from the "about you" questions and the working preferences. Make the folder a private git repo to sync it across machines: [Keep your personal layer in a private git repo](../how-to/personal-repo.md).
 
 ## Files
 
@@ -70,6 +70,6 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 
 The kit and the personal layer are pulled once a day in the background; see [The daily sync](../explanation/architecture.md#the-daily-sync).
 
-A personal layer reaches another machine only if you commit and push it. `loadout configure` offers to do that after a change. It does not offer while a private file would be committed (a `*.env` file or a file such as a key or credential). The same applies to the commit offer at the end of interactive `loadout adopt`.
+A personal layer reaches another machine only if you commit and push it; how to set up the repo is in [Keep your personal layer in a private git repo](../how-to/personal-repo.md). `loadout configure` offers to do that after a change. It does not offer while a private file would be committed (a `*.env` file or a file such as a key or credential). The same applies to the commit offer at the end of interactive `loadout adopt`.
 
 `leave` decisions and the machine-local state stay on the machine where they were made.

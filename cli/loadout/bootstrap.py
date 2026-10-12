@@ -92,6 +92,9 @@ def _claude_logged_in() -> bool:
         return False
 
 
+PERSONAL_REPO_HOWTO = "docs/how-to/personal-repo.md"
+
+
 def still_to_do(key: str) -> list[str]:
     out = []
     if not runner.have("git"):
@@ -100,6 +103,8 @@ def still_to_do(key: str) -> list[str]:
         out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: gh auth login && gh auth setup-git")
+    if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
+        out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
 
 
@@ -218,18 +223,21 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
         return f"personal layer: {root}", True
     url = ask("Personal layer: git URL to clone (empty = create a starter one): ").strip()
     if url:
-        res = runner.run(["git", "clone", "--", url, str(root)], timeout=300)
+        # no prompt: output is captured, so git's password prompt would be invisible and wait until the timeout
+        res = runner.run(["git", "clone", "--", url, str(root)], timeout=300,
+                         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         if res.ok:
             return f"cloned {url} -> {root}", True
         return (f"clone failed: {redact(res.stderr.strip())}\n"
-                f"  fix access (e.g. `gh auth login`), then re-run bootstrap; continuing without a personal layer"), False
+                f"  log in with `gh auth login && gh auth setup-git` (gh is installed by now) or use an SSH URL, "
+                f"then re-run bootstrap; continuing without a personal layer"), False
     root.mkdir(parents=True, exist_ok=True)
     (root / "settings.json").write_text("{}\n", encoding="utf-8")
     bk.record_created(root / "settings.json", "created personal settings.json")
     from .configure import _about_you, ask_preferences
     _about_you(ask, bk)
     ask_preferences(ask, fill_defaults=True, interactive=interactive, bk=bk, quick=True)
-    return f"created starter personal layer at {root} (make it a git repo to sync it across machines)", True
+    return f"created starter personal layer at {root} (to sync it across machines, make it a private git repo: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)})", True
 
 
 def setup_plugins() -> list[str]:

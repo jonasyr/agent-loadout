@@ -24,7 +24,7 @@ The best plugins, MCP servers and rules, preconfigured to work together, on ever
 
 <sub>The Quick start below, on a machine that already has Claude Code. Recorded in a sandbox with fake data.</sub>
 
-Claude Code gets much better with the right plugins, MCP servers and instructions, but setups drift: every machine ends up different, old tools linger and versions go stale. loadout is a reviewed shared kit (this repo) plus your personal layer (your own folder, ideally a private git repo); its CLI merges both into `~/.claude` and keeps them current ([how it works](docs/explanation/architecture.md)).
+Claude Code gets much better with the right plugins, MCP servers and instructions, but setups drift: every machine ends up different, old tools linger and versions go stale. loadout is a reviewed shared kit (this repo) plus your [personal layer](docs/how-to/personal-repo.md) (your own folder, ideally a private git repo); its CLI merges both into `~/.claude` and keeps them current ([how it works](docs/explanation/architecture.md)).
 
 ## Quick start
 
@@ -53,6 +53,8 @@ cd agent-loadout
 ```
 
 Keep the folder where it is: the installed links point into it.
+
+Bootstrap's first question is your personal layer, the folder for your own preferences and tools: paste the URL of your private repo for it, or press Enter for a starter you can [turn into one later](docs/how-to/personal-repo.md).
 
 <details>
 <summary>What the installer does</summary>
@@ -106,7 +108,7 @@ Then open Claude Code there and run `/loadout:onboard`: it reads the project and
 - **Curated defaults.** The toolset complements itself instead of overlapping, and every keep or drop decision has a written reason in [`catalog.json`](catalog.json).
 - **Works on existing setups.** `loadout adopt` shows what it would change and why, asks first, and backs up what it replaces ([your own tools](docs/how-to/your-own-tools.md)).
 - **Stays up to date by itself.** Claude Code updates the plugins, loadout pulls the kit and your personal layer daily, and you get a notice when tools have updates ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
-- **Yours on top.** Your preferences, own tools and profiles live in your personal layer; change them with `loadout configure` or `/loadout:configure` ([preferences](docs/how-to/set-preferences.md)).
+- **Yours on top.** Your preferences, own tools and profiles live in your personal layer, a private git repo that follows you to every machine ([set it up](docs/how-to/personal-repo.md)); change them with `loadout configure` or `/loadout:configure` ([preferences](docs/how-to/set-preferences.md)).
 - **Projects too.** `loadout init` prepares any repo for agent work, profiles add domain tools only where needed, and three skills keep the docs true ([documentation strategy](docs/explanation/documentation-strategy.md)).
 
 ## The toolset
@@ -150,6 +152,7 @@ The full index is [docs/README.md](docs/README.md).
 | Decide what happens to tools I already have | [Handle your own tools](docs/how-to/your-own-tools.md) |
 | Undo something loadout changed | [Undo what loadout changed](docs/how-to/undo-and-restore.md) |
 | Change my preferences or add tools globally | [Set your working preferences](docs/how-to/set-preferences.md) |
+| Use my preferences and own tools on every machine | [Keep your personal layer in a private git repo](docs/how-to/personal-repo.md) |
 | Add domain tools to one repo | [Write a personal profile](docs/how-to/write-a-profile.md), [Profile format](docs/reference/profile-format.md) |
 | Fix a problem | [Troubleshooting](docs/how-to/troubleshooting.md) |
 | Look up a command, flag or exit code | [CLI reference](docs/reference/cli.md) |
