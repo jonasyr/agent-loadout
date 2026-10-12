@@ -116,6 +116,11 @@ def test_themes_render_svg_text_with_system_fonts():
         assert theme["themeVariables"]["fontFamily"].startswith("ui-sans-serif, system-ui")
 
 
+def _diagram_pictures(text):
+    """<picture> blocks that show a diagram (the README's wordmark is a <picture> too)."""
+    return [block for block in PICTURE.findall(text) if "diagrams/" in block]
+
+
 def _docs():
     """README.md and docs/, without the agents' working documents."""
     files = [ROOT / "README.md", *ROOT.glob("docs/**/*.md")]
@@ -130,7 +135,7 @@ def test_no_mermaid_code_blocks_left():
 def test_embeds_show_both_variants_with_alt_text():
     bad = []
     for md in _docs():
-        for block in PICTURE.findall(md.read_text(encoding="utf-8")):
+        for block in _diagram_pictures(md.read_text(encoding="utf-8")):
             where = md.relative_to(ROOT)
             src, img = SOURCE.search(block), IMG.search(block)
             if not (src and img):
@@ -152,7 +157,7 @@ def test_each_embed_links_its_source():
     bad = []
     for md in _docs():
         text = md.read_text(encoding="utf-8").replace("\r", "")
-        pictures = len(PICTURE.findall(text))
+        pictures = len(_diagram_pictures(text))
         links = SOURCE_LINK.findall(text)
         if len(links) != pictures:
             bad.append(f"{md.relative_to(ROOT)}: each </picture> needs a blank line, then <sub>[Source](….mmd)</sub>")
