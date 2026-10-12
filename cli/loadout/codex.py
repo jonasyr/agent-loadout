@@ -105,16 +105,26 @@ class Refused(Exception):
     """A server config loadout will not write into Codex, with the reason and the fix."""
 
 
+def _tomllib():
+    """tomllib (Python 3.11+), which the config edit needs to prove it changed nothing of the user's."""
+    try:
+        import tomllib
+        return tomllib
+    except ImportError:
+        return None
+
+
 def toml_key(key: str) -> str:
-    return key if _BARE.match(key) else json.dumps(key, ensure_ascii=False)
+    return key if _BARE.match(key) else toml_value(key)
 
 
 def toml_value(value) -> str:
-    """Strings, booleans, lists of strings, tables of strings. JSON's escapes are valid TOML basic-string escapes."""
+    """Strings, booleans, lists of strings, tables of strings. JSON's escapes are valid TOML basic-string escapes;
+    DEL is the one character JSON leaves raw and TOML forbids."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
+        return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
     if isinstance(value, list) and all(isinstance(v, str) for v in value):
         return "[" + ", ".join(toml_value(v) for v in value) + "]"
     if isinstance(value, dict) and all(isinstance(v, str) for v in value.values()):
@@ -130,11 +140,35 @@ def _plain(name: str, key: str, value: str) -> None:
         raise Refused(f"mcp {name}: {key} holds a plaintext secret; move it to secrets.env and refer to it as ${{{key}}}")
 
 
-def server(name: str, cfg: dict) -> dict:
-    """A Claude-style MCP config as Codex keys; secrets only as variable names."""
+def _check_shape(name: str, cfg) -> None:
+    if not isinstance(cfg, dict):
+        raise Refused(f"mcp {name}: not a server configuration")
     unknown = sorted(set(cfg) - _SUPPORTED)
     if unknown:
         raise Refused(f"mcp {name}: Codex mapping does not support {', '.join(unknown)}")
+    for field in ("command", "url", "type"):
+        if field in cfg and not isinstance(cfg[field], str):
+            raise Refused(f"mcp {name}: {field} must be a string")
+    args = cfg.get("args")
+    if args is not None and not (isinstance(args, list) and all(isinstance(a, str) for a in args)):
+        raise Refused(f"mcp {name}: args must be a list of strings")
+    for field in ("env", "headers"):
+        table = cfg.get(field)
+        if table is not None and not (isinstance(table, dict)
+                                      and all(isinstance(k, str) and isinstance(v, str) for k, v in table.items())):
+            raise Refused(f"mcp {name}: {field} must map names to strings")
+
+
+def server(name: str, cfg: dict) -> dict:
+    """A Claude-style MCP config as Codex keys; secrets only as variable names, never as plaintext."""
+    _check_shape(name, cfg)
+    from .secrets import scan
+    for finding in scan({"mcpServers": {name: cfg}}):
+        raise Refused(f"mcp {name}: {finding.field} {finding.key} holds a plaintext secret; move it to secrets.env "
+                      "(Codex forwards env variables and headers by name, never arguments or URLs)")
+    for value in (cfg.get("command"), cfg.get("url"), *(cfg.get("args") or [])):
+        if isinstance(value, str) and "${" in value:
+            raise Refused(f"mcp {name}: Codex does not expand ${{…}} in command, args or url; pass the value through env")
     out: dict = {}
     if isinstance(cfg.get("url"), str):
         out["url"] = cfg["url"]
@@ -191,7 +225,12 @@ def desired_tables() -> tuple[dict[str, str], list[str]]:
     tables, problems = {"serena": table_text("serena", SERENA)}, []
     for name, cfg in (servers if isinstance(servers, dict) else {}).items():
         try:
-            tables[name] = table_text(name, server(name, cfg))
+            text = table_text(name, server(name, cfg))
+            try:
+                text.encode("utf-8")
+            except UnicodeEncodeError:
+                raise Refused(f"mcp {name}: holds characters that cannot be written as UTF-8") from None
+            tables[name] = text
         except Refused as exc:
             problems.append(f"skipped {exc}")
     return tables, problems
@@ -208,17 +247,65 @@ def desired_keys() -> list[tuple[str, str, object]]:
             ("tui", "notifications", answer("agent_push_notifications") == "yes")]
 
 
-def _sections(lines: list[str]) -> list[list]:
-    """[[header or None, [lines]]]: the top level first, then one entry per [table] or [[array]] header."""
-    out = [[None, []]]
+def _top_lines(lines: list[str]) -> list[bool]:
+    """Per line: whether it starts outside any multi-line string, array or inline table (where a header or key can be)."""
+    top, ml, depth = [], None, 0
     for line in lines:
-        s = line.strip()
-        if s.startswith("[") and not s.startswith("[["):
-            out.append([s[1:s.index("]")].strip(), [line]])
-        elif s.startswith("[["):
-            out.append([s, [line]])
+        top.append(ml is None and depth == 0)
+        i, n = 0, len(line)
+        while i < n:
+            if ml:
+                j = line.find(ml, i)
+                if j < 0:
+                    break
+                i, ml = j + 3, None
+                continue
+            c = line[i]
+            if c == "#":
+                break
+            if line.startswith('"""', i) or line.startswith("'''", i):
+                ml, i = line[i:i + 3], i + 3
+                continue
+            if c == '"':
+                i += 1
+                while i < n and line[i] != '"':
+                    i += 2 if line[i] == "\\" else 1
+                i += 1
+                continue
+            if c == "'":
+                j = line.find("'", i + 1)
+                i = n if j < 0 else j + 1
+                continue
+            if c in "[{":
+                depth += 1
+            elif c in "]}":
+                depth = max(0, depth - 1)
+            i += 1
+    return top
+
+
+def _header_path(line: str, tl) -> tuple | None:
+    """The key path a header line opens, normalised by tomllib (quotes, spaces); arrays of tables never match a table."""
+    try:
+        data = tl.loads(line.strip() + "\n")
+    except Exception:
+        return None
+    path = []
+    while isinstance(data, dict) and len(data) == 1:
+        key, data = next(iter(data.items()))
+        path.append(key)
+    return ("[[",) + tuple(path) if isinstance(data, list) else tuple(path)
+
+
+def _sections(lines: list[str], tl) -> list[list]:
+    """[[path or None, [lines], [top flags]]]: the top level first, then one entry per header."""
+    out = [[None, [], []]]
+    for line, top in zip(lines, _top_lines(lines)):
+        if top and line.lstrip().startswith("["):
+            out.append([_header_path(line, tl) or ("?", line.strip()), [line], [True]])
         else:
             out[-1][1].append(line)
+            out[-1][2].append(top)
     return out
 
 
@@ -226,18 +313,51 @@ def _text(section_lines: list[str]) -> str:
     return "\n".join(section_lines).rstrip("\n").rstrip() + "\n"
 
 
+def _prune(value):
+    if isinstance(value, dict):
+        kept = {k: _prune(v) for k, v in value.items()}
+        return {k: v for k, v in kept.items() if v != {}}
+    return value
+
+
+def _without_owned(data: dict, tables, keys) -> dict:
+    data = json.loads(json.dumps(data, default=str))  # a deep copy; dates become strings on both sides alike
+    servers = data.get("mcp_servers")
+    if isinstance(servers, dict):
+        for name in tables:
+            servers.pop(name, None)
+    for dotted in keys:
+        *parents, last = dotted.split(".")
+        cur = data
+        for part in parents:
+            cur = cur.get(part) if isinstance(cur, dict) else None
+        if isinstance(cur, dict):
+            cur.pop(last, None)
+    return _prune(data)
+
+
 def apply_config(bk, dry_run: bool = False) -> list[str]:
     path = paths.codex_home() / "config.toml"
+    tl = _tomllib()
+    if tl is None:
+        return [f"skipped {path}: editing it safely needs Python 3.11 or newer"]
     old = path.read_text(encoding="utf-8") if path.exists() else ""
+    try:
+        before = tl.loads(old)
+    except Exception as exc:
+        return [f"skipped {path}: it does not parse now ({exc}); fix it, then run loadout bootstrap"]
     record = load_json(record_path())
     owned_tables, owned_keys = dict(record.get("tables", {})), dict(record.get("keys", {}))
-    sections = _sections(old.splitlines())
+    was_tables, was_keys = set(owned_tables), set(owned_keys)
+    sections = _sections(old.splitlines(), tl)
     tables, lines = desired_tables()
 
+    def find(path_):
+        return next((s for s in sections if s[0] == path_), None)
+
     # tables: drop or keep what loadout wrote, never touch anything else
-    by_header = {s[0]: s for s in sections if s[0]}
     for name, text in list(owned_tables.items()):
-        sec = by_header.get(f"mcp_servers.{toml_key(name)}")
+        sec = find(("mcp_servers", name))
         if sec is None:
             owned_tables.pop(name)
         elif _text(sec[1]) != text:
@@ -246,31 +366,32 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         elif tables.get(name) != text:
             sections.remove(sec)
             owned_tables.pop(name)
-    by_header = {s[0]: s for s in sections if s[0]}
     for name, text in tables.items():
-        header = f"mcp_servers.{toml_key(name)}"
-        if header in by_header:
+        if find(("mcp_servers", name)) is not None:
             if owned_tables.get(name) != text:
                 lines.append(f"mcp {name}: left as is, config.toml already has a server of that name")
             continue
-        sections.append([header, text.rstrip("\n").splitlines()])
+        sections.append([("mcp_servers", name), text.rstrip("\n").splitlines(), []])
         owned_tables[name] = text
 
-    # keys: one line each, in their table
+    # keys: one line each, in their table, only on lines that start outside strings and arrays
     for table, key, value in desired_keys():
         dotted = f"{table}.{key}" if table else key
         line = f"{key} = {toml_value(value)}"
-        target = next((s for s in sections if s[0] == (table or None)), None)
+        target = sections[0] if not table else find((table,))
         if target is None:
-            sections.append([table, [f"[{table}]", line]])
+            sections.append([(table,), [f"[{table}]", line], []])
             owned_keys[dotted] = line
             continue
-        found = next((i for i, l in enumerate(target[1]) if re.match(rf"^\s*{re.escape(key)}\s*=", l)), None)
+        flags = [True] + target[2] if target[0] is not None else target[2]
+        found = next((i for i, l in enumerate(target[1])
+                      if flags[i] and re.match(rf"^\s*{re.escape(key)}\s*=", l)), None)
         if found is None:
             insert = len(target[1])
-            while insert > (1 if target[0] else 0) and not target[1][insert - 1].strip():
+            while insert > (1 if target[0] is not None else 0) and not target[1][insert - 1].strip():
                 insert -= 1
             target[1].insert(insert, line)
+            target[2].insert(insert - (1 if target[0] is not None else 0), True)
             owned_keys[dotted] = line
         elif target[1][found].strip() == line:
             owned_keys[dotted] = line
@@ -284,23 +405,26 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     parts = ["\n".join(sections[0][1]).strip("\n")] if any(l.strip() for l in sections[0][1]) else []
     parts += ["\n".join(s[1]).strip("\n") for s in sections[1:]]
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
-    if new == old or new.strip() == old.strip():
+    new_record = {"tables": owned_tables, "keys": owned_keys}
+    if new == old or (not old.strip() and not new.strip()):
+        if new_record != {"tables": record.get("tables", {}), "keys": record.get("keys", {})} and not dry_run:
+            save_json(record_path(), new_record)
         return lines
+    try:
+        after = tl.loads(new)
+    except Exception as exc:
+        return lines + [f"skipped {path}: the result would not parse ({exc}); nothing written, fix the file by hand"]
+    ours_tables, ours_keys = was_tables | set(owned_tables), was_keys | set(owned_keys)
+    if _without_owned(before, ours_tables, ours_keys) != _without_owned(after, ours_tables, ours_keys):
+        return lines + [f"skipped {path}: the edit would change entries loadout does not own; nothing written"]
     if dry_run:
         return lines + ["config.toml: changes pending"]
-    try:
-        import tomllib
-        tomllib.loads(new)
-    except ImportError:
-        pass
-    except Exception as exc:  # tomllib.TOMLDecodeError
-        return lines + [f"skipped {path}: the result would not parse ({exc}); nothing written, fix the file by hand"]
     if path.exists() and not record:
         bk.save_copy(path, "Codex config.toml before loadout's first change")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(new, encoding="utf-8", newline="\n")
+    from .jsonio import write_atomic
+    write_atomic(path, new)
     record_path().parent.mkdir(parents=True, exist_ok=True)
-    save_json(record_path(), {"tables": owned_tables, "keys": owned_keys})
+    save_json(record_path(), new_record)
     return lines
