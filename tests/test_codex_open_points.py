@@ -70,3 +70,14 @@ def test_context7_needs_no_login_in_codex(fake_home, monkeypatch):
     assert 'url = "https://mcp.context7.com/mcp"' in tables["context7"]
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
     assert "context7" not in codex.desired_tables()[0]
+
+
+def test_servers_loadout_set_up_are_not_reported_as_needing_a_login(fake_home, fake_runner):
+    """Codex reports not_logged_in for any server that offers OAuth, also when it answers without a login
+    (Context7's plain address, verified live). loadout's own servers are known to work without one."""
+    codex.set_enabled(True)
+    codex.record_path().parent.mkdir(parents=True, exist_ok=True)
+    codex.record_path().write_text(json.dumps({"tables": {"context7": "x"}, "keys": {}}))
+    fake_runner.responses[("codex", "mcp", "list")] = runner.Result(0, json.dumps([
+        {"name": "context7", "auth_status": "not_logged_in"}, {"name": "other", "auth_status": "not_logged_in"}]), "")
+    assert codex.logins_needed() == ["other"]

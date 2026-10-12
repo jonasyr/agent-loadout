@@ -711,8 +711,11 @@ def logins_needed() -> list[str]:
     """Codex MCP servers that wait for an OAuth login (`codex mcp login NAME`)."""
     res = runner.run(["codex", "mcp", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None
-    return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"] \
-        if isinstance(data, list) else []
+    # Codex says not_logged_in for every server that offers OAuth, also when it answers anonymously; the servers
+    # loadout writes itself are chosen to work without a login (Context7's plain address, verified live)
+    owned = set(load_json(record_path()).get("tables", {}))
+    return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"
+            and s.get("name") not in owned] if isinstance(data, list) else []
 
 
 def open_steps() -> list[str]:
