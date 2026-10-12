@@ -46,6 +46,25 @@ They make real model calls with your own Claude credential and use your plan's u
 
 When you change behaviour, update the page in `docs/` that owns the fact, and link to it from other pages instead of copying it. The index is [docs/README.md](docs/README.md). A decision with alternatives becomes an ADR in [`docs/adr/`](docs/adr/README.md).
 
+## Diagrams
+
+The diagrams in `docs/` are Mermaid sources in [`docs/diagrams/`](docs/diagrams/README.md), rendered to one light and one dark SVG each, so they show on every viewer (phone apps, editor previews, other forges) and fit both colour schemes. To change one:
+
+1. Edit `docs/diagrams/<name>.mmd`. Flowcharts take their colours from classes (`class nodeId kit`, `class SUBGRAPH kitGroup`, `class e4 emph` for an edge written `a e4@--> b`); the colours are in `palette.light.mmd` and `palette.dark.mmd`, the fonts and base colours in `theme.light.json` and `theme.dark.json`. A flowchart ends with the line `%% palette`.
+2. Render: `docs/diagrams/render.sh <name>` (no name renders all). It runs a pinned mermaid-cli in a container without network access: podman, or `DIAGRAMS_ENGINE=docker`.
+3. Commit the source and both SVGs together.
+
+Each SVG records a hash of its source, palette, theme and the mermaid-cli version. `tests/test_diagrams.py` fails when an SVG is out of date and names the command that fixes it. It also rejects Mermaid code blocks in the docs. Embed a new diagram like this, with alt text that says what the diagram shows:
+
+```html
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/<name>.dark.svg">
+  <img alt="What a reader learns from the diagram, in a sentence or two." src="../diagrams/<name>.light.svg">
+</picture>
+
+<sub>[Source](../diagrams/<name>.mmd)</sub>
+```
+
 ## The README demo
 
 `docs/assets/demo.gif` follows the README Quick start: an existing Claude Code setup, the one-liner, `loadout check`, `loadout init`, then real Claude Code running `/loadout:onboard`. It has two parts:
