@@ -97,6 +97,8 @@ def apply_instructions(bk) -> str:
 
 
 SERENA = {"command": "serena", "args": ["start-mcp-server", "--context=codex", "--project-from-cwd"]}
+# the plugin's Context7 address (?client=claude-code-plugin) asks Codex for OAuth; the plain one answers anonymously
+CONTEXT7 = {"url": "https://mcp.context7.com/mcp"}
 _BARE = re.compile(r"^[A-Za-z0-9_-]+$")
 _VAR = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 _BEARER = re.compile(r"^Bearer \$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
@@ -225,6 +227,9 @@ def desired_tables() -> tuple[dict[str, str], list[str]]:
     """Table text per server name, and the lines for servers that cannot be mapped."""
     servers = load_json(paths.personal_root() / "mcp.json").get("mcpServers", {})
     tables, problems = {"serena": table_text("serena", SERENA)}, []
+    from .settings_merge import desired_settings
+    if desired_settings().get("enabledPlugins", {}).get("context7@claude-plugins-official") is True:
+        tables["context7"] = table_text("context7", CONTEXT7)
     for name, cfg in (servers if isinstance(servers, dict) else {}).items():
         try:
             text = table_text(name, server(name, cfg))
@@ -631,6 +636,90 @@ def checks() -> list:
     missing = plugin_routes(desired_settings())[1]
     if missing:
         results.append(CheckResult("Codex plugins", False, "no Codex route for " + ", ".join(missing), "", "warn"))
+    status = hooks_status()
+    if status in ("untrusted", "changed"):
+        results.append(CheckResult("Codex hooks", False, "loadout's hooks are not approved yet" if status == "untrusted"
+                                   else "loadout's hooks changed since you approved them",
+                                   "start codex, then run /hooks and approve them", "warn"))
+    elif status == "trusted":
+        results.append(CheckResult("Codex hooks", True))
+    logins = logins_needed()
+    if logins:
+        results.append(CheckResult("Codex logins", False, "waiting for a login: " + ", ".join(logins),
+                                   "; ".join(f"codex mcp login {n}" for n in logins), "warn"))
     lines = drift()
     results.append(CheckResult("Codex drift", not lines, "; ".join(lines), "loadout adopt (see docs/how-to/codex.md)", "warn"))
     return results
+
+
+# --- open steps the user has to take in Codex, named where they work (bootstrap, configure, check)
+
+HOOK_PLUGIN = "loadout@agent-loadout:hooks/codex.json"
+HOOKS_CHANGED = "approve the changed loadout hooks in Codex: start `codex`, then run /hooks"
+
+
+def _codex_hooks_file() -> Path:
+    return paths.kit_root() / "plugins" / "loadout" / "hooks" / "codex.json"
+
+
+def hook_keys() -> set[str]:
+    """The keys Codex uses for loadout's hooks in config.toml's [hooks.state] (plugin:file:event:group:hook)."""
+    hooks = load_json(_codex_hooks_file()).get("hooks", {})
+    snake = lambda name: re.sub(r"(?<!^)([A-Z])", r"_\1", name).lower()  # noqa: E731
+    return {f"{HOOK_PLUGIN}:{snake(event)}:{g}:{h}"
+            for event, groups in hooks.items() for g, group in enumerate(groups) for h, _ in enumerate(group.get("hooks", []))}
+
+
+def _hooks_digest() -> str:
+    import hashlib
+    try:
+        return hashlib.sha256(_codex_hooks_file().read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _hooks_record() -> Path:
+    return paths.state_dir() / "codex-hooks.json"
+
+
+def hooks_status(remember: bool = False) -> str | None:
+    """"trusted", "untrusted" (never approved) or "changed" (the hooks changed since the user approved them);
+    None when config.toml cannot be read. Codex's own hash cannot be recomputed stably, so a change is detected as:
+    the hooks file differs from the last approved one while the stored approvals did not change."""
+    tl = _tomllib()
+    path = paths.codex_home() / "config.toml"
+    if tl is None:
+        return None
+    try:
+        state = tl.loads(path.read_text(encoding="utf-8")).get("hooks", {}).get("state", {}) if path.exists() else {}
+    except Exception:
+        return None
+    current = {k: v.get("trusted_hash") for k, v in state.items()
+               if k.startswith(HOOK_PLUGIN + ":") and isinstance(v, dict) and v.get("trusted_hash")}
+    if not hook_keys() <= set(current):
+        return "untrusted"
+    digest, seen = _hooks_digest(), load_json(_hooks_record())
+    if seen.get("digest") not in (None, digest) and seen.get("hashes") == current:
+        return "changed"
+    if remember and seen != {"digest": digest, "hashes": current}:
+        _hooks_record().parent.mkdir(parents=True, exist_ok=True)
+        save_json(_hooks_record(), {"digest": digest, "hashes": current})
+    return "trusted"
+
+
+def logins_needed() -> list[str]:
+    """Codex MCP servers that wait for an OAuth login (`codex mcp login NAME`)."""
+    res = runner.run(["codex", "mcp", "list", "--json"], timeout=120)
+    data = _json(res.stdout) if res.ok else None
+    return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"] \
+        if isinstance(data, list) else []
+
+
+def open_steps() -> list[str]:
+    """What the user still has to do in Codex, for "Still to do" lists; empty when nothing is open."""
+    if not enabled() or not runner.have("codex"):
+        return []
+    status = hooks_status(remember=True)
+    # unknown (no tomllib on Python 3.10, unreadable config): remind, since the approval cannot be confirmed
+    steps = [HOOKS_CHANGED] if status == "changed" else [] if status == "trusted" else [HOOKS_TODO]
+    return steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]

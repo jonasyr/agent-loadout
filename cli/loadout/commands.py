@@ -209,7 +209,8 @@ def _register_configure(sub):
                 print("setting up Codex…")
                 for line in codex.apply_all(bk, say=lambda line: print(line, flush=True)):
                     print(line)
-                print(f"Still to do: {codex.HOOKS_TODO}")
+                for step in codex.open_steps():
+                    print(f"Still to do: {step}")
                 if not bk.empty:
                     print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
             return 0

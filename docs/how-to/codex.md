@@ -34,7 +34,8 @@ Preferences that live in `me.md` (answer language, commit style and so on) reach
 
 - **Hooks need your approval once** in `/hooks` (see above).
 - **Commit attribution.** Codex adds `Co-authored-by: Codex` to commits when your ChatGPT account has commit attribution turned on. That is an account setting, not a config key: turn it off in your ChatGPT account settings. loadout's rule against AI attribution reaches Codex through the instruction block, but cannot remove the trailer.
-- **Context7 needs a one-time login in Codex.** The Context7 server that comes with the plugin asks for OAuth in Codex (Claude Code handles it for you). Run `codex mcp login context7` once; it opens the login in your browser.
+- **Context7 without a login.** The plugin's Context7 address asks Codex for an OAuth login; loadout sets the plain address for Codex instead, which works without one (anonymous use has Context7's lower rate limit).
+- **Logins and approvals are named where you work.** Bootstrap's "Still to do", `loadout configure set target codex on` and `loadout check` list what is still open in Codex: the hook approval in `/hooks` (until you approved them, and again after loadout's hooks change) and any MCP server that waits for a login (`codex mcp login NAME`). loadout does not approve hooks for you: that approval is Codex's safety gate.
 - **MCP tools load on demand in Codex.** Codex shows the model Serena's, codebase-memory's and the other servers' tools only when it searches for them, so a session can claim "Serena is not available" without looking. loadout's instruction block tells Codex to search first; if it still does not use them, ask for them by name ("use Serena's find_symbol").
 - **Type checks run per edit** instead of a language server that keeps running. Large TypeScript projects can take a few seconds; after 20 seconds the check reports itself as skipped.
 
