@@ -1,0 +1,23 @@
+name: Docs problem
+description: Something in the README or docs/ is wrong, missing or hard to follow.
+labels: ["documentation"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: A link or a path, with the section if you can.
+      placeholder: docs/how-to/personal-repo.md, "On every further machine"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested fix
+      description: Optional.

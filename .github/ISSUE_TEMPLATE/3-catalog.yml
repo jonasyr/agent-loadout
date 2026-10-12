@@ -1,0 +1,75 @@
+name: Propose a tool for the catalog
+description: Add, replace or drop a plugin, MCP server, skill, hook or binary in catalog.json.
+labels: ["catalog"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every keep or drop decision in `catalog.json` has a written reason. These answers are what that decision needs. To open the pull request yourself, follow [Add a tool to the catalog](https://github.com/jonasyr/agent-loadout/blob/main/docs/how-to/add-to-catalog.md).
+  - type: input
+    id: tool
+    attributes:
+      label: Tool and upstream link
+      placeholder: "context7, https://github.com/upstash/context7"
+    validations:
+      required: true
+  - type: dropdown
+    id: change
+    attributes:
+      label: Proposal
+      options:
+        - Add it (recommended for everyone)
+        - Add it to a project profile (only some projects need it)
+        - Add it as an alternative to a kit default
+        - Replace a kit tool with it
+        - Drop a kit tool (superseded or deprecated)
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - MCP server
+        - Plugin
+        - Marketplace
+        - Skill
+        - Hook
+        - Command-line tool (binary)
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why
+      description: What it does better than what the kit has today, in a few sentences. This becomes the entry's reason.
+    validations:
+      required: true
+  - type: textarea
+    id: overlap
+    attributes:
+      label: What it replaces or overlaps
+      description: Tools in the [catalog](https://github.com/jonasyr/agent-loadout/blob/main/catalog.json) or the toolset that do the same job, if any.
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: License
+      placeholder: MIT
+    validations:
+      required: true
+  - type: textarea
+    id: install
+    attributes:
+      label: How it is installed and updated
+      description: Marketplace, npm, uv, cargo, a release binary...; the commands if you know them. Can it be pinned to a version?
+    validations:
+      required: true
+  - type: textarea
+    id: maintenance
+    attributes:
+      label: Maintenance
+      description: Latest release, recent activity, who maintains it.
+    validations:
+      required: true

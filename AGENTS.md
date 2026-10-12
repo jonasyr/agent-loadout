@@ -33,6 +33,7 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 Other kit parts:
 
 - `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`, `.mcp.json`)
+- `.github/`: CI workflows, issue forms and the PR template (see CONTRIBUTING.md)
 - `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
 

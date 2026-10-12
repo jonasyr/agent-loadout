@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/jonasyr/agent-loadout/security/advisories/new
+    about: Privately, never in a public issue. See SECURITY.md.
+  - name: Documentation
+    url: https://github.com/jonasyr/agent-loadout/blob/main/docs/README.md
+    about: Guides, references and explanations; many questions are answered there.

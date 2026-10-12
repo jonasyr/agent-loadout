@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in loadout, bootstrap or the plugin does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Security problems go through the private advisory form instead (see the "New issue" page), never here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      placeholder: "`loadout adopt --apply` stopped with ... I expected ..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The commands you ran, in order. A fresh or existing setup? Which bootstrap flags?
+      placeholder: |
+        1. cd ~ && curl ... | bash -s -- --install
+        2. loadout adopt --apply
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS
+        - Windows with WSL 2
+        - Windows (native, experimental)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: The output of `loadout --version` and `claude --version`.
+      placeholder: loadout 0.1.0 (54af5b7), Claude Code 2.x
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `loadout check --verbose`
+      description: Read it before you paste it, and replace anything private (tokens, names, paths you do not want to share).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output of the failing command with `--verbose`
+      description: Optional. Same care with private data.
+      render: shell
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Optional. What you already tried, a workaround, screenshots.
