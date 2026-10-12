@@ -74,6 +74,8 @@ Each SVG records a hash of its source, palette, theme, `render.sh` and the pinne
 
 Both tapes share [`demo/style.tape`](demo/style.tape) (font, size, theme, window); title cards come from `demo/card.sh`. Re-render when the output of `bootstrap`, `adopt`, `check` or `init` changes, and before each release. Keep the GIF under 5 MB (lower the framerate in `render.sh` before shortening pauses). VHS's `Wait` reads the top of the scrollback, so the tapes pace answers with `Sleep` instead; check a render by looking at frames (`DEMO_KEEP_DIR=DIR demo/render.sh` keeps the mp4).
 
+The hero's wordmark (`docs/assets/wordmark.light.svg` and `.dark.svg`) is generated with the letters as outlines: `uv run --with fonttools docs/assets/wordmark.py` (needs JetBrains Mono Bold installed, or pass its `.ttf` path).
+
 ## Commits and pull requests
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, for example `feat(catalog): add <tool>`, `fix(adopt): ...`, `docs: ...`, `test: ...`.
