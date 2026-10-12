@@ -152,7 +152,7 @@ def _gh() -> list[CheckResult]:
     if not runner.have("gh"):
         return []
     res = runner.run(["gh", "auth", "status"], timeout=20)
-    return [CheckResult("gh auth", res.ok, "" if res.ok else "not logged in", "gh auth login && gh auth setup-git", "warn")]
+    return [CheckResult("gh auth", res.ok, "" if res.ok else "not logged in", "run `gh auth login`, then `gh auth setup-git`", "warn")]
 
 
 def _secrets() -> list[CheckResult]:

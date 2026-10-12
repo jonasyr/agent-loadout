@@ -11,19 +11,20 @@ from pathlib import Path
 
 
 def font_path(argv):
-    """The font file: the argument, else fontconfig's JetBrains Mono Bold; refuses a fallback font."""
+    """The font file: the argument, else fontconfig's JetBrains Mono Bold; refuses a fallback, Regular or variable font."""
     if len(argv) > 1:
         return argv[1]
-    found = subprocess.run(["fc-match", "-f", "%{file}", "JetBrains Mono:style=Bold"],
-                           capture_output=True, text=True, check=True).stdout
-    if "JetBrainsMono" not in Path(found).name.replace(" ", ""):
+    try:
+        found = subprocess.run(["fc-match", "-f", "%{file}", "JetBrains Mono:style=Bold"],
+                               capture_output=True, text=True, check=True).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        sys.exit("fontconfig (fc-match) is not available to find JetBrains Mono Bold; pass the .ttf path as an argument")
+    name = Path(found).name
+    # a variable font (JetBrainsMono[wght].ttf) would draw its default instance, which is Regular
+    if not name.startswith("JetBrainsMono-Bold.") or "[" in name:
         sys.exit(f"JetBrains Mono Bold is not installed (fontconfig offered {found}); pass the .ttf path as an argument")
     return found
 
-
-from fontTools.pens.svgPathPen import SVGPathPen  # noqa: E402  (font_path above must work without fontTools)
-from fontTools.pens.transformPen import TransformPen  # noqa: E402
-from fontTools.ttLib import TTFont  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 WORD = "loadout"
@@ -36,11 +37,18 @@ VARIANTS = {
 }
 
 
+def _number(value):
+    """Two decimals are far below a pixel at any size the wordmark is shown; drops float noise like 13.312000000000001."""
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
 def word_path(font):
     """The word's outline as one SVG path with its baseline at y=0; returns (d, width, cap height)."""
+    from fontTools.pens.svgPathPen import SVGPathPen
+    from fontTools.pens.transformPen import TransformPen
     glyphs, cmap = font.getGlyphSet(), font.getBestCmap()
     scale = SIZE / font["head"].unitsPerEm
-    pen = SVGPathPen(glyphs)
+    pen = SVGPathPen(glyphs, ntos=_number)
     x = 0
     for ch in WORD:
         name = cmap[ord(ch)]
@@ -66,7 +74,10 @@ def svg(variant, d, width, cap):
 
 
 def main(argv):
+    from fontTools.ttLib import TTFont
     font = TTFont(font_path(argv))
+    if "fvar" in font or font["OS/2"].usWeightClass != 700:
+        sys.exit("the font is not JetBrains Mono Bold (a variable font or another weight); pass the Bold .ttf")
     d, width, cap = word_path(font)
     for variant in VARIANTS:
         (HERE / f"wordmark.{variant}.svg").write_text(svg(variant, d, width, cap), encoding="utf-8", newline="\n")
