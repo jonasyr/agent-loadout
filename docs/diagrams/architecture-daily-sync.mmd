@@ -1,0 +1,37 @@
+sequenceDiagram
+  autonumber
+  box rgba(234, 88, 12, 0.10) Claude Code
+    participant S as Session
+  end
+  box rgba(37, 99, 235, 0.10) loadout
+    participant H as hook-session-start
+    participant M as maintenance
+  end
+  box rgba(22, 163, 74, 0.10) Your machine
+    participant G as Kit and personal repos
+    participant C as ~/.claude
+  end
+
+  S->>H: session starts
+  H-->>S: queued notices
+  opt daily pull or weekly check due
+    H-)M: start detached
+    Note over S,H: the session does not wait
+    activate M
+    Note over M: one run at a time
+    opt daily, unless LOADOUT_NO_AUTO_PULL=1
+      M->>G: git pull --ff-only
+      Note over G: skips a checkout with<br/>uncommitted changes
+      G-->>M: new commits, or none
+      opt new commits arrived
+        M->>C: merge settings, add personal MCP
+        M->>C: relink skills and hook scripts
+      end
+    end
+    opt weekly
+      M->>M: check tool versions
+      Note right of M: notice only,<br/>never installs
+    end
+    M--)H: queue notices for the next session
+    deactivate M
+  end

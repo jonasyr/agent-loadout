@@ -2,3 +2,5 @@
 *.sh text eol=lf
 bin/loadout text eol=lf
 *.py text eol=lf
+# Diagram sources are hashed by docs/diagrams/render.sh; keep them byte-stable across platforms.
+*.mmd text eol=lf

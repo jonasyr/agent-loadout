@@ -1,0 +1,51 @@
+---
+config:
+  look: neo
+  flowchart:
+    curve: basis
+    nodeSpacing: 30
+    rankSpacing: 70
+    wrappingWidth: 320
+---
+flowchart LR
+  subgraph ENTRY["Entry points"]
+    direction TB
+    readme["`**README.md**
+    what it is · install · run`"]
+    claude["`**CLAUDE.md**
+    one line: @AGENTS.md`"]
+    agents["`**AGENTS.md**
+    purpose · commands
+    conventions · map`"]
+  end
+
+  subgraph NOTES["Agent notes"]
+    memories["`**.serena/memories/**
+    one summary and link per topic
+    gotchas · recipes`"]
+  end
+
+  docs[("`**docs/**
+  single source of truth
+  tutorials · how-tos · reference
+  explanation · ADRs`")]
+
+  auto["`**Claude Code auto memory**
+  machine-local notes only`"]
+
+  claude -- imports --> agents
+  agents -- maps --> memories
+  readme e2@-- links into --> docs
+  agents e3@-- links into --> docs
+  memories e4@-- links into --> docs
+  auto e5@-. "never project facts" .-x docs
+
+  class docs truth
+  class readme,claude,agents entry
+  class memories notes
+  class auto local
+  class ENTRY kitGroup
+  class NOTES notesGroup
+  class e2,e3,e4 truthLink
+  class e5 muted
+%% palette

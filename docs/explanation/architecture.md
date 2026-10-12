@@ -2,80 +2,12 @@
 
 loadout has three parts: the kit repo (shared), your personal layer (yours) and `~/.claude` (where Claude Code reads its configuration). The CLI merges the first two into the third and keeps it current.
 
-```mermaid
----
-config:
-  look: neo
-  flowchart:
-    curve: basis
-    nodeSpacing: 24
-    rankSpacing: 80
-    wrappingWidth: 320
----
-flowchart LR
-  subgraph KIT["Kit repo · shared by everyone"]
-    direction TB
-    kPlugin["`**plugins/loadout/**
-    hooks · skills · MCP servers`"]
-    kRules["`**rules/**
-    how Claude uses the tools`"]
-    kBase["`**settings.base.json**
-    the keys loadout manages`"]
-  end
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-overview.dark.svg">
+  <img alt="Claude Code installs the kit's plugin and the kit's rules are linked into ~/.claude/rules/loadout. Your personal layer's rules, skills and hooks are linked into ~/.claude, and its mcp.json is added with claude mcp add-json. settings.base.json and your settings.json go through a three-way merge, which reads and rewrites a snapshot and writes ~/.claude/settings.json." src="../diagrams/architecture-overview.light.svg">
+</picture>
 
-  subgraph PER["Personal layer · your git repo"]
-    direction TB
-    pRules["`**rules/**
-    me.md, your preferences`"]
-    pSkills["`**skills/ · hooks/**`"]
-    pSet["`**settings.json**
-    your overrides`"]
-    pMcp["`**mcp.json**
-    your MCP servers`"]
-  end
-
-  merge{{"`**three-way merge**`"}}
-  snap[("`**~/.claude/.loadout/**
-  snapshot of the last merge`")]
-
-  subgraph CC["Claude Code configuration"]
-    direction TB
-    cPlugin["`**~/.claude/plugins/**
-    the loadout plugin`"]
-    cRulesK["`**~/.claude/rules/loadout**`"]
-    cRulesP["`**~/.claude/rules/personal**`"]
-    cSkills["`**~/.claude/skills/**
-    **~/.claude/hooks/personal/**`"]
-    cSet["`**~/.claude/settings.json**`"]
-    cMcp["`**~/.claude.json**
-    user-scope MCP servers`"]
-  end
-
-  kPlugin -. "Claude Code installs and auto-updates" .-> cPlugin
-  kRules -- link --> cRulesK
-  pRules -- link --> cRulesP
-  pSkills -- link --> cSkills
-  kBase ==> merge
-  pSet ==> merge
-  snap <-. "read, then rewrite" .-> merge
-  merge ==> cSet
-  pMcp -- "claude mcp add-json" --> cMcp
-
-  classDef kit fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#0f172a
-  classDef personal fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#0f172a
-  classDef claude fill:#ffedd5,stroke:#ea580c,stroke-width:1.5px,color:#0f172a
-  classDef engine fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a
-  classDef state fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:4 3,color:#0f172a
-  class kPlugin,kRules,kBase kit
-  class pRules,pSkills,pSet,pMcp personal
-  class cPlugin,cRulesK,cRulesP,cSkills,cSet,cMcp claude
-  class merge engine
-  class snap state
-  style KIT fill:#2563eb0f,stroke:#2563eb,stroke-width:1.5px
-  style PER fill:#16a34a0f,stroke:#16a34a,stroke-width:1.5px
-  style CC fill:#ea580c0f,stroke:#ea580c,stroke-width:1.5px
-  linkStyle 4,5,7 stroke:#d97706,stroke-width:2.5px
-```
+<sub>[Source](../diagrams/architecture-overview.mmd)</sub>
 
 ## The parts
 
@@ -102,45 +34,12 @@ The merge combines the kit's `settings.base.json`, your personal `settings.json`
 
 At each session start the plugin runs `loadout hook-session-start`. It prints queued notices and, when the daily pull or the weekly check is due, starts `loadout maintenance` as a detached process. The session never waits for it.
 
-```mermaid
-sequenceDiagram
-  autonumber
-  box rgba(234, 88, 12, 0.10) Claude Code
-    participant S as Session
-  end
-  box rgba(37, 99, 235, 0.10) loadout
-    participant H as hook-session-start
-    participant M as maintenance
-  end
-  box rgba(22, 163, 74, 0.10) Your machine
-    participant G as Kit and personal repos
-    participant C as ~/.claude
-  end
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-daily-sync.dark.svg">
+  <img alt="When a session starts, hook-session-start returns queued notices at once and, when due, starts maintenance in the background without making the session wait. Maintenance runs one at a time: daily it runs git pull --ff-only on the kit and personal repos (skipping a checkout with uncommitted changes) and, after new commits, merges settings and relinks skills and hooks; weekly it checks tool versions without installing anything. It queues notices for the next session." src="../diagrams/architecture-daily-sync.light.svg">
+</picture>
 
-  S->>H: session starts
-  H-->>S: queued notices
-  opt daily pull or weekly check due
-    H-)M: start detached
-    Note over S,H: the session does not wait
-    activate M
-    Note over M: one run at a time
-    opt daily, unless LOADOUT_NO_AUTO_PULL=1
-      M->>G: git pull --ff-only
-      Note over G: skips a checkout with<br/>uncommitted changes
-      G-->>M: new commits, or none
-      opt new commits arrived
-        M->>C: merge settings, add personal MCP
-        M->>C: relink skills and hook scripts
-      end
-    end
-    opt weekly
-      M->>M: check tool versions
-      Note right of M: notice only,<br/>never installs
-    end
-    M--)H: queue notices for the next session
-    deactivate M
-  end
-```
+<sub>[Source](../diagrams/architecture-daily-sync.mmd)</sub>
 
 Details, from `maintenance._maintain`:
 

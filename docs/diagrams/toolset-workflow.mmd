@@ -1,0 +1,66 @@
+---
+config:
+  look: neo
+  flowchart:
+    curve: basis
+    nodeSpacing: 26
+    rankSpacing: 46
+    wrappingWidth: 300
+---
+flowchart TB
+  idea(["`**An idea or a bug**`"])
+
+  subgraph THINK["Think first"]
+    direction LR
+    brain["`**brainstorming**
+    asks, proposes, writes a spec`"]
+    plan["`**writing-plans**
+    bite-sized, test-first tasks`"]
+    adv["`**execution-advisor**
+    inline, subagents or both`"]
+    brain --> plan --> adv
+  end
+
+  subgraph BUILD["Build"]
+    direction LR
+    tdd["`**test-driven build**
+    red, green, commit`"]
+    know["`**Know the code**
+    codebase-memory · Serena
+    LSP diagnostics`"]
+    docs["`**Know the libraries**
+    Context7 · Microsoft Learn`"]
+    ui["`**UI work**
+    frontend-design · playwright-cli
+    impeccable`"]
+    tdd ~~~ know ~~~ docs ~~~ ui
+  end
+
+  subgraph FINISH["Finish"]
+    direction LR
+    rev["`**Review**
+    /code-review · security-guidance`"]
+    sync["`**/loadout:docs-sync**
+    docs stay true`"]
+    ship["`**commit-commands**
+    commit, push, PR`"]
+    rev --> sync --> ship
+  end
+
+  rtk[("`**rtk**
+  shrinks command output
+  in every step`")]
+
+  idea --> THINK
+  THINK ==> BUILD
+  BUILD ==> FINISH
+  rtk -.- BUILD
+
+  class adv,sync kit
+  class brain,plan,tdd,rev,ship claude
+  class know,docs,ui engine
+  class idea,rtk state
+  class THINK claudeGroup
+  class BUILD engineGroup
+  class FINISH kitGroup
+%% palette

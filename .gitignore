@@ -4,3 +4,5 @@ secrets.env
 .loadout/
 .venv/
 uv.lock
+# left behind only when docs/diagrams/render.sh is killed
+docs/diagrams/.render.*/
