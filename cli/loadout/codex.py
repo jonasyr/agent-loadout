@@ -320,6 +320,14 @@ def _text(section_lines: list[str]) -> str:
     return "\n".join(section_lines).rstrip("\n").rstrip() + "\n"
 
 
+def _same_table(section_lines: list[str], text: str, tl) -> bool:
+    """The user's table already says exactly what loadout would write: no conflict to report."""
+    try:
+        return tl.loads(_text(section_lines)) == tl.loads(text)
+    except Exception:
+        return False
+
+
 def _prune(value):
     if isinstance(value, dict):
         kept = {k: _prune(v) for k, v in value.items()}
@@ -378,8 +386,9 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             sections.remove(sec)
             owned_tables.pop(name)
     for name, text in tables.items():
-        if find(("mcp_servers", name)) is not None:
-            if owned_tables.get(name) != text:
+        existing = find(("mcp_servers", name))
+        if existing is not None:
+            if owned_tables.get(name) != text and not _same_table(existing[1], text, tl):
                 lines.append(f"mcp {name}: left as is, config.toml already has a server of that name")
             continue
         sections.append([("mcp_servers", name), text.rstrip("\n").splitlines(), []])
