@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. This page covers setup, tests, evals, catalog changes, issues and the pull request flow. How the code fits together is in [Architecture](docs/explanation/architecture.md); the documentation rules are in [Documentation strategy](docs/explanation/documentation-strategy.md).
+Thanks for helping. This page covers setup, tests, evals, catalog changes, issues and the pull request flow. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). How the code fits together is in [Architecture](docs/explanation/architecture.md); the documentation rules are in [Documentation strategy](docs/explanation/documentation-strategy.md).
 
 ## Setup
 
