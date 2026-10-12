@@ -68,3 +68,23 @@ def test_mcp_list_runs_from_home_so_repo_servers_do_not_count(fake_home, fake_ru
     codex.mcp_names()
     i = next(i for i, c in enumerate(fake_runner.calls) if c[:3] == ["codex", "mcp", "list"])
     assert fake_runner.cwds[i] == str(paths.home())
+
+
+@needs_tomllib
+def test_first_change_backup_still_happens_after_a_project_plugin_was_recorded(fake_home, fake_runner, monkeypatch):
+    _settings(monkeypatch)
+    cfg = paths.codex_home() / "config.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text('model = "x"\n')
+    codex.add_project_plugin("deepeval@claude-plugins-official")
+    bk = backup.Backup(description="t")
+    codex.apply_config(bk)
+    assert any("before loadout's first change" in s["label"] for s in bk.steps)
+
+
+@needs_tomllib
+def test_a_broken_key_record_is_ignored(fake_home, fake_runner, monkeypatch):
+    _settings(monkeypatch)
+    codex.record_path().parent.mkdir(parents=True, exist_ok=True)
+    codex.record_path().write_text(json.dumps({"tables": {}, "keys": {"not a [key": "x = 1"}}))
+    codex.apply_config(backup.Backup(description="t"))  # does not raise

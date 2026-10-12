@@ -38,8 +38,8 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool) -> list[str]:
     """Add the profile's servers and plugin switches to the repo's .codex/config.toml. Only adds tables; a table of
     the same name is the user's and stays."""
     path = project / ".codex" / "config.toml"
-    if not _inside(path.parent, project):
-        return [f"skipped {path}: .codex points outside {project}"]
+    if not _inside(path.parent, project) or not _inside(path, project):
+        return [f"skipped {path}: it points outside {project} (a symlinked .codex or config.toml)"]
     tl = codex._tomllib()
     if tl is None:
         return [f"skipped {path}: editing it safely needs Python 3.11 or newer"]
@@ -85,8 +85,8 @@ def skills(project: Path, dry_run: bool) -> list[str]:
     src_root, dest_root = project / ".claude" / "skills", project / ".agents" / "skills"
     if not src_root.is_dir():
         return []
-    if not _inside(dest_root.parent, project):
-        return [f"skills not linked: {dest_root.parent} points outside {project}"]
+    if not _inside(dest_root.parent, project) or not _inside(dest_root, project):
+        return [f"skills not linked: {dest_root} points outside {project} (a symlinked .agents or .agents/skills)"]
     out = []
     for entry in sorted(src_root.iterdir()):
         if entry.name.startswith(".") or not entry.is_dir():

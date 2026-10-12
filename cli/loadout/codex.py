@@ -377,7 +377,10 @@ def _without_owned(data: dict, tables, keys, tl) -> dict:
         for name in tables:
             servers.pop(name, None)
     for dotted in keys:
-        *parents, last = _key_path(dotted, tl)
+        try:
+            *parents, last = _key_path(dotted, tl)
+        except Exception:  # a hand-edited record entry that is not a TOML key: nothing to leave out
+            continue
         cur = data
         for part in parents:
             cur = cur.get(part) if isinstance(cur, dict) else None
@@ -475,7 +478,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         return lines + [f"skipped {path}: the edit would change entries loadout does not own; nothing written"]
     if dry_run:
         return lines + ["config.toml: changes pending"]
-    if path.exists() and not record:
+    if path.exists() and not (record.get("tables") or record.get("keys")):  # project_plugins alone wrote nothing
         bk.save_copy(path, "Codex config.toml before loadout's first change")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")

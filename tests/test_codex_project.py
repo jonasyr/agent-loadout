@@ -142,3 +142,23 @@ def test_trust_note_unless_the_project_is_trusted(repo, monkeypatch):
     cfg.write_text(f'[projects."{repo.resolve()}"]\ntrust_level = "trusted"\n')
     if codex._tomllib() is not None:
         assert codex_project.TRUST_NOTE not in codex_project.apply(WEB, repo, install=False, dry_run=False)
+
+
+def test_a_symlinked_config_file_outside_the_repo_is_refused(repo, tmp_path):
+    outside = tmp_path / "outside.toml"
+    outside.write_text("")
+    (repo / ".codex").mkdir()
+    (repo / ".codex" / "config.toml").symlink_to(outside)
+    lines = codex_project.config(WEB, repo, dry_run=False)
+    assert any("points outside" in l for l in lines)
+    assert outside.read_text() == ""
+
+
+def test_a_symlinked_skills_folder_outside_the_repo_is_refused(repo, tmp_path):
+    (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
+    (tmp_path / "elsewhere").mkdir()
+    (repo / ".agents").mkdir()
+    (repo / ".agents" / "skills").symlink_to(tmp_path / "elsewhere")
+    lines = codex_project.skills(repo, dry_run=False)
+    assert any("points outside" in l for l in lines)
+    assert list((tmp_path / "elsewhere").iterdir()) == []
