@@ -194,8 +194,12 @@ def _codex() -> list[CheckResult]:
 
 
 def run_checks() -> list[CheckResult]:
-    return [*_python(), *_wsl(), *_links(), *_skills_json(), *_settings(), *_plugins(), *_codex(), *_connectors(),
-            *_own(), *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
+    from . import targets
+    on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
+    return [*_python(), *_wsl(),
+            *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
+            *_codex(), *(_connectors() if on else []), *(_own() if on else []),
+            *_binaries(), *(_mcp_path() if on else []), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

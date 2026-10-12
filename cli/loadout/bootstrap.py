@@ -99,7 +99,8 @@ def still_to_do(key: str) -> list[str]:
     out = []
     if not runner.have("git"):
         out.append(f"install git: {MANUAL_STEPS['git'][key]}")
-    if runner.have("claude") and not _claude_logged_in():
+    from . import targets
+    if targets.claude_enabled() and runner.have("claude") and not _claude_logged_in():
         out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
@@ -496,7 +497,48 @@ def _setup_windows_path(dirs: list[Path], bk: Backup | None) -> tuple[list[str],
         saved.unlink(missing_ok=True)
 
 
-def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None) -> int:
+AGENT_QUESTION = "Which coding agents should loadout set up?  1) Claude Code  2) Codex  3) both  [{default}] "
+_ANSWERS = {"1": {"claude": True, "codex": False}, "2": {"claude": False, "codex": True},
+            "3": {"claude": True, "codex": True}}
+
+
+def choose_agents(ask, interactive: bool, flag) -> dict:
+    return _choose_agents(ask, interactive, flag)[0]
+
+
+def _choose_agents(ask, interactive: bool, flag) -> tuple[dict, bool]:
+    """(choice, store it): --agents first, then a decided personal layer, then the question (interactive), else
+    Claude Code as before. Only an explicit choice is stored: writing the default into an existing git-backed
+    personal layer would leave it dirty and pause the daily sync."""
+    from . import targets
+    if flag is not None:
+        return targets.parse_agents(flag), True
+    stored = targets.from_file()
+    if stored is not None:
+        return stored, False
+    existing = paths.personal_root().exists()
+    if not interactive or (existing and not runner.have("codex")):
+        return {"claude": True, "codex": False}, False  # as before this change: no new question without Codex
+    default = "3" if runner.have("codex") else "1"
+    answer = ask("\n" + AGENT_QUESTION.format(default=default)).strip() or default
+    if answer not in _ANSWERS:
+        print(f"no such choice ({answer!r}); using {default} (change it later: loadout configure set target)")
+        answer = default
+    return dict(_ANSWERS[answer]), True
+
+
+def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
+              agents: str | None = None) -> int:
+    from . import targets
+    try:
+        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents)
+    finally:
+        targets.OVERRIDE = None
+
+
+def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
+               agents: str | None) -> int:
+    from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
     print(INTRO)
@@ -508,6 +550,8 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         out.status("WSL", f"WSL {version}")
         for line in wsl.report_lines(version, wsl.current_dir()):
             out.problem(line)
+    chosen, store = _choose_agents(ask, interactive and not yes, agents)
+    targets.OVERRIDE = chosen  # the right tools get installed before the personal layer exists to store the choice
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []
@@ -529,8 +573,23 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     else:
         out.status("Personal layer", "clone failed", "fail")
         out.problem(message)
+    if personal_ok:
+        stored = targets.from_file()
+        if stored is not None and agents is None and stored != chosen:  # a cloned layer chose: its choice wins
+            chosen = stored
+            targets.OVERRIDE = chosen
+            names = " and ".join(n for n, on in (("Claude Code", chosen["claude"]), ("Codex", chosen["codex"])) if on)
+            print(f"using your personal layer's agents: {names}")
+            more_notes: list[str] = []
+            check_prereqs(install, ask, installed=installed, notes=more_notes)  # install what the layer adds
+            for line in more_notes:
+                if line not in notes:  # the first run already showed the rest
+                    out.problem(line)
+        elif store:
+            targets.set_agents(chosen)
+    claude_on = chosen["claude"]
     _step("Links")
-    link_lines = link.link_all(bk, retry_symlinks=True) + link.link_bin(bk)
+    link_lines = (link.link_all(bk, retry_symlinks=True) if claude_on else []) + link.link_bin(bk)
     if any(line.endswith("(symlinks unavailable)") for line in link_lines):
         # one visible line for what changes in practice; the per-file lines stay with --verbose
         link_lines.append("warning: symlinks unavailable, so rules, skills and hooks are copies, refreshed by bootstrap "
@@ -545,17 +604,20 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
     elif not yes and ui.confirm(ask, "\nCustomize preferences and global add-ons now? [y/N] "):
         from .configure import wizard
         wizard(ask, first_run=False, setup=False, interactive=interactive, preferences_asked=starter)  # settings, MCP servers and plugins are applied below
-    _step("Settings")
-    settings_path = paths.claude_home() / "settings.json"
-    if settings_path.exists() and settings_merge.would_change():
-        bk.save_copy(settings_path, "settings.json before loadout merge")
-    settings_merge.backup_snapshot(bk)
-    before, after = settings_merge.apply_settings()
-    from .personal_mcp import apply_mcp
-    merged = "settings updated" if before != after else "settings already up to date"
-    _report("Rules and settings", "linked, " + ("settings merged" if before != after else "settings up to date"),
-            link_lines + [merged] + apply_mcp())
-    if plugins:
+    if claude_on:
+        _step("Settings")
+        settings_path = paths.claude_home() / "settings.json"
+        if settings_path.exists() and settings_merge.would_change():
+            bk.save_copy(settings_path, "settings.json before loadout merge")
+        settings_merge.backup_snapshot(bk)
+        before, after = settings_merge.apply_settings()
+        from .personal_mcp import apply_mcp
+        merged = "settings updated" if before != after else "settings already up to date"
+        _report("Rules and settings", "linked, " + ("settings merged" if before != after else "settings up to date"),
+                link_lines + [merged] + apply_mcp())
+    else:
+        _report("Launcher", "linked", link_lines)
+    if plugins and claude_on:
         _step("Marketplaces and plugins")
         lines = setup_plugins(say=lambda line: print(line, flush=True))
         if any(line.endswith(": added") for line in lines):
@@ -563,10 +625,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         total = sum(1 for on in settings_merge.desired_settings().get("enabledPlugins", {}).values() if on)
         failed = sum(1 for line in lines if PROBLEM.search(line))
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
-    from . import codex
-    if personal_ok and not yes and interactive and runner.have("codex") and not codex.decided():
-        codex.set_enabled(ui.confirm(ask, "\nCodex found. Set it up with loadout too? [y/N] "))
-    if codex.enabled():
+    if chosen["codex"]:
         _step("Codex")
         problem = codex.unavailable()
         if problem:
@@ -576,7 +635,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
             failed = sum(1 for line in lines if PROBLEM.search(line))
             _report("Codex", "rules, plugins, MCP servers and skills set up" if not failed else f"{failed} problem(s) (below)", lines)
     adopt.LAST_BACKUP = None
-    if adopt_step and personal_ok:
+    if adopt_step and personal_ok and claude_on:
         _step("Adopt existing setup")
         if not yes and not interactive:
             print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
@@ -614,11 +673,13 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
+    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if chosen[a])
+    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if chosen[a])
     if out.VERBOSE:
-        print("\nThen start Claude Code." if path_changed else "\nRestart Claude Code to load plugins and rules.")
+        print(f"\nThen start {names}." if path_changed else f"\nRestart {names} to load plugins and rules.")
     else:
-        print("\nNext: run `claude` in a new terminal." if path_changed
-              else "\nNext: run `claude` (restart it if it is open). The kit loads automatically.")
+        print(f"\nNext: run {run} in a new terminal." if path_changed
+              else f"\nNext: run {run} (restart it if it is open). The kit loads automatically.")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1

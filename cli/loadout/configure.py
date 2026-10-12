@@ -133,8 +133,9 @@ def set_pref_choice(pid: str, value: str, ask: Ask, interactive: bool) -> list[s
 
 def show() -> str:
     lines = ["Change one with: loadout configure set <plugin|mcp> <id> on|off"]
-    from . import codex
-    lines.append(f"Codex: {'on' if codex.enabled() else 'off'} (set with: loadout configure set target codex on|off)")
+    from . import targets
+    lines.append(f"Agents: Claude Code {'on' if targets.claude_enabled() else 'off'}, Codex {'on' if targets.codex_enabled() else 'off'}"
+                 " (set with: loadout configure set target claude|codex on|off)")
     for a in addons():
         on = is_on(a)
         source = "default" if on == a.default_on else "personal"
@@ -173,20 +174,29 @@ def offer_commit(ask: Ask) -> None:
 
 def apply_all(ask: Ask, setup: bool = True) -> None:
     """setup=False: the caller (bootstrap) applies settings, MCP servers and plugins itself afterwards."""
-    from . import bootstrap
+    from . import bootstrap, codex, targets
     from .personal_mcp import apply_mcp
     from .settings_merge import apply_settings
 
-    if setup:
+    claude_on, codex_on = targets.claude_enabled(), targets.codex_enabled()
+    if setup and claude_on:
         apply_settings()
         plugin_lines = bootstrap.setup_plugins(say=lambda line: print(line, flush=True))
         if any(line.endswith(": added") for line in plugin_lines):
             apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
         for line in plugin_lines + apply_mcp():
             print(line)
+    if setup and codex_on and codex.unavailable() is None:  # the same choices reach Codex (plugins, MCP servers)
+        from .backup import Backup
+        for line in codex.apply_all(Backup(description="configure: apply to Codex"),
+                                    say=lambda line: print(line, flush=True)):
+            print(line)
     offer_commit(ask)
     if setup:
-        print("Restart Claude Code (or run /reload-plugins) to load the changes.")
+        hints = [h for h, on in (("restart Claude Code (or run /reload-plugins)", claude_on),
+                                 ("start a new Codex session", codex_on)) if on]
+        text = " and ".join(hints)
+        print(text[:1].upper() + text[1:] + " to load the changes.")
 
 
 def _about_you(ask: Ask, bk: Backup) -> bool:

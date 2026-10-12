@@ -33,7 +33,10 @@ def by_id(entry_id: str) -> dict | None:
 
 
 def binaries() -> list[dict]:
-    return [e for e in load() if e["kind"] == "binary"]
+    """Binary entries; one tied to a coding agent (target) only while that agent is chosen (targets.json)."""
+    from . import targets
+    on = {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
+    return [e for e in load() if e["kind"] == "binary" and on.get(e.get("target"), True)]
 
 
 def install_order(entries: list[dict]) -> list[dict]:

@@ -24,8 +24,9 @@ The file is one JSON object with one key, `entries`, a list of entries. Ids are 
 | `install` | no | Platform commands that install a `binary`. |
 | `update` | no | Platform commands that update a `binary`. |
 | `manual` | no | Text shown when loadout cannot install or update a `binary` itself. |
-| `mise` | no | For a `binary`: the tool name to use with `mise upgrade`, when it differs from the id. No current entry sets it. |
+| `mise` | no | For a `binary`: the tool name to use with `mise upgrade`, when it differs from the id. `codex` sets it (the mise tool is also called `codex`; set for clarity). |
 | `needs` | no | For a binary: ids of binaries it is installed with (for example "node" needs "mise"). Bootstrap installs those first and skips this one if they failed. |
+| `target` | no | For a `binary`: `claude` or `codex`. The binary is installed, checked and updated only while that coding agent is chosen (`targets.json`, see [Use loadout with Codex](../how-to/codex.md)). |
 | `helper` | no | For a binary: installed only when another binary needs it; `loadout check` does not report it. |
 
 ### `match`

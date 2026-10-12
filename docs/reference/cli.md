@@ -22,15 +22,16 @@ Some commands return their own codes. They are listed per command and add to the
 Set up or repair this machine. Safe to re-run.
 
 ```
-loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose]
+loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [--agents LIST]
 ```
 
 | Flag | Meaning |
 |---|---|
 | `--install` | Install missing tool binaries. |
-| `--yes` | Accept defaults without asking. Adopt applies remove, migrate and scope-down; binary updates are never applied. |
+| `--yes` | Accept defaults without asking. Adopt applies remove, migrate and scope-down; binary updates are never applied. Without `--agents`, a machine that has not chosen gets Claude Code. |
 | `--no-plugins` | Skip adding marketplaces and installing plugins (offline or CI). |
 | `--no-adopt` | Skip reviewing the existing setup. |
+| `--agents LIST` | `claude`, `codex` or `claude,codex`: the coding agents to set up, without asking. Stored in `<personal>/targets.json`; it wins over the personal layer's choice. |
 | `--verbose` | Print every detail of every step (links, commands, the full check list, the backup path). |
 
 By default bootstrap prints one status line per step (`✓`, `!` for a warning, `✗` for a failure), the adopt questions, and at the end the health-check count, `Undo any time: loadout restore --list` when it made a backup, and the next step. Problem lines (a failed install or plugin, a check that failed) are always printed in full. Without a terminal, colour is off; where the console cannot show `✓`, ASCII stands in.
@@ -94,7 +95,7 @@ loadout configure [--all] [--first-run] [show | prefs | own | set KIND NAME VALU
 | `loadout configure set pref KEY JSON` | Set a key in your personal `settings.json`. `JSON` is parsed as JSON; if that fails, it is stored as a string. |
 | `loadout configure own [--all]` | List the tools loadout does not manage. Read-only. |
 | `loadout configure set own NAME CHOICE` | Decide one own tool. `CHOICE` is `global`, `project:<profile>`, `leave` or `remove`. |
-| `loadout configure set target codex on\|off` | Set up Codex too, or stop doing so. Stored in `<personal>/targets.json`. See [Use loadout with Codex](../how-to/codex.md). |
+| `loadout configure set target claude\|codex on\|off` | Set up that coding agent, or stop doing so (nothing is uninstalled; one agent stays on). Stored in `<personal>/targets.json`. See [Use loadout with Codex](../how-to/codex.md). |
 
 | Flag | Meaning |
 |---|---|

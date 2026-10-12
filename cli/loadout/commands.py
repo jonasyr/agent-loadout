@@ -139,11 +139,12 @@ def _register_bootstrap(sub):
     p.add_argument("--no-plugins", action="store_true", help="skip adding marketplaces and installing plugins (offline/CI)")
     p.add_argument("--no-adopt", action="store_true", help="skip reviewing the existing setup")
     p.add_argument("--verbose", action="store_true", help="print every detail of every step")
+    p.add_argument("--agents", help="claude, codex or claude,codex (default: ask; Claude Code without a terminal)")
 
     def run(a):
         if a.verbose:
             out.VERBOSE = True
-        return bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask)
+        return bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask, agents=a.agents)
 
     p.set_defaults(func=run)
 
@@ -194,13 +195,22 @@ def _register_configure(sub):
         if a.kind == "own":
             return configure.set_own(a.name, a.value)
         if a.kind == "target":
-            if a.name != "codex":
-                raise ValueError("usage: loadout configure set target codex on|off")
-            from . import codex
+            from . import codex, targets
             on = configure.parse_switch(a.value, "target")
-            print(codex.set_enabled(on))
+            print(targets.set_target(a.name, on))  # ValueError (unknown agent, last one off) -> exit 1
+            if on and a.name == "claude":
+                from . import runner
+                if not runner.have("claude"):  # Codex only so far: Claude Code needs installing and linking first
+                    configure.offer_commit(_ask)
+                    print("Claude Code is not installed yet: run `loadout bootstrap --install` to install and set it up")
+                    return 0
+                from . import link
+                from .backup import Backup
+                link.link_all(Backup(description="configure: link rules and skills for Claude Code"))
+                configure.apply_all(_ask)  # includes the commit offer
+                return 0
             configure.offer_commit(_ask)  # targets.json lives in the personal layer; uncommitted it pauses the sync
-            if on:  # set Codex up now, not at the next bootstrap; Claude Code's setup is unaffected
+            if on and a.name == "codex":  # set Codex up now, not at the next bootstrap
                 problem = codex.unavailable()
                 if problem:
                     print(f"note: {problem}; Codex is set up once that is fixed (loadout bootstrap)")
