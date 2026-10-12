@@ -108,7 +108,7 @@ Then open Claude Code there and run `/loadout:onboard`: it reads the project and
 - **Curated defaults.** The toolset complements itself instead of overlapping, and every keep or drop decision has a written reason in [`catalog.json`](catalog.json).
 - **Works on existing setups.** `loadout adopt` shows what it would change and why, asks first, and backs up what it replaces ([your own tools](docs/how-to/your-own-tools.md)).
 - **Stays up to date by itself.** Claude Code updates the plugins, loadout pulls the kit and your personal layer daily, and you get a notice when tools have updates ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
-- **Yours on top.** Your preferences, own tools and profiles live in your personal layer, a private git repo that follows you to every machine ([set it up](docs/how-to/personal-repo.md)); change them with `loadout configure` or `/loadout:configure` ([preferences](docs/how-to/set-preferences.md)).
+- **Yours on top.** Your preferences, own tools and profiles live in your personal layer, ideally a private git repo, so they follow you to every machine ([set it up](docs/how-to/personal-repo.md)); change them with `loadout configure` or `/loadout:configure` ([preferences](docs/how-to/set-preferences.md)).
 - **Projects too.** `loadout init` prepares any repo for agent work, profiles add domain tools only where needed, and three skills keep the docs true ([documentation strategy](docs/explanation/documentation-strategy.md)).
 
 ## The toolset
@@ -164,6 +164,10 @@ The full index is [docs/README.md](docs/README.md).
 | Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 Other agents (Codex, Gemini CLI, Cursor) are not supported yet; the plan is in [Architecture](docs/explanation/architecture.md#other-agents-planned).
+
+## Contributing
+
+Contributions are very welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first and follow it: it covers setup, tests, the documentation rules and how to open a pull request.
 
 ## License
 

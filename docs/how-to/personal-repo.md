@@ -1,33 +1,43 @@
 # Keep your personal layer in a private git repo
 
-Use this page to sync your preferences, own tools and profiles across machines. Your personal layer is the folder that holds everything that is yours rather than the kit's: `rules/me.md`, your `settings.json` overrides, your MCP servers, skills, hooks and profiles. It lives in `~/.config/loadout/personal` (or wherever `LOADOUT_PERSONAL` points). Which file does what: [Personal layer](../reference/personal-layer.md).
+Use this page to sync your preferences, own tools and profiles across machines. Your personal layer is the folder that holds everything that is yours rather than the kit's: `rules/me.md`, your `settings.json` overrides, your MCP servers, skills, hooks and profiles. It lives in `~/.config/loadout/personal`; if you set `LOADOUT_PERSONAL`, use that folder in the commands below. Which file does what: [Personal layer](../reference/personal-layer.md).
 
-Bootstrap creates a starter layer when you press Enter at its first question. A starter stays on that machine until you make it a git repo. Make it **private**: it describes how you work and which tools you use. Your secrets are not in it; they live in `~/.config/loadout/secrets.env`, next to the folder.
+Bootstrap creates a starter layer when you press Enter at its first question. A starter stays on that machine until you make it a git repo. Make it **private**: it describes how you work and which tools you use. Your secrets are not in it; they live in `~/.config/loadout/secrets.env`.
 
 ## On your first machine
 
-Turn the starter into a private GitHub repo, with [gh](https://cli.github.com/) (bootstrap installs it):
+If git has never committed on this machine, tell it who you are once:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+Then turn the starter into a repo and look at what will be committed. Nothing in the list should be a key or an `.env` file:
 
 ```bash
 cd ~/.config/loadout/personal
-git init -b main
+git init
 git add -A
+git status
+```
+
+Commit it and create a private GitHub repo for it with [gh](https://cli.github.com/) (bootstrap's `--install` installs gh):
+
+```bash
 git commit -m "chore: my loadout personal layer"
+git branch -M main
 gh repo create loadout-personal --private --source . --push
 ```
 
 Without gh: create an empty private repo on github.com (or any git host), then:
 
 ```bash
-cd ~/.config/loadout/personal
-git init -b main
-git add -A
 git commit -m "chore: my loadout personal layer"
+git branch -M main
 git remote add origin git@github.com:YOU/loadout-personal.git
 git push -u origin main
 ```
-
-If git asks who you are, set your name and email once (`git config --global user.name "…"` and `git config --global user.email "…"`) and commit again.
 
 ## On every further machine
 
@@ -35,11 +45,13 @@ Bootstrap asks for your personal layer first. Paste your repo's URL there, and b
 
 A private repo needs access:
 
-- **With an SSH key on that machine:** paste the SSH URL (`git@github.com:YOU/loadout-personal.git`). It works on the first run.
-- **Without one:** paste the HTTPS URL anyway. The clone fails without access, and bootstrap continues without a personal layer and says so. Then log in and run bootstrap again; it asks for the URL once more:
+- **With an SSH key on that machine:** confirm GitHub's host key once with `ssh -T git@github.com` (it also tells you whether GitHub accepts your key), then paste the SSH URL (`git@github.com:YOU/loadout-personal.git`).
+- **With gh already logged in** (`gh auth status`): the HTTPS URL just works; bootstrap set git up to use your gh login.
+- **Neither:** paste the HTTPS URL anyway. The clone fails without access; bootstrap then skips the steps that write into the personal layer and says so. Log in, then run bootstrap again; it asks for the URL once more:
 
   ```bash
-  gh auth login && gh auth setup-git
+  gh auth login
+  gh auth setup-git
   loadout bootstrap
   ```
 

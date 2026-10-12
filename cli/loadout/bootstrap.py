@@ -228,9 +228,10 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         if res.ok:
             return f"cloned {url} -> {root}", True
+        access = ("log in with `gh auth login`, then `gh auth setup-git`, or use an SSH URL" if runner.have("gh")
+                  else "use an SSH URL, or install gh (bootstrap --install) and log in")
         return (f"clone failed: {redact(res.stderr.strip())}\n"
-                f"  log in with `gh auth login && gh auth setup-git` (gh is installed by now) or use an SSH URL, "
-                f"then re-run bootstrap; continuing without a personal layer"), False
+                f"  {access}, then re-run bootstrap; continuing without a personal layer"), False
     root.mkdir(parents=True, exist_ok=True)
     (root / "settings.json").write_text("{}\n", encoding="utf-8")
     bk.record_created(root / "settings.json", "created personal settings.json")
@@ -511,7 +512,11 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         out.problem(message)
     _step("Links")
     link_lines = link.link_all(bk, retry_symlinks=True) + link.link_bin(bk)
-    if not yes and not interactive:
+    # after a failed clone nothing may write into the personal layer: a partial folder would stop the next run
+    # from asking for the URL again (the wizard and adopt both write there)
+    if not personal_ok:
+        print("no personal layer yet: skipping the preferences prompt and adopt until bootstrap runs again")
+    elif not yes and not interactive:
         print("non-interactive: skipping the configure prompt (run `loadout configure` later)")
     elif not yes and ui.confirm(ask, "\nCustomize preferences and global add-ons now? [y/N] "):
         from .configure import wizard
@@ -535,7 +540,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         failed = sum(1 for line in lines if PROBLEM.search(line))
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     adopt.LAST_BACKUP = None
-    if adopt_step:
+    if adopt_step and personal_ok:
         _step("Adopt existing setup")
         if not yes and not interactive:
             print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
