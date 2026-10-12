@@ -171,7 +171,7 @@ def _register_configure(sub):
                               "  loadout configure set pref effortLevel '\"high\"'")
     p.add_argument("action", nargs="?", choices=["show", "set", "prefs", "own"],
                    help="show the current state, set one value, answer the working-preference questions, or list your own tools (own)")
-    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref", "own"], help="what to set")
+    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref", "own", "target"], help="what to set")
     p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, preference id, or settings key (ids: configure show), "
                                       "or one of your own tools (names: configure own)")
     p.add_argument("value", nargs="?", help="on|off for plugin/mcp; an option for pref-choice; a JSON value for pref; global|project:<profile>|leave|remove for own")
@@ -190,9 +190,16 @@ def _register_configure(sub):
             print("\n".join(configure.own_lines(a.all)))
             return 0
         if not (a.kind and a.name and a.value):
-            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own <name> <value>")
+            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own|target <name> <value>")
         if a.kind == "own":
             return configure.set_own(a.name, a.value)
+        if a.kind == "target":
+            if a.name != "codex":
+                raise ValueError("usage: loadout configure set target codex on|off")
+            from . import codex
+            print(codex.set_enabled(configure.parse_switch(a.value, "target")))
+            configure.apply_all(lambda q: "n")
+            return 0
         if a.kind == "plugin":
             configure.set_plugin(a.name, configure.parse_switch(a.value, "plugin"))
         elif a.kind == "mcp":

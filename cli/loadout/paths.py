@@ -24,6 +24,17 @@ def claude_json() -> Path:
     return home() / ".claude.json"
 
 
+def codex_home() -> Path:
+    """Codex's configuration folder: $CODEX_HOME, else ~/.codex."""
+    env = os.environ.get("CODEX_HOME")
+    return Path(env) if env else home() / ".codex"
+
+
+def agents_skills() -> Path:
+    """User skills read by Codex (and other agents following the Agent Skills layout)."""
+    return home() / ".agents" / "skills"
+
+
 def state_dir() -> Path:
     return claude_home() / ".loadout"
 
