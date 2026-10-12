@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark.dark.svg">
-  <img alt="loadout" src="docs/assets/wordmark.light.svg" height="56">
+  <img alt="loadout" src="docs/assets/wordmark.light.svg" width="280">
 </picture>
 
 <sub>agent-loadout</sub>
