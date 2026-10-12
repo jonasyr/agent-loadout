@@ -569,7 +569,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
         if problem:
             out.status("Codex", problem, "warn")
         else:
-            lines = codex.apply_all(bk)
+            lines = codex.apply_all(bk, say=lambda line: print(line, flush=True))
             failed = sum(1 for line in lines if PROBLEM.search(line))
             _report("Codex", "rules, plugins, MCP servers and skills set up" if not failed else f"{failed} problem(s) (below)", lines)
     adopt.LAST_BACKUP = None

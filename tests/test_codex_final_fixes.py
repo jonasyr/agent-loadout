@@ -52,7 +52,7 @@ def test_set_target_on_sets_codex_up_now(fake_home, fake_runner, monkeypatch, ca
     claude = []
     monkeypatch.setattr(configure, "apply_all", lambda ask: claude.append(1))
     monkeypatch.setattr(codex, "unavailable", lambda: None)
-    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False: ["instructions written to ~/.codex/AGENTS.md"])
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: ["instructions written to ~/.codex/AGENTS.md"])
     assert main(["configure", "set", "target", "codex", "on"]) == 0
     out = capsys.readouterr().out
     assert "instructions written" in out and claude == [] and codex.HOOKS_TODO in out

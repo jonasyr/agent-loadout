@@ -80,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
         from .secrets import redact
         print(f"loadout: {redact(str(exc))}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("\nloadout: interrupted; run the same command again to continue (it picks up where it stopped)",
+              file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

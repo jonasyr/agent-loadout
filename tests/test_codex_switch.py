@@ -20,7 +20,7 @@ def test_configure_set_target_records_the_choice(fake_home, fake_runner, monkeyp
     from loadout import configure
     monkeypatch.setattr(configure, "apply_all", lambda ask: None)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
-    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False: [])
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
     assert main(["configure", "set", "target", "codex", "on"]) == 0
     assert json.loads(codex.targets_path().read_text()) == {"codex": True}
     assert codex.enabled() and codex.decided()
