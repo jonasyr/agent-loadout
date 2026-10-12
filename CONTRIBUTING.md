@@ -54,7 +54,7 @@ The diagrams in `docs/` are Mermaid sources in [`docs/diagrams/`](docs/diagrams/
 2. Render: `docs/diagrams/render.sh <name>` (no name renders all). It runs a pinned mermaid-cli in a container without network access: podman, or `DIAGRAMS_ENGINE=docker`.
 3. Commit the source and both SVGs together.
 
-Each SVG records a hash of its source, palette, theme and the mermaid-cli version. `tests/test_diagrams.py` fails when an SVG is out of date and names the command that fixes it. It also rejects Mermaid code blocks in the docs. Embed a new diagram like this, with alt text that says what the diagram shows:
+Each SVG records a hash of its source, palette, theme, `render.sh` and the pinned mermaid-cli image. `tests/test_diagrams.py` fails when an SVG is out of date and names the command that fixes it. It also rejects Mermaid code blocks in the docs. Embed a new diagram like this, with alt text that says what the diagram shows:
 
 ```html
 <picture>

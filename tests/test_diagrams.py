@@ -8,8 +8,9 @@ from loadout import paths
 ROOT = paths.kit_root()
 
 FIX = "run docs/diagrams/render.sh {name} and commit the source with both SVGs"
-CLASS_USE = re.compile(r"^\s*class\s+\S+\s+(\w+)\s*$", re.M)
-CLASS_DEF = re.compile(r"^\s*classDef\s+(\w+)\s", re.M)
+CLASS_USE = re.compile(r"^\s*class\s+\S+\s+([\w-]+)\s*;?\s*$|:::([\w-]+)", re.M)
+CLASS_DEF = re.compile(r"^\s*classDef\s+([\w,-]+)\s", re.M)
+MERMAID_FENCE = re.compile(r"^\s*(```+|~~~+)\s*mermaid", re.M)
 PICTURE = re.compile(r"<picture>(.*?)</picture>", re.S)
 SOURCE = re.compile(r'<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+)">')
 IMG = re.compile(r'<img alt="([^"]*)" src="([^"]+)">')
@@ -25,6 +26,26 @@ def _is_flowchart(name):
     body = _body((DIAGRAMS / f"{name}.mmd").read_text(encoding="utf-8"))
     first = next(line.strip() for line in body.splitlines() if line.strip() and not line.strip().startswith("%%"))
     return first.startswith(("flowchart", "graph"))
+
+
+def _used(text):
+    return {a or b for a, b in CLASS_USE.findall(text)}
+
+
+def _defined(text):
+    return {name for names in CLASS_DEF.findall(text) for name in names.split(",")}
+
+
+def test_class_scan_sees_every_syntax():
+    src = "flowchart LR\n  a:::kit --> b\n  class b personal;\n  class c,d my-group\n"
+    assert _used(src) == {"kit", "personal", "my-group"}
+    assert _defined("  classDef kit,my-group fill:#fff\n  classDef state fill:#000\n") == {"kit", "my-group", "state"}
+
+
+def test_mermaid_fences_of_both_kinds_are_found():
+    assert MERMAID_FENCE.search("text\n```mermaid\nflowchart\n```\n")
+    assert MERMAID_FENCE.search("text\n~~~ mermaid\nflowchart\n~~~\n")
+    assert not MERMAID_FENCE.search("```python\nprint()\n```\n")
 
 
 def test_there_are_diagrams():
@@ -79,11 +100,11 @@ def test_flowcharts_take_their_colours_from_the_palette():
 
 
 def test_palettes_define_every_class_used():
-    defined = {v: set(CLASS_DEF.findall((DIAGRAMS / f"palette.{v}.mmd").read_text(encoding="utf-8"))) for v in VARIANTS}
+    defined = {v: _defined((DIAGRAMS / f"palette.{v}.mmd").read_text(encoding="utf-8")) for v in VARIANTS}
     assert defined["light"] == defined["dark"], f"palettes differ: {defined['light'] ^ defined['dark']}"
     used = set()
     for name in sources():
-        used |= set(CLASS_USE.findall((DIAGRAMS / f"{name}.mmd").read_text(encoding="utf-8")))
+        used |= _used((DIAGRAMS / f"{name}.mmd").read_text(encoding="utf-8"))
     assert used <= defined["light"], f"classes used but not in the palettes: {sorted(used - defined['light'])}"
 
 
@@ -102,7 +123,7 @@ def _docs():
 
 
 def test_no_mermaid_code_blocks_left():
-    left = [str(f.relative_to(ROOT)) for f in _docs() if re.search(r"^\s*```+\s*mermaid", f.read_text(encoding="utf-8"), re.M)]
+    left = [str(f.relative_to(ROOT)) for f in _docs() if MERMAID_FENCE.search(f.read_text(encoding="utf-8"))]
     assert not left, f"render diagrams to SVG (docs/diagrams/) instead of Mermaid code blocks: {left}"
 
 

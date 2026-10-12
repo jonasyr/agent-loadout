@@ -18,9 +18,9 @@ def image_ref(render_sh: Path) -> str:
 
 
 def source_hash(folder: Path, name: str, variant: str, image: str) -> str:
-    """SHA-256 of the source, its palette and theme (CRs dropped, like render.sh's tr -d) and the image reference."""
+    """SHA-256 of the source, its palette, theme and render.sh (CRs dropped, like render.sh's tr -d) and the image."""
     h = hashlib.sha256()
-    for part in (f"{name}.mmd", f"palette.{variant}.mmd", f"theme.{variant}.json"):
+    for part in (f"{name}.mmd", f"palette.{variant}.mmd", f"theme.{variant}.json", "render.sh"):
         h.update((folder / part).read_bytes().replace(b"\r", b""))
     h.update(image.encode("utf-8"))
     return h.hexdigest()

@@ -51,8 +51,11 @@ def svgs(folder):
     return sorted(p.name for p in folder.glob("*.svg"))
 
 
-def test_image_is_pinned():
-    assert image_ref(DIAGRAMS / "render.sh") == "ghcr.io/mermaid-js/mermaid-cli/mermaid-cli:11.16.0"
+def test_image_is_pinned_by_version_and_digest():
+    assert image_ref(DIAGRAMS / "render.sh") == (
+        "ghcr.io/mermaid-js/mermaid-cli/mermaid-cli:11.16.0"
+        "@sha256:29077c6bd02f14bdfdd5fee552d9c00fe68d4fab3cd84952d21e2d1faf2fadaf"
+    )
 
 
 def test_renders_every_diagram_in_both_variants_offline(folder):
@@ -113,3 +116,42 @@ def test_crlf_source_hashes_like_lf(folder):
     assert render(folder, "flow").returncode == 0
     lf = HASH_COMMENT.findall((folder / "flow.light.svg").read_text(encoding="utf-8"))
     assert crlf == lf == [source_hash(folder, "flow", "light", image_ref(folder / "render.sh"))]
+
+
+def test_a_change_to_render_sh_makes_svgs_stale(folder):
+    assert render(folder, "flow").returncode == 0
+    with (folder / "render.sh").open("a", encoding="utf-8", newline="\n") as f:
+        f.write("# changed render logic\n")
+    stamped = HASH_COMMENT.findall((folder / "flow.light.svg").read_text(encoding="utf-8"))
+    assert stamped != [source_hash(folder, "flow", "light", image_ref(folder / "render.sh"))]
+
+
+def test_name_may_carry_the_mmd_suffix(folder):
+    p = render(folder, "seq.mmd")
+    assert p.returncode == 0, p.stderr
+    assert svgs(folder) == ["seq.dark.svg", "seq.light.svg"]
+
+
+def test_rootful_podman_gets_no_keep_id(folder, tmp_path):
+    """--userns=keep-id exists only for rootless podman; as root the engine would refuse it."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    podman = bin_dir / "podman"
+    podman.write_text('#!/usr/bin/env bash\necho "$@" >> "$(dirname "$0")/args"\n' + STUB.split("\n", 1)[1],
+                      encoding="utf-8", newline="\n")
+    fake_id = bin_dir / "id"
+    fake_id.write_text("#!/usr/bin/env bash\necho 0\n", encoding="utf-8", newline="\n")
+    for f in (podman, fake_id):
+        f.chmod(0o755)
+    env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "DIAGRAMS_ENGINE": "podman"}
+    p = subprocess.run(["bash", str(folder / "render.sh"), "seq"], capture_output=True, text=True,
+                       env={**os.environ, **env}, timeout=60)
+    assert p.returncode == 0, p.stderr
+    args = (bin_dir / "args").read_text(encoding="utf-8")
+    assert "--userns=keep-id" not in args and "--user 0:0" in args
+
+
+def test_render_temp_folders_are_ignored_by_git():
+    rel = "docs/diagrams/.render.AbC123/flow.light.svg"
+    p = subprocess.run(["git", "-C", str(DIAGRAMS), "check-ignore", "-q", rel.split("docs/diagrams/", 1)[1]])
+    assert p.returncode == 0, "a temp folder left by a killed render must never be committed"
