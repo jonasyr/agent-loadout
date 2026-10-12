@@ -147,8 +147,8 @@ def _open_local_bin_hint() -> str:
         return ""
     if paths.platform_key() == "windows" or not mode & 0o022:
         return ""
-    return (f"  note: {d} can be written by other users (mode {mode:04o}), and some installers refuse that.\n"
-            f"  fix: chmod go-w {d}   then run this again")
+    return (f"note: {d} can be written by other users (mode {mode:04o}), and some installers refuse that.\n"
+            f"fix: chmod go-w {d}   then run this again")
 
 
 def _tail(res: runner.Result, limit: int = 400) -> str:
@@ -197,7 +197,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                     print(f"  installing {name}…")
                 res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
                 if not res.ok:
-                    note(f"failed: {_tail(res)}", problem=True)
+                    note(f"failed to install {name}: {_tail(res)}", problem=True)
                     hint = _open_local_bin_hint()
                     if hint:
                         note(hint, problem=True)

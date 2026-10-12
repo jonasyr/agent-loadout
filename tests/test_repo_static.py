@@ -114,7 +114,8 @@ def _tracked_markdown():
 def _anchors(path):
     """GitHub-style heading anchors of a Markdown file."""
     out = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
+    text = re.sub(r"^```.*?^```", "", path.read_text(encoding="utf-8"), flags=re.S | re.M)  # comments in code are not headings
+    for line in text.splitlines():
         m = re.match(r"#{1,6}\s+(.*)", line)
         if m:
             slug = re.sub(r"[^\w\- ]", "", m.group(1).strip().lower()).replace(" ", "-")
