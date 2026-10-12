@@ -197,8 +197,20 @@ def _register_configure(sub):
             if a.name != "codex":
                 raise ValueError("usage: loadout configure set target codex on|off")
             from . import codex
-            print(codex.set_enabled(configure.parse_switch(a.value, "target")))
-            configure.apply_all(lambda q: "n")
+            on = configure.parse_switch(a.value, "target")
+            print(codex.set_enabled(on))
+            if on:  # set Codex up now, not at the next bootstrap; Claude Code's setup is unaffected
+                problem = codex.unavailable()
+                if problem:
+                    print(f"note: {problem}; Codex is set up once that is fixed (loadout bootstrap)")
+                    return 1
+                from .backup import Backup
+                bk = Backup(description="configure: set up Codex")
+                for line in codex.apply_all(bk):
+                    print(line)
+                print(f"Still to do: {codex.HOOKS_TODO}")
+                if not bk.empty:
+                    print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
             return 0
         if a.kind == "plugin":
             configure.set_plugin(a.name, configure.parse_switch(a.value, "plugin"))

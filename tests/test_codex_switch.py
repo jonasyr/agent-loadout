@@ -19,6 +19,8 @@ def test_switch_is_off_and_undecided_by_default(fake_home):
 def test_configure_set_target_records_the_choice(fake_home, fake_runner, monkeypatch):
     from loadout import configure
     monkeypatch.setattr(configure, "apply_all", lambda ask: None)
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False: [])
     assert main(["configure", "set", "target", "codex", "on"]) == 0
     assert json.loads(codex.targets_path().read_text()) == {"codex": True}
     assert codex.enabled() and codex.decided()

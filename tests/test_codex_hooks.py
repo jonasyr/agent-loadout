@@ -95,7 +95,8 @@ def test_slow_checker_is_reported_as_skipped(tmp_path, monkeypatch):
     (tmp_path / "a.py").write_text("x = 1\n")
     out = io.StringIO()
     typecheck.main(io.StringIO(json.dumps({"cwd": str(tmp_path), "tool_input": {"command": "*** Update File: a.py\n"}})), out)
-    assert "skipped (timeout" in json.loads(out.getvalue())["reason"]
+    reply = json.loads(out.getvalue())
+    assert "decision" not in reply and "skipped (timeout" in reply["hookSpecificOutput"]["additionalContext"]
 
 
 def test_missing_checker_and_bad_input_are_silent(tmp_path, monkeypatch):

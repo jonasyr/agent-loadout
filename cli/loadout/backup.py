@@ -185,8 +185,9 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
         return f"not restored automatically: {label}; the old value is in {undo['kept']}, restore it by hand"
     elif "run" in undo:
         cmd = undo["run"]
-        if not cmd or cmd[0] not in ("claude", "codex"):  # only the agents' own CLIs; never a shell from a manifest
-            return f"failed: refusing to run a command other than claude or codex from a manifest: {' '.join(cmd)}"
+        codex_undo = cmd[:3] == ["codex", "plugin", "remove"] or cmd[:4] == ["codex", "plugin", "marketplace", "remove"]
+        if not cmd or not (cmd[0] == "claude" or codex_undo):  # the agents' own undo commands only, never a shell
+            return f"failed: refusing to run this command from a manifest: {' '.join(cmd)}"
         if runner.would_refuse(cmd):
             where = runner.write_manual_commands(root or pre.root, f"restore: {label} (full command, contains secrets)", [cmd])
             return f"failed: {label}: cannot run through this claude (Windows .cmd shim); run the command in {where} by hand"

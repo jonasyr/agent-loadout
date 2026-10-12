@@ -89,8 +89,8 @@ def apply_instructions(bk) -> str:
         bk.save_copy(path, "Codex AGENTS.md before loadout added its block")
     elif not path.exists():
         bk.record_created(path, "created Codex AGENTS.md")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(new, encoding="utf-8", newline="\n")
+    from .jsonio import write_atomic
+    write_atomic(path, new)
     return f"instructions written to {_tilde(path)}"
 
 
@@ -358,7 +358,11 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     # tables: drop or keep what loadout wrote, never touch anything else
     for name, text in list(owned_tables.items()):
         sec = find(("mcp_servers", name))
+        subtables = [s for s in sections if s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name)]
         if sec is None:
+            owned_tables.pop(name)
+        elif subtables:  # e.g. [mcp_servers.x.tools.y]; removing x alone would leave Codex unable to start
+            lines.append(f"mcp {name}: left as is in config.toml (it has sub-tables); loadout no longer manages it")
             owned_tables.pop(name)
         elif _text(sec[1]) != text:
             lines.append(f"mcp {name}: left as is in config.toml (changed by you); loadout no longer manages it")
@@ -394,7 +398,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             target[2].insert(insert - (1 if target[0] is not None else 0), True)
             owned_keys[dotted] = line
         elif target[1][found].strip() == line:
-            owned_keys[dotted] = line
+            pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
         elif owned_keys.get(dotted) == target[1][found].strip():
             target[1][found] = line
             owned_keys[dotted] = line
@@ -431,6 +435,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
 
 
 OFFICIAL = "anthropics/claude-plugins-official"
+_REPO = re.compile(r"^[A-Za-z0-9][\w.-]*/[\w.-]+$")  # owner/repo only: never an option, URL or path
 
 
 def _json(text: str):
@@ -453,8 +458,9 @@ def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
             continue
         name, market = pid.rsplit("@", 1)
         source = markets.get(market, {}).get("source", {})
+        repo = source.get("repo") if source.get("source") == "github" else None
         src = OFFICIAL if market == "claude-plugins-official" else (
-            source.get("repo") if source.get("source") == "github" else None)
+            repo if isinstance(repo, str) and _REPO.match(repo) else None)
         if src is None:
             missing.append(pid)
         else:
@@ -472,7 +478,8 @@ def apply_plugins(bk, refresh: bool = False) -> list[str]:
     from .settings_merge import desired_settings
     routes, missing = plugin_routes(desired_settings())
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
-    installed = installed_plugins() or set()
+    listed = installed_plugins()
+    installed = listed or set()  # unknown when the list failed: then nothing counts as installed by loadout
     for src, plugins in routes.items():
         res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
         info = _json(res.stdout) if res.ok else None
@@ -480,7 +487,7 @@ def apply_plugins(bk, refresh: bool = False) -> list[str]:
             lines.append(f"marketplace {src}: failed: {_tail(res)}")
             continue
         market = info["marketplaceName"]
-        if not info.get("alreadyAdded"):
+        if not info.get("alreadyAdded") and listed is not None:
             bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
         elif refresh:
             runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=900)
@@ -491,7 +498,7 @@ def apply_plugins(bk, refresh: bool = False) -> list[str]:
             res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
-            elif pid not in installed:
+            elif pid not in installed and listed is not None:
                 bk.record_command(f"codex plugin {pid}", ["codex", "plugin", "remove", pid])
                 lines.append(f"plugin {pid}: installed")
     return lines

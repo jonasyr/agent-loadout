@@ -19,9 +19,10 @@ WEEK = 7 * DAY
 NOTICE = "pending-notice"
 
 
-def out_problem(line: str) -> bool:
+def codex_notice(line: str) -> bool:
+    """A Codex line worth a notice: a problem, not loadout leaving the user's own entry alone (said by check)."""
     from .out import PROBLEM
-    return bool(PROBLEM.search(line))
+    return bool(PROBLEM.search(line)) and "left as is" not in line
 
 
 def _stamp(name: str) -> Path:
@@ -241,7 +242,7 @@ def _maintain(now: float) -> None:
                 if codex.enabled() and codex.unavailable() is None:
                     bk = Backup(description="maintenance: Codex refreshed after a pull")
                     for line in codex.apply_all(bk, refresh=True):
-                        if out_problem(line):
+                        if codex_notice(line):
                             notify(f"loadout (Codex): {line}")
                     for line in codex.drift():
                         notify(f"loadout: {line}")

@@ -27,7 +27,7 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" serena-hooks cleanup --client=codex",
             "shell": "bash",
-            "timeout": 10
+            "timeout": 3
           }
         ]
       }

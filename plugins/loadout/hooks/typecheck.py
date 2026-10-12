@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 LIMIT = 20
+SKIPPED = "type check skipped (timeout after "  # a note, not a reason to stop the agent
 PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+?)\s*$", re.M)
 
 
@@ -47,7 +48,7 @@ def _run(cmd: list, cwd: Path):
     try:
         res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=LIMIT)
     except subprocess.TimeoutExpired:
-        return f"type check skipped (timeout after {LIMIT} s): {' '.join(cmd[:2])}"
+        return SKIPPED + f"{LIMIT} s): {' '.join(cmd[:2])}"
     except OSError:
         return None
     if res.returncode == 0:
@@ -62,9 +63,14 @@ def main(stdin=sys.stdin, stdout=sys.stdout) -> int:
         return 0
     files = [f for f in changed_files(event) if f.exists()]
     reports = [r for cmd, cwd in checks(files) if (r := _run(cmd, cwd))]
-    if reports:
+    errors = [r for r in reports if not r.startswith(SKIPPED)]
+    notes = [r for r in reports if r.startswith(SKIPPED)]
+    if errors:
         stdout.write(json.dumps({"decision": "block",
-                                 "reason": "Type check after your edit:\n\n" + "\n\n".join(reports)}) + "\n")
+                                 "reason": "Type check after your edit:\n\n" + "\n\n".join(errors + notes)}) + "\n")
+    elif notes:
+        stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
+                                                        "additionalContext": "\n".join(notes)}}) + "\n")
     return 0
 
 
