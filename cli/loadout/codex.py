@@ -57,7 +57,9 @@ def render_instructions() -> str:
     """Codex has no @include and no rules folder, so the rules are copied in; their files stay the only source."""
     kit, personal = paths.kit_root() / "rules", paths.personal_root() / "rules"
     parts = [START, f"<!-- Managed by loadout from {_tilde(kit)} and {_tilde(personal)}; "
-                    "edit those files, not this block. -->"]
+                    "edit those files, not this block. -->",
+             "In Codex, MCP tools load on demand: search for the Serena and codebase-memory tools (and the other MCP "
+             "servers) before deciding that a tool is missing."]
     for folder in (kit, personal):
         if folder.is_dir():
             parts += [f.read_text(encoding="utf-8").strip() for f in sorted(folder.glob("*.md"))]

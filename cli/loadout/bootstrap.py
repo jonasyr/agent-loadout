@@ -254,7 +254,9 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
     return f"created starter personal layer at {root} (to sync it across machines, make it a private git repo: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)})", True
 
 
-def setup_plugins() -> list[str]:
+def setup_plugins(say=None) -> list[str]:
+    """say: called with a progress line before each slow step (marketplace clones, plugin installs)."""
+    say = say or (lambda line: None)
     out = []
     desired = settings_merge.desired_settings()
     listed = runner.run(["claude", "plugin", "marketplace", "list"], timeout=60).stdout
@@ -263,11 +265,13 @@ def setup_plugins() -> list[str]:
             continue
         src = cfg["source"]
         origin = src.get("repo") or src.get("url")
+        say(f"  marketplace {origin} (a git clone the first time; can take a few minutes)…")
         res = runner.run(["claude", "plugin", "marketplace", "add", origin], timeout=300)
         out.append(f"marketplace {name}: {'added' if res.ok else 'failed: ' + res.stderr.strip()}")
     installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
     for plugin_id, on in desired.get("enabledPlugins", {}).items():
         if on and plugin_id not in installed:
+            say(f"  plugin {plugin_id}…")
             res = runner.run(["claude", "plugin", "install", plugin_id, "--scope", "user"], timeout=600)
             out.append(f"plugin {plugin_id}: {'installed' if res.ok else 'failed: ' + res.stderr.strip()}")
     return out
@@ -554,7 +558,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
             link_lines + [merged] + apply_mcp())
     if plugins:
         _step("Marketplaces and plugins")
-        lines = setup_plugins()
+        lines = setup_plugins(say=lambda line: print(line, flush=True))
         if any(line.endswith(": added") for line in lines):
             settings_merge.apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
         total = sum(1 for on in settings_merge.desired_settings().get("enabledPlugins", {}).values() if on)

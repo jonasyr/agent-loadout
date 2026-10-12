@@ -33,7 +33,7 @@ def test_calm_bootstrap_is_one_line_per_step(calm, capsys):
 
 
 def test_calm_bootstrap_shows_failed_plugin_line(calm, capsys, monkeypatch):
-    monkeypatch.setattr(bootstrap, "setup_plugins", lambda: ["plugin x@y: failed: no network"])
+    monkeypatch.setattr(bootstrap, "setup_plugins", lambda **kw: ["plugin x@y: failed: no network"])
     _run(plugins=True)
     text = capsys.readouterr().out
     assert "  plugin x@y: failed: no network" in text
