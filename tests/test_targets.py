@@ -44,3 +44,20 @@ def test_configure_set_target_claude_off_needs_codex(fake_home, fake_runner, mon
     monkeypatch.setattr(configure, "offer_commit", lambda ask: None)
     assert main(["configure", "set", "target", "claude", "off"]) == 1
     assert "at least one" in capsys.readouterr().err
+
+
+def test_binaries_follow_the_chosen_agents(fake_home):
+    from loadout import catalog
+    ids = lambda: {e["id"] for e in catalog.binaries()}  # noqa: E731
+    assert "claude" in ids() and "codex" not in ids()
+    targets.set_agents({"claude": False, "codex": True})
+    assert "claude" not in ids() and "codex" in ids()
+    targets.set_agents({"claude": True, "codex": True})
+    assert {"claude", "codex"} <= ids()
+
+
+def test_codex_installs_through_mise():
+    from loadout import catalog
+    entry = catalog.by_id("codex")
+    assert entry["install"]["posix"] == [["mise", "use", "-g", "codex"]] and entry["needs"] == ["mise"]
+    assert entry["target"] == "codex" and entry["required"] is True

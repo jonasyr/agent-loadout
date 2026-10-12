@@ -204,3 +204,9 @@ def test_catalog_short_reasons():
         if "short" in e:
             s = e["short"]
             assert "\n" not in s and len(s) <= 60 and not s.endswith("."), e["id"]
+
+
+def test_target_field_only_on_binaries():
+    for entry in _json("catalog.json")["entries"]:
+        if "target" in entry:
+            assert entry["kind"] == "binary" and entry["target"] in ("claude", "codex"), entry["id"]

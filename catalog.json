@@ -51,7 +51,69 @@
             "irm https://claude.ai/install.ps1 | iex"
           ]
         ]
-      }
+      },
+      "target": "claude"
+    },
+    {
+      "id": "codex",
+      "kind": "binary",
+      "status": "core",
+      "required": true,
+      "target": "codex",
+      "match": {
+        "names": [
+          "codex"
+        ]
+      },
+      "reason": "OpenAI's Codex CLI, set up by loadout like Claude Code when you choose it (docs/how-to/codex.md).",
+      "short": "OpenAI's Codex CLI (when chosen)",
+      "needs": [
+        "mise"
+      ],
+      "version": {
+        "cmd": [
+          "codex",
+          "--version"
+        ],
+        "npm": "@openai/codex"
+      },
+      "install": {
+        "posix": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "codex"
+          ]
+        ],
+        "windows": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "codex"
+          ]
+        ]
+      },
+      "update": {
+        "posix": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "codex@latest"
+          ]
+        ],
+        "windows": [
+          [
+            "mise",
+            "use",
+            "-g",
+            "codex@latest"
+          ]
+        ]
+      },
+      "mise": "codex"
     },
     {
       "id": "git",
