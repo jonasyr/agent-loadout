@@ -653,6 +653,16 @@ def codex_only_skills() -> list[Path]:
             if not p.name.startswith(".") and p.name != "synced" and p.name not in ours | claude]
 
 
+def remove_server(name: str, bk) -> str:
+    """Remove a user's server from ~/.codex/config.toml through Codex itself; the file is saved first (restore
+    puts it back)."""
+    path = paths.codex_home() / "config.toml"
+    if path.exists():
+        bk.save_copy(path, f"Codex config.toml before removing mcp {name}")
+    res = runner.run(["codex", "mcp", "remove", name], timeout=120)
+    return f"mcp {name}: removed from Codex" if res.ok else f"mcp {name}: failed: {_tail(res)}"
+
+
 def drift() -> list[str]:
     """Names present in only one agent and accounted for by neither the kit, the personal layer nor a 'leave'."""
     from . import own, targets
@@ -668,13 +678,13 @@ def drift() -> list[str]:
     accounted = left | personal | owned
     out = [f'MCP server "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
            for n in sorted(in_claude - in_codex - accounted)]
-    out += [f'MCP server "{n}" only in Codex (add it to your personal layer\'s mcp.json, see docs/how-to/codex.md)'
+    out += [f'MCP server "{n}" only in Codex (record it with loadout adopt, then both get it)'
             for n in sorted(in_codex - in_claude - accounted - _plugin_servers())]
     claude_skills, codex_skills = _skill_names(paths.claude_home() / "skills"), _skill_names(paths.agents_skills())
     personal_skills = {dest.name for dest, _ in skill_links()}
     out += [f'skill "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
             for n in sorted(claude_skills - codex_skills - personal_skills - left)]
-    out += [f'skill "{n}" only in Codex (copy it into your personal layer\'s skills/, see docs/how-to/codex.md)'
+    out += [f'skill "{n}" only in Codex (record it with loadout adopt, then both get it)'
             for n in sorted(codex_skills - claude_skills - personal_skills - left)]
     return out
 

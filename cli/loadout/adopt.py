@@ -257,6 +257,10 @@ def _manual(bk: Backup, title: str, cmds: list[list[str]], undo: list[list[str]]
 
 
 def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> str:
+    from . import codex, own
+    if own.is_codex(v.item):
+        line = codex.remove_server(v.item.name, bk)
+        return NotDone(line) if ": failed:" in line else line
     if v.item.location == "~/.claude/.mcp.json":
         path = paths.claude_home() / ".mcp.json"
         if str(path) in moved or not path.exists():

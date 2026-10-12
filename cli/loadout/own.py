@@ -665,7 +665,10 @@ def record_global(v: Verdict, bk) -> Recorded:
 
 def _global_mcp(v: Verdict, bk) -> Recorded:
     name, original = v.item.name, v.item.extra.get("config", {})
-    if v.item.location != "~/.claude.json":
+    if is_codex(v.item):
+        if original is None:
+            raise Collision(v.item.extra.get("problem") or f"mcp {name}: cannot be recorded")
+    elif v.item.location != "~/.claude.json":
         raise Collision(f"mcp {name}: only user-scope servers in ~/.claude.json can be recorded")
     new, lines = _secret_free(name, original)
     _refuse_if_secret(f"mcp {name}", json.dumps(new))
@@ -691,7 +694,16 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
                    lambda d: d.setdefault("mcpServers", {}).__setitem__(name, new))
         return out
 
-    return Recorded(True, [f"mcp {name}: recorded in {path}" + (" (secrets in secrets.env)" if lines else "")], machine)
+    def codex_machine() -> list[str]:
+        from . import codex, targets
+        out = [codex.remove_server(name, bk)]  # loadout writes its own table from the personal layer next
+        out += codex.apply_config(bk)
+        if targets.claude_enabled():
+            out += personal_mcp.apply_mcp()
+        return out
+
+    return Recorded(True, [f"mcp {name}: recorded in {path}" + (" (secrets in secrets.env)" if lines else "")],
+                    codex_machine if is_codex(v.item) else machine)
 
 
 def _plain_link_target(target: str) -> str:
@@ -716,8 +728,13 @@ def _global_skill(v: Verdict, bk) -> Recorded:
     _copy_tree(src, dest, bk, f"skill {name} copied into the personal layer")
 
     def machine() -> list[str]:
+        from . import codex, targets
+        where = "~/.agents/skills" if is_codex(v.item) else "~/.claude/skills"
         bk.move(src, f"skill {name} (replaced by a link to your personal layer)", replace=True)
-        return [f"skill {name}: moved to {dest}; ~/.claude/skills/{name} links to it"]
+        out = [f"skill {name}: moved to {dest}; {where}/{name} links to it"]
+        if targets.codex_enabled():
+            out += codex.apply_skills(bk)  # adopt runs link.link_all for Claude Code after the machine steps
+        return out
 
     return Recorded(True, [f"skill {name}: recorded in {dest}"], machine)
 
