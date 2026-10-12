@@ -19,6 +19,11 @@ WEEK = 7 * DAY
 NOTICE = "pending-notice"
 
 
+def out_problem(line: str) -> bool:
+    from .out import PROBLEM
+    return bool(PROBLEM.search(line))
+
+
 def _stamp(name: str) -> Path:
     return paths.state_dir() / name
 
@@ -231,6 +236,17 @@ def _maintain(now: float) -> None:
                            f"(undo: loadout restore {bk.root})")
             except Exception as exc:  # never crash in the background; surface next session
                 notify(f"loadout: could not link after sync: {exc}")
+            try:
+                from . import codex
+                if codex.enabled() and codex.unavailable() is None:
+                    bk = Backup(description="maintenance: Codex refreshed after a pull")
+                    for line in codex.apply_all(bk, refresh=True):
+                        if out_problem(line):
+                            notify(f"loadout (Codex): {line}")
+                    for line in codex.drift():
+                        notify(f"loadout: {line}")
+            except Exception as exc:  # never crash in the background; surface next session
+                notify(f"loadout: could not refresh Codex after sync: {exc}")
     _touch_lock()
     if is_due("last-update-check", WEEK, now):
         touch("last-update-check", now)

@@ -549,3 +549,39 @@ def _plugin_servers() -> set[str]:
     for mcp in (paths.codex_home() / "plugins" / "cache").glob("*/*/*/.mcp.json"):
         names |= set(load_json(mcp).get("mcpServers", {}))
     return names
+
+
+HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex`, then run /hooks"
+
+
+def apply_all(bk, refresh: bool = False) -> list[str]:
+    return [apply_instructions(bk), *apply_config(bk), *apply_skills(bk), *apply_plugins(bk, refresh=refresh)]
+
+
+def checks() -> list:
+    from .check import CheckResult
+    if not enabled():
+        return []
+    problem = unavailable()
+    if problem:
+        return [CheckResult("Codex", False, problem, "install or update codex (mise use -g codex), or: loadout configure set target codex off", "warn")]
+    results = [CheckResult("Codex", True)]
+    installed = installed_plugins()
+    ok = installed is not None and "loadout@agent-loadout" in installed
+    results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex", "loadout bootstrap"))
+    path = paths.codex_home() / "AGENTS.md"
+    current = splice(path.read_text(encoding="utf-8") if path.exists() else "", render_instructions())
+    ok = path.exists() and current == path.read_text(encoding="utf-8")
+    results.append(CheckResult("Codex instructions", ok, "" if ok else f"{_tilde(path)} lacks loadout's current block", "loadout bootstrap"))
+    if (paths.codex_home() / "AGENTS.override.md").exists():
+        results.append(CheckResult("Codex instructions", False, "AGENTS.override.md shadows AGENTS.md, so Codex ignores loadout's block",
+                                   "merge it into AGENTS.md or remove it", "warn"))
+    pending = apply_config(object(), dry_run=True)
+    results.append(CheckResult("Codex config", not pending, "; ".join(pending), "loadout bootstrap", "warn"))
+    from .settings_merge import desired_settings
+    missing = plugin_routes(desired_settings())[1]
+    if missing:
+        results.append(CheckResult("Codex plugins", False, "no Codex route for " + ", ".join(missing), "", "warn"))
+    lines = drift()
+    results.append(CheckResult("Codex drift", not lines, "; ".join(lines), "loadout adopt (see docs/how-to/codex.md)", "warn"))
+    return results
