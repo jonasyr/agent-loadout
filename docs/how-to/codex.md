@@ -50,7 +50,7 @@ Everything that comes from the kit and your personal layer reaches both agents. 
 
 - **Only in Claude Code:** run `loadout adopt` and record it globally; the next sync puts it into both.
 - **Only in Codex:** run `loadout adopt` too. It lists MCP servers in `~/.codex/config.toml` and skills in `~/.agents/skills` that only Codex has, with the choices global, leave and remove:
-  - **global** writes the server to your personal layer's `mcp.json` (secrets go to `secrets.env`) or copies the skill into its `skills/`, then hands the server's section to loadout and links the skill for both agents. A server with keys Claude Code cannot express (a `tools` section, timeouts) cannot be recorded; leave it or remove it.
+  - **global** writes the server to your personal layer's `mcp.json` (secrets go to `secrets.env`) or copies the skill into its `skills/`, then hands the server's section to loadout and links the skill for both agents. A server with keys Claude Code cannot express (a `tools` section, timeouts) cannot be recorded; leave it or remove it. Neither can a server whose plaintext secret would have to move under another variable name, because Codex forwards a variable only under its own name: put it in `secrets.env` under its key's name by hand, then record it.
   - **leave** is remembered on this machine and silences the report for that item.
   - **remove** saves `config.toml` in the backup, then runs `codex mcp remove`; a skill moves into the backup. `loadout restore` brings both back.
 
@@ -60,7 +60,7 @@ With Codex on, `loadout init` and `loadout profile NAME` also set up Codex in th
 
 - The profile's MCP servers become sections in the repo's `.codex/config.toml`. loadout only adds sections: one you already have under that name stays and is reported. A server the profile turns off for Claude Code gets `enabled = false`. A server whose arguments need `${VAR}` (the `db` profile's DBHub) is skipped for Codex with the reason, because Codex does not expand variables in arguments.
 - Every skill in the repo's `.claude/skills` is linked into `.agents/skills`, including skills a profile command installs there.
-- The profile's plugins are installed in Codex and switched on only in that repo: `[plugins."NAME@MARKET"] enabled = true` in the repo's file and `enabled = false` in `~/.codex/config.toml`. loadout keeps the user-level switch off even after `codex plugin add` turns it on again. To have such a plugin everywhere, enable it in your personal layer's `settings.json`.
+- The profile's plugins are installed in Codex and switched on only in that repo (a plugin you had already installed in Codex stays on everywhere): `[plugins."NAME@MARKET"] enabled = true` in the repo's file and `enabled = false` in `~/.codex/config.toml`. loadout keeps the user-level switch off even after `codex plugin add` turns it on again. To have such a plugin everywhere, enable it in your personal layer's `settings.json`.
 
 Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you.
 
