@@ -26,62 +26,12 @@ With coding agents the cost goes up:
 
 The fix is old and boring: treat documentation like code. Write it in plain text, keep it in version control next to the code, review it in pull requests, and test it [Write the Docs]. Then add one rule on top: **a fact lives in one place; every other place links to it.**
 
-```mermaid
----
-config:
-  look: neo
-  flowchart:
-    curve: basis
-    nodeSpacing: 30
-    rankSpacing: 70
-    wrappingWidth: 320
----
-flowchart LR
-  subgraph ENTRY["Entry points"]
-    direction TB
-    readme["`**README.md**
-    what it is · install · run`"]
-    claude["`**CLAUDE.md**
-    one line: @AGENTS.md`"]
-    agents["`**AGENTS.md**
-    purpose · commands
-    conventions · map`"]
-  end
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/documentation-layers.dark.svg">
+  <img alt="CLAUDE.md imports AGENTS.md, and AGENTS.md maps the Serena memories. README.md, AGENTS.md and the memories all link into docs/, the single source of truth. Claude Code's auto memory holds machine-local notes only, never project facts." src="../diagrams/documentation-layers.light.svg">
+</picture>
 
-  subgraph NOTES["Agent notes"]
-    memories["`**.serena/memories/**
-    one summary and link per topic
-    gotchas · recipes`"]
-  end
-
-  docs[("`**docs/**
-  single source of truth
-  tutorials · how-tos · reference
-  explanation · ADRs`")]
-
-  auto["`**Claude Code auto memory**
-  machine-local notes only`"]
-
-  claude -- imports --> agents
-  agents -- maps --> memories
-  readme -- links into --> docs
-  agents -- links into --> docs
-  memories -- links into --> docs
-  auto -. "never project facts" .-x docs
-
-  classDef truth fill:#d1fae5,stroke:#059669,stroke-width:2.5px,color:#0f172a
-  classDef entry fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#0f172a
-  classDef notes fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#0f172a
-  classDef local fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:4 3,color:#0f172a
-  class docs truth
-  class readme,claude,agents entry
-  class memories notes
-  class auto local
-  style ENTRY fill:#2563eb0f,stroke:#2563eb,stroke-width:1.5px
-  style NOTES fill:#7c3aed0f,stroke:#7c3aed,stroke-width:1.5px
-  linkStyle 2,3,4 stroke:#059669,stroke-width:2.5px
-  linkStyle 5 stroke:#94a3b8
-```
+<sub>[Source](../diagrams/documentation-layers.mmd)</sub>
 
 Which layer holds what, and the rule for each, is defined in one place: the kit's [docs policy](../../rules/docs-policy.md) (the layers) and [memory policy](../../rules/memory-policy.md) (where agents store what they learn). Both are loaded into every Claude Code session on a machine set up with loadout.
 

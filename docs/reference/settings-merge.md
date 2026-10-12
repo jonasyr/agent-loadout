@@ -10,67 +10,12 @@ The merge uses three inputs:
 | previous | The snapshot `~/.claude/.loadout/managed-settings.json`: what the merge applied last time. |
 | current | Your `~/.claude/settings.json` as it is now. |
 
-```mermaid
----
-config:
-  look: neo
-  flowchart:
-    curve: basis
-    nodeSpacing: 30
-    rankSpacing: 45
-    wrappingWidth: 320
----
-flowchart TB
-  base["`**settings.base.json**
-  from the kit`"]
-  pers["`**settings.json**
-  from your personal layer`"]
-  des(["`**desired**
-  your values win`"])
-  prev[("`**previous**
-  managed-settings.json
-  applied last time`")]
-  cur["`**current**
-  ~/.claude/settings.json`"]
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/settings-merge.dark.svg">
+  <img alt="settings.base.json from the kit and settings.json from your personal layer combine into the desired settings, where your values win. The merge takes the desired settings, the previous snapshot and the current ~/.claude/settings.json; a key merge and a per-hook merge write ~/.claude/settings.json only if it changed, and save a new snapshot." src="../diagrams/settings-merge.light.svg">
+</picture>
 
-  subgraph ENG["merge"]
-    direction LR
-    km["`**Key merge** (every key except hooks)
-    desired wins
-    drops what the kit dropped, unless you changed it`"]
-    hm["`**Hook merge** (per hook)
-    add · update · keep yours
-    tombstones keep deleted hooks deleted`"]
-  end
-
-  out["`**~/.claude/settings.json**
-  written only if it changed`"]
-  snap[("`**new snapshot**
-  desired keys · applied hooks
-  tombstones`")]
-
-  base --> des
-  pers --> des
-  des ==> ENG
-  prev --> ENG
-  cur --> ENG
-  ENG ==> out
-  ENG -.-> snap
-
-  classDef kit fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#0f172a
-  classDef personal fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#0f172a
-  classDef claude fill:#ffedd5,stroke:#ea580c,stroke-width:1.5px,color:#0f172a
-  classDef engine fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a
-  classDef state fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:4 3,color:#0f172a
-  class base kit
-  class pers personal
-  class des engine
-  class cur,out claude
-  class km,hm engine
-  class prev,snap state
-  style ENG fill:#d977060f,stroke:#d97706,stroke-width:1.5px
-  linkStyle 2,5 stroke:#d97706,stroke-width:2.5px
-```
+<sub>[Source](../diagrams/settings-merge.mmd)</sub>
 
 The result is written to `settings.json` only if it differs from current. The snapshot is rewritten on every run. If `settings.json` or the snapshot is not valid JSON, the run stops with an error before anything is written.
 

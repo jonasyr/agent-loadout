@@ -4,77 +4,12 @@ loadout does not install a pile of tools. It installs a small set where each one
 
 ## One change, start to finish
 
-```mermaid
----
-config:
-  look: neo
-  flowchart:
-    curve: basis
-    nodeSpacing: 26
-    rankSpacing: 46
-    wrappingWidth: 300
----
-flowchart TB
-  idea(["`**An idea or a bug**`"])
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/toolset-workflow.dark.svg">
+  <img alt="An idea or a bug goes through three stages. Think first: brainstorming, writing-plans, then execution-advisor. Build: a test-driven build, with codebase-memory, Serena and LSP diagnostics for the code, Context7 and Microsoft Learn for libraries, and frontend-design, playwright-cli and impeccable for UI work. Finish: review, /loadout:docs-sync, then commit-commands. rtk shrinks command output in every step." src="../diagrams/toolset-workflow.light.svg">
+</picture>
 
-  subgraph THINK["Think first"]
-    direction LR
-    brain["`**brainstorming**
-    asks, proposes, writes a spec`"]
-    plan["`**writing-plans**
-    bite-sized, test-first tasks`"]
-    adv["`**execution-advisor**
-    inline, subagents or both`"]
-    brain --> plan --> adv
-  end
-
-  subgraph BUILD["Build"]
-    direction LR
-    tdd["`**test-driven build**
-    red, green, commit`"]
-    know["`**Know the code**
-    codebase-memory · Serena
-    LSP diagnostics`"]
-    docs["`**Know the libraries**
-    Context7 · Microsoft Learn`"]
-    ui["`**UI work**
-    frontend-design · playwright-cli
-    impeccable`"]
-    tdd ~~~ know ~~~ docs ~~~ ui
-  end
-
-  subgraph FINISH["Finish"]
-    direction LR
-    rev["`**Review**
-    /code-review · security-guidance`"]
-    sync["`**/loadout:docs-sync**
-    docs stay true`"]
-    ship["`**commit-commands**
-    commit, push, PR`"]
-    rev --> sync --> ship
-  end
-
-  rtk[("`**rtk**
-  shrinks command output
-  in every step`")]
-
-  idea --> THINK
-  THINK ==> BUILD
-  BUILD ==> FINISH
-  rtk -.- BUILD
-
-  classDef kit fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#0f172a
-  classDef claude fill:#ffedd5,stroke:#ea580c,stroke-width:1.5px,color:#0f172a
-  classDef engine fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a
-  classDef state fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:4 3,color:#0f172a
-  class adv,sync kit
-  class brain,plan,tdd,rev,ship claude
-  class know,docs,ui engine
-  class idea,rtk state
-  style THINK fill:#ea580c0f,stroke:#ea580c,stroke-width:1.5px
-  style BUILD fill:#d977060f,stroke:#d97706,stroke-width:1.5px
-  style FINISH fill:#2563eb0f,stroke:#2563eb,stroke-width:1.5px
-```
+<sub>[Source](../diagrams/toolset-workflow.mmd)</sub>
 
 Blue boxes are loadout's own skills, orange boxes come from plugins the kit enables, amber boxes are the MCP servers and command-line tools Claude reaches for while it works.
 

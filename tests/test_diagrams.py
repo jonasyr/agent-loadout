@@ -3,10 +3,17 @@ import json
 import re
 
 from diagrams_support import DIAGRAMS, HASH_COMMENT, VARIANTS, image_ref, source_hash, sources
+from loadout import paths
+
+ROOT = paths.kit_root()
 
 FIX = "run docs/diagrams/render.sh {name} and commit the source with both SVGs"
 CLASS_USE = re.compile(r"^\s*class\s+\S+\s+(\w+)\s*$", re.M)
 CLASS_DEF = re.compile(r"^\s*classDef\s+(\w+)\s", re.M)
+PICTURE = re.compile(r"<picture>(.*?)</picture>", re.S)
+SOURCE = re.compile(r'<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+)">')
+IMG = re.compile(r'<img alt="([^"]*)" src="([^"]+)">')
+SOURCE_LINK = re.compile(r"</picture>\n\n<sub>\[Source\]\(([^)]+)\)</sub>")
 
 
 def _body(text):
@@ -86,3 +93,56 @@ def test_themes_render_svg_text_with_system_fonts():
         assert theme["theme"] == "base"
         assert theme["htmlLabels"] is False and theme["flowchart"]["htmlLabels"] is False
         assert theme["themeVariables"]["fontFamily"].startswith("ui-sans-serif, system-ui")
+
+
+def _docs():
+    """README.md and docs/, without the agents' working documents."""
+    files = [ROOT / "README.md", *ROOT.glob("docs/**/*.md")]
+    return [f for f in files if "docs/superpowers/" not in f.relative_to(ROOT).as_posix()]
+
+
+def test_no_mermaid_code_blocks_left():
+    left = [str(f.relative_to(ROOT)) for f in _docs() if re.search(r"^\s*```+\s*mermaid", f.read_text(encoding="utf-8"), re.M)]
+    assert not left, f"render diagrams to SVG (docs/diagrams/) instead of Mermaid code blocks: {left}"
+
+
+def test_embeds_show_both_variants_with_alt_text():
+    bad = []
+    for md in _docs():
+        for block in PICTURE.findall(md.read_text(encoding="utf-8")):
+            where = md.relative_to(ROOT)
+            src, img = SOURCE.search(block), IMG.search(block)
+            if not (src and img):
+                bad.append(f"{where}: <picture> needs a dark <source> and <img alt src> as in CONTRIBUTING.md")
+                continue
+            dark, (alt, light) = src.group(1), img.groups()
+            if not (dark.endswith(".dark.svg") and light.endswith(".light.svg")
+                    and dark[: -len(".dark.svg")] == light[: -len(".light.svg")]):
+                bad.append(f"{where}: {dark} and {light} are not one diagram's two variants")
+            for ref in (dark, light):
+                if not (md.parent / ref).exists():
+                    bad.append(f"{where}: {ref} does not exist")
+            if len(alt.strip()) < 40 or alt.strip().lower().startswith("diagram"):
+                bad.append(f"{where}: alt text must say what the diagram shows ({alt!r})")
+    assert not bad, "\n".join(bad)
+
+
+def test_each_embed_links_its_source():
+    bad = []
+    for md in _docs():
+        text = md.read_text(encoding="utf-8").replace("\r", "")
+        pictures = len(PICTURE.findall(text))
+        links = SOURCE_LINK.findall(text)
+        if len(links) != pictures:
+            bad.append(f"{md.relative_to(ROOT)}: each </picture> needs a blank line, then <sub>[Source](….mmd)</sub>")
+        bad += [f"{md.relative_to(ROOT)}: {ref} does not exist" for ref in links if not (md.parent / ref).exists()]
+    assert not bad, "\n".join(bad)
+
+
+def test_every_diagram_is_embedded():
+    embedded = set()
+    for md in _docs():
+        for light in IMG.findall(md.read_text(encoding="utf-8")):
+            embedded.add((md.parent / light[1]).resolve())
+    missing = [n for n in sources() if (DIAGRAMS / f"{n}.light.svg").resolve() not in embedded]
+    assert not missing, f"diagrams no page shows (embed or delete them): {missing}"
