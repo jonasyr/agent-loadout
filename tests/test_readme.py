@@ -105,3 +105,13 @@ def test_commands_have_no_prompt_characters():
     for block in blocks:
         for line in block.splitlines():
             assert not line.startswith(("$ ", "> ", "PS> ")), f"copy button would copy the prompt: {line}"
+
+
+def test_trust_claims_keep_their_scope():
+    """Shortened trust claims must not promise more than the code does (shell files and gh setup are not backed up)."""
+    text = _readme()
+    trust = text[text.index("## Why you can trust it"):text.index("## Docs")]
+    assert "removes or replaces" in trust, "backups cover what loadout removes or replaces, not everything it touches"
+    assert "Nothing of yours" not in trust and "Your tools never change without your answer" in trust
+    assert "configure set pref" in trust, "values set with configure set pref skip the secret guard"
+    assert "next session runs the new code" in trust and "ask first" in trust
