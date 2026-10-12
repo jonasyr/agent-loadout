@@ -16,8 +16,30 @@ def _ask(question: str) -> str:
         return ""
 
 
+def kit_version() -> str:
+    """`loadout 0.1.0 (abc1234)`: the release from pyproject.toml and the kit's commit (left out if git cannot tell)."""
+    import re
+    from . import paths, runner
+    text = (paths.kit_root() / "pyproject.toml").read_text(encoding="utf-8")
+    release = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
+    head = runner.run(["git", "-C", str(paths.kit_root()), "rev-parse", "--short", "HEAD"], timeout=10)
+    return f"loadout {release} ({head.stdout.strip()})" if head.ok and head.stdout.strip() else f"loadout {release}"
+
+
+class _Version(argparse.Action):
+    """Like action="version", but looked up only when asked for: hooks run loadout at every session start."""
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, default=argparse.SUPPRESS, help=None):
+        super().__init__(option_strings=option_strings, dest=dest, default=default, nargs=0, help=help)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(kit_version())
+        parser.exit()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="loadout", description="Set up and maintain a Claude Code loadout.")
+    parser.add_argument("--version", action=_Version, help="show the version and the kit's commit, then exit")
     # metavar hides internal subcommands (registered without help=) from the usage line
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 

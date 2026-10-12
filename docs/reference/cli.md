@@ -4,6 +4,8 @@
 
 The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update` and `restore`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They have no `--help` entry and are not meant to be run by hand.
 
+`loadout --version` prints the release and the kit's commit, for example `loadout 0.1.0 (54af5b7)`; the commit is left out when the kit is not a git clone. Bug reports ask for it.
+
 ## Exit codes
 
 Every command returns 0 on success. These apply to all commands:
