@@ -85,3 +85,28 @@ def test_servers_loadout_set_up_are_not_reported_as_needing_a_login(fake_home, f
     steps = codex.open_steps()
     assert any("optional" in s and "codex mcp login context7" in s and "higher limits" in s for s in steps)
     assert any(s.startswith("log in to other") for s in steps)
+
+
+@needs_tomllib
+def test_an_identical_existing_server_is_not_a_conflict(fake_home):
+    """The user's own serena that already has the Codex context: nothing to report, nothing to claim."""
+    from loadout import backup
+    path = paths.codex_home() / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--context=codex", "--project-from-cwd"]\n',
+                    encoding="utf-8")
+    lines = codex.apply_config(backup.Backup(description="t"))
+    assert not any("serena" in l for l in lines)
+    assert "serena" not in json.loads(codex.record_path().read_text())["tables"]
+
+
+def test_set_target_offers_to_commit_the_personal_layer(fake_home, fake_runner, monkeypatch):
+    from loadout import configure
+    from loadout.__main__ import main
+    offered = []
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: offered.append(1))
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
+    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    main(["configure", "set", "target", "codex", "on"])
+    assert offered == [1]

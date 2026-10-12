@@ -199,6 +199,7 @@ def _register_configure(sub):
             from . import codex
             on = configure.parse_switch(a.value, "target")
             print(codex.set_enabled(on))
+            configure.offer_commit(_ask)  # targets.json lives in the personal layer; uncommitted it pauses the sync
             if on:  # set Codex up now, not at the next bootstrap; Claude Code's setup is unaffected
                 problem = codex.unavailable()
                 if problem:
