@@ -44,7 +44,7 @@ How these keys are merged with yours: [Settings merge](settings-merge.md).
 - **Skills:** `/loadout:onboard`, `/loadout:configure`, `/loadout:docs-audit`, `/loadout:docs-sync` and `/loadout:execution-advisor`. The documentation skills are described in [Documentation strategy](../explanation/documentation-strategy.md#how-the-kit-keeps-it-true), the advisor in [The execution advisor](../explanation/execution-advisor.md), configure in [Ask your agent about loadout](../how-to/ask-about-loadout.md).
 - **Hooks:** the session-start maintenance hook, tool hooks for rtk, Serena and codebase-memory, and the execution-advisor hooks. Codex gets a variant of them plus a type-check hook. All are listed in [Hooks](hooks.md).
 
-The kit's `rules/` folder is loaded in every session. Claude Code reads it through the link `~/.claude/rules/loadout`; Codex reads it from the marked block that loadout keeps in `~/.codex/AGENTS.md` (`$CODEX_HOME/AGENTS.md`; see [Personal layer](personal-layer.md)). It holds `tooling.md` (which tool for which question), `workflow.md` (process skills, review, UI checks), `docs-policy.md` and `memory-policy.md` (where facts and notes live) and `rtk.md`.
+The kit's `rules/` folder is loaded in every session. Claude Code reads it through the link `~/.claude/rules/loadout`; Codex reads it from the marked block that loadout keeps in `~/.codex/AGENTS.md` (`$CODEX_HOME/AGENTS.md`), a copy that loadout refreshes at set times (see [Personal layer](personal-layer.md#files)). It holds `tooling.md` (which tool for which question), `workflow.md` (process skills, review, UI checks), `docs-policy.md` and `memory-policy.md` (where facts and notes live) and `rtk.md`.
 
 ## Command-line tools
 

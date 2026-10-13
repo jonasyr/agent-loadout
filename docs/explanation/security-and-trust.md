@@ -90,7 +90,7 @@ For a team, use a fork of the kit that you control and point your clone (or `LOA
 
 ## Opting out
 
-- **Marketplace auto-update.** Set `"autoUpdate": false` for a marketplace in your personal `settings.json`, for example `{"extraKnownMarketplaces": {"impeccable": {"autoUpdate": false}}}`.
+- **Marketplace auto-update.** Set `"autoUpdate": false` for a marketplace in your personal `settings.json`, for example `{"extraKnownMarketplaces": {"impeccable": {"autoUpdate": false}}}`. This reaches Claude Code only: Codex's plugin refresh after a pull ignores it and stops only with `LOADOUT_NO_AUTO_PULL=1`, which turns off the whole daily pull.
 - **The daily pull.** Set `LOADOUT_NO_AUTO_PULL=1`. Details: [The daily sync](architecture.md#the-daily-sync).
 - **Binary updates.** Nothing to turn off: they only happen when you run `loadout update`.
 
