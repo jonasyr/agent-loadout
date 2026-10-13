@@ -52,3 +52,4 @@ def test_commands_the_agent_runs_after_a_yes_need_no_terminal():
     assert "`loadout adopt --apply --groups" in SKILL
     assert "include `update` or `install`, add `--yes`" in SKILL  # those groups ask again per command
     assert "`loadout init <names> --yes`" in SKILL  # otherwise no git init and no profile
+    assert "also moves the plaintext secrets" in SKILL  # adopt --yes is consent to that too
