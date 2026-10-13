@@ -58,8 +58,9 @@ def _sig(path: Path) -> list:
         files = []
         for p in sorted(path.rglob("*")):
             s = os.stat(p, follow_symlinks=False)
-            if not stat.S_ISDIR(s.st_mode):
-                files.append([p.relative_to(path).as_posix(), s.st_size, s.st_mtime_ns])
+            rel = p.relative_to(path).as_posix()
+            # folders count too: an empty one an old run moved in later must make the copy look stale
+            files.append([rel, "dir"] if stat.S_ISDIR(s.st_mode) else [rel, s.st_size, s.st_mtime_ns])
         return ["dir", files]
     return ["file", st.st_ino, st.st_size, st.st_mtime_ns]
 
@@ -323,7 +324,7 @@ def _identical(old: Path, new: Path) -> bool:
             a, b = _sig(old)[1], _sig(new)[1]
             if [x[:2] for x in a] != [x[:2] for x in b]:
                 return False
-            return all(filecmp.cmp(old / name, new / name, shallow=False) for name, _, _ in a)
+            return all(filecmp.cmp(old / x[0], new / x[0], shallow=False) for x in a if len(x) == 3)
         if old.is_symlink() or new.is_symlink():
             return old.is_symlink() and new.is_symlink() and os.readlink(old) == os.readlink(new)
         return new.is_file() and filecmp.cmp(old, new, shallow=False)
@@ -339,31 +340,40 @@ def _old_process_busy() -> bool:
         return False
 
 
-def _step(entries: dict, key: str, entry: dict, now: float, busy: bool) -> None:
-    """Retire one recorded old entry when it is due (see the module docstring)."""
-    old = Path(key)
-    if entry.get("conflict") or busy or now - entry.get("at", now) < RETIRE_AFTER:
-        return
-    if entry.get("session") and now - old.stat().st_mtime < SESSION_IDLE:
-        return  # an old session may still read and write it
-    if "new" in entry and _gone(Path(entry["new"])):
-        del entries[key]  # its copy is gone: never delete the last one; the next run copies it again
-        return
-    if _sig(old) == entry["sig"]:
-        result = _retire(old, entry["sig"])
-        if result == "done":
-            del entries[key]
-        elif result == "kept":
-            entry.update(conflict=True, named=False)
-        return  # "changed": decided on the next run
-    if entry.get("session") or "new" not in entry:
-        entry.update(sig=_sig(old), at=now)  # a session file is never copied back: wait until it is idle
-        return
+def _reconcile(entry: dict, old: Path, now: float) -> None:
+    """An old entry changed after its copy (an older process wrote it): at once, not after the waiting period,
+    the newer old one replaces the copy when that is untouched; otherwise both are kept and named."""
     again = _readopt(old, Path(entry["new"]), entry["new_sig"])
     if again is None:
         entry.update(conflict=True, named=False)
     else:
-        entry.update(sig=again[0], new_sig=again[1], at=now)  # retired after RETIRE_AFTER again
+        entry.update(sig=again[0], new_sig=again[1], at=now)  # retired after RETIRE_AFTER from now
+
+
+def _step(entries: dict, key: str, entry: dict, now: float, busy: bool) -> None:
+    """Keep one recorded old entry in step with its copy, and retire it when it is due (module docstring)."""
+    old = Path(key)
+    if entry.get("conflict"):
+        return
+    if "new" in entry and _gone(Path(entry["new"])):
+        del entries[key]  # its copy is gone: never delete the last one; the next run copies it again
+        return
+    if _sig(old) != entry["sig"]:
+        if entry.get("session") or "new" not in entry:
+            entry.update(sig=_sig(old), at=now)  # a session file is never copied back: wait until it is idle
+        else:
+            _reconcile(entry, old, now)
+        return
+    if busy or now - entry.get("at", now) < RETIRE_AFTER:
+        return
+    if entry.get("session") and now - old.stat().st_mtime < SESSION_IDLE:
+        return  # an old session may still read and write it
+    result = _retire(old, entry["sig"])
+    if result == "done":
+        del entries[key]
+    elif result == "kept":
+        entry.update(conflict=True, named=False)
+    # "changed": reconciled on the next run
 
 
 def migrate_state(wait: float | None = None) -> list[str]:
@@ -475,9 +485,13 @@ def pending() -> bool:
             if not _is_dir(old_root):
                 continue
             for old in old_root.iterdir():
-                if _ours(old) and old.name not in SESSION_FILES and str(old) not in entries \
-                        and not _holds_destination(old):
-                    return True
+                if not _ours(old) or old.name in SESSION_FILES or _holds_destination(old):
+                    continue
+                entry = entries.get(str(old))
+                if entry is None:
+                    return True  # not copied yet
+                if not entry.get("conflict") and "new" in entry and _sig(old) != entry["sig"]:
+                    return True  # an older process changed it after the copy: not reconciled yet
     except OSError:
         return True
     return False

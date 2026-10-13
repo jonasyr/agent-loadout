@@ -462,3 +462,33 @@ def test_a_state_folder_inside_the_old_one_is_not_migrated_into_itself(fake_home
     migrate.migrate_state()
     assert not migrate.pending(), "the destination is not one of the old entries"
     assert (old / "loadout" / "managed-settings.json").exists()
+
+
+def test_an_empty_folder_added_after_the_copy_is_noticed(fake_home):
+    _legacy(fake_home)
+    migrate.migrate_state()
+    (paths.legacy_backups_root() / "loadout-1" / "files" / "emptydir").mkdir()  # an old Backup.move finishing
+    migrate.migrate_state()
+    assert (paths.backups_root() / "loadout-1" / "files" / "emptydir").is_dir()
+
+
+def test_a_change_after_the_copy_is_reconciled_at_once_not_after_the_window(fake_home):
+    old = _legacy(fake_home)
+    migrate.migrate_state()
+    (old / "managed-settings.json").write_text('{"a": 3}')  # an old apply-settings, inside the window
+    assert migrate.pending(), "a stale copy must not be used by a writing command"
+    migrate.migrate_state()  # no clock: reconciled right away
+    assert (paths.state_dir() / "managed-settings.json").read_text() == '{"a": 3}'
+    assert not migrate.pending()
+
+
+def test_restore_in_the_window_uses_the_reconciled_backup(fake_home, capsys):
+    import json as _json
+    from loadout.__main__ import main
+    _legacy(fake_home)
+    migrate.migrate_state()
+    legacy = paths.legacy_backups_root() / "loadout-1"
+    (legacy / "manifest.json").write_text(_json.dumps({"steps": [{"label": "late", "undo": {"kept": "x"}}]}))
+    main(["restore", str(legacy)])
+    steps = _json.loads((paths.backups_root() / "loadout-1" / "manifest.json").read_text())["steps"]
+    assert [s["label"] for s in steps] == ["late"], "the step an old run added after the copy is restored too"
