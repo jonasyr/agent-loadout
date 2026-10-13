@@ -118,6 +118,7 @@ On the second machine, the [daily sync](../explanation/architecture.md#the-daily
 
 Nothing that looks like a secret is written to the personal layer. Printed lines are redacted where the patterns recognise a secret. Values you set yourself with `loadout configure set pref` do not pass this guard.
 
+- **Names:** a skill name, a profile name (`project:<profile>`) or a `new skill --description` that looks like a secret is refused before anything is written, because it would become a file name, a backup label and output.
 - **MCP servers:** values in `env` and `headers` become `${VAR}` and move to `secrets.env`. A secret in `args`, in the URL (query string or a high-entropy path segment) or in a multi-line value is refused, because it cannot be moved safely.
 - **Marketplaces:** a source URL with credentials or a token is refused.
 - **Hooks and skills:** a hook command, args, script or any skill file that looks secret is refused. All skill files are scanned, binary ones by their text runs; a file with a UTF-16 byte-order mark or any NUL byte is scanned as UTF-8 and as UTF-16 (LE and BE). An unreadable file refuses too.

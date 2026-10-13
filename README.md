@@ -157,6 +157,7 @@ The full index is [docs/README.md](docs/README.md).
 | Ask a question or change my setup | [Ask your agent about loadout](docs/how-to/ask-about-loadout.md) |
 | Install step by step, per platform | [Getting started](docs/tutorials/getting-started.md) |
 | Decide what happens to tools I already have | [Handle your own tools](docs/how-to/your-own-tools.md) |
+| I installed a skill or MCP server myself, or want to write a skill | [You installed a tool yourself](docs/how-to/your-own-tools.md#you-installed-a-tool-yourself), [Create a skill of your own](docs/how-to/your-own-tools.md#create-a-skill-of-your-own) |
 | Undo something loadout changed | [Undo what loadout changed](docs/how-to/undo-and-restore.md) |
 | Change my preferences or add tools globally | [Set your working preferences](docs/how-to/set-preferences.md) |
 | Switch Codex on, or see what is Codex-only | [Use loadout with Codex](docs/how-to/codex.md) |
