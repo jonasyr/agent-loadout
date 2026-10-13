@@ -10,14 +10,6 @@ TRUST_NOTE = ("Codex reads the repo's .codex/config.toml only in a trusted proje
               "accept the trust question")
 
 
-def _inside(path: Path, project: Path) -> bool:
-    try:
-        path.resolve().relative_to(project.resolve())
-        return True
-    except ValueError:
-        return False
-
-
 def _wanted(prof: profiles.Profile) -> tuple[dict[str, str], list[str], list[str]]:
     """(table text by name, plugin ids, skipped lines)."""
     servers = prof.mcp.get("mcpServers", {}) if isinstance(prof.mcp, dict) else {}
@@ -38,7 +30,7 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
     """Add the profile's servers and plugin switches to the repo's .codex/config.toml. Only adds tables; a table of
     the same name is the user's and stays. skip: plugins that did not install, so the repo does not name them."""
     path = project / ".codex" / "config.toml"
-    if not _inside(path.parent, project) or not _inside(path, project):
+    if not paths.inside(path.parent, project) or not paths.inside(path, project):
         return [f"skipped {path}: it points outside {project} (a symlinked .codex or config.toml)"]
     tl = codex._tomllib()
     tables, plugins, lines = _wanted(prof)
@@ -90,7 +82,7 @@ def skills(project: Path, dry_run: bool) -> list[str]:
     src_root, dest_root = project / ".claude" / "skills", project / ".agents" / "skills"
     if not src_root.is_dir():
         return []
-    if not _inside(dest_root.parent, project) or not _inside(dest_root, project):
+    if not paths.inside(dest_root.parent, project) or not paths.inside(dest_root, project):
         return [f"skills not linked: {dest_root} points outside {project} (a symlinked .agents or .agents/skills)"]
     out = []
     for entry in sorted(src_root.iterdir()):

@@ -50,18 +50,22 @@ def load_profile(name: str) -> Profile:
     raise ValueError(f"unknown profile '{name}' (available: {', '.join(list_profiles())})")
 
 
-def apply_profile(profile: Profile, project: Path) -> list[Path]:
-    changed = []
+def apply_profile(profile: Profile, project: Path) -> tuple[list[Path], list[str]]:
+    """Merge the profile into the repo's settings and .mcp.json. Returns (changed files, skipped lines)."""
+    changed, skipped = [], []
     for rel, overlay in ((Path(".claude/settings.json"), profile.settings), (Path(".mcp.json"), profile.mcp)):
         if not overlay:
             continue
         target = project / rel
+        if not paths.inside(target, project) or not paths.inside(target.parent, project):
+            skipped.append(f"skipped {rel.as_posix()}: it points outside the repo")
+            continue
         before = load_json(target)
         after = deep_merge(before, overlay)
         if after != before:
             save_json(target, after)
             changed.append(target)
-    return changed
+    return changed, skipped
 
 
 def _skill_source(name: str) -> Path | None:
@@ -76,9 +80,7 @@ def copy_skills(profile: Profile, project: Path, dry_run: bool = False) -> list[
     """Copy the profile's skills into the repo. An existing skill folder is never overwritten."""
     out = []
     skills_dir = project / ".claude" / "skills"
-    try:
-        skills_dir.resolve().relative_to(project.resolve())
-    except ValueError:
+    if not paths.inside(skills_dir, project):
         return [f"skills not copied: {skills_dir} points outside {project} (a symlinked .claude or .claude/skills)"]
     for name in profile.skills:
         if not isinstance(name, str) or not name or Path(name).name != name or name in (".", ".."):

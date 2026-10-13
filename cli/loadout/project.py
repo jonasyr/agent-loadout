@@ -33,14 +33,20 @@ def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> bool:
 
 def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False) -> int:
     prof = profiles.load_profile(name)
+    skipped: list[str] = []
     if dry_run:
         print(f"would apply profile {name}: {prof.description}")
     else:
-        for path in profiles.apply_profile(prof, project):
+        changed, skipped = profiles.apply_profile(prof, project)
+        for path in changed:
             print(f"updated {path}")
+        for line in skipped:
+            print(line)
     for line in profiles.copy_skills(prof, project, dry_run=dry_run):
         print(line)
     ok = _install(prof, project, dry_run) if install else True
+    if skipped:
+        ok = False
     from . import codex_project, targets
     if targets.codex_enabled():
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
