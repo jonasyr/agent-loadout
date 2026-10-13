@@ -355,3 +355,16 @@ def test_ensure_refuses_a_wrong_shape_but_fills_null():
     assert ensure(d, "a") == {} and ensure(d, "b", list) == []
     with pytest.raises(WrongShape):
         ensure({"a": [1]}, "a")
+
+
+def test_a_damaged_managed_mcp_snapshot_is_rewritten_not_a_crash(fake_home, fake_runner):
+    import json
+    from loadout import backup, own
+    from loadout.inventory import Item, Verdict
+    snap = paths.state_dir() / "managed-mcp.json"
+    snap.parent.mkdir(parents=True, exist_ok=True)
+    snap.write_text(json.dumps({"mcpServers": ["x"]}))
+    item = Item("mcp", "new", "x", "~/.claude.json", {"config": {"command": "x"}})
+    rec = own.record_global(Verdict(item, "own", ""), backup.Backup(description="t"))
+    rec.machine()
+    assert json.loads(snap.read_text())["mcpServers"] == {"new": {"command": "x"}}

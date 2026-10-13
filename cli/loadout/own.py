@@ -713,7 +713,7 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
                                                  if res.startswith("manual: ") else res)))
         snap = paths.state_dir() / "managed-mcp.json"
         _edit_json(snap, bk, "managed-mcp.json before recording a server",
-                   lambda d: ensure(d, "mcpServers").__setitem__(name, new))
+                   lambda d: d.__setitem__("mcpServers", {**get_dict(d, "mcpServers"), name: new}))  # loadout's own state
         return out
 
     def codex_machine() -> list[str]:

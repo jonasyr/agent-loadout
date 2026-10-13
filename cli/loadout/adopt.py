@@ -703,7 +703,7 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
     for v, step in machine:
         try:
             out += step()
-        except (OSError, InvalidJSON) as exc:
+        except (OSError, InvalidJSON, own.Collision) as exc:
             fail(v, exc)
     from . import targets
     if personal_changed and targets.claude_enabled():  # Codex-only: its own steps already applied the change
