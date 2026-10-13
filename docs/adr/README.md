@@ -48,3 +48,4 @@ Template:
 | [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted |
 | [0023](0023-python-3-11-minimum.md) | Python 3.11 minimum | Accepted |
 | [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted |
+| [0025](0025-state-in-xdg-state-home.md) | loadout's own files live in XDG state, not in `~/.claude` | Accepted |

@@ -26,6 +26,7 @@ Some commands return their own codes. They are listed per command and add to the
 | `LOADOUT_PERSONAL` | The personal layer's folder, instead of `~/.config/loadout/personal`. See [personal-layer](personal-layer.md). |
 | `LOADOUT_ROOT` | The kit's folder, instead of the clone the `loadout` launcher lives in. `loadout kit-path` prints it. |
 | `CODEX_HOME` | Codex's folder, instead of `~/.codex`. |
+| `XDG_STATE_HOME` | Where loadout keeps its state: `$XDG_STATE_HOME/loadout` instead of `~/.local/state/loadout`. Only an absolute path counts. See [loadout's own files](../explanation/architecture.md#loadouts-own-files). |
 | `LOADOUT_NO_AUTO_PULL=1` | Turns off the daily pull and what follows it; see [The daily sync](../explanation/architecture.md#the-daily-sync). |
 | `NO_COLOR` (any value), `TERM=dumb` | No colour in the output. |
 | `LOADOUT_REPO_URL`, `LOADOUT_REF` | Read by the one-liner scripts `bootstrap.sh` and `bootstrap.ps1`, not by `loadout`: the repo and the branch or tag to clone (default: this repo's `main`). For forks and tests. |
@@ -205,6 +206,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 |---|---|
 | The Python version that runs loadout (an `ok` line; loadout needs 3.11 or newer and stops before this on older versions) | — |
 | Inside WSL: the WSL version (an ok line), then one warning per problem from [WSL 2](../how-to/wsl.md) | warn |
+| `loadout state`: nothing was left in `~/.claude/.loadout` or `~/.claude/backups` by the one-time move (an entry stays there when the new place already had one of that name; compare and delete it by hand) | warn |
 | The links under `~/.claude` (rules, global skills, `hooks/personal`) | FAIL |
 | `settings.json` is valid JSON | FAIL |
 | A required binary is on `PATH` | FAIL |
@@ -250,7 +252,7 @@ With Claude Code on, it first refreshes the plugin marketplaces (`claude plugin 
 - `brew upgrade <formula>` when the binary resolves into Homebrew's `Cellar/<formula>/`. Casks and npm packages installed with Homebrew's node are not formulae and keep their own updater.
 - Otherwise the `update` command of the catalog entry (`claude update`, `uv self update`, ...). See [Catalog format](catalog-format.md#install-and-update).
 
-For a tool not managed by mise, if the update command succeeds but installs nothing newer, loadout remembers that version in `~/.claude/.loadout/refused-updates.json` and does not notify again until a newer one appears. A failed update keeps notifying.
+For a tool not managed by mise, if the update command succeeds but installs nothing newer, loadout remembers that version in `~/.local/state/loadout/refused-updates.json` and does not notify again until a newer one appears. A failed update keeps notifying.
 
 If an installer changed `~/.claude/settings.json`, the kit-merged version is put back and the installer's version goes into a backup.
 
@@ -274,13 +276,13 @@ loadout restore [--list] [--force] [BACKUP_DIR]
 
 | Flag | Meaning |
 |---|---|
-| `BACKUP_DIR` | A directory printed by bootstrap or adopt, for example `~/.claude/backups/loadout-<timestamp>`. |
+| `BACKUP_DIR` | A directory printed by bootstrap or adopt, for example `~/.local/state/loadout/backups/loadout-<timestamp>`. A path from before the move, `~/.claude/backups/loadout-<timestamp>`, still works. |
 | `--list` | List backups, newest first. |
 | `--force` | Replay a backup that was already restored. |
 
 Without `BACKUP_DIR` it lists the backups, like `--list`.
 
-Backups are kept in `~/.claude/backups`, for every user, Codex-only setups included; see [loadout's own files](../explanation/architecture.md#loadouts-own-files). Restore only accepts folders under that location and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
+Backups are kept in `~/.local/state/loadout/backups`, for every user, Codex-only setups included; see [loadout's own files](../explanation/architecture.md#loadouts-own-files). Backups taken before the move restore from the new place. If the old `~/.claude/backups` folder still exists, restore names it: the move has not finished, or a different backup of the same name was kept in both places. Restore only accepts folders under the backups location and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
 
 Exit codes: 0 when listing or when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed.
 

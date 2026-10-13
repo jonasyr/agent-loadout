@@ -40,10 +40,12 @@ What the Codex side maps, and what stays different, is in [Use loadout with Code
 
 ## loadout's own files
 
-Two folders belong to loadout itself, for every user, Codex-only included. They sit under `~/.claude` because that is where loadout always kept them; the path does not depend on whether Claude Code is on (`paths.state_dir`, `paths.backups_root`).
+Two folders belong to loadout itself, for every user, Codex-only included. They sit in `$XDG_STATE_HOME/loadout` (an absolute path), or `~/.local/state/loadout` when that is not set, on every OS. The path does not depend on whether Claude Code is on (`paths.state_dir`, `paths.backups_root`), so a Codex-only machine has no `~/.claude`. See [ADR 0025](../adr/0025-state-in-xdg-state-home.md).
 
-- `~/.claude/.loadout/`: machine-local state. It records what the merge last applied (the snapshot), which `config.toml` entries loadout owns (`codex-config.json`), your `leave` decisions, queued notices and the maintenance timestamps. It is not synced.
-- `~/.claude/backups/`: one `loadout-<timestamp>` folder per change that moved or replaced something you own, with a manifest of undo steps. See [Undo what loadout changed](../how-to/undo-and-restore.md).
+- `~/.local/state/loadout/`: machine-local state. It records what the merge last applied (the snapshot), which `config.toml` entries loadout owns (`codex-config.json`), your `leave` decisions, queued notices and the maintenance timestamps. It is not synced.
+- `~/.local/state/loadout/backups/`: one `loadout-<timestamp>` folder per change that moved or replaced something you own, with a manifest of undo steps. See [Undo what loadout changed](../how-to/undo-and-restore.md).
+
+Older versions kept both folders in `~/.claude`. At the start of every loadout command (and of the session hook) loadout moves them once, under a lock; another run waits up to 10 seconds for it. Where the new place already has an entry of the same name, the new one wins, the old one stays in `~/.claude` and is named once, and `loadout check` warns (row `loadout state`) until you delete it by hand. If the move did not finish, commands that change things stop with exit code 1 and say so; `kit-path` and `check` still run, the session hook exits quietly, and the next run finishes the move. An empty `~/.claude` is removed afterwards only when Claude Code is off.
 
 ## The settings merge
 

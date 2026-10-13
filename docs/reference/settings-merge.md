@@ -9,7 +9,7 @@ The merge uses three inputs:
 | Input | Is |
 |---|---|
 | desired | `settings.base.json` from the kit, overlaid with `<personal>/settings.json`. Dicts merge recursively, lists are joined without duplicates, and for any other value your personal file wins. |
-| previous | The snapshot `~/.claude/.loadout/managed-settings.json`: what the merge applied last time. |
+| previous | The snapshot `~/.local/state/loadout/managed-settings.json`: what the merge applied last time. |
 | current | Your `~/.claude/settings.json` as it is now. |
 
 <picture>

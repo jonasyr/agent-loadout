@@ -14,7 +14,7 @@ The last column says how `plugins/loadout/hooks/codex.json` differs: `same` mean
 |---|---|---|---|---|---|
 | `SessionStart` | all | `serena-hooks activate --client=claude-code` | 15 s | Serena's own activation hook. | argument (`--client=codex`) |
 | `SessionStart` | all | `loadout hook-session-start` | 10 s | Shows queued notices (for example "updates available, run `loadout update`") and starts the background maintenance when the daily pull or the weekly update check is due. Errors never break the session. | same |
-| `SessionStart` | all | `--soft --python hooks/reload_check.py` | 5 s | Tells you once per session to run `/reload-plugins` when Claude Code updated the plugin after the session started (the session keeps the old skills and hooks until then). State: `~/.claude/.loadout/reload-notified.json`. | — (Codex loads plugins per session) |
+| `SessionStart` | all | `--soft --python hooks/reload_check.py` | 5 s | Tells you once per session to run `/reload-plugins` when Claude Code updated the plugin after the session started (the session keeps the old skills and hooks until then). State: `~/.local/state/loadout/reload-notified.json`. | — (Codex loads plugins per session) |
 | `SessionEnd` | all | `serena-hooks cleanup --client=claude-code` | 10 s | Serena's own cleanup hook. | argument (`--client=codex`), timeout 3 s |
 | `PreToolUse` | `Bash` | `rtk hook claude` | 10 s | rtk rewrites shell commands to its token-saving form. | argument (`rtk hook codex`) |
 | `PreToolUse` | `mcp__plugin_loadout_serena__.*` | `serena-hooks auto-approve --client=claude-code` | 10 s | Serena's own auto-approve hook, for Serena's tools only. | argument (`--client=codex`), matcher `mcp__serena__.*` |
