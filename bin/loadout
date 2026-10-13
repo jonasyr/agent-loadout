@@ -3,10 +3,39 @@
 import sys
 
 
+def reexec_with_uv(argv):
+    """Started by a Python older than 3.11 (an old launcher still points at it): continue under a newer Python that
+    uv knows, once. Written for old Pythons too."""
+    import os
+    import subprocess
+    if os.environ.get("LOADOUT_REEXEC"):
+        return
+    name = "uv.exe" if os.name == "nt" else "uv"
+    uv = None
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        if folder and os.path.isabs(folder) and os.path.isfile(os.path.join(folder, name)):
+            uv = os.path.join(folder, name)
+            break
+    if uv is None:
+        return
+    try:
+        out = subprocess.Popen([uv, "python", "find", "--no-config", "--no-project", ">=3.11"], cwd=os.sep,
+                               stdout=subprocess.PIPE, stderr=open(os.devnull, "w")).communicate()[0]
+    except OSError:
+        return
+    lines = out.decode("utf-8", "replace").strip().splitlines()
+    if lines and os.path.isfile(lines[0].strip()):
+        os.environ["LOADOUT_REEXEC"] = "1"
+        exe = lines[0].strip()
+        os.execv(exe, [exe, os.path.abspath(__file__)] + list(argv))
+
+
 def require_python(version=None):
     version = version or sys.version_info
     if tuple(version[:2]) < (3, 11):
-        sys.stderr.write("loadout needs Python 3.11 or newer (found %d.%d). Install it and re-run.\n" % (version[0], version[1]))
+        reexec_with_uv(sys.argv[1:])  # returns only when uv has no newer Python
+        sys.stderr.write("loadout needs Python 3.11 or newer (found %d.%d). Re-run bootstrap (it gets one through uv) "
+                         "or install it yourself.\n" % (version[0], version[1]))
         sys.exit(1)
 
 

@@ -33,3 +33,40 @@ def test_bin_loadout_refuses_3_10(capsys):
 def test_no_code_path_for_a_missing_tomllib():
     for rel in ("cli/loadout/codex.py", "cli/loadout/codex_project.py", "cli/loadout/own.py"):
         assert not re.search(r"_tomllib\(\) is None|needs Python 3\.11", (KIT / rel).read_text(encoding="utf-8")), rel
+
+
+def _bin_loadout():
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("binloadout2", str(KIT / "bin/loadout"))
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("binloadout2", loader))
+    loader.exec_module(mod)
+    return mod
+
+
+def test_an_old_python_switches_to_a_uv_python(tmp_path, monkeypatch):
+    import os
+    newer = tmp_path / "python3.12"
+    newer.write_text("")
+    uv = tmp_path / "bin" / "uv"
+    uv.parent.mkdir()
+    uv.write_text(f"#!/bin/sh\necho {newer}\n")
+    uv.chmod(0o755)
+    monkeypatch.setenv("PATH", str(uv.parent))
+    monkeypatch.delenv("LOADOUT_REEXEC", raising=False)
+    mod = _bin_loadout()
+    seen = []
+    monkeypatch.setattr(os, "execv", lambda exe, args: seen.append((exe, args)))
+    mod.reexec_with_uv(["check"])
+    assert seen and seen[0][0] == str(newer) and seen[0][1][-1] == "check"
+    monkeypatch.delenv("LOADOUT_REEXEC", raising=False)
+
+
+def test_the_message_names_bootstrap_when_no_newer_python_exists(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    mod = _bin_loadout()
+    try:
+        mod.require_python((3, 10, 0))
+    except SystemExit:
+        pass
+    assert "bootstrap" in capsys.readouterr().err
