@@ -177,7 +177,7 @@ loadout profile [--no-install] NAME
 
 What `init` and `profile` write in the repo, per agent:
 
-| | Claude Code | Codex (only when Codex is on) |
+| | Claude Code (shared repo files, written even when Claude Code is off) | Codex (only when Codex is on) |
 |---|---|---|
 | Profile MCP servers | Merged into `.mcp.json`. | Added as sections to `.codex/config.toml`; `${VAR}` arguments are skipped with the reason. |
 | Profile settings | Merged into `.claude/settings.json`. | Not used, except which servers are switched off. |
