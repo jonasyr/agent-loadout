@@ -199,6 +199,7 @@ def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask
            keep_global: list | None = None, calm: bool = False) -> list[Verdict]:
     if groups is not None:
         valid = set(GROUP_ORDER) - {"keep", "own"}
+        groups = groups - {"secrets"}  # a pseudo-group: consent to move plaintext secrets, selects no verdicts
         if "own" in groups:
             raise ValueError("group 'own': decide per item with --own NAME=CHOICE,... (see loadout configure own)")
         for g in sorted(groups - valid):
@@ -502,6 +503,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         print("\nnon-interactive: re-run with --yes, --groups GROUP,... or --own NAME=CHOICE,... to apply (nothing changed).")
         return 2
     explicit = groups is not None
+    secrets_ok = groups is None or "secrets" in groups  # with --groups, secrets move only when named
     keep_global: list = []
     if own_pairs is not None and not interactive and not yes and not explicit:
         chosen = []  # --own alone: only the named items
@@ -548,7 +550,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         by_hand = [f for f in findings if not f.fixable]
         if asks_each_group and (remaining or by_hand):
             print(calm_secrets(remaining + by_hand))
-        if remaining and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
+        if remaining and secrets_ok and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
             for line in fix_secrets(remaining, bk):
                 print(redact(line))
         if interactive and own_spec is None:

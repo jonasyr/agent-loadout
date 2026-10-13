@@ -60,9 +60,9 @@ loadout adopt [--apply] [--groups GROUPS] [--skip SKIP] [--yes]
 | Flag | Meaning |
 |---|---|
 | `--apply` | Choose and apply changes (default: dry run). |
-| `--groups GROUPS` | Apply exactly these groups, for example `remove,migrate`. The valid groups are `remove`, `migrate`, `scope-down`, `update`, `install` and `review`. `update` and `install` run each command after confirmation unless `--yes` is also given. `own` is refused: use `--own`. |
+| `--groups GROUPS` | Apply exactly these groups, for example `remove,migrate`. The valid groups are `remove`, `migrate`, `scope-down`, `update`, `install`, `review` and `secrets` (moves the plaintext secrets the dry run lists into `secrets.env`; it selects no tool, and with `--groups` secrets move only when it is named). `update` and `install` run each command after confirmation unless `--yes` is also given. `own` is refused: use `--own`. |
 | `--skip SKIP` | Comma-separated item names to skip in this run. Nothing is remembered. |
-| `--yes` | No questions: apply `--groups`, or `remove,migrate,scope-down` when no groups are given, and move secrets. Your own tools stay as they are. |
+| `--yes` | No questions: apply `--groups`, or `remove,migrate,scope-down` when no groups are given, and move secrets (with `--groups`, only when it includes `secrets`). Your own tools stay as they are. |
 | `--own NAME=CHOICE,...` | Decide for your own tools. Example: `my-db=project:mydb,foo@bar=global`. Choices: `global`, `project:<profile>`, `leave`, `remove`. Other items stay as they are. Hook naming: see [hooks](hooks.md#naming-hooks-of-your-own-tools). |
 | `--no-versions` | Skip network version checks. |
 | `--verbose` | Full detail: each item's command line, long reason, replacement and notes, the items that stay, and the backup path. |
