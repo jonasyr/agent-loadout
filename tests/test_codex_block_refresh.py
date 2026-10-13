@@ -1,7 +1,17 @@
 """A hand edit of a rule or me.md reaches Codex's block at the next session start."""
 import json
 
+import pytest
+
 from loadout import codex, maintenance, paths
+
+
+@pytest.fixture(autouse=True)
+def _no_background_run(monkeypatch):
+    """session_start would start a real detached `loadout maintenance` (git pull, update check)."""
+    spawned = []
+    monkeypatch.setattr(maintenance, "_spawn_background", lambda: spawned.append(1))
+    return spawned
 
 
 def _codex_on():
