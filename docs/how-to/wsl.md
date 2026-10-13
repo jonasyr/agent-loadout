@@ -37,10 +37,10 @@ Work in `~/`, for example `~/code/app`, not under `/mnt/c`. Projects on `/mnt/c`
 
 ## 5. Check that the tools are Linux binaries
 
-WSL imports the Windows `PATH`. `claude`, `node` or `uv` (the tools `loadout check` tests) can then resolve to a Windows program under `/mnt/c`, which fails in odd ways ([troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install#npm-install-errors-in-wsl)). Check each one:
+WSL imports the Windows `PATH`. `claude`, `codex`, `node` or `uv` can then resolve to a Windows program under `/mnt/c`, which fails in odd ways ([troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install#npm-install-errors-in-wsl)). Check each one:
 
 ```bash
-which claude node npm uv git
+which claude codex node npm uv git
 ```
 
 Each path must be inside WSL, such as `~/.local/bin/claude` or `/usr/bin/node`. A path that starts with `/mnt/c` is the Windows binary. Install the tool inside WSL (`./bootstrap.sh --install` does it for what it can), and make sure its directory comes first in your `PATH`. Re-run `loadout check` afterwards.
