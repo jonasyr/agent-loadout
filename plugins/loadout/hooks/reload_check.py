@@ -41,7 +41,7 @@ def outdated(root: Path, home: Path) -> bool:
 def state_dir(home: Path) -> Path:
     """The same rule as loadout's paths.state_dir() (this hook cannot import loadout)."""
     base = os.environ.get("XDG_STATE_HOME", "")
-    root = Path(base).expanduser() if base and Path(base).expanduser().is_absolute() else home / ".local" / "state"
+    root = Path(base) if base and Path(base).is_absolute() else home / ".local" / "state"
     return root / "loadout"
 
 

@@ -39,7 +39,7 @@ def state_dir() -> Path:
     """loadout's own state: $XDG_STATE_HOME/loadout, else ~/.local/state/loadout (ADR 0025).
     A relative or empty XDG_STATE_HOME is ignored, as the XDG spec requires."""
     base = os.environ.get("XDG_STATE_HOME", "")
-    root = Path(base).expanduser() if base and Path(base).expanduser().is_absolute() else home() / ".local" / "state"
+    root = Path(base) if base and Path(base).is_absolute() else home() / ".local" / "state"
     return root / "loadout"
 
 

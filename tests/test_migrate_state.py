@@ -196,7 +196,7 @@ def test_an_old_session_s_hook_files_are_merged_quietly(fake_home):
     (old / "reload-notified.json").write_text("{}")  # new name: moved, but no notice for it
     assert migrate.migrate_state() == []  # session files never print the move notice
     assert (paths.state_dir() / "reload-notified.json").exists()
-    assert json.loads((paths.state_dir() / "advisor-pending.json").read_text())["plans"] == [1]  # merged
+    assert json.loads((paths.state_dir() / "advisor-pending.json").read_text())["plans"] == []  # never rewritten
     assert check._legacy_state() == [check.CheckResult("loadout state", True)] and not migrate.pending()
 
 
@@ -268,23 +268,28 @@ def test_an_unreadable_old_folder_counts_as_pending(fake_home, monkeypatch):
     assert migrate.pending(), "writing commands must not run on an empty snapshot while the old one is unreadable"
 
 
-def test_an_old_session_s_plans_are_merged_not_lost(fake_home):
+def test_an_old_session_keeps_its_file_and_the_new_one_is_never_rewritten(fake_home):
+    """Hooks write without the migration lock: rewriting the new file could undo a plan a hook just recorded.
+    The old session keeps reading its own file, so it stays until no session can still use it."""
     import time as _time
     paths.state_dir().mkdir(parents=True)
-    (paths.state_dir() / "advisor-pending.json").write_text(json.dumps({"plans": [{"path": "new.md"}]}))
-    (paths.state_dir() / "advisor-done.json").write_text(json.dumps({"evaluated": {"b": "2"}}))
+    new_pending = paths.state_dir() / "advisor-pending.json"
+    new_pending.write_text(json.dumps({"plans": [{"path": "new.md"}]}))
+    before = new_pending.stat().st_mtime_ns
     old = paths.legacy_state_dir()
     old.mkdir(parents=True)
     (old / "advisor-pending.json").write_text(json.dumps({"plans": [{"path": "old.md"}]}))
-    (old / "advisor-done.json").write_text(json.dumps({"evaluated": {"a": "1"}}))
+    (old / "advisor-done.json").write_text(json.dumps({"evaluated": {"a": "1"}}))  # the new place has none yet
+    (old / "reload-notified.json").write_text("{}")
     stale = _time.time() - 3 * 86400
-    os.utime(old / "advisor-done.json", (stale, stale))
+    os.utime(old / "reload-notified.json", (stale, stale))
+    (paths.state_dir() / "reload-notified.json").write_text('{"sessions": ["s"]}')
     assert migrate.migrate_state() == []
-    plans = json.loads((paths.state_dir() / "advisor-pending.json").read_text())["plans"]
-    assert {"path": "old.md"} in plans and {"path": "new.md"} in plans
-    assert json.loads((paths.state_dir() / "advisor-done.json").read_text())["evaluated"] == {"a": "1", "b": "2"}
-    assert (old / "advisor-pending.json").exists(), "a recent file may still belong to a running old session"
-    assert not (old / "advisor-done.json").exists(), "an old one is merged and removed"
+    assert new_pending.stat().st_mtime_ns == before, "the live file is never rewritten"
+    assert (old / "advisor-pending.json").exists(), "a recent old file stays for the session still using it"
+    assert json.loads((paths.state_dir() / "advisor-done.json").read_text()) == {"evaluated": {"a": "1"}}  # moved in
+    assert not (old / "reload-notified.json").exists(), "an idle old copy goes"
+    assert json.loads((paths.state_dir() / "reload-notified.json").read_text()) == {"sessions": ["s"]}
     assert not migrate.pending() and check._legacy_state() == [check.CheckResult("loadout state", True)]
 
 

@@ -27,7 +27,7 @@ def test_absolute_xdg_state_home_wins(fake_home, tmp_path, monkeypatch):
 
 
 def test_relative_or_empty_xdg_state_home_is_ignored(fake_home, monkeypatch):
-    for value in ("rel/state", ""):
+    for value in ("rel/state", "", "~/state"):  # a tilde is not expanded first: it is a relative value
         monkeypatch.setenv("XDG_STATE_HOME", value)
         assert paths.state_dir() == fake_home / ".local" / "state" / "loadout"
 
@@ -57,3 +57,9 @@ def test_codex_only_bootstrap_leaves_no_claude_folder(fake_home, fake_runner, mo
                         interactive=False, agents="codex")
     assert not (fake_home / ".claude").exists(), sorted(str(p) for p in (fake_home / ".claude").rglob("*"))
     assert json.loads((paths.personal_root() / "targets.json").read_text()) == {"claude": False, "codex": True}
+
+
+def test_hooks_ignore_a_tilde_xdg_state_home_too(fake_home, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", "~/state")
+    assert _hook("advisor").state_dir() == paths.state_dir() == fake_home / ".local" / "state" / "loadout"
+    assert _hook("reload_check").state_dir(fake_home) == paths.state_dir()

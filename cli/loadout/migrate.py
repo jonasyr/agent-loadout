@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import errno
-import json
 import os
 import shutil
 import time
@@ -130,27 +129,15 @@ def _merge(old: Path, new: Path) -> tuple[list[Path], int]:
 
 
 def _merge_session(old: Path, new: Path) -> None:
-    """An old session's hook file: its entries join the new one (lists united, objects merged, the new side wins
-    on a clash). The old file goes only once no running session can still use it (untouched for SESSION_IDLE)."""
-    def load(path: Path) -> dict:
+    """An old session's hook file. Hooks write without the migration lock, so the new file is never rewritten:
+    when it is missing, the old one moves in (never overwriting one a hook wrote meanwhile); when it exists, the
+    old one stays for the old session that still reads it, and goes once it is untouched for SESSION_IDLE."""
+    if not (new.exists() or new.is_symlink()):
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
-            return {}
-    a, b = load(old), load(new)
-    merged = dict(a)
-    for key, value in b.items():
-        if isinstance(value, list) and isinstance(a.get(key), list):
-            merged[key] = [x for x in a[key] if x not in value] + value
-        elif isinstance(value, dict) and isinstance(a.get(key), dict):
-            merged[key] = {**a[key], **value}
-        else:
-            merged[key] = value
-    if merged != b or not new.exists():
-        tmp = new.with_name(new.name + ".merge")
-        tmp.write_text(json.dumps(merged), encoding="utf-8")
-        os.replace(tmp, new)  # the hooks write these files the same way; a lost update costs one notice
+            if _move_file(old, new):
+                return
+        except OSError:
+            return  # it stays; the next run tries again
     if time.time() - old.stat().st_mtime >= SESSION_IDLE:
         old.unlink()
 

@@ -26,7 +26,7 @@ Some commands return their own codes. They are listed per command and add to the
 | `LOADOUT_PERSONAL` | The personal layer's folder, instead of `~/.config/loadout/personal`. See [personal-layer](personal-layer.md). |
 | `LOADOUT_ROOT` | The kit's folder, instead of the clone the `loadout` launcher lives in. `loadout kit-path` prints it. |
 | `CODEX_HOME` | Codex's folder, instead of `~/.codex`. |
-| `XDG_STATE_HOME` | Where loadout keeps its state: `$XDG_STATE_HOME/loadout` instead of `~/.local/state/loadout`. Only an absolute path counts. See [loadout's own files](../explanation/architecture.md#loadouts-own-files). |
+| `XDG_STATE_HOME` | Where loadout keeps its state: `$XDG_STATE_HOME/loadout` instead of `~/.local/state/loadout`. Only an absolute path counts; a relative one, `~/…` included, is ignored. See [loadout's own files](../explanation/architecture.md#loadouts-own-files). |
 | `LOADOUT_NO_AUTO_PULL=1` | Turns off the daily pull and what follows it; see [The daily sync](../explanation/architecture.md#the-daily-sync). |
 | `NO_COLOR` (any value), `TERM=dumb` | No colour in the output. |
 | `LOADOUT_REPO_URL`, `LOADOUT_REF` | Read by the one-liner scripts `bootstrap.sh` and `bootstrap.ps1`, not by `loadout`: the repo and the branch or tag to clone (default: this repo's `main`). For forks and tests. |
