@@ -26,7 +26,8 @@ def _install(profile: profiles.Profile, project: Path, dry_run: bool, info=print
             res = runner.run(cmd, cwd=str(project))
             if not res.ok:
                 ok = False
-                warn(secrets.redact(f"  failed: {res.stderr.strip()}"))
+                warn(secrets.redact(f"plugin {plugin_id}: failed: {res.stderr.strip()}" if calm
+                                    else f"  failed: {res.stderr.strip()}"))
             elif ran is not None:
                 ran.append(f"plugin {plugin_id}")
     for cmd in profile.commands:
@@ -55,6 +56,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     from . import out
     calm = not dry_run and _calm()
     problems: list[str] = []
+    steps: list[str] = []  # what the user still has to do or may want to undo: shown in calm mode too
     info = (lambda line: None) if calm else print
     warn = problems.append if calm else print
     prof = profiles.load_profile(name)
@@ -87,7 +89,8 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
             bad = line.startswith("skipped") or any(s in line for s in (
                 ": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is"))
-            (warn if bad else info)(line)
+            step = line == codex_project.TRUST_NOTE or line.startswith("backup: ")
+            (warn if bad else steps.append if step and calm else info)(line)
             if bad:
                 ok = codex_ok = False
         if not dry_run and codex_ok:
@@ -97,7 +100,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     if calm:
         summary = ", ".join(parts) or "nothing to change"
         out.status(f"Profile {name}", summary if ok else "applied with problems (below)", "ok" if ok else "warn")
-        for line in problems:
+        for line in problems + steps:
             out.problem(line.strip())
     elif not ok:
         print(f"profile {name}: applied with problems (see the lines above)")

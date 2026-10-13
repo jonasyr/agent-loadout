@@ -217,14 +217,18 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
                 note(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
                 missing.append(name)
-    if runner.have("gh"):
-        if runner.run(["gh", "auth", "status"], timeout=20).ok:
-            res = runner.run(["gh", "auth", "setup-git"], timeout=20)
-            if res.ok:
-                out.detail("git uses your gh login for GitHub (gh auth setup-git; undo: git config --global --unset-all credential.https://github.com.helper)")
-        else:
-            note("gh is not logged in: run `gh auth login` (needed for private marketplaces)", problem=True)
+    if not _gh_for_git() and runner.have("gh"):
+        note("gh is not logged in: run `gh auth login` (needed for private marketplaces)", problem=True)
     return missing
+
+
+def _gh_for_git() -> bool:
+    """A logged-in gh becomes git's GitHub credential helper. Returns whether gh is logged in."""
+    if not runner.have("gh") or not runner.run(["gh", "auth", "status"], timeout=20).ok:
+        return False
+    if runner.run(["gh", "auth", "setup-git"], timeout=20).ok:
+        out.detail("git uses your gh login for GitHub (gh auth setup-git; undo: git config --global --unset-all credential.https://github.com.helper)")
+    return True
 
 
 def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None = None,
@@ -238,6 +242,8 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
         return f"personal layer: {root}", True
     url = ask("Personal layer: git URL to clone (empty = create a starter one): ").strip()
     if url:
+        prepend_tool_dirs()  # the clone runs before the prerequisites step: find tools installed earlier,
+        _gh_for_git()        # and let a logged-in gh answer for git (a private HTTPS repo)
         # no prompt: output is captured, so git's password prompt would be invisible and wait until the timeout
         res = runner.run(["git", "clone", "--", url, str(root)], timeout=300,
                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})

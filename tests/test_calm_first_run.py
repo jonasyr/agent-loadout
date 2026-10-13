@@ -117,3 +117,38 @@ def test_profile_verbose_flag_prints_the_details(fake_home, fake_runner, calm, t
     monkeypatch.chdir(proj)
     assert main(["profile", "--verbose", "web"]) == 0
     assert "running: playwright-cli" in capsys.readouterr().out
+
+
+def test_calm_profile_keeps_the_codex_trust_step_and_backup(fake_home, fake_runner, calm, tmp_path, monkeypatch, capsys):
+    from loadout import codex_project, targets
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    monkeypatch.setattr(codex_project, "apply", lambda *a, **kw: [
+        "linked skill x for Codex -> .agents/skills/x", codex_project.TRUST_NOTE, "backup: /b (undo: loadout restore /b)"])
+    proj = tmp_path / "app"
+    proj.mkdir()
+    assert project.add_profile(proj, "web") == 0
+    text = capsys.readouterr().out
+    assert codex_project.TRUST_NOTE in text and "loadout restore /b" in text
+    assert "linked skill x" not in text  # routine detail stays calm
+    assert text.index("Profile web") < text.index(codex_project.TRUST_NOTE)
+
+
+def test_calm_failed_profile_plugin_names_the_plugin(fake_home, fake_runner, calm, tmp_path, monkeypatch, capsys):
+    from loadout import profiles
+    prof = profiles.load_profile("web")
+    prof.install = ["impeccable@impeccable"]
+    prof.commands = []
+    monkeypatch.setattr(profiles, "load_profile", lambda name: prof)
+    fake_runner.responses[("claude", "plugin", "install")] = runner.Result(1, "", "no network")
+    proj = tmp_path / "app"
+    proj.mkdir()
+    assert project.add_profile(proj, "web") == 1
+    assert "plugin impeccable@impeccable: failed: no network" in capsys.readouterr().out
+
+
+def test_clone_gets_git_access_before_it_runs(fake_home, fake_runner, monkeypatch):
+    calls = fake_runner.calls
+    bootstrap.ensure_personal(lambda q: "https://github.com/me/personal", interactive=False)
+    clone = next(i for i, c in enumerate(calls) if c[:2] == ["git", "clone"])
+    setup = next(i for i, c in enumerate(calls) if c[:3] == ["gh", "auth", "setup-git"])
+    assert setup < clone, "a logged-in gh is git's credential helper before the clone"
