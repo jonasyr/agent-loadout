@@ -7,7 +7,6 @@ import pytest
 
 from loadout import codex, codex_project, paths, profiles, project, runner, settings_merge, targets
 
-needs_tomllib = pytest.mark.skipif(sys.version_info < (3, 11), reason="config edits need tomllib")
 
 WEB = profiles.Profile(
     name="web", description="",
@@ -24,7 +23,6 @@ def repo(fake_home, tmp_path):
     return p
 
 
-@needs_tomllib
 def test_profile_servers_become_project_tables(repo):
     lines = codex_project.config(WEB, repo, dry_run=False)
     text = (repo / ".codex" / "config.toml").read_text()
@@ -33,7 +31,6 @@ def test_profile_servers_become_project_tables(repo):
     assert any("chrome-devtools" in l for l in lines)
 
 
-@needs_tomllib
 def test_running_twice_changes_nothing_and_warns_nothing(repo):
     codex_project.config(WEB, repo, dry_run=False)
     before = (repo / ".codex" / "config.toml").read_text()
@@ -41,7 +38,6 @@ def test_running_twice_changes_nothing_and_warns_nothing(repo):
     assert (repo / ".codex" / "config.toml").read_text() == before
 
 
-@needs_tomllib
 def test_user_text_stays_and_a_same_named_table_is_reported(repo):
     cfg = repo / ".codex" / "config.toml"
     cfg.parent.mkdir()
@@ -52,13 +48,11 @@ def test_user_text_stays_and_a_same_named_table_is_reported(repo):
     assert any("left as is" in l and "chrome-devtools" in l for l in lines)
 
 
-@needs_tomllib
 def test_plugins_are_enabled_in_the_project(repo):
     codex_project.config(THESIS, repo, dry_run=False)
     assert '[plugins."deepeval@claude-plugins-official"]\nenabled = true' in (repo / ".codex" / "config.toml").read_text()
 
 
-@needs_tomllib
 def test_a_server_codex_cannot_take_is_skipped_with_a_reason(repo):
     db = profiles.Profile(name="db", description="", mcp={"mcpServers": {"dbhub": {
         "command": "npx", "args": ["--dsn", "${DATABASE_URL}"]}}})
@@ -71,12 +65,6 @@ def test_dry_run_writes_nothing(repo):
     lines = codex_project.config(WEB, repo, dry_run=True)
     assert not (repo / ".codex").exists()
     assert lines and all(l.startswith(("would", "skipped")) for l in lines)
-
-
-def test_without_tomllib_one_line(repo, monkeypatch):
-    monkeypatch.setattr(codex, "_tomllib", lambda: None)
-    assert codex_project.config(WEB, repo, dry_run=False) == [
-        f"skipped {repo / '.codex' / 'config.toml'}: editing it safely needs Python 3.11 or newer"]
 
 
 def test_symlinked_codex_folder_outside_the_repo_is_refused(repo, tmp_path):
@@ -98,7 +86,6 @@ def test_repo_skills_are_linked_for_codex(repo):
     assert lines == ["linked skill pw for Codex -> .agents/skills/pw"]
 
 
-@needs_tomllib
 def test_profile_plugin_is_installed_and_recorded_project_only(repo, fake_runner, monkeypatch):
     import json
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
@@ -111,7 +98,6 @@ def test_profile_plugin_is_installed_and_recorded_project_only(repo, fake_runner
     assert codex.project_plugins() == ["deepeval@claude-plugins-official"]
 
 
-@needs_tomllib
 def test_a_plugin_already_on_everywhere_is_not_made_project_only(repo, fake_runner, monkeypatch):
     import json
     monkeypatch.setattr(settings_merge, "desired_settings",
@@ -144,8 +130,7 @@ def test_trust_note_unless_the_project_is_trusted(repo, monkeypatch):
     cfg = paths.codex_home() / "config.toml"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(f'[projects.{codex.toml_value(str(repo.resolve()))}]\ntrust_level = "trusted"\n')  # Windows paths need escaping
-    if codex._tomllib() is not None:
-        assert codex_project.TRUST_NOTE not in codex_project.apply(WEB, repo, install=False, dry_run=False)
+    assert codex_project.TRUST_NOTE not in codex_project.apply(WEB, repo, install=False, dry_run=False)
 
 
 def test_a_symlinked_config_file_outside_the_repo_is_refused(repo, tmp_path):
@@ -168,7 +153,6 @@ def test_a_symlinked_skills_folder_outside_the_repo_is_refused(repo, tmp_path):
     assert list((tmp_path / "elsewhere").iterdir()) == []
 
 
-@needs_tomllib
 def test_a_plugin_the_user_installed_in_codex_is_not_switched_off(repo, fake_runner, monkeypatch):
     import json
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
@@ -182,7 +166,6 @@ def test_a_plugin_the_user_installed_in_codex_is_not_switched_off(repo, fake_run
     assert any("already installed in Codex" in l for l in lines)
 
 
-@needs_tomllib
 def test_recording_a_project_plugin_is_undoable(repo, fake_runner, monkeypatch):
     import json
     from loadout import backup
@@ -206,7 +189,6 @@ def test_codex_only_machine_never_runs_claude_plugin_install(repo, fake_runner, 
     assert not any(c[:2] == ["claude", "plugin"] for c in fake_runner.calls)
 
 
-@needs_tomllib
 def test_a_failed_plugin_list_makes_nothing_project_only(repo, fake_runner, monkeypatch):
     import json
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
@@ -234,7 +216,6 @@ def _official(fake_runner, listed):
         0, json.dumps({"marketplaceName": "claude-plugins-official", "alreadyAdded": True}), "")
 
 
-@needs_tomllib
 def test_nothing_is_installed_when_the_plugin_list_fails(repo, fake_runner, monkeypatch):
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
     monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
@@ -244,7 +225,6 @@ def test_nothing_is_installed_when_the_plugin_list_fails(repo, fake_runner, monk
     assert any("not installed" in l and "could not list" in l for l in lines)
 
 
-@needs_tomllib
 def test_config_toml_is_saved_before_a_project_switch_is_written(repo, fake_runner, monkeypatch):
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
     seen = []
@@ -258,8 +238,6 @@ def test_config_toml_is_saved_before_a_project_switch_is_written(repo, fake_runn
 
 
 def test_a_failed_install_leaves_the_repo_switch_out_and_exits_1(repo, fake_runner, monkeypatch, capsys):
-    if codex._tomllib() is None:
-        pytest.skip("config edits need tomllib")
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
     monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
     monkeypatch.setattr(profiles, "load_profile", lambda name: THESIS)
@@ -272,19 +250,8 @@ def test_a_failed_install_leaves_the_repo_switch_out_and_exits_1(repo, fake_runn
     assert not cfg.exists() or "deepeval" not in cfg.read_text()
 
 
-def test_no_project_plugin_installs_without_tomllib(repo, fake_runner, monkeypatch):
-    monkeypatch.setattr(codex, "_tomllib", lambda: None)
-    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
-    _official(fake_runner, [])
-    lines = codex_project.plugins(THESIS, dry_run=False)
-    assert not any(c[:3] == ["codex", "plugin", "add"] for c in fake_runner.calls)
-    assert any("not installed" in l and "3.11" in l for l in lines)
-
-
 @pytest.mark.parametrize("text", ["mcp_servers = 1\n", "plugins = 1\n"])
 def test_odd_containers_in_the_repo_config_are_reported(repo, text):
-    if codex._tomllib() is None:
-        pytest.skip("config edits need tomllib")
     cfg = repo / ".codex" / "config.toml"
     cfg.parent.mkdir()
     cfg.write_text(text)
@@ -306,7 +273,6 @@ def test_a_failed_marketplace_counts_for_its_plugins(repo):
     assert codex_project.failed_plugins(THESIS, lines) == {"deepeval@claude-plugins-official"}
 
 
-@needs_tomllib
 def test_a_failed_marketplace_skips_only_its_own_plugins(repo, fake_runner, monkeypatch):
     import json
     two = profiles.Profile(name="two", description="", install=["x@claude-plugins-official", "x@other"])
@@ -321,7 +287,6 @@ def test_a_failed_marketplace_skips_only_its_own_plugins(repo, fake_runner, monk
     assert codex_project.failed_plugins(two, lines) == {"x@claude-plugins-official"}
 
 
-@needs_tomllib
 def test_conflicts_left_as_is_fail_the_profile(repo, monkeypatch):
     monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
@@ -361,7 +326,6 @@ def test_a_different_skill_under_the_same_name_is_reported(repo):
     assert codex_project.skills(repo, dry_run=False) == []  # our own link: silent
 
 
-@needs_tomllib
 def test_a_repo_switch_that_is_off_is_reported_as_a_problem(repo):
     cfg = repo / ".codex" / "config.toml"
     cfg.parent.mkdir()

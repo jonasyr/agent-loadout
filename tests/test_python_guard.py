@@ -16,16 +16,16 @@ def _bin():
     return mod
 
 
-def test_require_python_rejects_3_9(capsys):
+def test_require_python_rejects_3_10(capsys):
     with pytest.raises(SystemExit) as exc:
-        _bin().require_python((3, 9, 18))
+        _bin().require_python((3, 10, 18))
     assert exc.value.code == 1
-    assert "loadout needs Python 3.10 or newer (found 3.9)" in capsys.readouterr().err
+    assert "loadout needs Python 3.11 or newer (found 3.10)" in capsys.readouterr().err
 
 
-def test_require_python_accepts_3_10_and_current():
+def test_require_python_accepts_3_11_and_current():
     mod = _bin()
-    mod.require_python((3, 10, 0))
+    mod.require_python((3, 11, 0))
     mod.require_python()
 
 

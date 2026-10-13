@@ -172,7 +172,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 
 | Check | Severity when it fails |
 |---|---|
-| The Python version that runs loadout (an `ok` line; loadout needs 3.10 or newer and stops before this on older versions) | — |
+| The Python version that runs loadout (an `ok` line; loadout needs 3.11 or newer and stops before this on older versions) | — |
 | Inside WSL: the WSL version (an ok line), then one warning per problem from [WSL 2](../how-to/wsl.md) | warn |
 | The links under `~/.claude` (rules, global skills, `hooks/personal`) | FAIL |
 | `settings.json` is valid JSON | FAIL |

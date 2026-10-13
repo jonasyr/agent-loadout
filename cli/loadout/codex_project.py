@@ -41,8 +41,6 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
     if not _inside(path.parent, project) or not _inside(path, project):
         return [f"skipped {path}: it points outside {project} (a symlinked .codex or config.toml)"]
     tl = codex._tomllib()
-    if tl is None:
-        return [f"skipped {path}: editing it safely needs Python 3.11 or newer"]
     tables, plugins, lines = _wanted(prof)
     plugins = [p for p in plugins if p not in skip]
     if not tables and not plugins:
@@ -132,9 +130,6 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
     if dry_run:
         return lines + [f"would install plugin {name} for Codex (from {src})" for src, names in routes.items() for name in names]
-    if codex._tomllib() is None:  # without both TOML edits a plugin would end up on in every project
-        return lines + [f"plugin {name}@?: not installed (keeping it to one project needs Python 3.11 or newer)"
-                        for names in routes.values() for name in names]
     listed = codex.installed_plugins()
     if listed is None:  # without the list, loadout cannot tell your plugins from new ones: install nothing
         return lines + [f"plugin {name}@?: not installed (could not list Codex plugins; run loadout profile again)"
@@ -168,7 +163,7 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
 def _trusted(project: Path) -> bool:
     tl = codex._tomllib()
     path = paths.codex_home() / "config.toml"
-    if tl is None or not path.exists():
+    if not path.exists():
         return False
     try:
         data = tl.loads(path.read_text(encoding="utf-8"))

@@ -52,7 +52,7 @@ def test_checkout_hands_off_to_uv_run_without_dir(env, tmp_path):
     p = _run(env, [str(kit / "bootstrap.sh"), "--install", "--dir", "/ignored"], cwd=tmp_path)
     assert p.returncode == 0, p.stderr
     log = env["log"].read_text()
-    assert "uv python find --system --no-config --no-project >=3.10 [UV_NO_MODIFY_PATH=] [pwd=/]" in log
+    assert "uv python find --system --no-config --no-project >=3.11 [UV_NO_MODIFY_PATH=] [pwd=/]" in log
     assert f"python bin/loadout bootstrap --install [tty=no] [pwd={kit}]" in log and "--dir" not in log
 
 
@@ -262,7 +262,7 @@ def test_python_is_installed_from_a_neutral_folder_when_uv_has_none(env, tmp_pat
     p = _run(env, [str(kit / "bootstrap.sh")], cwd=tmp_path)
     assert p.returncode == 0, p.stderr
     log = env["log"].read_text()
-    assert "uv python install --no-config >=3.10 [UV_NO_MODIFY_PATH=] [pwd=/]" in log
+    assert "uv python install --no-config >=3.11 [UV_NO_MODIFY_PATH=] [pwd=/]" in log
     assert f"python bin/loadout bootstrap [tty=no] [pwd={kit}]" in log
 
 

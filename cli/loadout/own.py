@@ -675,9 +675,6 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
     _refuse_if_secret(f"mcp {name}", json.dumps(new))
     if is_codex(v.item):  # loadout must be able to write it back to Codex before the user's section goes
         from . import codex
-        if codex._tomllib() is None:
-            raise Collision(f"mcp {name}: handing it to loadout needs Python 3.11 or newer (to write config.toml); "
-                            "leave it for now")
         try:
             codex.server(name, new)
         except codex.Refused as exc:

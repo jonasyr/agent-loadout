@@ -6,14 +6,12 @@ import pytest
 
 from loadout import backup, codex, paths, runner, settings_merge
 
-needs_tomllib = pytest.mark.skipif(sys.version_info < (3, 11), reason="config edits need tomllib")
 
 
 def _settings(monkeypatch, enabled=None):
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": enabled or {}})
 
 
-@needs_tomllib
 def test_project_plugin_is_switched_off_at_user_level(fake_home, fake_runner, monkeypatch):
     _settings(monkeypatch)
     cfg = paths.codex_home() / "config.toml"
@@ -26,7 +24,6 @@ def test_project_plugin_is_switched_off_at_user_level(fake_home, fake_runner, mo
     assert text.count("deepeval") == 1
 
 
-@needs_tomllib
 def test_codex_plugin_add_turning_it_back_on_is_undone(fake_home, fake_runner, monkeypatch):
     _settings(monkeypatch)
     codex.add_project_plugin("deepeval@claude-plugins-official")
@@ -39,7 +36,6 @@ def test_codex_plugin_add_turning_it_back_on_is_undone(fake_home, fake_runner, m
     assert not any("your value" in l for l in lines)
 
 
-@needs_tomllib
 def test_a_project_plugin_enabled_globally_is_switched_on(fake_home, fake_runner, monkeypatch):
     codex.add_project_plugin("deepeval@claude-plugins-official")
     _settings(monkeypatch)
@@ -49,7 +45,6 @@ def test_a_project_plugin_enabled_globally_is_switched_on(fake_home, fake_runner
     assert '[plugins."deepeval@claude-plugins-official"]\nenabled = true' in (paths.codex_home() / "config.toml").read_text()
 
 
-@needs_tomllib
 def test_existing_key_records_keep_working(fake_home, fake_runner, monkeypatch):
     _settings(monkeypatch)
     codex.apply_config(backup.Backup(description="t"))
@@ -70,7 +65,6 @@ def test_mcp_list_runs_from_home_so_repo_servers_do_not_count(fake_home, fake_ru
     assert fake_runner.cwds[i] == str(paths.home())
 
 
-@needs_tomllib
 def test_first_change_backup_still_happens_after_a_project_plugin_was_recorded(fake_home, fake_runner, monkeypatch):
     _settings(monkeypatch)
     cfg = paths.codex_home() / "config.toml"
@@ -82,7 +76,6 @@ def test_first_change_backup_still_happens_after_a_project_plugin_was_recorded(f
     assert any("before loadout's first change" in s["label"] for s in bk.steps)
 
 
-@needs_tomllib
 def test_a_broken_key_record_is_ignored(fake_home, fake_runner, monkeypatch):
     _settings(monkeypatch)
     codex.record_path().parent.mkdir(parents=True, exist_ok=True)

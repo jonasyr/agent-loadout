@@ -79,19 +79,19 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 function Find-Python {
   Push-Location $env:SystemRoot
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  try { "$(uv python find --system --no-config --no-project '>=3.10' 2>$null | Select-Object -First 1)".Trim() }
+  try { "$(uv python find --system --no-config --no-project '>=3.11' 2>$null | Select-Object -First 1)".Trim() }
   finally { $ErrorActionPreference = $prev; Pop-Location }
 }
 $py = Find-Python
 if (-not $py) {
   Push-Location $env:SystemRoot
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  try { uv python install --no-config '>=3.10' 2>&1 | Out-Host }
+  try { uv python install --no-config '>=3.11' 2>&1 | Out-Host }
   finally { $ErrorActionPreference = $prev; Pop-Location }
   $py = Find-Python
 }
 if (-not $py) {
-  Fail 'could not get Python 3.10 or newer through uv (offline?). Check your connection and run this again.'
+  Fail 'could not get Python 3.11 or newer through uv (offline?). Check your connection and run this again.'
   return
 }
 Push-Location $kit

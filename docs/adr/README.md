@@ -46,3 +46,4 @@ Template:
 | [0020](0020-bootstrap-installs-the-toolchain-in-user-space.md) | Bootstrap installs the toolchain in user space | Accepted |
 | [0021](0021-diagrams-as-code-rendered-to-svg.md) | Diagrams as code, rendered to committed SVGs | Accepted |
 | [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted |
+| [0023](0023-python-3-11-minimum.md) | Python 3.11 minimum | Accepted |

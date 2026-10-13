@@ -4,7 +4,7 @@ Thanks for helping. This page covers setup, tests, evals, catalog changes, issue
 
 ## Setup
 
-You need git, Python 3.10 or newer and [uv](https://docs.astral.sh/uv/). The CLI uses the Python standard library only, so there is nothing else to install.
+You need git, Python 3.11 or newer and [uv](https://docs.astral.sh/uv/). The CLI uses the Python standard library only, so there is nothing else to install.
 
 ```bash
 git clone https://github.com/jonasyr/agent-loadout

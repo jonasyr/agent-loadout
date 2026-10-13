@@ -6,7 +6,6 @@ import pytest
 from loadout import codex, inventory, own, paths, targets
 from loadout.jsonio import save_json
 
-needs_tomllib = pytest.mark.skipif(sys.version_info < (3, 11), reason="config reads need tomllib")
 
 
 @pytest.fixture
@@ -37,7 +36,6 @@ def test_to_claude_refuses_what_claude_cannot_express():
         codex.to_claude("a", {"command": "x", "tools": {"y": {"approval_mode": "approve"}}})
 
 
-@needs_tomllib
 def test_codex_only_servers_are_items(codex_on):
     _config('[mcp_servers.mine]\ncommand = "m"\n\n[mcp_servers.codebase-memory-mcp]\ncommand = "c"\n\n'
             '[mcp_servers.both]\ncommand = "b"\n\n[mcp_servers.odd]\ncommand = "o"\nstartup_timeout_sec = 9\n')
@@ -48,7 +46,6 @@ def test_codex_only_servers_are_items(codex_on):
     assert items["odd"].extra["config"] is None and "startup_timeout_sec" in items["odd"].extra["problem"]
 
 
-@needs_tomllib
 def test_servers_loadout_wrote_are_not_items(codex_on):
     _config('[mcp_servers.serena]\ncommand = "serena"\n')
     save_json(codex.record_path(), {"tables": {"serena": '[mcp_servers.serena]\ncommand = "serena"\n'}, "keys": {}})
@@ -93,14 +90,12 @@ def test_to_claude_refuses_odd_shapes(table):
         codex.to_claude("a", table)
 
 
-@needs_tomllib
 def test_a_server_with_odd_args_is_listed_not_a_crash(codex_on):
     _config('[mcp_servers.odd]\ncommand = "o"\nargs = 1\n')
     (item,) = [i for i in inventory.collect(with_versions=False) if i.location == codex.CONFIG_LOCATION]
     assert item.extra["config"] is None and "args" in item.extra["problem"]
 
 
-@needs_tomllib
 def test_a_non_table_mcp_servers_value_is_not_a_crash(codex_on):
     _config("mcp_servers = 1\n")
     assert codex.user_servers() == {}
