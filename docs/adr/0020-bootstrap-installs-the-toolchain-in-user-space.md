@@ -1,6 +1,6 @@
 # 0020. Bootstrap installs the toolchain in user space
 
-- Status: Accepted
+- Status: Accepted. For Codex, see [ADR 0024](0024-codex-parity-update-model.md).
 - Date: 2026-10-11
 - Source: [One-command setup design](../superpowers/specs/2026-10-11-one-command-setup-design.md)
 

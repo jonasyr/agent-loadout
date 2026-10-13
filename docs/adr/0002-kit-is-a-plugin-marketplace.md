@@ -1,6 +1,6 @@
 # 0002. The kit is a plugin marketplace
 
-- Status: Accepted
+- Status: Accepted. For Codex, see [ADR 0024](0024-codex-parity-update-model.md).
 - Date: 2026-10-08
 - Source: [Design spec, decision D2](../superpowers/specs/2026-10-08-agent-loadout-design.md#2-decisions)
 

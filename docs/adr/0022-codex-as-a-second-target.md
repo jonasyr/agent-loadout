@@ -1,6 +1,6 @@
 # 0022. Codex as a second target
 
-- Status: Accepted
+- Status: Accepted. Project profiles and adopt for Codex shipped in #26; see also [ADR 0024](0024-codex-parity-update-model.md).
 - Date: 2026-10-12
 - Source: [Codex target design](../superpowers/specs/2026-10-12-codex-target-design.md)
 
