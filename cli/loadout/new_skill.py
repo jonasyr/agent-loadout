@@ -83,6 +83,8 @@ def _global(name: str, description: str, bk: Backup) -> list[str]:
 def create(name: str, to: str = "global", description: str | None = None, cwd: Path | None = None,
            bk: Backup | None = None) -> list[str]:
     """Write the stub where `to` says (global, project:<profile>, repo) and link it for the agents that are on."""
+    if secrets.redact(name or "") != (name or ""):  # it would become a folder name, a manifest label and output
+        raise Refused("the skill name looks like a secret; choose a plain name")
     if not NAME.fullmatch(name or ""):  # fullmatch: `$` alone would let a trailing newline through
         raise BadInput(f"skill name '{name}': use lowercase letters, digits and -, starting with a letter or "
                        "digit, at most 64 characters")

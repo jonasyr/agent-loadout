@@ -195,6 +195,18 @@ def test_a_name_with_a_trailing_newline_is_bad_input(fake_home, monkeypatch):
     assert not (paths.personal_root() / "skills").exists()
 
 
+def test_a_secret_looking_name_is_refused_before_anything_is_written(fake_home, monkeypatch):
+    from loadout import secrets
+    _agents(monkeypatch)
+    name = "sk-" + "a1b2c3d4" * 5  # fits NAME, and the secret patterns know it
+    assert new_skill.NAME.fullmatch(name) and secrets.redact(name) != name
+    bk = backup.Backup(description="t")
+    with pytest.raises(new_skill.Refused) as exc:
+        new_skill.create(name, bk=bk)
+    assert name not in str(exc.value)
+    assert not (paths.personal_root() / "skills").exists() and bk.empty
+
+
 def test_a_damaged_skills_json_is_refused(fake_home, monkeypatch):
     _agents(monkeypatch)
     pointers = paths.personal_root() / "skills.json"

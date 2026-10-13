@@ -205,11 +205,11 @@ def _register_configure(sub):
             from . import new_skill, targets
             from .backup import Backup
             from .secrets import redact
-            bk = Backup(description=f"configure new skill {a.name}")
+            bk = Backup(description=f"configure new skill {redact(a.name)}")
             try:
                 lines = new_skill.create(a.name, a.to, a.description, bk=bk)
             except new_skill.BadInput as exc:
-                print(f"loadout: {exc}", file=sys.stderr)
+                print(f"loadout: {redact(str(exc))}", file=sys.stderr)
                 return 2
             except new_skill.Refused as exc:
                 print(f"loadout: {redact(str(exc))}", file=sys.stderr)

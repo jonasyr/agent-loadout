@@ -54,6 +54,16 @@ def test_repo_skill_codex_cannot_see_exits_1(fake_home, fake_runner, monkeypatch
     assert (repo / ".claude" / "skills" / "notes" / "SKILL.md").is_file()
 
 
+def test_a_token_given_as_name_or_target_is_never_printed(fake_home, fake_runner, monkeypatch, capsys):
+    _on(monkeypatch)
+    token = "ghp_" + "Z" * 36
+    assert main(["configure", "new", "skill", token]) == 1  # refused as a secret before the format check
+    assert main(["configure", "new", "skill", "notes", "--to", token]) == 2
+    assert main(["configure", "new", "skill", "notes", "--to", f"project:{token}"]) == 2
+    captured = capsys.readouterr()
+    assert token not in captured.err and token not in captured.out
+
+
 def test_set_skill_is_refused_and_writes_no_setting(fake_home, fake_runner, monkeypatch):
     """`skill` is a kind for `new` only: `set skill x on` must not fall through to `set pref`."""
     _on(monkeypatch)
