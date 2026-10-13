@@ -161,3 +161,13 @@ def test_sandbox_problem_says_what_it_is_for(fake_home, fake_runner, mnt, tmp_pa
     fake_runner.missing.update({"bwrap", "socat"})
     [(problem, _)] = [p for p in wsl.problems(2, tmp_path, mount=_prefix(mnt)) if "sandbox" in p[0]]
     assert "Claude Code's sandbox" in problem
+
+
+def test_codex_from_windows_is_named_when_codex_is_on(fake_home, fake_runner, mnt, tmp_path):
+    import json
+    from loadout import paths
+    fake_runner.paths["codex"] = str(mnt / "c" / "Users" / "me" / "codex.exe")
+    assert not any("codex" in p for p, _ in wsl.problems(2, tmp_path, mount=_prefix(mnt)))  # Codex off
+    paths.personal_root().mkdir(parents=True)
+    (paths.personal_root() / "targets.json").write_text(json.dumps({"claude": True, "codex": True}))
+    assert any("codex resolves to the Windows program" in p for p, _ in wsl.problems(2, tmp_path, mount=_prefix(mnt)))

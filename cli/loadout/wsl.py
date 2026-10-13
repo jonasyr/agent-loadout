@@ -48,6 +48,14 @@ def _on_windows_drive(path: Path, mount: str) -> bool:
     return len(first) == 1 and first.isalpha()
 
 
+def _codex_on() -> bool:
+    from . import targets
+    try:
+        return targets.codex_enabled()
+    except Exception:  # a damaged targets.json: the check stays as before
+        return False
+
+
 def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple[str, str]]:
     out = []
     if version == 1:
@@ -62,7 +70,7 @@ def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple
     if cwd is not None and _on_windows_drive(cwd, mount) and _real(cwd) not in {_real(p) for _, p in roots}:
         out.append((f"the current folder ({Path(cwd).as_posix()}) is on the Windows filesystem (slow, search can be incomplete)",
                     "move it into the Linux home, e.g. `~/code/...`"))
-    for tool in LINUX_TOOLS:
+    for tool in LINUX_TOOLS + (("codex",) if _codex_on() else ()):
         found = runner.which(tool)
         if found and _on_windows_drive(Path(found), mount):
             out.append((f"{tool} resolves to the Windows program {found}",
