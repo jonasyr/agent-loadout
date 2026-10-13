@@ -445,15 +445,19 @@ def test_a_fresh_lock_taken_by_another_run_is_never_stolen(fake_home, monkeypatc
     assert lock.read_text() == "other-run", "the other run's lock is left where it is"
 
 
-def test_an_old_entry_whose_copy_vanished_is_copied_again_not_retired(fake_home, clock):
+def test_a_copy_loadout_deleted_on_purpose_is_never_copied_back(fake_home, clock):
+    """loadout deletes some state on purpose (a shown pending-notice, the copy-mode marker): that stays deleted."""
     old = _legacy(fake_home)
+    (old / "pending-notice").write_text("updates available")
     migrate.migrate_state()
-    (paths.state_dir() / "managed-settings.json").unlink()  # the copy is gone before the old one is retired
+    (paths.state_dir() / "pending-notice").unlink()  # shown and consumed by the session hook
+    migrate.migrate_state()
+    migrate.migrate_state()
+    assert not (paths.state_dir() / "pending-notice").exists(), "a consumed notice never comes back"
+    assert not migrate.pending()
     clock(migrate.RETIRE_AFTER + 1)
     migrate.migrate_state()
-    assert (old / "managed-settings.json").read_text() == '{"a": 1}', "never delete the last copy"
-    migrate.migrate_state()
-    assert (paths.state_dir() / "managed-settings.json").read_text() == '{"a": 1}'
+    assert not (old / "pending-notice").exists(), "the old copy is retired as usual"
 
 
 def test_a_state_folder_inside_the_old_one_is_not_migrated_into_itself(fake_home, monkeypatch):
@@ -492,3 +496,22 @@ def test_restore_in_the_window_uses_the_reconciled_backup(fake_home, capsys):
     main(["restore", str(legacy)])
     steps = _json.loads((paths.backups_root() / "loadout-1" / "manifest.json").read_text())["steps"]
     assert [s["label"] for s in steps] == ["late"], "the step an old run added after the copy is restored too"
+
+
+def test_no_lock_is_ever_copied(fake_home):
+    old = _legacy(fake_home)
+    for name in ("codex.lock", "maintenance.lock", "something-else.lock"):
+        (old / name).write_text("held by an old process")
+    migrate.migrate_state()
+    assert not list(paths.state_dir().glob("*.lock")), "a lock belongs to the process holding it"
+    assert not migrate.pending() and migrate.leftovers() == []
+
+
+def test_a_deleted_copy_whose_old_entry_changed_is_named_not_blocking(fake_home):
+    old = _legacy(fake_home)
+    migrate.migrate_state()
+    (paths.state_dir() / "codex-config.json").unlink()
+    (old / "codex-config.json").write_text('{"changed": true}')
+    lines = migrate.migrate_state()
+    assert any("codex-config.json" in line for line in lines)
+    assert not migrate.pending() and migrate.leftovers() == [old / "codex-config.json"]

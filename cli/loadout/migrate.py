@@ -34,7 +34,7 @@ OLD_LOCK_FRESH = 3600.0  # an old version's maintenance lock younger than this: 
 # them in ~/.claude/.loadout until /reload-plugins; the new place's copy is never replaced from the old one
 SESSION_FILES = {"advisor-pending.json", "advisor-done.json", "reload-notified.json"}
 SESSION_IDLE = 86400.0  # an old session file untouched this long belongs to no running session any more
-TRANSIENT = {"maintenance.lock", LOCK}  # locks are never copied: they belong to the process holding them
+TRANSIENT = {"maintenance.lock", "codex.lock", LOCK}  # locks are never copied: they belong to their process
 _held: Path | None = None  # this run's lock, renewed while copying (_beat)
 CHUNK = 1 << 20  # copy in pieces of this size, renewing the lock after each
 
@@ -48,7 +48,7 @@ def _ours(entry: Path) -> bool:
         return name.startswith("loadout-") and entry.is_dir() and not entry.is_symlink() \
             and (entry / "manifest.json").is_file()
     return name not in TRANSIENT and ".stale-" not in name and not name.startswith(".") \
-        and not name.endswith((".partial", ".tmp"))
+        and not name.endswith((".partial", ".tmp", ".lock"))
 
 
 def _sig(path: Path) -> list:
@@ -355,8 +355,11 @@ def _step(entries: dict, key: str, entry: dict, now: float, busy: bool) -> None:
     old = Path(key)
     if entry.get("conflict"):
         return
-    if "new" in entry and _gone(Path(entry["new"])):
-        del entries[key]  # its copy is gone: never delete the last one; the next run copies it again
+    copy_gone = "new" in entry and _gone(Path(entry["new"]))
+    # a copy that is gone was deleted on purpose in the new place (loadout consumes a shown pending-notice or the
+    # copy-mode marker; you delete what you no longer want): never copied back; the old one is retired as usual
+    if copy_gone and _sig(old) != entry["sig"]:
+        entry.update(conflict=True, named=False)  # deleted here, changed there: you decide
         return
     if _sig(old) != entry["sig"]:
         if entry.get("session") or "new" not in entry:
