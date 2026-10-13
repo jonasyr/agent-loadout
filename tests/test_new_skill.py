@@ -98,3 +98,34 @@ def test_the_description_lands_in_the_frontmatter(fake_home, monkeypatch):
     new_skill.create("notes", description="Use when taking notes.", bk=backup.Backup(description="t"))
     text = (paths.personal_root() / "skills" / "notes" / "SKILL.md").read_text(encoding="utf-8")
     assert "description: Use when taking notes.\n" in text
+
+
+def test_project_writes_into_the_profile_and_lists_it(fake_home, monkeypatch):
+    _agents(monkeypatch)
+    bk = backup.Backup(description="t")
+    new_skill.create("notes", to="project:mine", bk=bk)
+    assert (paths.personal_root() / "profiles" / "skills" / "notes" / "SKILL.md").is_file()
+    data = json.loads((paths.personal_root() / "profiles" / "mine.json").read_text())
+    assert data["skills"] == ["notes"]
+    assert not (paths.claude_home() / "skills" / "notes").exists()  # reaches a repo through loadout profile
+    _restore(bk)
+    assert not (paths.personal_root() / "profiles" / "skills" / "notes").exists()
+    assert not (paths.personal_root() / "profiles" / "mine.json").exists()
+
+
+def test_a_bad_profile_name_is_bad_input(fake_home, monkeypatch):
+    _agents(monkeypatch)
+    with pytest.raises(new_skill.BadInput):
+        new_skill.create("notes", to="project:../x", bk=backup.Backup(description="t"))
+
+
+@pytest.mark.parametrize("text", ["{broken", '{"skills": "notes"}'])
+def test_a_damaged_profile_is_refused_and_left_alone(fake_home, monkeypatch, text):
+    _agents(monkeypatch)
+    path = paths.personal_root() / "profiles" / "mine.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(text)
+    with pytest.raises(new_skill.Refused):
+        new_skill.create("notes", to="project:mine", bk=backup.Backup(description="t"))
+    assert path.read_text() == text
+    assert not (paths.personal_root() / "profiles" / "skills" / "notes").exists()

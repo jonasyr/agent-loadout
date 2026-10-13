@@ -90,7 +90,25 @@ def create(name: str, to: str = "global", description: str | None = None, cwd: P
 
 
 def _project(name: str, profile: str, description: str, bk: Backup) -> list[str]:
-    raise BadInput("--to project: not available yet")
+    from . import own
+    from .jsonio import load_json
+    if not own.PROFILE_NAME.match(profile):
+        raise BadInput(f"profile name '{profile}': use lowercase letters, digits, - and _")
+    path = paths.personal_root() / "profiles" / f"{profile}.json"
+    if path.exists():
+        try:
+            data = load_json(path)
+        except Exception as exc:
+            raise Refused(f"{path} does not parse ({exc}); fix it, then run this again") from None
+        if not isinstance(data, dict) or not isinstance(data.get("skills", []), list):
+            raise Refused(f"{path}: skills is not a list; fix it, then run this again")
+    root = paths.personal_root() / "profiles" / "skills"
+    _refuse_taken(name, [root])
+    skill_md = _write(root, name, description, bk)
+    note = own.profile_note(profile)
+    own._edit_profile(profile, bk, lambda d: own._append_once(own.ensure(d, "skills", list), name))
+    return [*([note] if note else []), f"skill {name}: created {skill_md}; listed in profile {profile} "
+            f"(apply it to a repo with `loadout profile {profile}`)"]
 
 
 def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
