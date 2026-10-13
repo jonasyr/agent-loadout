@@ -38,6 +38,13 @@ def outdated(root: Path, home: Path) -> bool:
     return bool(paths) and root not in paths
 
 
+def state_dir(home: Path) -> Path:
+    """The same rule as loadout's paths.state_dir() (this hook cannot import loadout)."""
+    base = os.environ.get("XDG_STATE_HOME", "")
+    root = Path(base).expanduser() if base and Path(base).expanduser().is_absolute() else home / ".local" / "state"
+    return root / "loadout"
+
+
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read())
@@ -47,7 +54,7 @@ def main() -> int:
         home = _home()
         if not outdated(_resolve(Path(__file__)).parent.parent, home):
             return 0
-        state = home / ".claude" / ".loadout" / "reload-notified.json"
+        state = state_dir(home) / "reload-notified.json"
         try:
             seen = json.loads(state.read_text(encoding="utf-8")).get("sessions", [])
             seen = [s for s in seen if isinstance(s, str)] if isinstance(seen, list) else []

@@ -57,7 +57,7 @@ def _stop(home, session="s1", active=False):
 
 
 def _pending(home):
-    f = home / ".claude/.loadout/advisor-pending.json"
+    f = home / ".local/state/loadout/advisor-pending.json"
     return json.loads(f.read_text()) if f.exists() else None
 
 
@@ -77,7 +77,7 @@ def test_plan_write_is_recorded(home, plan):
     _record(home, plan)
     entries = _pending(home)["plans"]
     assert [(e["path"], e["session_id"]) for e in entries] == [(str(plan), "s1")]
-    text = (home / ".claude/.loadout/advisor-pending.json").read_text()
+    text = (home / ".local/state/loadout/advisor-pending.json").read_text()
     assert text.endswith("}\n") and '\n  "plans"' in text  # kit JSON style: 2-space indent, trailing newline
 
 
@@ -204,7 +204,7 @@ def test_malformed_stdin_allows_silently(home, mode, raw):
 
 def test_corrupt_state_allows_silently(home, plan):
     _record(home, plan)
-    (home / ".claude/.loadout/advisor-pending.json").write_text("{broken")
+    (home / ".local/state/loadout/advisor-pending.json").write_text("{broken")
     r = _stop(home)
     assert r.stdout == ""
     r = _record(home, plan)  # recording recovers from a corrupt file
@@ -258,7 +258,7 @@ def fake_home_env(home, monkeypatch):
 def test_advisor_mark_records_hash(fake_home_env, plan, capsys):
     assert main(["advisor-mark", str(plan)]) == 0
     assert "marked" in capsys.readouterr().out
-    done = json.loads((fake_home_env / ".claude/.loadout/advisor-done.json").read_text())
+    done = json.loads((fake_home_env / ".local/state/loadout/advisor-done.json").read_text())
     (entry,) = done["evaluated"].values()
     assert entry["path"] == str(plan)
 
