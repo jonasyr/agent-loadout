@@ -129,3 +129,60 @@ def test_a_damaged_profile_is_refused_and_left_alone(fake_home, monkeypatch, tex
         new_skill.create("notes", to="project:mine", bk=backup.Backup(description="t"))
     assert path.read_text() == text
     assert not (paths.personal_root() / "profiles" / "skills" / "notes").exists()
+
+
+def _repo(tmp_path, git_file=False):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    if git_file:
+        (repo / ".git").write_text("gitdir: /elsewhere/.git/worktrees/repo\n")
+    else:
+        (repo / ".git").mkdir()
+    return repo
+
+
+def test_repo_writes_claude_skills_and_links_agents_skills(fake_home, monkeypatch, tmp_path):
+    _agents(monkeypatch)
+    repo = _repo(tmp_path)
+    bk = backup.Backup(description="t")
+    new_skill.create("notes", to="repo", cwd=repo, bk=bk)
+    assert (repo / ".claude" / "skills" / "notes" / "SKILL.md").is_file()
+    link = repo / ".agents" / "skills" / "notes"
+    assert link.is_symlink() and str(link.readlink()) == "../../.claude/skills/notes"
+    _restore(bk)
+    assert not (repo / ".claude" / "skills" / "notes").exists() and not link.is_symlink()
+
+
+def test_repo_without_codex_writes_no_agents_link(fake_home, monkeypatch, tmp_path):
+    _agents(monkeypatch, claude=True, codex=False)
+    repo = _repo(tmp_path)
+    new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
+    assert not (repo / ".agents").exists()
+
+
+def test_repo_root_is_found_from_a_subfolder_and_a_worktree(fake_home, monkeypatch, tmp_path):
+    _agents(monkeypatch)
+    repo = _repo(tmp_path, git_file=True)
+    (repo / "src" / "deep").mkdir(parents=True)
+    new_skill.create("notes", to="repo", cwd=repo / "src" / "deep", bk=backup.Backup(description="t"))
+    assert (repo / ".claude" / "skills" / "notes" / "SKILL.md").is_file()
+
+
+def test_repo_outside_git_is_refused(fake_home, monkeypatch, tmp_path):
+    _agents(monkeypatch)
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    with pytest.raises(new_skill.Refused, match="git repo"):
+        new_skill.create("notes", to="repo", cwd=plain, bk=backup.Backup(description="t"))
+    assert not (plain / ".claude").exists()
+
+
+def test_repo_skills_folder_linking_outside_is_refused(fake_home, monkeypatch, tmp_path):
+    _agents(monkeypatch)
+    repo = _repo(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / ".claude").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(new_skill.Refused, match="outside"):
+        new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
+    assert not any(outside.iterdir())

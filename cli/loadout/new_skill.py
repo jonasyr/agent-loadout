@@ -112,7 +112,28 @@ def _project(name: str, profile: str, description: str, bk: Backup) -> list[str]
 
 
 def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
-    raise BadInput("--to repo: not available yet")
+    import os
+    root = repo_root(Path(os.path.abspath(cwd)))
+    if root is None:
+        raise Refused(f"--to repo: {cwd} is not inside a git repo")
+    src_root = root / ".claude" / "skills"
+    dest_root = root / ".agents" / "skills" if targets.codex_enabled() else None
+    for folder in (src_root, dest_root):
+        if folder is not None and not (paths.inside(folder.parent, root) and paths.inside(folder, root)):
+            raise Refused(f"--to repo: {folder} points outside {root} (a symlinked folder); nothing written")
+    _refuse_taken(name, [f for f in (src_root, dest_root) if f is not None])
+    skill_md = _write(src_root, name, description, bk)
+    out = [f"skill {name}: created {skill_md} (commit it to share it with this repo)"]
+    if dest_root is not None:
+        dest = dest_root / name
+        dest_root.mkdir(parents=True, exist_ok=True)
+        try:
+            os.symlink(f"../../.claude/skills/{name}", dest, target_is_directory=True)
+        except OSError as exc:  # e.g. Windows without symlink rights
+            return out + [f"skill {name}: not linked for Codex ({exc.strerror or exc})"]
+        bk.record_created(dest, f"Codex link for skill {name}")
+        out.append(f"linked {dest} -> ../../.claude/skills/{name}")
+    return out
 
 
 def repo_root(start: Path) -> Path | None:
