@@ -70,3 +70,18 @@ def test_the_message_names_bootstrap_when_no_newer_python_exists(tmp_path, monke
     except SystemExit:
         pass
     assert "bootstrap" in capsys.readouterr().err
+
+
+def test_on_windows_the_newer_python_runs_as_a_child_and_its_exit_code_is_kept(tmp_path, monkeypatch):
+    import subprocess
+    newer = tmp_path / "py dir" / "python.exe"
+    newer.parent.mkdir()
+    newer.write_text("")
+    mod = _bin_loadout()
+    calls = []
+    monkeypatch.setattr(subprocess, "call", lambda args: calls.append(args) or 3)
+    try:
+        mod.continue_under(str(newer), ["check", "a b"], windows=True)
+    except SystemExit as exc:
+        assert exc.code == 3
+    assert calls and calls[0][0] == str(newer) and calls[0][-1] == "a b"
