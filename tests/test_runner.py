@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 import sys
 
@@ -21,7 +20,7 @@ def test_run_passes_env():
 
 def test_windows_cmd_shim_refuses_cmd_metacharacters(monkeypatch):
     monkeypatch.setattr(runner, "_is_windows", lambda: True)
-    monkeypatch.setattr(shutil, "which", lambda name: "/winnpm/claude.CMD")
+    monkeypatch.setattr(runner, "_resolve", lambda name: "/winnpm/claude.CMD")
 
     def never(*a, **k):
         raise AssertionError("must not run")
@@ -36,7 +35,7 @@ def test_windows_cmd_shim_refuses_cmd_metacharacters(monkeypatch):
 
 def test_windows_cmd_shim_plain_args_still_run(monkeypatch):
     monkeypatch.setattr(runner, "_is_windows", lambda: True)
-    monkeypatch.setattr(shutil, "which", lambda name: "/winnpm/claude.cmd")
+    monkeypatch.setattr(runner, "_resolve", lambda name: "/winnpm/claude.cmd")
     seen = []
     monkeypatch.setattr(subprocess, "run", lambda argv, **k: (seen.append(argv), subprocess.CompletedProcess(argv, 0, "", ""))[1])
     assert runner.run(["claude", "plugin", "list"]).ok

@@ -102,3 +102,31 @@ def test_a_hand_built_env_still_skips_the_current_folder(monkeypatch, tmp_path):
     runner.run(["git", "pull"], env={"PATH": "/usr/bin"})
     assert seen["env"]["NoDefaultCurrentDirectoryInExePath"] == "1"
     monkeypatch.delenv("NoDefaultCurrentDirectoryInExePath", raising=False)
+
+
+def test_windows_lookup_adds_pathext_itself(tmp_path, monkeypatch):
+    # Python 3.11's shutil.which does not try PATHEXT for a path with a folder: loadout must
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    (folder / "git.EXE").write_text("")
+    monkeypatch.setattr(runner, "_is_windows", lambda: True)
+    monkeypatch.setenv("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+    monkeypatch.setenv("PATH", str(folder))
+    assert runner.which("git") == str(folder / "git.EXE")
+    monkeypatch.delenv("NoDefaultCurrentDirectoryInExePath", raising=False)
+
+
+def test_typecheck_lookup_adds_pathext_itself(tmp_path, monkeypatch):
+    import importlib.util
+    from loadout import paths
+    spec = importlib.util.spec_from_file_location("tc3", paths.kit_root() / "plugins/loadout/hooks/typecheck.py")
+    tc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tc)
+    folder = tmp_path / "npm"
+    folder.mkdir()
+    (folder / "pyright.CMD").write_text("")
+    monkeypatch.setattr(tc, "_is_windows", lambda: True)
+    monkeypatch.setenv("PATHEXT", ".EXE;.CMD")
+    monkeypatch.setenv("PATH", str(folder))
+    assert tc._which("pyright") == str(folder / "pyright.CMD")
+    monkeypatch.delenv("NoDefaultCurrentDirectoryInExePath", raising=False)
