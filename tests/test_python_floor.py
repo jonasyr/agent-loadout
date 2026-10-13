@@ -1,4 +1,7 @@
 """loadout needs Python 3.11 or newer everywhere it checks."""
+import os
+
+import pytest
 import re
 
 from loadout import link, paths
@@ -44,6 +47,7 @@ def _bin_loadout():
     return mod
 
 
+@pytest.mark.skipif(os.name == "nt", reason="fakes uv with a shell script; the Windows hand-off is tested by continue_under")
 def test_an_old_python_switches_to_a_uv_python(tmp_path, monkeypatch):
     import os
     newer = tmp_path / "python3.12"
