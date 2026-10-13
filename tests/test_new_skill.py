@@ -1,5 +1,6 @@
 """loadout configure new skill: a SKILL.md stub in one of the three places a skill of yours can live."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -148,7 +149,7 @@ def test_repo_writes_claude_skills_and_links_agents_skills(fake_home, monkeypatc
     new_skill.create("notes", to="repo", cwd=repo, bk=bk)
     assert (repo / ".claude" / "skills" / "notes" / "SKILL.md").is_file()
     link = repo / ".agents" / "skills" / "notes"
-    assert link.is_symlink() and str(link.readlink()) == "../../.claude/skills/notes"
+    assert link.is_symlink() and link.readlink() == Path("../../.claude/skills/notes")  # Windows: backslashes
     _restore(bk)
     assert not (repo / ".claude" / "skills" / "notes").exists() and not link.is_symlink()
 
