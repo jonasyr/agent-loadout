@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import errno
+import json
 import os
 import shutil
 import time
@@ -15,6 +16,7 @@ WAIT = 10.0  # seconds to wait for another run that is moving the files right no
 # session files of the loadout hooks: an older plugin still running in an open Claude Code session keeps writing
 # them to ~/.claude/.loadout until /reload-plugins; they are merged quietly, never "kept"
 SESSION_FILES = {"advisor-pending.json", "advisor-done.json", "reload-notified.json"}
+SESSION_IDLE = 86400.0  # an old copy untouched this long belongs to no running session any more
 
 
 def _ours(entry: Path) -> bool:
@@ -32,9 +34,37 @@ def _files(root: Path) -> dict[str, int]:
             for p in root.rglob("*") if p.is_symlink() or p.is_file()}
 
 
+def _publish(src: Path, dst: Path) -> bool:
+    """Rename src to dst unless dst exists: never overwrite (hooks write the new place without the lock).
+    Returns False, with src removed, when dst appeared meanwhile: the new one wins."""
+    try:
+        if os.name == "nt" or (src.is_dir() and not src.is_symlink()):
+            if dst.exists() or dst.is_symlink():
+                raise FileExistsError(str(dst))
+            os.rename(src, dst)  # Windows: never replaces; a folder: fails on a non-empty one
+            return True
+        try:
+            os.link(src, dst, follow_symlinks=False)  # a file: link is the no-replace primitive
+        except FileExistsError:
+            raise
+        except (NotImplementedError, OSError) as exc:  # no hard links on this filesystem
+            if dst.exists() or dst.is_symlink():
+                raise FileExistsError(str(dst)) from exc
+            os.replace(src, dst)
+            return True
+        src.unlink()
+        return True
+    except OSError as exc:
+        if not (isinstance(exc, FileExistsError) or exc.errno in (errno.EEXIST, errno.ENOTEMPTY)):
+            raise
+        shutil.rmtree(src) if src.is_dir() and not src.is_symlink() else src.unlink(missing_ok=True)
+        return False
+
+
 def _move_file(old: Path, new: Path) -> bool:
     """A file or link: hard link then unlink, so a file that appeared at new meanwhile is never overwritten
-    (returns False then: the new one wins). Other filesystem: an atomic copy through new.partial."""
+    (returns False then: the new one wins). Other filesystem: a copy through new.partial, published without
+    overwriting."""
     try:
         os.link(old, new, follow_symlinks=False)
     except FileExistsError:
@@ -44,7 +74,8 @@ def _move_file(old: Path, new: Path) -> bool:
             return False
         partial = new.with_name(new.name + ".partial")
         shutil.copy2(old, partial, follow_symlinks=False)
-        os.replace(partial, new)
+        if not _publish(partial, new):
+            return False
     old.unlink()
     return True
 
@@ -69,7 +100,8 @@ def _move(old: Path, new: Path) -> None:
     if _files(partial) != _files(old):
         shutil.rmtree(partial)
         raise OSError(f"the copy of {old} is incomplete; it stays where it is")
-    os.replace(partial, new)
+    if not _publish(partial, new):
+        raise FileExistsError(f"{new} appeared while moving {old}; both are kept")
     shutil.rmtree(old)
 
 
@@ -81,24 +113,46 @@ def _merge(old: Path, new: Path) -> tuple[list[Path], int]:
         if not _ours(entry):
             continue  # not loadout's: it stays where its owner keeps it
         target = new / entry.name
-        session = entry.name in SESSION_FILES
+        if entry.name in SESSION_FILES:
+            _merge_session(entry, target)
+            continue
         if target.exists() or target.is_symlink():
-            if session:
-                entry.unlink()  # the new location's copy is the live one
-            else:
-                kept.append(entry)
+            kept.append(entry)
             continue
         try:
             _move(entry, target)
-            moved += 0 if session else 1
+            moved += 1
         except FileExistsError:  # it appeared meanwhile: the new one wins
-            if session:
-                entry.unlink()
-            else:
-                kept.append(entry)
-    if not kept and not any(old.iterdir()):  # other owners' files keep the folder
+            kept.append(entry)
+    if not kept and not any(old.iterdir()):  # other owners' and recent session files keep the folder
         old.unlink() if old.is_symlink() else old.rmdir()  # a symlinked folder: remove the link, never its target
     return kept, moved
+
+
+def _merge_session(old: Path, new: Path) -> None:
+    """An old session's hook file: its entries join the new one (lists united, objects merged, the new side wins
+    on a clash). The old file goes only once no running session can still use it (untouched for SESSION_IDLE)."""
+    def load(path: Path) -> dict:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+    a, b = load(old), load(new)
+    merged = dict(a)
+    for key, value in b.items():
+        if isinstance(value, list) and isinstance(a.get(key), list):
+            merged[key] = [x for x in a[key] if x not in value] + value
+        elif isinstance(value, dict) and isinstance(a.get(key), dict):
+            merged[key] = {**a[key], **value}
+        else:
+            merged[key] = value
+    if merged != b or not new.exists():
+        tmp = new.with_name(new.name + ".merge")
+        tmp.write_text(json.dumps(merged), encoding="utf-8")
+        os.replace(tmp, new)  # the hooks write these files the same way; a lost update costs one notice
+    if time.time() - old.stat().st_mtime >= SESSION_IDLE:
+        old.unlink()
 
 
 def _lock(state: Path, wait: float) -> Path | None:
@@ -189,5 +243,5 @@ def pending() -> bool:
                                     for e in old.iterdir()):
                 return True
     except OSError:
-        return False  # cannot tell: never block every command on it
+        return True  # cannot read the old folder: a writing command would start from an empty snapshot
     return False

@@ -194,9 +194,10 @@ def test_an_old_session_s_hook_files_are_merged_quietly(fake_home):
     old.mkdir(parents=True)
     (old / "advisor-pending.json").write_text('{"plans": [1]}')  # same name: disposable, not "kept"
     (old / "reload-notified.json").write_text("{}")  # new name: moved, but no notice for it
-    assert migrate.migrate_state() == []
-    assert not old.exists() and (paths.state_dir() / "reload-notified.json").exists()
-    assert check._legacy_state() == [check.CheckResult("loadout state", True)]
+    assert migrate.migrate_state() == []  # session files never print the move notice
+    assert (paths.state_dir() / "reload-notified.json").exists()
+    assert json.loads((paths.state_dir() / "advisor-pending.json").read_text())["plans"] == [1]  # merged
+    assert check._legacy_state() == [check.CheckResult("loadout state", True)] and not migrate.pending()
 
 
 def test_another_run_holding_the_lock_is_named(fake_home, monkeypatch):
@@ -257,3 +258,51 @@ def test_claude_code_s_own_files_in_its_backups_folder_stay(fake_home):
     assert (paths.legacy_backups_root() / "loadout-notes").is_file()
     assert not migrate.pending() and check._legacy_state() == [check.CheckResult("loadout state", True)]
     assert migrate.migrate_state() == [] and lines  # nothing of loadout's left: later runs stay quiet
+
+
+def test_an_unreadable_old_folder_counts_as_pending(fake_home, monkeypatch):
+    paths.legacy_state_dir().mkdir(parents=True)
+    real = type(paths.legacy_state_dir()).iterdir
+    monkeypatch.setattr(type(paths.legacy_state_dir()), "iterdir",
+                        lambda self: (_ for _ in ()).throw(PermissionError("denied")) if self.name == ".loadout" else real(self))
+    assert migrate.pending(), "writing commands must not run on an empty snapshot while the old one is unreadable"
+
+
+def test_an_old_session_s_plans_are_merged_not_lost(fake_home):
+    import time as _time
+    paths.state_dir().mkdir(parents=True)
+    (paths.state_dir() / "advisor-pending.json").write_text(json.dumps({"plans": [{"path": "new.md"}]}))
+    (paths.state_dir() / "advisor-done.json").write_text(json.dumps({"evaluated": {"b": "2"}}))
+    old = paths.legacy_state_dir()
+    old.mkdir(parents=True)
+    (old / "advisor-pending.json").write_text(json.dumps({"plans": [{"path": "old.md"}]}))
+    (old / "advisor-done.json").write_text(json.dumps({"evaluated": {"a": "1"}}))
+    stale = _time.time() - 3 * 86400
+    os.utime(old / "advisor-done.json", (stale, stale))
+    assert migrate.migrate_state() == []
+    plans = json.loads((paths.state_dir() / "advisor-pending.json").read_text())["plans"]
+    assert {"path": "old.md"} in plans and {"path": "new.md"} in plans
+    assert json.loads((paths.state_dir() / "advisor-done.json").read_text())["evaluated"] == {"a": "1", "b": "2"}
+    assert (old / "advisor-pending.json").exists(), "a recent file may still belong to a running old session"
+    assert not (old / "advisor-done.json").exists(), "an old one is merged and removed"
+    assert not migrate.pending() and check._legacy_state() == [check.CheckResult("loadout state", True)]
+
+
+def test_a_cross_device_copy_never_overwrites_a_file_that_appeared(fake_home, monkeypatch):
+    old = paths.legacy_state_dir()
+    old.mkdir(parents=True)
+    (old / "codex-hooks.json").write_text('{"old": true}')
+    paths.state_dir().mkdir(parents=True)
+    target = paths.state_dir() / "codex-hooks.json"
+    monkeypatch.setattr(migrate.os, "link", lambda s, d, **kw: (_ for _ in ()).throw(OSError(errno.EXDEV, "x")))
+    real_copy = migrate.shutil.copy2
+
+    def copy_then_hook_writes(src, dst, **kw):
+        out = real_copy(src, dst, **kw)
+        target.write_text('{"hook": true}')  # a hook (no lock) writes the new place during the copy
+        return out
+    monkeypatch.setattr(migrate.shutil, "copy2", copy_then_hook_writes)
+    migrate.migrate_state()
+    assert json.loads(target.read_text()) == {"hook": True}, "the file that appeared wins"
+    assert json.loads((old / "codex-hooks.json").read_text()) == {"old": True}, "the old one is kept, not lost"
+    assert not list(paths.state_dir().glob("*.partial"))
