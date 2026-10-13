@@ -16,7 +16,7 @@ SECRET = "ghp_" + "q" * 30
 @pytest.fixture
 def windows_cmd(monkeypatch):
     monkeypatch.setattr(runner, "_is_windows", lambda: True)
-    monkeypatch.setattr(shutil, "which", lambda name: r"C:\npm\claude.CMD")
+    monkeypatch.setattr(shutil, "which", lambda name: "/winnpm/claude.CMD")
 
 
 def _mutations(fake_runner):

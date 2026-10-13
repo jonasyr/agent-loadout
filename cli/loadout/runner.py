@@ -22,21 +22,36 @@ class Result:
         return self.returncode == 0
 
 
-def have(binary: str) -> bool:
-    return shutil.which(binary) is not None
-
-
-def which(binary: str) -> str | None:
-    return shutil.which(binary)
-
-
 def _is_windows() -> bool:
     return os.name == "nt"
 
 
+def _in_cwd(exe: str) -> bool:
+    try:
+        return os.path.dirname(os.path.abspath(exe)) == os.path.abspath(os.getcwd())
+    except OSError:
+        return False
+
+
+def _resolve(binary: str) -> str | None:
+    """shutil.which without the current folder: Windows searches it before PATH, so a repo could ship git.exe."""
+    if _is_windows():
+        os.environ["NoDefaultCurrentDirectoryInExePath"] = "1"
+    exe = shutil.which(binary)
+    return None if exe is None or _in_cwd(exe) else exe
+
+
+def which(binary: str) -> str | None:
+    return _resolve(binary)
+
+
+def have(binary: str) -> bool:
+    return _resolve(binary) is not None
+
+
 def would_refuse(cmd: list[str]) -> bool:
     """True when run() would refuse cmd: a Windows .cmd/.bat shim cannot take cmd.exe metacharacters."""
-    exe = shutil.which(cmd[0])
+    exe = _resolve(cmd[0])
     return bool(exe and _is_windows() and exe.lower().endswith((".cmd", ".bat"))
                 and any(set(a) & CMD_METACHARS for a in cmd[1:]))
 
@@ -136,7 +151,7 @@ def write_manual_commands(directory, title: str, cmds: list[list[str]], undo: li
 
 
 def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict | None = None) -> Result:
-    exe = shutil.which(cmd[0])
+    exe = _resolve(cmd[0])
     if exe is None:
         return Result(127, "", f"{cmd[0]}: not found")
     if would_refuse(cmd):

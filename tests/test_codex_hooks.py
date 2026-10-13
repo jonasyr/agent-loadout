@@ -115,5 +115,5 @@ def test_checks_pick_the_project_folder(tmp_path, monkeypatch):
     (tmp_path / "crate" / "Cargo.toml").write_text("")
     monkeypatch.setattr(typecheck.shutil, "which", lambda name: f"/usr/bin/{name}")
     found = typecheck.checks([tmp_path / "web" / "x.ts", tmp_path / "crate" / "src" / "lib.rs"])
-    assert (["tsc", "--noEmit", "-p", str(tmp_path / "web")], tmp_path / "web") in found
-    assert (["cargo", "check", "--quiet", "--message-format=short"], tmp_path / "crate") in found
+    assert (["/usr/bin/tsc", "--noEmit", "-p", str(tmp_path / "web")], tmp_path / "web") in found
+    assert (["/usr/bin/cargo", "check", "--quiet", "--message-format=short"], tmp_path / "crate") in found
