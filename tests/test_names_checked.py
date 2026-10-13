@@ -42,3 +42,12 @@ def test_profile_commands_are_printed_redacted(fake_home, fake_runner, tmp_path,
     prof = profiles.Profile(name="t", description="", commands=[["tool", f"--token={token}"]])
     project._install(prof, tmp_path, dry_run=False)
     assert token not in capsys.readouterr().out
+
+
+def test_a_badly_named_profile_file_does_not_break_configure(fake_home):
+    from loadout import configure
+    folder = paths.personal_root() / "profiles"
+    folder.mkdir(parents=True)
+    (folder / "Work.json").write_text('{"description": "x"}')
+    assert "Work" not in profiles.list_profiles()
+    configure.addons()  # does not raise

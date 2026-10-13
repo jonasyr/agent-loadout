@@ -33,7 +33,7 @@ def _dirs() -> list[Path]:
 def list_profiles() -> list[str]:
     names = set()
     for d in _dirs():
-        names.update(p.stem for p in d.glob("*.json"))
+        names.update(p.stem for p in d.glob("*.json") if NAME.match(p.stem))  # others cannot be loaded by name
     return sorted(names)
 
 

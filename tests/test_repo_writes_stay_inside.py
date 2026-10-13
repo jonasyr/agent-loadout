@@ -95,3 +95,12 @@ def test_skills_not_copied_counts_as_a_problem(tmp_path, fake_home, fake_runner,
     (repo / ".claude").symlink_to(outside)
     monkeypatch.setattr(profiles, "load_profile", lambda name: profiles.Profile(name="t", description="", skills=["x"]))
     assert project.add_profile(repo, "t", install=False) == 1
+
+
+def test_a_dangling_template_symlink_outside_is_named_and_fails_init(tmp_path, fake_home, fake_runner, capsys):
+    from loadout import project
+    repo, outside = _repo(tmp_path)
+    (repo / ".git").mkdir()
+    (repo / "AGENTS.md").symlink_to(outside / "AGENTS.md")
+    rc = project.init(repo, [], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False)
+    assert "skipped AGENTS.md" in capsys.readouterr().out and rc == 1

@@ -27,7 +27,11 @@ def scaffold(project: Path, dry_run: bool = False) -> tuple[list[Path], list[str
             continue
         rel = src.relative_to(templates)
         dest = project / rel
-        if rel.as_posix() in skip or dest.exists() or dest.is_symlink():
+        if rel.as_posix() in skip or dest.exists():
+            continue
+        if dest.is_symlink():  # dangling: never followed; named when it points out of the repo
+            if not paths.inside(dest, project):
+                notes.append(f"skipped {rel.as_posix()}: it points outside the repo")
             continue
         if not paths.inside(dest, project) or not paths.inside(dest.parent, project):
             notes.append(f"skipped {rel.as_posix()}: it points outside the repo")

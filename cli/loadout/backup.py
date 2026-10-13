@@ -154,7 +154,7 @@ def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, st
 
 def _allowed_run(cmd) -> bool:
     """Only the undo commands loadout itself records; a manifest cannot make restore run anything else."""
-    if not isinstance(cmd, list) or not all(isinstance(a, str) for a in cmd):
+    if not isinstance(cmd, list) or len(cmd) < 4 or not all(isinstance(a, str) for a in cmd):
         return False
     n = len(cmd)
     slot = {"add-json": 5, "remove": 5}.get(cmd[2]) if cmd[:2] == ["claude", "mcp"] and n > 2 else n - 1
@@ -290,6 +290,8 @@ def list_backups() -> list[str]:
     root = paths.backups_root()
     rows = []
     for d in root.iterdir() if root.is_dir() else []:
+        if d.is_symlink():  # restore refuses it, so it is not listed
+            continue
         manifest = d / "manifest.json"
         if not manifest.is_file():
             continue

@@ -111,3 +111,15 @@ def test_a_symlinked_restore_file_source_is_refused(fake_home):
 ])
 def test_options_never_fill_a_name_slot(cmd):
     assert backup._allowed_run(cmd) is False
+
+
+def test_restore_list_hides_symlinked_entries(fake_home):
+    outside = fake_home / "outside"
+    _manifest(outside, [])
+    paths.backups_root().mkdir(parents=True, exist_ok=True)
+    (paths.backups_root() / "link").symlink_to(outside)
+    assert not any("link" in row for row in backup.list_backups())
+
+
+def test_an_empty_run_step_gets_the_clear_refusal():
+    assert backup._allowed_run([]) is False
