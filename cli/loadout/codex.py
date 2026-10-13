@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from . import paths, runner
-from .jsonio import load_json, save_json
+from .jsonio import get_dict, get_list, load_json, save_json
 
 MIN_VERSION = (0, 161)
 
@@ -220,14 +220,20 @@ def record_path() -> Path:
     return paths.state_dir() / "codex-config.json"
 
 
+def read_record() -> dict:
+    """codex-config.json with `tables` and `keys` as objects, whatever the file holds."""
+    record = load_json(record_path())
+    return {**record, "tables": get_dict(record, "tables"), "keys": get_dict(record, "keys")}
+
+
 def desired_tables() -> tuple[dict[str, str], list[str]]:
     """Table text per server name, and the lines for servers that cannot be mapped."""
-    servers = load_json(paths.personal_root() / "mcp.json").get("mcpServers", {})
+    servers = get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers")
     tables, problems = {"serena": table_text("serena", SERENA)}, []
     from .settings_merge import desired_settings
-    if desired_settings().get("enabledPlugins", {}).get("context7@claude-plugins-official") is True:
+    if get_dict(desired_settings(), "enabledPlugins").get("context7@claude-plugins-official") is True:
         tables["context7"] = table_text("context7", CONTEXT7)
-    for name, cfg in (servers if isinstance(servers, dict) else {}).items():
+    for name, cfg in servers.items():
         try:
             text = table_text(name, server(name, cfg))
             try:
@@ -268,7 +274,7 @@ def desired_keys() -> list[tuple[tuple, str, object, bool]]:
             (("tui",), "notifications", answer("agent_push_notifications") == "yes", False)]
     plugins = project_plugins()
     if plugins:
-        on = desired_settings().get("enabledPlugins", {})
+        on = get_dict(desired_settings(), "enabledPlugins")
         keys += [(("plugins", pid), "enabled", on.get(pid) is True, True) for pid in plugins]
     return keys
 
@@ -394,8 +400,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         before = tl.loads(old)
     except Exception as exc:
         return [f"skipped {path}: it does not parse now ({exc}); fix it, then run loadout bootstrap"]
-    record = load_json(record_path())
-    owned_tables, owned_keys = dict(record.get("tables", {})), dict(record.get("keys", {}))
+    record = read_record()
+    owned_tables, owned_keys = dict(record["tables"]), dict(record["keys"])
     was_tables, was_keys = set(owned_tables), set(owned_keys)
     sections = _sections(old.splitlines(), tl)
     tables, lines = desired_tables()
@@ -489,9 +495,17 @@ _REPO = re.compile(r"^[A-Za-z0-9][\w.-]*/[\w.-]+$")  # owner/repo only: never an
 
 
 def _json(text: str):
-    """codex prints warnings before its JSON on some setups; read from the first brace."""
-    start = min((i for i in (text.find("{"), text.find("[")) if i >= 0), default=-1)
-    return json.loads(text[start:]) if start >= 0 else None
+    """codex prints warnings before its JSON on some setups; read from the first line that holds valid JSON.
+    None when there is none (never raises)."""
+    pos = 0
+    for line in text.splitlines(keepends=True):
+        if line.lstrip()[:1] in ("{", "["):
+            try:
+                return json.JSONDecoder().raw_decode(text[pos + len(line) - len(line.lstrip()):])[0]
+            except ValueError:
+                pass
+        pos += len(line)
+    return None
 
 
 def _tail(res: runner.Result) -> str:
@@ -500,14 +514,14 @@ def _tail(res: runner.Result) -> str:
 
 def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
     """{GitHub source: [plugin names]} for every plugin enabled for Claude Code, and those without a GitHub source."""
-    markets = settings.get("extraKnownMarketplaces", {})
+    markets = get_dict(settings, "extraKnownMarketplaces")
     routes: dict[str, list[str]] = {}
     missing = []
-    for pid, on in settings.get("enabledPlugins", {}).items():
-        if on is not True or "@" not in pid:
+    for pid, on in get_dict(settings, "enabledPlugins").items():
+        if on is not True or not isinstance(pid, str) or "@" not in pid:
             continue
         name, market = pid.rsplit("@", 1)
-        source = markets.get(market, {}).get("source", {})
+        source = get_dict(markets.get(market), "source")
         repo = source.get("repo") if source.get("source") == "github" else None
         src = OFFICIAL if market == "claude-plugins-official" else (
             repo if isinstance(repo, str) and _REPO.match(repo) else None)
@@ -518,10 +532,20 @@ def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
     return routes, missing
 
 
+def plugin_versions() -> dict[str, str]:
+    """{plugin id: version} of the installed Codex plugins; {} when the list fails."""
+    res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
+    data = _json(res.stdout) if res.ok else None
+    return {p["pluginId"]: str(p.get("version", "")) for p in get_list(data if isinstance(data, dict) else {}, "installed")
+            if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
+
+
 def installed_plugins() -> set[str] | None:
     res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None
-    return {p.get("pluginId") for p in data.get("installed", [])} if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    return {p["pluginId"] for p in get_list(data, "installed") if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
 
 
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None
@@ -589,7 +613,7 @@ def apply_skills(bk) -> list[str]:
 def mcp_names() -> set[str] | None:
     res = runner.run(["codex", "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
     data = _json(res.stdout) if res.ok else None
-    return {s.get("name") for s in data if isinstance(s, dict)} if isinstance(data, list) else None
+    return {s["name"] for s in data if isinstance(s, dict) and isinstance(s.get("name"), str)} if isinstance(data, list) else None
 
 
 def _skill_names(folder: Path) -> set[str]:
@@ -612,7 +636,7 @@ def user_servers() -> dict[str, dict]:
         return {}
     if not isinstance(servers, dict):
         return {}
-    owned = set(load_json(record_path()).get("tables", {}))
+    owned = set(read_record()["tables"])
     return {n: t for n, t in servers.items() if isinstance(t, dict) and n not in owned}
 
 
@@ -681,9 +705,9 @@ def drift() -> list[str]:
     if in_codex is None:
         return []
     left = {key.split(":")[-1] for key in own.decisions()}
-    personal = set(load_json(paths.personal_root() / "mcp.json").get("mcpServers", {}))
-    owned = set(load_json(record_path()).get("tables", {}))
-    in_claude = set(load_json(paths.claude_json()).get("mcpServers", {}))
+    personal = set(get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers"))
+    owned = set(read_record()["tables"])
+    in_claude = set(get_dict(load_json(paths.claude_json()), "mcpServers"))
     accounted = left | personal | owned
     out = [f'MCP server "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
            for n in sorted(in_claude - in_codex - accounted)]
@@ -702,7 +726,7 @@ def _plugin_servers() -> set[str]:
     """MCP servers that Codex has from installed plugins (their .mcp.json), not from the user."""
     names: set[str] = set()
     for mcp in (paths.codex_home() / "plugins" / "cache").glob("*/*/*/.mcp.json"):
-        names |= set(load_json(mcp).get("mcpServers", {}))
+        names |= set(get_dict(load_json(mcp), "mcpServers"))
     return names
 
 
@@ -826,7 +850,8 @@ def hooks_status(remember: bool = False) -> str | None:
     tl = _tomllib()
     path = paths.codex_home() / "config.toml"
     try:
-        state = tl.loads(path.read_text(encoding="utf-8")).get("hooks", {}).get("state", {}) if path.exists() else {}
+        state = tl.loads(path.read_text(encoding="utf-8")).get("hooks", {}) if path.exists() else {}
+        state = get_dict(state, "state")
     except Exception:
         return None
     current = {k: v.get("trusted_hash") for k, v in state.items()
@@ -845,13 +870,13 @@ def hooks_status(remember: bool = False) -> str | None:
 def _not_logged_in() -> list[str]:
     res = runner.run(["codex", "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
     data = _json(res.stdout) if res.ok else None
-    return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"] \
-        if isinstance(data, list) else []
+    return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"
+            and isinstance(s.get("name"), str)] if isinstance(data, list) else []
 
 
 def logins_optional() -> list[str]:
     """loadout's own servers that work without a login but allow more with one (Context7's rate limits)."""
-    owned = set(load_json(record_path()).get("tables", {}))
+    owned = set(read_record()["tables"])
     return [name for name in _not_logged_in() if name in owned]
 
 
@@ -861,9 +886,9 @@ def logins_needed() -> list[str]:
     data = _json(res.stdout) if res.ok else None
     # Codex says not_logged_in for every server that offers OAuth, also when it answers anonymously; the servers
     # loadout writes itself are chosen to work without a login (Context7's plain address, verified live)
-    owned = set(load_json(record_path()).get("tables", {}))
+    owned = set(read_record()["tables"])
     return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"
-            and s.get("name") not in owned] if isinstance(data, list) else []
+            and isinstance(s.get("name"), str) and s["name"] not in owned] if isinstance(data, list) else []
 
 
 def open_steps() -> list[str]:

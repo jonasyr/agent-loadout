@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, inventory, out, own, paths, pkgmgr, runner, secrets, ui
+from . import catalog, inventory, out, own, paths, pkgmgr, runner, secrets, targets, ui
 from .backup import Backup
 from .inventory import Verdict
 from .jsonio import InvalidJSON, load_json, save_json
@@ -30,7 +30,11 @@ VERB = {"remove": "remove", "migrate": "remove", "scope-down": "disable globally
         "install": "install", "review": "remove", "own": "remove"}
 MIGRATED_MARKER = "<!-- Global instructions live in"
 Ask = Callable[[str], str]
-RESTART_NOTE = "Restart Claude Code (or run /reload-plugins) to load the changes."
+RESTART_NOTE = "Restart Claude Code (or run /reload-plugins) to load the changes."  # the Claude-only text
+
+
+def restart_note() -> str:
+    return targets.restart_hint()
 # calm view: plain-language heading, the question asked under it, and the summary verb after applying
 CALM = {
     "remove": ("Remove: superseded by something better", "Remove them?"),
@@ -195,6 +199,7 @@ def select(verdicts: list[Verdict], groups: set[str] | None, skip: set[str], ask
            keep_global: list | None = None, calm: bool = False) -> list[Verdict]:
     if groups is not None:
         valid = set(GROUP_ORDER) - {"keep", "own"}
+        groups = groups - {"secrets"}  # a pseudo-group: consent to move plaintext secrets, selects no verdicts
         if "own" in groups:
             raise ValueError("group 'own': decide per item with --own NAME=CHOICE,... (see loadout configure own)")
         for g in sorted(groups - valid):
@@ -498,6 +503,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         print("\nnon-interactive: re-run with --yes, --groups GROUP,... or --own NAME=CHOICE,... to apply (nothing changed).")
         return 2
     explicit = groups is not None
+    secrets_ok = groups is None or "secrets" in groups  # with --groups, secrets move only when named
     keep_global: list = []
     if own_pairs is not None and not interactive and not yes and not explicit:
         chosen = []  # --own alone: only the named items
@@ -538,15 +544,18 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         # --own is for scripts: an item that was skipped or failed must not look like success
         not_recorded = own_spec is not None and bool(not_done)
         if changed and not (embedded and calm):
-            print(RESTART_NOTE)
+            print(restart_note())
         done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
         remaining = [f for f in findings if f.fixable and f.server not in done]
         by_hand = [f for f in findings if not f.fixable]
         if asks_each_group and (remaining or by_hand):
             print(calm_secrets(remaining + by_hand))
-        if remaining and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
+        named = groups is not None and "secrets" in groups  # naming the group is the consent, as for the others
+        if remaining and secrets_ok and (yes or named or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
             for line in fix_secrets(remaining, bk):
                 print(redact(line))
+        elif remaining and not secrets_ok:
+            print("plaintext secrets left as they are (add `secrets` to --groups to move them)")
         if interactive and own_spec is None:
             _offer_profiles(new_profiles, ask)
         if acting and interactive and own_spec is None:
@@ -694,7 +703,7 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
     for v, step in machine:
         try:
             out += step()
-        except (OSError, InvalidJSON) as exc:
+        except (OSError, InvalidJSON, own.Collision) as exc:
             fail(v, exc)
     from . import targets
     if personal_changed and targets.claude_enabled():  # Codex-only: its own steps already applied the change

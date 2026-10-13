@@ -31,6 +31,32 @@ def load_json(path: Path) -> dict:
     return data
 
 
+def get_dict(data, key) -> dict:
+    """data[key] when it is a dict, else {} (a null, list or scalar written by hand or by another tool)."""
+    value = data.get(key) if isinstance(data, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
+def get_list(data, key) -> list:
+    """data[key] when it is a list, else []."""
+    value = data.get(key) if isinstance(data, dict) else None
+    return value if isinstance(value, list) else []
+
+
+class WrongShape(InvalidJSON):
+    """A container a write needs holds another shape; it may be the user's only copy, so it is never replaced."""
+
+
+def ensure(data: dict, key: str, kind: type = dict):
+    """data[key] as a `kind` container to write into, like setdefault. A missing or null value becomes an empty
+    one; any other shape raises WrongShape instead of being wiped."""
+    if data.get(key) is None:
+        data[key] = kind()
+    elif not isinstance(data[key], kind):
+        raise WrongShape(f"{key} is not {'an object' if kind is dict else 'a list'}; fix it, then run this again")
+    return data[key]
+
+
 def _default_mode() -> int:
     umask = os.umask(0)
     os.umask(umask)

@@ -9,7 +9,7 @@ from typing import Callable
 
 from . import adopt, catalog, check, link, out, paths, runner, secrets, settings_merge, ui, wsl
 from .backup import Backup
-from .jsonio import load_json
+from .jsonio import get_dict, load_json
 from .secrets import redact
 
 Ask = Callable[[str], str]
@@ -37,7 +37,7 @@ POLICY_NOTE = ("PowerShell's execution policy is Restricted, so profiles (and th
                "To allow them: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned")
 
 
-INTRO = "loadout sets up Claude Code with a reviewed kit of plugins, rules and tools."
+INTRO = "loadout sets up your coding agent with a reviewed kit of plugins, rules and tools."
 PROBLEM = out.PROBLEM
 
 
@@ -260,16 +260,19 @@ def setup_plugins(say=None) -> list[str]:
     out = []
     desired = settings_merge.desired_settings()
     listed = runner.run(["claude", "plugin", "marketplace", "list"], timeout=60).stdout
-    for name, cfg in desired.get("extraKnownMarketplaces", {}).items():
+    for name, cfg in get_dict(desired, "extraKnownMarketplaces").items():
         if name in listed:
             continue
-        src = cfg["source"]
+        src = get_dict(cfg, "source")
         origin = src.get("repo") or src.get("url")
+        if not isinstance(origin, str):
+            out.append(f"marketplace {name}: skipped, no repo or url in its source (fix it in your personal settings.json)")
+            continue
         say(f"  marketplace {origin} (a git clone the first time; can take a few minutes)…")
         res = runner.run(["claude", "plugin", "marketplace", "add", origin], timeout=300)
         out.append(f"marketplace {name}: {'added' if res.ok else 'failed: ' + res.stderr.strip()}")
-    installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
-    for plugin_id, on in desired.get("enabledPlugins", {}).items():
+    installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
+    for plugin_id, on in get_dict(desired, "enabledPlugins").items():
         if on and plugin_id not in installed:
             say(f"  plugin {plugin_id}…")
             res = runner.run(["claude", "plugin", "install", plugin_id, "--scope", "user"], timeout=600)
@@ -622,7 +625,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         lines = setup_plugins(say=lambda line: print(line, flush=True))
         if any(line.endswith(": added") for line in lines):
             settings_merge.apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
-        total = sum(1 for on in settings_merge.desired_settings().get("enabledPlugins", {}).values() if on)
+        total = sum(1 for on in get_dict(settings_merge.desired_settings(), "enabledPlugins").values() if on)
         failed = sum(1 for line in lines if PROBLEM.search(line))
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     if chosen["codex"]:

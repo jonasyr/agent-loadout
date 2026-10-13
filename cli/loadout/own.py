@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Callable
 from urllib.parse import parse_qsl, urlsplit
 
 from . import paths, personal_mcp, profiles, secrets, settings_merge
-from .jsonio import InvalidJSON, load_json, save_json
+from .jsonio import InvalidJSON, WrongShape, ensure, get_dict, get_list, load_json, save_json
 from .secrets import redact
 
 if TYPE_CHECKING:
@@ -126,7 +126,7 @@ def _hook_commands(settings: dict) -> set[str]:
     out = set()
     for groups in (hooks.values() if isinstance(hooks, dict) else []):
         for group in groups if isinstance(groups, list) else []:
-            for hook in group.get("hooks", []) if isinstance(group, dict) else []:
+            for hook in get_list(group, "hooks"):
                 if isinstance(hook, dict) and isinstance(hook.get("command"), str):
                     out.add(hook["command"])
     return out
@@ -141,14 +141,14 @@ def personal_index() -> dict[str, dict]:
     index = {k: {} for k in KINDS}
     index["_profile"] = {k: {} for k in KINDS}
     from . import targets
-    enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins") if targets.claude_enabled() else {}
-    index["_disabled"] = {pid for pid, on in (enabled if isinstance(enabled, dict) else {}).items() if on is False}
-    for pid, on in (settings.get("enabledPlugins") or {}).items():
+    enabled = get_dict(load_json(paths.claude_home() / "settings.json"), "enabledPlugins") if targets.claude_enabled() else {}
+    index["_disabled"] = {pid for pid, on in enabled.items() if on is False}
+    for pid, on in get_dict(settings, "enabledPlugins").items():
         if on:
             index["plugin"][pid] = PERSONAL_REASON
-    for name in settings.get("extraKnownMarketplaces") or {}:
+    for name in get_dict(settings, "extraKnownMarketplaces"):
         index["marketplace"][name] = PERSONAL_REASON
-    for name in load_json(root / "mcp.json").get("mcpServers") or {}:
+    for name in get_dict(load_json(root / "mcp.json"), "mcpServers"):
         index["mcp"][name] = PERSONAL_REASON
     skills = root / "skills"
     for entry in (skills.iterdir() if skills.is_dir() else []):
@@ -159,14 +159,20 @@ def personal_index() -> dict[str, dict]:
     for cmd in _hook_commands(settings):
         index["hook"][cmd] = PERSONAL_REASON
     for path in sorted((root / "profiles").glob("*.json")):
-        prof, why = load_json(path), f"In your personal profile {path.stem} (`loadout profile {path.stem}`)."
-        for pid in prof.get("install") or []:
-            index["_profile"]["plugin"].setdefault(pid, why)
-        for name in (prof.get("mcp") or {}).get("mcpServers") or {}:
+        try:
+            prof = profiles.read_profile(path, path.stem)
+        except ValueError:  # a profile with a wrongly typed field explains nothing; `loadout profile` names the file
+            continue
+        why = f"In your personal profile {path.stem} (`loadout profile {path.stem}`)."
+        for pid in prof.install:
+            if isinstance(pid, str):
+                index["_profile"]["plugin"].setdefault(pid, why)
+        for name in get_dict(prof.mcp, "mcpServers"):
             index["_profile"]["mcp"].setdefault(name, why)
-        for name in prof.get("skills") or []:
-            index["_profile"]["skill"].setdefault(name, why)
-        for cmd in _hook_commands(prof.get("settings") or {}):
+        for name in prof.skills:
+            if isinstance(name, str):
+                index["_profile"]["skill"].setdefault(name, why)
+        for cmd in _hook_commands(prof.settings):
             index["_profile"]["hook"].setdefault(cmd, why)
     return index
 
@@ -211,7 +217,10 @@ def _edit_json(path: Path, bk, label: str, change: Callable[[dict], None], seed:
     exists = path.exists()
     data = load_json(path) if exists else json.loads(json.dumps(seed or {}))
     before = json.dumps(data, sort_keys=True)
-    change(data)
+    try:
+        change(data)
+    except WrongShape as exc:
+        raise Collision(f"{path}: {exc}") from None
     if json.dumps(data, sort_keys=True) == before and exists:
         return
     if exists:
@@ -227,7 +236,7 @@ def _personal_settings() -> Path:
 
 def _kit_markets() -> set[str]:
     kit = load_json(paths.kit_root() / "settings.base.json")
-    return set(kit.get("extraKnownMarketplaces", {})) | {"claude-plugins-official"}
+    return set(get_dict(kit, "extraKnownMarketplaces")) | {"claude-plugins-official"}
 
 
 def _market_source(name: str) -> dict | None:
@@ -249,7 +258,7 @@ def _add_market(data: dict, name: str) -> None:
             if any(secrets.looks_secret(k, v, keyed_arg=True) for k, v in parse_qsl(urlsplit(value).query)):
                 raise Collision(f"marketplace {name} looks like it contains a secret in its URL; "
                                 f"remove it from the source, then try again")
-    markets = data.setdefault("extraKnownMarketplaces", {})
+    markets = ensure(data, "extraKnownMarketplaces")
     have = markets.get(name)
     if have is not None and (not isinstance(have, dict) or have.get("source") != src):
         raise Collision(f"marketplace {name} already exists with a different source")
@@ -559,10 +568,10 @@ def _find_hook(data: dict, event: str, item: Item) -> tuple[int, int] | None:
     (normalised like settings_merge.hook_id), its command and, for an exec-form hook, its args."""
     matcher = item.name[len(event) + 1:]
     exec_form = "args" in item.extra
-    for gi, group in enumerate((data.get("hooks") or {}).get(event) or []):
+    for gi, group in enumerate(get_list(get_dict(data, "hooks"), event)):
         if not isinstance(group, dict) or settings_merge.matcher_of(group) != matcher:
             continue
-        for hi, hook in enumerate(group.get("hooks") or []):
+        for hi, hook in enumerate(get_list(group, "hooks")):
             if (isinstance(hook, dict) and hook.get("command") == item.detail and ("args" in hook) == exec_form
                     and (not exec_form or hook["args"] == item.extra["args"])):
                 return gi, hi
@@ -627,15 +636,21 @@ def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
             f"removes it here too)"]
 
 
+def next_start_hint() -> str:
+    from . import targets
+    names = [n for n, on in (("Claude Code", targets.claude_enabled()), ("Codex", targets.codex_enabled())) if on]
+    return f"other machines install it at the next {' and '.join(names)} start"
+
+
 def record_global(v: Verdict, bk) -> Recorded:
     item = v.item
     try:
         if item.kind == "plugin":
             def change(data):
-                data.setdefault("enabledPlugins", {})[item.name] = True
+                ensure(data, "enabledPlugins")[item.name] = True
                 _add_market(data, item.name.split("@", 1)[1] if "@" in item.name else "")
             _edit_json(_personal_settings(), bk, f"personal settings.json before recording {item.name}", change)
-            return Recorded(True, [f"plugin {item.name}: recorded in {_personal_settings()} (other machines install it at the next Claude Code start)"])
+            return Recorded(True, [f"plugin {item.name}: recorded in {_personal_settings()} ({next_start_hint()})"])
         if item.kind == "marketplace":
             _edit_json(_personal_settings(), bk, f"personal settings.json before recording {item.name}",
                        lambda data: _add_market(data, item.name))
@@ -647,7 +662,7 @@ def record_global(v: Verdict, bk) -> Recorded:
         if item.kind == "hook":
             event, group, notes = _hook_group(v, bk)
             def change(data):
-                groups = data.setdefault("hooks", {}).setdefault(event, [])
+                groups = ensure(ensure(data, "hooks"), event, list)
                 want = settings_merge.hook_id(event, group, group["hooks"][0])
                 slot = next(((gi, hi) for gi, g in enumerate(groups)
                              if isinstance(g, dict) and isinstance(g.get("hooks"), list)
@@ -682,7 +697,7 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
     path = paths.personal_root() / "mcp.json"
 
     def change(data):
-        servers = data.setdefault("mcpServers", {})
+        servers = ensure(data, "mcpServers")
         if name in servers and servers[name] != new:
             raise Collision(f"{name} already exists in {path} with a different config")
         servers[name] = new
@@ -698,7 +713,7 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
                                                  if res.startswith("manual: ") else res)))
         snap = paths.state_dir() / "managed-mcp.json"
         _edit_json(snap, bk, "managed-mcp.json before recording a server",
-                   lambda d: d.setdefault("mcpServers", {}).__setitem__(name, new))
+                   lambda d: d.__setitem__("mcpServers", {**get_dict(d, "mcpServers"), name: new}))  # loadout's own state
         return out
 
     def codex_machine() -> list[str]:
@@ -809,9 +824,9 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
     try:
         if item.kind == "plugin":
             def change(data):
-                _append_once(data.setdefault("install", []), item.name)
-                settings = data.setdefault("settings", {})
-                settings.setdefault("enabledPlugins", {})[item.name] = True
+                _append_once(ensure(data, "install", list), item.name)
+                settings = ensure(data, "settings")
+                ensure(settings, "enabledPlugins")[item.name] = True
                 _add_market(settings, item.name.split("@", 1)[1] if "@" in item.name else "")
             _edit_profile(profile, bk, change)
         elif item.kind == "mcp":
@@ -819,7 +834,7 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
             _refuse_if_secret(f"mcp {item.name}", json.dumps(new))
 
             def change(data):
-                servers = data.setdefault("mcp", {}).setdefault("mcpServers", {})
+                servers = ensure(ensure(data, "mcp"), "mcpServers")
                 if item.name in servers and servers[item.name] != new:
                     raise Collision(f"{item.name} already exists in {where} with a different config")
                 servers[item.name] = new
@@ -828,11 +843,11 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
         elif item.kind == "skill":
             _copy_tree(Path(item.location), paths.personal_root() / "profiles" / "skills" / item.name, bk,
                        f"skill {item.name} copied into the personal profiles")
-            _edit_profile(profile, bk, lambda data: _append_once(data.setdefault("skills", []), item.name))
+            _edit_profile(profile, bk, lambda data: _append_once(ensure(data, "skills", list), item.name))
         elif item.kind == "hook":
             event, group, notes = _hook_group(v, bk)
             _edit_profile(profile, bk, lambda data: _append_once(
-                data.setdefault("settings", {}).setdefault("hooks", {}).setdefault(event, []), group))
+                ensure(ensure(ensure(data, "settings"), "hooks"), event, list), group))
             return Recorded(True, [f"hook {display_name(item)}: recorded in {where}", *notes])
     except Collision as exc:
         return Recorded(False, [redact(f"skipped: {exc}")])
@@ -1007,7 +1022,7 @@ def candidate_repos(item: Item) -> list[Path]:
                 continue
         except OSError:
             continue
-        in_cfg = isinstance(cfg, dict) and needle in json.dumps(cfg.get("mcpServers") or {})
+        in_cfg = isinstance(cfg, dict) and needle in json.dumps(get_dict(cfg, "mcpServers"))
         files = [repo / ".mcp.json", repo / ".claude/settings.json"]  # committed files only, not settings.local.json
         if in_cfg or any(_mentions(f, needle) for f in files):
             out.append(repo)

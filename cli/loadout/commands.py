@@ -39,9 +39,9 @@ def _register_adopt(sub):
 
     p = sub.add_parser("adopt", help="review and migrate the existing Claude Code setup")
     p.add_argument("--apply", action="store_true", help="choose and apply changes (default: dry run)")
-    p.add_argument("--groups", help="apply exactly these groups, e.g. remove,migrate (update/install run each command after confirmation unless --yes); `own` is refused, use --own")
+    p.add_argument("--groups", help="apply exactly these groups, e.g. remove,migrate (update/install run each command after confirmation unless --yes); `secrets` also moves plaintext secrets to secrets.env; `own` is refused, use --own")
     p.add_argument("--skip", default="", help="comma-separated item names to skip in this run (nothing is remembered)")
-    p.add_argument("--yes", action="store_true", help="no questions: apply --groups, or remove,migrate,scope-down, and move secrets; your own tools stay as they are")
+    p.add_argument("--yes", action="store_true", help="no questions: apply --groups, or remove,migrate,scope-down, and move secrets (with --groups only if it names `secrets`); your own tools stay as they are")
     p.add_argument("--own", metavar="NAME=CHOICE,...",
                    help="Example: my-db=project:mydb,foo@bar=global. Decide for your own tools. "
                         "Choices: global, project:<profile>, leave, remove; others stay as they are. "

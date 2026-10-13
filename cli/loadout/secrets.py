@@ -249,6 +249,8 @@ def redact(text: str) -> str:
     """Mask anything that looks like a secret before it reaches the console."""
     if not text:
         return text
+    if not isinstance(text, str):
+        text = str(text)
     text = _JSON_PAIR.sub(lambda m: f'"{m["k"]}"{m["sep"]}"{MASK}"' if _pair_secret(m["k"], m["v"]) else m.group(), text)
     text = _PY_PAIR.sub(lambda m: f"'{m['k']}'{m['sep']}'{MASK}'" if _pair_secret(m["k"], m["v"]) else m.group(), text)
     text = _LINE_PAIR.sub(_line_pair, text)

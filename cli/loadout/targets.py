@@ -34,6 +34,16 @@ def codex_enabled() -> bool:
     return load_json(path()).get("codex") is True
 
 
+def restart_hint() -> str:
+    """The restart line, naming only the agents that are on."""
+    claude, codex = claude_enabled(), codex_enabled()
+    if claude and codex:
+        return "Restart Claude Code (or run /reload-plugins) and Codex to load the changes."
+    if codex:
+        return "Restart Codex to load the changes."
+    return "Restart Claude Code (or run /reload-plugins) to load the changes."
+
+
 def decided() -> bool:
     data = load_json(path())
     return "claude" in data or "codex" in data

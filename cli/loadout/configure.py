@@ -8,7 +8,7 @@ from typing import Callable
 
 from . import catalog, out, paths, preferences, profiles, runner, scaffold, secrets, ui
 from .backup import Backup
-from .jsonio import load_json, save_json
+from .jsonio import WrongShape, ensure, get_dict, load_json, save_json
 from .secrets import redact
 
 Ask = Callable[[str], str]
@@ -30,7 +30,7 @@ def _personal_settings_path():
 
 
 def _kit_plugins() -> dict:
-    return load_json(paths.kit_root() / "settings.base.json").get("enabledPlugins", {})
+    return get_dict(load_json(paths.kit_root() / "settings.base.json"), "enabledPlugins")
 
 
 def addons() -> list[Addon]:
@@ -40,9 +40,12 @@ def addons() -> list[Addon]:
         out.append(Addon(f"plugin:{pid}", pid, entry.get("category", "kit default"), entry.get("reason", "Enabled by the kit."), "plugin", pid, bool(on)))
         seen.add(pid)
     for name in profiles.list_profiles():
-        prof = profiles.load_profile(name)
+        try:
+            prof = profiles.load_profile(name)
+        except ValueError:  # a broken profile file is skipped here; `loadout profile <name>` names it
+            continue
         for pid in prof.install:
-            if pid not in seen:
+            if isinstance(pid, str) and pid not in seen:
                 out.append(Addon(f"plugin:{pid}", pid, f"profile {name}", prof.description, "plugin", pid, False))
                 seen.add(pid)
     for entry in catalog.load():
@@ -59,16 +62,24 @@ def addons() -> list[Addon]:
 
 def is_on(addon: Addon) -> bool:
     if addon.kind == "plugin":
-        personal = load_json(_personal_settings_path()).get("enabledPlugins", {})
+        personal = get_dict(load_json(_personal_settings_path()), "enabledPlugins")
         return personal.get(addon.target, addon.default_on)
     entry = next(e for e in catalog.load() if e["id"] == addon.target)
-    servers = load_json(paths.personal_root() / "mcp.json").get("mcpServers", {})
+    servers = get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers")
     return all(name in servers for name in entry["offer"]["mcp"])
+
+
+def _writable(data: dict, key: str, path) -> dict:
+    """data[key] to write into; a hand-damaged value is refused, never replaced (it may be the user's only copy)."""
+    try:
+        return ensure(data, key)
+    except WrongShape as exc:
+        raise ValueError(f"{path}: {exc}") from None
 
 
 def set_plugin(plugin_id: str, on: bool) -> None:
     data = load_json(_personal_settings_path())
-    plugins = data.setdefault("enabledPlugins", {})
+    plugins = _writable(data, "enabledPlugins", _personal_settings_path())
     if bool(_kit_plugins().get(plugin_id, False)) == on:
         plugins.pop(plugin_id, None)   # same as the kit default: no override needed
     else:
@@ -102,7 +113,7 @@ def set_mcp(catalog_id: str, on: bool) -> list[str]:
         raise ValueError(f"no MCP add-on '{catalog_id}' in the catalog (available: {names})")
     path = paths.personal_root() / "mcp.json"
     data = load_json(path)
-    servers = data.setdefault("mcpServers", {})
+    servers = _writable(data, "mcpServers", path)
     for name, cfg in entry["offer"]["mcp"].items():
         if on:
             servers[name] = cfg
@@ -345,7 +356,7 @@ def set_own(name: str, choice: str) -> int:
     for line in lines:
         print(redact(line))
     if changed:
-        print(adopt.RESTART_NOTE)
+        print(adopt.restart_note())
     for profile in profiles_changed:
         print(f"apply it in a repo: cd <repo> && loadout profile {profile}")
     if not bk.empty:

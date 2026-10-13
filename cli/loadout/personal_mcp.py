@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 
 from . import paths, runner
-from .jsonio import load_json, save_json
+from .jsonio import get_dict, load_json, save_json
 from .secrets import redact
 
 
@@ -17,10 +17,14 @@ def _add(name: str, cfg: dict) -> runner.Result:
 
 
 def apply_mcp() -> list[str]:
-    desired = load_json(paths.personal_root() / "mcp.json").get("mcpServers", {})
+    wanted_file = load_json(paths.personal_root() / "mcp.json")
+    if "mcpServers" in wanted_file and not isinstance(wanted_file["mcpServers"], dict):
+        # treating it as empty would remove every server loadout applied before
+        return [f"mcp: skipped, {paths.personal_root() / 'mcp.json'}: mcpServers must be an object; fix it, then run loadout apply-settings"]
+    desired = get_dict(wanted_file, "mcpServers")
     snap = paths.state_dir() / "managed-mcp.json"
-    previous = load_json(snap).get("mcpServers", {})
-    current = load_json(paths.claude_json()).get("mcpServers", {})
+    previous = get_dict(load_json(snap), "mcpServers")
+    current = get_dict(load_json(paths.claude_json()), "mcpServers")
     managed, out = {}, []
     for name, cfg in desired.items():
         if current.get(name) == cfg:

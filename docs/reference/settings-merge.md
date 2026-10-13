@@ -26,6 +26,7 @@ Everything in current that loadout never applied stays as it is: loadout manages
 This covers every key except `hooks`.
 
 1. Start from current and apply desired on top. Desired values win. A list is current's items plus the desired items that are not yet in it.
+   When a key has a different shape in your file than in desired (for example `env` is a string where the kit sets `env.FOO`, or a list where desired has an object), desired replaces the whole value.
 2. For each value in previous that current still has, check whether the kit has stopped wanting it:
    - A value that is not a list: if desired no longer has the key and current still holds exactly the value the kit applied, the key is removed. If you changed the value, it stays.
    - A list: items the kit applied but no longer wants are removed from current's list. Items you added are kept. If the list ends up empty and desired no longer has the key, the key is removed.

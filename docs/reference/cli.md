@@ -60,9 +60,9 @@ loadout adopt [--apply] [--groups GROUPS] [--skip SKIP] [--yes]
 | Flag | Meaning |
 |---|---|
 | `--apply` | Choose and apply changes (default: dry run). |
-| `--groups GROUPS` | Apply exactly these groups, for example `remove,migrate`. The valid groups are `remove`, `migrate`, `scope-down`, `update`, `install` and `review`. `update` and `install` run each command after confirmation unless `--yes` is also given. `own` is refused: use `--own`. |
+| `--groups GROUPS` | Apply exactly these groups, for example `remove,migrate`. The valid groups are `remove`, `migrate`, `scope-down`, `update`, `install`, `review` and `secrets` (moves the plaintext secrets the dry run lists into `secrets.env`; it selects no tool, and with `--groups` secrets move only when it is named). `update` and `install` run each command after confirmation unless `--yes` is also given. `own` is refused: use `--own`. |
 | `--skip SKIP` | Comma-separated item names to skip in this run. Nothing is remembered. |
-| `--yes` | No questions: apply `--groups`, or `remove,migrate,scope-down` when no groups are given, and move secrets. Your own tools stay as they are. |
+| `--yes` | No questions: apply `--groups`, or `remove,migrate,scope-down` when no groups are given, and move secrets (with `--groups`, only when it includes `secrets`). Your own tools stay as they are. |
 | `--own NAME=CHOICE,...` | Decide for your own tools. Example: `my-db=project:mydb,foo@bar=global`. Choices: `global`, `project:<profile>`, `leave`, `remove`. Other items stay as they are. Hook naming: see [hooks](hooks.md#naming-hooks-of-your-own-tools). |
 | `--no-versions` | Skip network version checks. |
 | `--verbose` | Full detail: each item's command line, long reason, replacement and notes, the items that stay, and the backup path. |
@@ -203,7 +203,7 @@ It has no flags. It prints `settings updated` or `settings already up to date`. 
 
 ## loadout update
 
-Update outdated tool binaries. It prints each command and asks before it runs, unless `--yes` is given.
+Update outdated tool binaries and the plugins loadout enables. It prints each command and asks before it runs, unless `--yes` is given.
 
 ```
 loadout update [--yes]
@@ -213,7 +213,7 @@ loadout update [--yes]
 |---|---|
 | `--yes` | Run every update command without asking. Each is still printed. |
 
-It first refreshes the plugin marketplaces (`claude plugin marketplace update`). Then, for each outdated tool, it picks the package manager that installed it (`pkgmgr.update_plan`):
+It first refreshes the plugin marketplaces (`claude plugin marketplace update`). Then, with Claude Code on, it runs `claude plugin update <id> --scope user` for each plugin that is enabled in the merged settings and installed with user scope, and with Codex on it upgrades the Codex marketplaces and adds each routed plugin again (`codex plugin add`). It names the plugins first and asks once before it touches them (`--yes` answers for you; without a terminal and without `--yes` they stay as they are). It prints one line per plugin that changed (`plugin <id>: updated`) or failed (`plugin <id>: failed: ...`; the others still run), and a closing line to run `/reload-plugins` or restart the agent when something changed. Plugins already at the latest version print nothing. The daily background sync does not run `claude plugin update`; Claude Code updates the marketplaces in `settings.base.json` by itself, and the sync refreshes the Codex plugins after it pulls a new kit (see [the daily sync](../explanation/architecture.md#the-daily-sync)). Then, for each outdated tool, it picks the package manager that installed it (`pkgmgr.update_plan`):
 
 - `mise upgrade <tool>` when the binary lives under mise's `installs` directory, also behind a mise shim. The mise tool name is the catalog id, or `npm:<package>` for mise's npm backend; a catalog entry can override it with `"mise": "<name>"`. For these tools mise itself decides what is outdated (`mise outdated`), so its `minimum_release_age` and pins are respected.
 - `brew upgrade <formula>` when the binary resolves into Homebrew's `Cellar/<formula>/`. Casks and npm packages installed with Homebrew's node are not formulae and keep their own updater.

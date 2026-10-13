@@ -637,3 +637,30 @@ def test_kit_plugins_and_marketplaces_in_keep_are_one_line_each():
     assert "  kit plugins: a@m, b@m" in text and "  kit marketplaces: m" in text
     assert "Enabled by the kit" not in text and "[plugin]" not in text
     assert "[mcp] mine" in text and "Kept on purpose." in text  # anything else stays itemised
+
+
+def _run_with_secrets(machine, fake_runner, groups, yes=True):
+    calls = []
+    orig = adopt.fix_secrets
+    adopt.fix_secrets = lambda found, bk: calls.append(found) or []
+    try:
+        adopt.run(True, groups, set(), yes, ask=lambda q: "", with_versions=False, interactive=False)
+    finally:
+        adopt.fix_secrets = orig
+    return calls
+
+
+def test_groups_update_with_yes_does_not_move_secrets(machine, fake_runner):
+    assert _run_with_secrets(machine, fake_runner, {"update"}) == []
+
+
+def test_groups_secrets_with_yes_moves_secrets(machine, fake_runner):
+    assert len(_run_with_secrets(machine, fake_runner, {"secrets"})) == 1
+
+
+def test_yes_without_groups_still_moves_secrets(machine, fake_runner):
+    assert len(_run_with_secrets(machine, fake_runner, None)) == 1
+
+
+def test_select_accepts_secrets_and_selects_nothing_for_it(machine):
+    assert adopt.select(_verdicts(), {"secrets"}, set(), ask=lambda q: "") == []

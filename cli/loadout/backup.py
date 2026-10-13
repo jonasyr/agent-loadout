@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from . import paths, runner
-from .jsonio import load_json, save_json
+from .jsonio import get_dict, load_json, save_json
 from .secrets import redact
 
 PRIVATE_DIR = 0o700
@@ -135,12 +135,12 @@ def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, st
     """
     skip: dict[int, str] = {}
     for i, step in enumerate(ordered):
-        cmd = step.get("undo", {}).get("run")
+        cmd = get_dict(step, "undo").get("run")
         if not cmd or (step.get("restored") and not force) or _mcp_target(cmd) is None or _mcp_target(cmd)[0] != "remove":
             continue
         name = _mcp_target(cmd)[1]
         for j in range(i + 1, len(ordered)):
-            other = ordered[j].get("undo", {}).get("run")
+            other = get_dict(ordered[j], "undo").get("run")
             if other and _mcp_target(other) == ("add-json", name) and _allowed_run(cmd) and _allowed_run(other):
                 if runner.would_refuse(other):
                     where = runner.write_manual_commands(
@@ -253,24 +253,27 @@ def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | No
     if not manifest_path.is_file():
         return [f"no loadout backup at {root} (manifest.json missing); see `loadout restore --list`"], False, None
     manifest = load_json(manifest_path)
+    if "steps" in manifest and not isinstance(manifest["steps"], list):
+        return [f"failed: the backup's manifest is damaged ({manifest_path}: steps is not a list)"], False, None
     if manifest.get("restored_at") and not force:
-        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(manifest["restored_at"]))
+        when = _stamp(manifest["restored_at"])
         return [f"{root} was already restored at {when}; re-run with --force to replay it again"], False, None
     pre = Backup(description=f"pre-restore of {root}")
     lines, ok = [], True
     failed = []
-    ordered = list(reversed(manifest.get("steps", [])))
+    ordered = [s for s in reversed(manifest.get("steps", [])) if isinstance(s, dict)]  # a damaged entry is skipped
     paired = _refused_pairs(ordered, root, force)
     for i, step in enumerate(ordered):
+        name = str(step.get("label", "?"))
         if step.get("restored") and not force:
-            lines.append(f"already restored: {step.get('label', '?')}")
+            lines.append(f"already restored: {name}")
             continue
         try:
-            msg = paired[i].replace("{label}", step.get("label", "?"), 1) if i in paired else _undo(step, pre, root)
+            msg = paired[i].replace("{label}", name, 1) if i in paired else _undo(step, pre, root)
         except Exception as exc:  # one broken step must not abort the rest
-            msg = f"failed: {step.get('label', '?')}: {exc}"
+            msg = f"failed: {name}: {exc}"
         if msg.startswith(("failed", "skipped (exists)")):
-            failed.append(step.get("label", "?"))
+            failed.append(name)
             step.pop("restored", None)
         else:
             step["restored"] = True
@@ -286,6 +289,14 @@ def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | No
     return lines, ok, (None if pre.empty else pre.root)
 
 
+def _stamp(value) -> str:
+    """A time for a message; a damaged value (a string where a number was written) shows as '?'."""
+    try:
+        return time.strftime("%Y-%m-%d %H:%M", time.localtime(value))
+    except (TypeError, ValueError, OverflowError, OSError):
+        return "?"
+
+
 def list_backups() -> list[str]:
     root = paths.backups_root()
     rows = []
@@ -299,15 +310,18 @@ def list_backups() -> list[str]:
             data = load_json(manifest)
         except Exception:
             continue
-        rows.append((data.get("created_at") or manifest.stat().st_mtime, d.name, d, data))
+        if not isinstance(data.get("steps", []), list):  # a damaged manifest is not listed
+            continue
+        created = data.get("created_at")
+        rows.append((created if isinstance(created, (int, float)) and created > 0 else manifest.stat().st_mtime,
+                     d.name, d, data))
     out = []
     home = str(paths.home())
     for created, _, d, data in sorted(rows, key=lambda r: (r[0], r[1]), reverse=True):
         n = len(data.get("steps", []))
-        state = ("restored " + time.strftime("%Y-%m-%d %H:%M", time.localtime(data["restored_at"]))
-                 if data.get("restored_at") else "not restored")
+        state = "restored " + _stamp(data["restored_at"]) if data.get("restored_at") else "not restored"
         desc = f"  {data['description']}" if data.get("description") else ""
         shown = "~" + str(d)[len(home):] if str(d).startswith(home) else str(d)
-        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(created))
+        when = _stamp(created)
         out.append(f"{shown}  {when}  {n} step{'s' if n != 1 else ''}  {state}{desc}")
     return out

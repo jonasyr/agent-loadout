@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from loadout import runner
@@ -40,6 +42,7 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.delenv("LOADOUT_PERSONAL", raising=False)
     monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))  # teardown restores it: nothing leaks a fake tool dir into later tests
     monkeypatch.setenv("LOADOUT_REEXEC", "1")  # bin/loadout never re-execs the test process through a real uv
 
 

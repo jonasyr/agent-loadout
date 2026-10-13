@@ -11,7 +11,7 @@ import re
 
 from . import paths, runner
 from .inventory import Item
-from .jsonio import load_json
+from .jsonio import get_dict, get_list, load_json
 
 PLUGIN_ID = "loadout@agent-loadout"
 # script files older codebase-memory-mcp installers put into ~/.claude/hooks (the kit replaces them)
@@ -25,7 +25,7 @@ def _plugin_dir():
 
 def plugin_enabled() -> bool:
     from .settings_merge import desired_settings
-    return bool(desired_settings().get("enabledPlugins", {}).get(PLUGIN_ID))
+    return bool(get_dict(desired_settings(), "enabledPlugins").get(PLUGIN_ID))
 
 
 def plugin_servers() -> dict:
@@ -36,10 +36,10 @@ def plugin_servers() -> dict:
 def plugin_hook_commands() -> set[str]:
     """The inner commands the plugin's hooks run (after run.sh), e.g. `rtk hook claude`."""
     out = set()
-    hooks = load_json(_plugin_dir() / "hooks" / "hooks.json").get("hooks", {})
+    hooks = get_dict(load_json(_plugin_dir() / "hooks" / "hooks.json"), "hooks")
     for groups in hooks.values() if isinstance(hooks, dict) else []:
         for group in groups if isinstance(groups, list) else []:
-            for hook in group.get("hooks", []) if isinstance(group, dict) else []:
+            for hook in get_list(group, "hooks"):
                 cmd = hook.get("command", "") if isinstance(hook, dict) else ""
                 if _RUN_SH.match(cmd):
                     out.add(_norm(_RUN_SH.sub("", cmd)))

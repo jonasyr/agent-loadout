@@ -41,7 +41,9 @@ def get_path(d: Any, path: tuple) -> Any:
 
 def _set_path(d: dict, path: tuple, value: Any) -> None:
     for key in path[:-1]:
-        d = d.setdefault(key, {})
+        if not isinstance(d.get(key), dict):  # defensive: the only caller reaches here with dict parents
+            d[key] = {}
+        d = d[key]
     d[path[-1]] = value
 
 
@@ -50,8 +52,10 @@ def _delete_path(d: dict, path: tuple) -> None:
     node = d
     for key in path[:-1]:
         chain.append((node, key))
-        node = node[key]
-    del node[path[-1]]
+        node = node.get(key) if isinstance(node, dict) else None
+        if not isinstance(node, dict):
+            return  # the key changed shape (object to scalar or list): nothing to delete down this path
+    node.pop(path[-1], None)
     for parent, key in reversed(chain):
         if parent[key] == {}:
             del parent[key]
@@ -275,9 +279,23 @@ def merge_settings(current: dict, desired: dict, previous: dict) -> dict:
     return _plan(current, desired, previous)[0]
 
 
+_DICT_KEYS = ("enabledPlugins", "extraKnownMarketplaces", "hooks")
+
+
+def _normalised(data: dict) -> dict:
+    """The container keys loadout reads as objects, made objects: a null, list or scalar written by hand is dropped
+    (treated as missing), and each marketplace is an object with an object `source`."""
+    out = {k: v for k, v in data.items() if k not in _DICT_KEYS or isinstance(v, dict)}
+    if "extraKnownMarketplaces" in out:
+        out["extraKnownMarketplaces"] = {  # a source of the wrong shape is dropped, a missing one stays missing
+            name: {k: v for k, v in cfg.items() if k != "source" or isinstance(v, dict)}
+            for name, cfg in out["extraKnownMarketplaces"].items() if isinstance(cfg, dict)}
+    return out
+
+
 def desired_settings() -> dict:
-    base = load_json(paths.kit_root() / "settings.base.json")
-    personal = load_json(paths.personal_root() / "settings.json")
+    base = _normalised(load_json(paths.kit_root() / "settings.base.json"))
+    personal = _normalised(load_json(paths.personal_root() / "settings.json"))
     return deep_merge(base, personal)
 
 
