@@ -220,8 +220,9 @@ def _register_configure(sub):
             if a.to != "repo":
                 configure.offer_commit(_ask)
             return 0
-        if not (a.kind and a.name and a.value):
-            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own|target <name> <value>")
+        if not (a.kind and a.name and a.value) or a.kind == "skill":  # skill is for `new skill` only
+            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own|target <name> <value>"
+                             + ("; to create a skill: loadout configure new skill NAME" if a.kind == "skill" else ""))
         if a.kind == "own":
             return configure.set_own(a.name, a.value)
         if a.kind == "target":

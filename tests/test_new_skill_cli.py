@@ -38,6 +38,13 @@ def test_repo_target_offers_no_commit(fake_home, fake_runner, monkeypatch, tmp_p
     assert offered == []
 
 
+def test_set_skill_is_refused_and_writes_no_setting(fake_home, fake_runner, monkeypatch):
+    """`skill` is a kind for `new` only: `set skill x on` must not fall through to `set pref`."""
+    _on(monkeypatch)
+    assert main(["configure", "set", "skill", "notes", "on"]) == 1
+    assert not (paths.personal_root() / "settings.json").exists()
+
+
 def test_new_needs_skill_and_a_name(fake_home, fake_runner, monkeypatch):
     _on(monkeypatch)
     assert main(["configure", "new", "skill"]) == 1

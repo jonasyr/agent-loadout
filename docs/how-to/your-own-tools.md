@@ -13,7 +13,7 @@ You found a skill, MCP server or plugin and installed it with its own installer 
 1. **Where it landed decides who sees it.** Claude Code reads skills from `~/.claude/skills` (every project) and a repo's `.claude/skills` (that repo). Codex reads `~/.agents/skills` and a repo's `.agents/skills`. An installer writes to one of these; an MCP server goes to one agent's config. So right after the install, only that agent has it, and only on this machine.
 2. **loadout notices it** when you run `loadout check` or `loadout adopt`: it is listed under your own tools, and with both agents on as `skill "x" only in Claude Code` (or `only in Codex`).
 3. **Decide where it lives** with `loadout adopt` (or `loadout configure set own x CHOICE`): `global` for every machine and both agents, `project:<profile>` for some repos, `leave` to keep it here only, `remove` to take it away. The table [below](#where-a-tool-of-yours-can-live) shows what each one means.
-4. **Installed into one repo** (`.claude/skills` in that repo): adopt does not look there. Commit it to share it with the repo; `loadout init` or `loadout profile` links it into `.agents/skills` so Codex sees it too.
+4. **Installed into one repo** (`.claude/skills` in that repo): adopt does not look there. Commit it to share it with the repo; `loadout profile <profile>` (or `loadout init` when it applies a profile) links it into `.agents/skills` so Codex sees it too.
 
 To write a new skill yourself instead, see [Create a skill of your own](#create-a-skill-of-your-own).
 
