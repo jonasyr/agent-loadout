@@ -4,7 +4,7 @@ What the kit sets up on a machine (how the tools work together: [The toolset](..
 
 ## Global plugins
 
-All are enabled by `settings.base.json`. Switch one off with `loadout configure set plugin ID off`, or with `"enabledPlugins": {"ID": false}` in your personal `settings.json` (see [Personal layer](personal-layer.md)).
+All are enabled by `settings.base.json`. Switch one off with `loadout configure set plugin ID off`, or with `"enabledPlugins": {"ID": false}` in your personal `settings.json` (see [Personal layer](personal-layer.md)). Switching a plugin off reaches Claude Code only; in Codex, remove it with `codex plugin remove ID`.
 
 | Plugin | What it does for you | Project |
 |---|---|---|
