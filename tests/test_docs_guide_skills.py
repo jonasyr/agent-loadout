@@ -8,7 +8,7 @@ GUIDE = "docs/explanation/documentation-strategy.md"
 def test_kit_path_prints_the_kit_root(fake_home, capsys):
     from loadout.__main__ import main
     assert main(["kit-path"]) == 0
-    assert capsys.readouterr().out.strip() == str(paths.kit_root())
+    assert capsys.readouterr().out.strip() == paths.kit_root().as_posix()  # forward slashes: Git Bash and PowerShell
 
 
 def test_doc_skills_never_depend_on_claude_code_rule_links():
@@ -37,3 +37,11 @@ def test_agents_md_has_code_review_rules():
     rules = text.split("## Code Review Rules", 1)[1]
     for topic in ("User files", "Secrets", "External commands", "Tests"):
         assert f"### {topic}" in rules, topic
+
+
+def test_kit_path_uses_forward_slashes_for_a_windows_path(fake_home, capsys, monkeypatch):
+    from pathlib import PureWindowsPath
+    from loadout.__main__ import main
+    monkeypatch.setattr(paths, "kit_root", lambda: PureWindowsPath(r"C:\Users\me\agent-loadout"))
+    main(["kit-path"])
+    assert capsys.readouterr().out.strip() == "C:/Users/me/agent-loadout"

@@ -270,7 +270,7 @@ def _register_kit_path(sub):
 
     def run(a):
         from . import paths
-        print(paths.kit_root())
+        print(paths.kit_root().as_posix())  # forward slashes work in Git Bash and PowerShell
         return 0
 
     p.set_defaults(func=run)

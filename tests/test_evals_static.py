@@ -216,6 +216,7 @@ def test_hook_path_case_replays_the_current_hook_instruction():
     assert expected in prompt, "regenerate the case's hook text from hooks/advisor.py INSTRUCTION"
 
 
+@posix_only
 def test_eval_stub_answers_kit_path_with_a_readable_copy(tmp_path):
     import shutil
     import subprocess
