@@ -170,7 +170,7 @@ The full index is [docs/README.md](docs/README.md).
 | Remove loadout | [Uninstall loadout](docs/how-to/uninstall.md) |
 | Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-Gemini CLI and Cursor are not supported yet; how Codex is set up and how others could follow is in [Architecture](docs/explanation/architecture.md#codex-and-other-agents).
+Gemini CLI and Cursor are not supported yet; how Codex is set up and how others could follow is in [Architecture](docs/explanation/architecture.md#other-agents).
 
 ## Contributing
 
