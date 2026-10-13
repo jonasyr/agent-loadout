@@ -21,7 +21,11 @@ class Refused(ValueError):
 
 
 def stub(name: str, description: str) -> str:
-    return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n\nTODO: the instructions.\n"
+    """The description is a double-quoted YAML scalar (a JSON string is one), so `Use when: ...`, `#`, `[` or
+    `yes` keep the frontmatter valid and the text unchanged."""
+    import json
+    return (f"---\nname: {name}\ndescription: {json.dumps(description, ensure_ascii=False)}\n---\n\n"
+            f"# {name}\n\nTODO: the instructions.\n")
 
 
 def _taken(folder: Path, name: str) -> Path | None:
@@ -62,6 +66,13 @@ def _global(name: str, description: str, bk: Backup) -> list[str]:
     dests = ([paths.claude_home() / "skills"] if targets.claude_enabled() else []) + \
             ([paths.agents_skills()] if targets.codex_enabled() else [])
     _refuse_taken(name, [root, *dests])
+    from .jsonio import load_json
+    try:
+        pointers = load_json(paths.personal_root() / "skills.json")
+    except Exception:
+        pointers = {}
+    if isinstance(pointers, dict) and any(str(k).lower() == name.lower() for k in pointers):
+        raise Refused(f"skill {name}: already a pointer in {paths.personal_root() / 'skills.json'}; nothing written")
     skill_md = _write(root, name, description, bk)
     out = [f"skill {name}: created {skill_md}"]
     out += [_link(dest / name, skill_md.parent, name, bk) for dest in dests]
@@ -75,6 +86,8 @@ def create(name: str, to: str = "global", description: str | None = None, cwd: P
         raise BadInput(f"skill name '{name}': use lowercase letters, digits and -, starting with a letter or "
                        "digit, at most 64 characters")
     text = DEFAULT_DESCRIPTION if description is None else description.strip()
+    if not text:
+        raise Refused("--description is empty; say in one line when an agent should use the skill")
     if "\n" in text or "\r" in text:
         raise Refused("--description: one line only")
     if secrets.redact(text) != text:
@@ -118,9 +131,14 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
         raise Refused(f"--to repo: {cwd} is not inside a git repo")
     src_root = root / ".claude" / "skills"
     dest_root = root / ".agents" / "skills" if targets.codex_enabled() else None
+    if Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
+        raise Refused(f"--to repo: the repo found is your home folder ({root}, a dotfiles repo?), where "
+                      ".claude/skills is Claude Code's own folder; run it inside a project repo")
     for folder in (src_root, dest_root):
         if folder is not None and not (paths.inside(folder.parent, root) and paths.inside(folder, root)):
             raise Refused(f"--to repo: {folder} points outside {root} (a symlinked folder); nothing written")
+        if folder is not None and (folder.exists() or folder.is_symlink()) and not folder.is_dir():
+            raise Refused(f"--to repo: {folder} is not a folder; nothing written")
     _refuse_taken(name, [f for f in (src_root, dest_root) if f is not None])
     skill_md = _write(src_root, name, description, bk)
     out = [f"skill {name}: created {skill_md} (commit it to share it with this repo)"]

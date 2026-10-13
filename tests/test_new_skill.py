@@ -21,7 +21,7 @@ def test_global_writes_the_stub_and_links_it_for_both_agents(fake_home, monkeypa
     bk = backup.Backup(description="t")
     lines = new_skill.create("notes", bk=bk)
     skill = paths.personal_root() / "skills" / "notes" / "SKILL.md"
-    assert skill.read_text(encoding="utf-8").startswith("---\nname: notes\ndescription: TODO:")
+    assert skill.read_text(encoding="utf-8").startswith("---\nname: notes\ndescription: \"TODO:")
     for dest in (paths.claude_home() / "skills" / "notes", paths.agents_skills() / "notes"):
         assert dest.is_symlink() and dest.resolve() == skill.parent.resolve()
     assert any("notes" in l and "created" in l for l in lines)
@@ -97,7 +97,7 @@ def test_the_description_lands_in_the_frontmatter(fake_home, monkeypatch):
     _agents(monkeypatch)
     new_skill.create("notes", description="Use when taking notes.", bk=backup.Backup(description="t"))
     text = (paths.personal_root() / "skills" / "notes" / "SKILL.md").read_text(encoding="utf-8")
-    assert "description: Use when taking notes.\n" in text
+    assert "description: \"Use when taking notes.\"\n" in text
 
 
 def test_project_writes_into_the_profile_and_lists_it(fake_home, monkeypatch):
@@ -186,3 +186,57 @@ def test_repo_skills_folder_linking_outside_is_refused(fake_home, monkeypatch, t
     with pytest.raises(new_skill.Refused, match="outside"):
         new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
     assert not any(outside.iterdir())
+
+
+def _frontmatter(path):
+    """name and description as a YAML loader reads a double-quoted scalar (a JSON string is one)."""
+    lines = path.read_text(encoding="utf-8").split("---\n")[1].splitlines()
+    fields = dict(l.split(": ", 1) for l in lines)
+    return {"name": fields["name"], "description": json.loads(fields["description"])}  # must be quoted
+
+
+@pytest.mark.parametrize("text", ["Use when: the user asks", "[draft] notes", "# notes", "yes", 'say "hi"', "a #tag"])
+def test_any_description_keeps_the_frontmatter_valid(fake_home, monkeypatch, text):
+    _agents(monkeypatch)
+    new_skill.create("notes", description=text, bk=backup.Backup(description="t"))
+    fm = _frontmatter(paths.personal_root() / "skills" / "notes" / "SKILL.md")
+    assert fm == {"name": "notes", "description": text}
+
+
+def test_an_empty_description_is_refused(fake_home, monkeypatch):
+    _agents(monkeypatch)
+    with pytest.raises(new_skill.Refused):
+        new_skill.create("notes", description="  ", bk=backup.Backup(description="t"))
+    assert not (paths.personal_root() / "skills" / "notes").exists()
+
+
+def test_repo_that_is_the_home_folder_is_refused(fake_home, monkeypatch):
+    """Dotfiles in a repo at ~: the "repo" would be ~, and .claude/skills there is Claude Code's own folder."""
+    _agents(monkeypatch, claude=False, codex=True)
+    (paths.home() / ".git").mkdir()
+    (paths.home() / "Documents").mkdir()
+    with pytest.raises(new_skill.Refused, match="home"):
+        new_skill.create("notes", to="repo", cwd=paths.home() / "Documents", bk=backup.Backup(description="t"))
+    assert not (paths.claude_home() / "skills").exists() and not paths.agents_skills().exists()
+
+
+def test_a_skills_json_pointer_with_that_name_is_taken(fake_home, monkeypatch, tmp_path):
+    _agents(monkeypatch)
+    shared = tmp_path / "shared-notes"
+    shared.mkdir()
+    pointers = paths.personal_root() / "skills.json"
+    pointers.parent.mkdir(parents=True, exist_ok=True)
+    pointers.write_text(json.dumps({"notes": str(shared)}))
+    with pytest.raises(new_skill.Refused, match="skills.json"):
+        new_skill.create("notes", bk=backup.Backup(description="t"))
+    assert not (paths.personal_root() / "skills" / "notes").exists()
+
+
+def test_repo_agents_skills_that_is_a_file_is_refused_before_writing(fake_home, monkeypatch, tmp_path):
+    _agents(monkeypatch)
+    repo = _repo(tmp_path)
+    (repo / ".agents").mkdir()
+    (repo / ".agents" / "skills").write_text("not a folder")
+    with pytest.raises(new_skill.Refused, match="not a folder"):
+        new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
+    assert not (repo / ".claude").exists()

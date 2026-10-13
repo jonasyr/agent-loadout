@@ -75,3 +75,13 @@ def test_codex_server_already_in_the_profile_is_refused(codex_on, fake_runner):
     path.write_text(json.dumps({"mcp": {"mcpServers": {"mine": {"type": "stdio", "command": "other"}}}}))
     rec = own.record_project(_mcp({"type": "stdio", "command": "m"}), "mine", backup.Backup(description="t"))
     assert not rec.ok and "already exists" in rec.lines[0]
+
+
+def test_codex_server_whose_secret_would_be_renamed_is_refused_like_global(codex_on, fake_runner):
+    """Codex forwards a variable only under its own name: API_KEY cannot become ${MINE_API_KEY}."""
+    token = "ghp_" + "Z" * 36
+    v = _mcp({"type": "stdio", "command": "m", "env": {"API_KEY": token}})
+    rec = own.record_project(v, "mine", backup.Backup(description="t"))
+    assert not rec.ok and "own name" in rec.lines[0] and token not in rec.lines[0]
+    assert not (paths.personal_root() / "profiles" / "mine.json").exists()
+    assert not paths.secrets_file().exists()

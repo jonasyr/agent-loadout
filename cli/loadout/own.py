@@ -836,6 +836,12 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
                 raise Collision(item.extra.get("problem") or f"mcp {item.name}: cannot be recorded")
             new, lines = _secret_free(item.name, item.extra.get("config", {}))
             _refuse_if_secret(f"mcp {item.name}", json.dumps(new))
+            if is_codex(item):  # the same check as global: `loadout profile` must be able to write it back to Codex
+                from . import codex
+                try:
+                    codex.server(item.name, new)
+                except codex.Refused as exc:
+                    raise Collision(f"{exc} (record it by hand, or leave it)") from None
 
             def change(data):
                 servers = ensure(ensure(data, "mcp"), "mcpServers")
