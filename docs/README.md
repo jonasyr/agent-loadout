@@ -13,7 +13,7 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 - [Ask your agent about loadout](how-to/ask-about-loadout.md). Read this when you have a question about loadout or want to change your setup without looking up the command.
 - [Handle your own tools](how-to/your-own-tools.md). Read this when `adopt` or `check` lists tools loadout does not manage and you want to keep, move, leave or remove them.
 - [Keep your personal layer in a private git repo](how-to/personal-repo.md). Read this when you want your preferences and own tools on more than one machine.
-- [Use loadout with Codex](how-to/codex.md). Read this when you also use the Codex CLI and want it set up like Claude Code.
+- [Use loadout with Codex](how-to/codex.md). Read this for the Codex-only details: switching Codex on, hook approval, project trust and where it stays different.
 - [Undo what loadout changed](how-to/undo-and-restore.md). Read this when something went wrong, or you want a removed tool back.
 - [Set your working preferences](how-to/set-preferences.md). Read this when you want to change answer language, commit style, effort or another preference everywhere.
 - [Write a personal profile](how-to/write-a-profile.md). Read this when you want your own preset of tools for a kind of project.
@@ -37,7 +37,7 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 ## Explanation
 
 - [The toolset](explanation/the-toolset.md). Read this when you want to know which plugins, MCP servers, skills and tools the kit sets up, what each is for, and how they form one workflow.
-- [Architecture](explanation/architecture.md). Read this when you want to understand how the kit, your personal layer and `~/.claude` fit together, and how the daily sync works.
+- [Architecture](explanation/architecture.md). Read this when you want to understand how the kit, your personal layer and your agents' folders (`~/.claude`, `~/.codex`) fit together, and how the daily sync works.
 - [Security and trust](explanation/security-and-trust.md). Read this when you want to know what runs without asking, what loadout touches, where secrets go and how to opt out.
 - [Documentation strategy](explanation/documentation-strategy.md). Read this when you want to know how loadout organises a repo's documentation and what the docs skills do. A worked example is in [examples/docs-audit-before-after](examples/docs-audit-before-after/README.md).
 - [The execution advisor](explanation/execution-advisor.md). Read this when you want to know how loadout decides how a finished plan is run.

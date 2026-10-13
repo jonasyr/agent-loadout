@@ -9,7 +9,7 @@ Hide
 Type `bash /kit/demo/sandbox.sh /home/demo && export HOME=/home/demo PATH=/home/demo/.local/bin:$PATH LOADOUT_NO_AUTO_PULL=1 LOADOUT_REPO_URL=/kit LOADOUT_DEMO_KIT=/kit && cd ~ && PS1='\[\e[35m\]~ ❯\[\e[0m\] ' && card() { bash /kit/demo/card.sh "$@"; read -rsn1; tput cnorm; clear; } && clear`
 Enter
 Sleep 8s
-Type `card loadout 'A reviewed Claude Code setup in one command'`
+Type `card loadout 'A reviewed setup for your coding agent, in one command'`
 Enter
 Sleep 500ms
 Show
@@ -21,7 +21,7 @@ Show
 
 # ① the starting point
 Hide
-Type `card '① An existing Claude Code setup' 'MCP servers, plugins and a skill, added by hand over time'`
+Type `card '① An existing agent setup' 'MCP servers, plugins and a skill, added by hand over time'`
 Enter
 Sleep 300ms
 Show
@@ -60,6 +60,10 @@ Enter
 # answers in the order bootstrap asks (VHS's Wait reads the top of the scrollback, so it cannot follow a
 # scrolling screen; typed answers queue in the terminal, the pauses only set the pace)
 Sleep 5s
+# which agents: Enter takes [1] Claude Code
+Sleep 1500ms
+Enter
+# personal layer: empty creates a starter
 Sleep 1500ms
 Enter
 Sleep 700ms

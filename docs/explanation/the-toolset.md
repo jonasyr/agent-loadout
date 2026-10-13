@@ -1,6 +1,6 @@
 # The toolset
 
-loadout does not install a pile of tools. It installs a small set where each one does one job, and rules that tell Claude which tool to use for which question. Together they form one workflow, from a rough idea to a reviewed, documented change. This page explains that workflow and why each tool is in it. The exact list, with settings and versions, is in [Included tools](../reference/included-tools.md).
+loadout does not install a pile of tools. It installs a small set where each one does one job, and rules that tell your agent (Claude Code or Codex) which tool to use for which question. Together they form one workflow, from a rough idea to a reviewed, documented change. This page explains that workflow and why each tool is in it. The exact list, with settings and versions, is in [Included tools](../reference/included-tools.md).
 
 ## One change, start to finish
 
@@ -11,7 +11,7 @@ loadout does not install a pile of tools. It installs a small set where each one
 
 <sub>[Source](../diagrams/toolset-workflow.mmd)</sub>
 
-Blue boxes are loadout's own skills, orange boxes come from plugins the kit enables, amber boxes are the MCP servers and command-line tools Claude reaches for while it works.
+Blue boxes are loadout's own skills. Orange boxes are skills from plugins the kit enables (and the agent's built-in review). Amber boxes are groups of tools your agent reaches for while it works: MCP servers, plugins and command-line tools. Grey dashed boxes are the starting point and rtk, which a hook applies on its own. The tinted frames only tell the three stages apart.
 
 The kit's rules make this the default path, not a suggestion you have to remember: `workflow.md` sends Claude through the process skills, and `tooling.md` routes each question to the right tool. Both are loaded in every session ([The loadout plugin](../reference/included-tools.md#the-loadout-plugin)).
 
@@ -26,14 +26,14 @@ The kit's rules make this the default path, not a suggestion you have to remembe
 - **Know the code.** Two MCP servers answer different questions ([ADR 0008](../adr/0008-code-intelligence-routed-by-rule.md)):
   - **[codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)** indexes the repo into a knowledge graph. It answers structure questions (who calls this, what does a change affect, what is dead code) in one query instead of many file reads.
   - **[Serena](https://github.com/oraios/serena)** works on exact symbols: find a definition and its references, rename, replace a function body.
-  - The **LSP plugins** ([pyright](https://github.com/microsoft/pyright), [typescript-language-server](https://github.com/typescript-language-server/typescript-language-server), [rust-analyzer](https://github.com/rust-lang/rust-analyzer), through [Anthropic's official plugins](https://github.com/anthropics/claude-plugins-official)) report type errors right after each edit, so Claude fixes them before it moves on.
+  - The **LSP plugins** ([pyright](https://github.com/microsoft/pyright), [typescript-language-server](https://github.com/typescript-language-server/typescript-language-server), [rust-analyzer](https://github.com/rust-lang/rust-analyzer), through [Anthropic's official plugins](https://github.com/anthropics/claude-plugins-official)) report type errors right after each edit, so Claude fixes them before it moves on. They exist for Claude Code only; in Codex the loadout plugin's type-check hook runs the language's checker on the changed files instead ([ADR 0024](../adr/0024-codex-parity-update-model.md)).
 - **Know the libraries.** **[Context7](https://github.com/upstash/context7)** fetches current documentation for a library or framework, and **[Microsoft Learn](https://github.com/MicrosoftDocs/mcp)** does the same for .NET, Azure and Windows. Claude uses them before web search and instead of its training data, which may be out of date.
 - **UI work.** **[frontend-design](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/frontend-design)** sets a distinctive direction, **[playwright-cli](https://github.com/microsoft/playwright-cli)** checks the result in a real browser at phone, tablet and desktop widths, and **[impeccable](https://github.com/pbakaus/impeccable)** audits and polishes it ([ADR 0009](../adr/0009-design-tooling-frontend-design-and-impeccable.md)). playwright-cli keeps screenshots and page snapshots on disk instead of in Claude's context, which is why it is the default over a browser MCP server ([ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md)).
 - **[rtk](https://github.com/rtk-ai/rtk)** (command-line tool) rewrites shell commands through a proxy that strips noise from their output, so test runs and git logs cost fewer tokens. A hook applies it automatically.
 
 ## Finish
 
-- **Review.** One review pass per change: Claude Code's built-in `/code-review`, or superpowers' *requesting-code-review*. **[security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance)** warns about security mistakes while code is written and reviews each commit.
+- **Review.** One review pass per change: Claude Code's built-in `/code-review` (in Codex, the built-in `/review`), or superpowers' *requesting-code-review*. **[security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance)** warns about security mistakes while code is written and reviews each commit.
 - **Documentation.** **`/loadout:docs-sync`** updates the docs a change made wrong, and **`/loadout:docs-audit`** checks a whole repo's docs against its code. Where each fact belongs is in [Documentation strategy](documentation-strategy.md).
 - **Commit.** **[commit-commands](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/commit-commands)** commits, pushes and opens pull requests. **[claude-md-management](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management)** keeps `CLAUDE.md` and `AGENTS.md` healthy.
 

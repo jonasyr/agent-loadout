@@ -43,6 +43,12 @@ body:
       placeholder: loadout 0.1.0 (54af5b7), Claude Code 2.x
     validations:
       required: true
+  - type: input
+    id: codex-version
+    attributes:
+      label: Codex version
+      description: Optional, if you use Codex. The output of `codex --version`.
+      placeholder: codex-cli 0.x
   - type: textarea
     id: check
     attributes:

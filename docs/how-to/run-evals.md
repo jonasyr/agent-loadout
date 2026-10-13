@@ -16,7 +16,7 @@ Options after the script go to `claude plugin eval`. The useful ones:
 | Option | Meaning |
 |---|---|
 | `--case <glob>` | Run only the cases whose name matches. |
-| `--runs N` | Runs per case (the default comes from the case, usually 3). |
+| `--runs N` | Runs per case. Without it, a case's own `runs:` applies, and `claude plugin eval` uses 3 when the case sets none. |
 | `-j N` | Run up to N agent runs at once. They share one rate limit. |
 | `--keep-temp` | Keep the scaffold directories, to see what the agent saw. |
 | `--max-cost-usd USD` | Stop when the estimated cost (at API prices) reaches the ceiling. |
@@ -25,7 +25,7 @@ Results land in `plugins/loadout/evals/results/<timestamp>/`, which git ignores.
 
 ## What it costs
 
-The runs are real model calls with your own Claude credential: on a subscription they count against your plan's usage limits, with an API key they are billed. A full run is every case three times, so run one case with `--case` while you iterate.
+The runs are real model calls with your own Claude credential: on a subscription they count against your plan's usage limits, with an API key they are billed. A full run is every case three times (no case sets a different `runs:`), so run one case with `--case` while you iterate.
 
 ## Never run `claude plugin eval` on the plugin directly
 
@@ -34,7 +34,7 @@ Every scaffold sources `evals/lib/common.sh`, which refuses to run unless `run.s
 - **Stubs first on `PATH`.** `loadout` is replaced by a stub, because the real one reads and writes your setup and its session hook can start `loadout maintenance` (a `git pull` of the kit and your personal layer).
 - **Browsers are stubbed.** `playwright-cli` is a logging stand-in, and `chromium`, `chromium-browser`, `google-chrome`, `google-chrome-stable`, `firefox` and `playwright` fail with exit 127 and log the call to `./.browser-calls.log`. A real browser crashes inside the run's sandbox and leaves core dumps. The cases grade the tool choice and the calls, not screenshots.
 - **A temporary home.** The scaffold refuses to run unless `HOME` is a temporary eval home, never your real one.
-- **A global-state check.** `run.sh` takes a checksum of your `~/.claude/settings.json`, `~/.claude/CLAUDE.md`, the MCP servers in `~/.claude.json` and your personal layer before and after. If anything changed it prints the difference and exits with 3.
+- **A global-state check.** `run.sh` takes a checksum of your `~/.claude/settings.json`, `~/.claude/CLAUDE.md`, the MCP servers in `~/.claude.json` and your personal layer (at the default path `~/.config/loadout/personal`, not a `LOADOUT_PERSONAL` folder) before and after. If anything changed it prints the difference and exits with 3.
 
 ## The browser case
 

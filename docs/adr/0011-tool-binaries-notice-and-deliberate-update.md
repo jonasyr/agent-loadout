@@ -1,6 +1,6 @@
 # 0011. Tool binaries: a weekly notice and a deliberate loadout update
 
-- Status: Accepted
+- Status: Accepted. For plugins, see [ADR 0024](0024-codex-parity-update-model.md).
 - Date: 2026-10-08
 - Source: [Design spec, decision D11 and section 6.5](../superpowers/specs/2026-10-08-agent-loadout-design.md#65-updates)
 

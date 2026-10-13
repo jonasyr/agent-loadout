@@ -1,6 +1,6 @@
 # agent-loadout
 
-A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI that links rules, merges settings and manages per-project profiles. Personal preferences live in a separate personal repo, never here.
+A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the `loadout` CLI that links rules, merges settings, configures Codex and manages per-project profiles. Personal preferences live in a separate personal repo, never here.
 
 ## Commands
 
@@ -11,8 +11,8 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 ## Hard conventions
 
 - Python 3.11+, standard library only in `cli/loadout/`.
-- Tests use the `fake_home` and `fake_runner` fixtures. Never touch the real `~/.claude`, `~/.claude.json` or `~/.config/loadout`.
-- Agents never run real installers or mutating `claude` commands.
+- Tests use the `fake_home` and `fake_runner` fixtures. Never touch the real `~/.claude`, `~/.claude.json`, `~/.codex` or `~/.config/loadout`.
+- Agents never run real installers or mutating `claude` or `codex` commands.
 - Conventional Commits (`type(scope): subject`); no `Co-Authored-By` or other AI attribution.
 - One home per fact: edit `docs/`, link from here (see `docs/explanation/documentation-strategy.md`).
 
@@ -44,16 +44,17 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
 - `preferences.py`, `configure.py` structured preferences and the wizard
 - `own.py` your own tools; `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks
-- `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_project.py` the Codex side of `init` and `profile`
+- `targets.py` which agents are on (`targets.json` in the personal layer); `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_project.py` the Codex side of `init` and `profile`
 - `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker
 
 Other kit parts:
 
-- `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`, `.mcp.json`)
+- `plugins/loadout/`: the plugin (`.claude-plugin/` and `.codex-plugin/` manifests, `skills/`, `hooks/` with `hooks.json` for Claude Code and `codex.json` for Codex, `evals/`, `evals-browser/`, `.mcp.json`)
+- `.claude/skills/diagrams`: repo-local skill for editing the docs diagrams (Codex finds it through a short pointer in `.agents/skills/diagrams`)
 - `.github/`: CI workflows, issue forms and the PR template (see CONTRIBUTING.md)
 - `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
 
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0023), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0024), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).

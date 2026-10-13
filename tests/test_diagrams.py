@@ -1,6 +1,9 @@
 """The docs' diagrams: Mermaid sources in docs/diagrams/, rendered SVGs that match them, and the embeds in the docs."""
 import json
+import os
 import re
+
+import pytest
 
 from diagrams_support import DIAGRAMS, HASH_COMMENT, VARIANTS, image_ref, source_hash, sources
 from loadout import paths
@@ -172,3 +175,22 @@ def test_every_diagram_is_embedded():
             embedded.add((md.parent / light[1]).resolve())
     missing = [n for n in sources() if (DIAGRAMS / f"{n}.light.svg").resolve() not in embedded]
     assert not missing, f"diagrams no page shows (embed or delete them): {missing}"
+
+
+def _front(path):
+    front = re.match(r"---\n(.*?)\n---\n(.*)", path.read_text(encoding="utf-8"), re.S)
+    assert front, f"{path} needs YAML frontmatter"
+    return dict(re.findall(r"^(name|description): (.+)$", front.group(1), re.M)), front.group(2)
+
+
+def test_diagram_skill_reaches_both_agents():
+    """Claude Code reads .claude/skills; Codex reads .agents/skills. A real file there (no symlink) works on every
+    checkout, Windows without symlinks included, and only points to the one source."""
+    source = ROOT / ".claude" / "skills" / "diagrams" / "SKILL.md"
+    pointer = ROOT / ".agents" / "skills" / "diagrams" / "SKILL.md"
+    meta, _ = _front(source)
+    assert meta.get("name") == "diagrams" and meta.get("description")
+    assert not (ROOT / ".agents" / "skills" / "diagrams").is_symlink() and pointer.is_file()
+    pointer_meta, body = _front(pointer)
+    assert pointer_meta == meta  # Codex picks the skill by the same name and description
+    assert ".claude/skills/diagrams/SKILL.md" in body and len(body.splitlines()) < 10

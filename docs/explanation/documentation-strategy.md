@@ -28,12 +28,12 @@ The fix is old and boring: treat documentation like code. Write it in plain text
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/documentation-layers.dark.svg">
-  <img alt="CLAUDE.md imports AGENTS.md, and AGENTS.md maps the Serena memories. README.md, AGENTS.md and the memories all link into docs/, the single source of truth. Claude Code's auto memory holds machine-local notes only, never project facts." src="../diagrams/documentation-layers.light.svg">
+  <img alt="CLAUDE.md imports AGENTS.md, and AGENTS.md maps the Serena memories. README.md, AGENTS.md and the memories all link into docs/, the single source of truth. The agent's own memory on this machine holds machine-local notes only, never project facts." src="../diagrams/documentation-layers.light.svg">
 </picture>
 
 <sub>[Source](../diagrams/documentation-layers.mmd)</sub>
 
-Which layer holds what, and the rule for each, is defined in one place: the kit's [docs policy](../../rules/docs-policy.md) (the layers) and [memory policy](../../rules/memory-policy.md) (where agents store what they learn). Both are loaded into every Claude Code session on a machine set up with loadout.
+Which layer holds what, and the rule for each, is defined in one place: the kit's [docs policy](../../rules/docs-policy.md) (the layers) and [memory policy](../../rules/memory-policy.md) (where agents store what they learn). Both are loaded into every Claude Code session on a machine set up with loadout, and, with Codex on, copied into the loadout block of `~/.codex/AGENTS.md` that every Codex session reads.
 
 Two details matter:
 
@@ -112,13 +112,13 @@ Why it matters: for humans, an ADR answers "why on earth is it like this?" in a 
 - **Lean always-loaded context.** AGENTS.md is loaded into every session, so it should hold only what is needed on every task: commands, hard conventions, a map. Anthropic's guidance for agents is "the smallest possible set of high-signal tokens", and Claude Code's docs recommend keeping each CLAUDE.md under 200 lines, because longer files cost context and reduce adherence [Anthropic 2025; Claude Code memory docs].
 - **Details on demand.** The map tells the agent where the facts are, and it reads the one page it needs, when it needs it. This is the "just in time" pattern Anthropic describes: keep lightweight identifiers such as file paths and load the data with tools at runtime [Anthropic 2025].
 - **Verifiable claims.** A fact with one home can be checked against the code once and fixed once. A fact with five copies cannot.
-- **Agent-neutral.** AGENTS.md works with the agents listed above; nothing about the structure is tied to Claude Code. (loadout's skills that maintain it run in Claude Code.)
+- **Agent-neutral.** AGENTS.md works with the agents listed above; nothing about the structure is tied to Claude Code. (loadout's skills that maintain it run in Claude Code and Codex.)
 
 The evidence on context files themselves is mixed, which is exactly why the kit keeps AGENTS.md small. One 2026 study found that context files, both LLM-generated and developer-written, did not generally improve task success, raised inference cost by over 20%, and that repository overviews in particular did not help; agents did follow the instructions, and the files were useful for specifying non-standard practices [Gloaguen 2026]. Another found that an AGENTS.md was associated with 28.64% lower median runtime and 16.58% fewer output tokens with comparable task completion [Lulla 2026]. Both are preprints. The common thread: a short file with the non-obvious commands and conventions earns its place; a long overview mostly costs tokens.
 
 ## How the kit keeps it true
 
-Writing good docs once is the easy part. loadout ships three Claude Code skills for keeping them right:
+Writing good docs once is the easy part. loadout ships three skills for keeping them right, in Claude Code and Codex:
 
 | Skill | When | What it does |
 |---|---|---|
@@ -183,8 +183,8 @@ The copy had already drifted: the code says `MAX_TITLE_LEN = 120`.
 
 | Situation | Steps |
 |---|---|
-| New project | `loadout init`, then `/loadout:onboard` in Claude Code |
-| Existing repo | `loadout init` (never overwrites a scaffold file; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then `/loadout:onboard` |
+| New project | `loadout init`, then the onboard skill (`/loadout:onboard` in Claude Code, `$loadout:onboard` in Codex, or ask Codex to use the `loadout:onboard` skill) |
+| Existing repo | `loadout init` (never overwrites a scaffold file; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then the onboard skill |
 | Existing repo with messy docs | Then `/loadout:docs-audit` |
 | Every feature | `/loadout:docs-sync` before merging |
 
@@ -216,7 +216,7 @@ For a small project it is a README, a 30-line AGENTS.md, a one-line CLAUDE.md an
 | "This test is flaky unless X" | Serena memory (gotcha) |
 | "To add an endpoint, touch these 3 files" | Serena memory (task recipe), or `docs/how-to/` if a human needs it too |
 | Your personal coding preferences | Your personal layer, not the repo |
-| A note that only matters on this machine | Claude Code auto memory |
+| A note that only matters on this machine | Your agent's own memory on this machine (Claude Code auto memory) |
 
 **What about API docs generated from code?**
 Then the code (docstrings, OpenAPI schema, type signatures) is the home, and the generator output is the reference. `docs/` links to it or hosts the generated pages; nobody hand-copies signatures. The audit only looks at doc comments where other docs refer to them.

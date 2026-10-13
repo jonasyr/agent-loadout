@@ -1,6 +1,6 @@
 # 0006. Secrets live in secrets.env and are referenced as ${VAR}
 
-- Status: Accepted
+- Status: Accepted. For Codex, see [ADR 0024](0024-codex-parity-update-model.md).
 - Date: 2026-10-08
 - Source: [Design spec, decision D6 and section 13](../superpowers/specs/2026-10-08-agent-loadout-design.md#2-decisions)
 

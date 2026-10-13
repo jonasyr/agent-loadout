@@ -4,7 +4,7 @@ Use this page to make a preset of plugins, MCP servers, settings and commands th
 
 The kit ships `thesis`, `web`, `db`, `sonar` and `android`. Yours live in `<personal layer>/profiles/`, by default `~/.config/loadout/personal/profiles/`. The format is in [profile format](../reference/profile-format.md).
 
-1. **Create the file.** `<personal layer>/profiles/NAME.json`, where NAME uses lowercase letters, digits, `-` and `_`. Only `description` is required:
+1. **Create the file.** `<personal layer>/profiles/NAME.json`, where NAME uses lowercase letters, digits, `-` and `_`. All fields are optional; give it a `description`:
 
    ```json
    {
@@ -25,9 +25,11 @@ The kit ships `thesis`, `web`, `db`, `sonar` and `android`. Yours live in `<pers
    loadout profile NAME
    ```
 
-   This merges `settings` into the repo's `.claude/settings.json` and `mcp` into `.mcp.json`, copies `skills`, installs `install` plugins at project scope and runs `commands`. Add `--no-install` to skip the plugins and commands. Commit the two files; they are normal project files and `loadout restore` does not undo them.
+   This merges `settings` into the repo's `.claude/settings.json` and `mcp` into `.mcp.json`, copies `skills`, installs `install` plugins at project scope (in Claude Code; with Codex on, also in Codex, see [In Codex](../reference/profile-format.md#in-codex)) and runs `commands`. Add `--no-install` to skip the plugins and commands. Commit what it wrote: `.claude/settings.json`, `.mcp.json`, any `.claude/skills/`, and with Codex on `.codex/config.toml` and `.agents/skills`. They are normal project files and `loadout restore` does not undo them.
 4. **Sync it.** To use the profile on other machines, commit and push your personal layer. See [Sync](../reference/personal-layer.md#sync).
 
-A profile is copied into a repo when you apply it. Later edits to the profile do not reach repos until you apply it again.
+## Changes later
+
+A profile is copied into a repo when you apply it. Later edits to the profile do not reach repos until you apply it again, and the skill copies in a repo can drift from your personal layer ([Skills](../reference/profile-format.md#skills)).
 
 `loadout adopt` and `loadout configure set own NAME project:NAME` can create or extend a personal profile from a tool you already use. See [Handle your own tools](your-own-tools.md).

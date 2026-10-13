@@ -1,6 +1,6 @@
 # Catalog format
 
-`catalog.json` at the kit root is the kit's tool knowledge: what is good, what is superseded and why. `loadout adopt`, `loadout check`, `loadout configure` and `loadout update` read it. The code is `cli/loadout/catalog.py`; the rules the file must follow are enforced by `test_catalog_entries_are_well_formed` in `tests/test_repo_static.py`.
+`catalog.json` at the kit root is the kit's tool knowledge: what is good, what is superseded and why. `loadout bootstrap`, `loadout adopt`, `loadout check`, `loadout configure` and `loadout update` read it. The code is `cli/loadout/catalog.py`; the rules the file must follow are enforced by the catalog tests in `tests/test_repo_static.py`.
 
 The file is one JSON object with one key, `entries`, a list of entries. Ids are unique.
 
@@ -94,6 +94,7 @@ The key for the running system is `windows` on Windows and `posix` everywhere el
   "status": "superseded",
   "by": "gh CLI",
   "match": { "names": ["github-server"], "contains": ["@modelcontextprotocol/server-github"] },
-  "reason": "Archived reference server; the gh CLI is cheaper in context and well known to the model."
+  "reason": "Archived reference server; the gh CLI is cheaper in context and well known to the model.",
+  "short": "the gh CLI does this with less context"
 }
 ```

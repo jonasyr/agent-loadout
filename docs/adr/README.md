@@ -47,3 +47,4 @@ Template:
 | [0021](0021-diagrams-as-code-rendered-to-svg.md) | Diagrams as code, rendered to committed SVGs | Accepted |
 | [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted |
 | [0023](0023-python-3-11-minimum.md) | Python 3.11 minimum | Accepted |
+| [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted |

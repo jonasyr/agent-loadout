@@ -27,7 +27,7 @@ flowchart TB
     red, green, commit`"]
     know["`**Know the code**
     codebase-memory · Serena
-    LSP diagnostics`"]
+    LSP / type-check hook`"]
     docs["`**Know the libraries**
     Context7 · Microsoft Learn`"]
     ui["`**UI work**
@@ -54,7 +54,9 @@ flowchart TB
   idea --> THINK
   THINK ==> BUILD
   BUILD ==> FINISH
+  rtk -.- THINK
   rtk -.- BUILD
+  rtk -.- FINISH
 
   class adv,sync kit
   class brain,plan,tdd,rev,ship claude

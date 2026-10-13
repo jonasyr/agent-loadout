@@ -7,7 +7,7 @@ Use this page to propose a tool to the kit: a plugin, MCP server, skill, hook or
    - `id` must be unique.
    - `reason` says why the tool has this status, in a sentence. For a `superseded` or `alternative` tool, name the replacement in `by`.
    - For `status: profile`, set `profile` to the name of a file in `profiles/`.
-   - For a `binary`, `version.cmd` is required. Add `install`, `update` or `manual` so `loadout check` can name a fix.
+   - For a `binary`, `version.cmd` is required. Add `install` (or `manual`) so `loadout check` can name a fix, and `update` so `loadout update` can update it.
    - To make it a global add-on in `loadout configure`, add `offer`. Pin MCP server versions: no `@latest`.
 3. **Check it reads right.** Run `loadout configure show` (read-only) to see an add-on, or `loadout check` to see a binary.
 4. **Run the static tests.** They enforce the format (unique ids, valid `kind` and `status`, a `reason`, a non-empty `match`, existing profiles, declared marketplaces, no `@latest`):
