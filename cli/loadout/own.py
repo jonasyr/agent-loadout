@@ -773,7 +773,9 @@ def _global_skill(v: Verdict, bk) -> Recorded:
 def options(item: Item) -> list[str]:
     """Choices that apply to this item, in prompt order."""
     if is_codex(item):
-        return ["global", "leave", "remove"]
+        if item.kind == "skill" and Path(item.location).is_symlink():
+            return ["global", "leave", "remove"]
+        return ["global", "project", "leave", "remove"]
     if item.kind == "mcp" and item.location != "~/.claude.json":
         return ["leave", "remove"]
     if item.kind == "marketplace" or (item.kind == "skill" and Path(item.location).is_symlink()):
@@ -830,6 +832,8 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
                 _add_market(settings, item.name.split("@", 1)[1] if "@" in item.name else "")
             _edit_profile(profile, bk, change)
         elif item.kind == "mcp":
+            if is_codex(item) and item.extra.get("config") is None:
+                raise Collision(item.extra.get("problem") or f"mcp {item.name}: cannot be recorded")
             new, lines = _secret_free(item.name, item.extra.get("config", {}))
             _refuse_if_secret(f"mcp {item.name}", json.dumps(new))
 
