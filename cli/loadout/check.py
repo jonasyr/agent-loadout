@@ -195,10 +195,10 @@ def _codex() -> list[CheckResult]:
 
 def _legacy_state() -> list[CheckResult]:
     """Files the migration kept in ~/.claude because the new location already had them (ADR 0025)."""
-    from .migrate import SESSION_FILES
+    from .migrate import SESSION_FILES, _ours
     try:
         left = [p for root in (paths.legacy_state_dir(), paths.legacy_backups_root()) if root.is_dir()
-                for p in sorted(root.iterdir()) if p.name not in SESSION_FILES]
+                for p in sorted(root.iterdir()) if p.name not in SESSION_FILES and _ours(p)]
     except OSError as exc:
         return [CheckResult("loadout state", False, f"cannot read the old folder in ~/.claude ({exc})",
                             "check its permissions, then move its entries by hand", "warn")]

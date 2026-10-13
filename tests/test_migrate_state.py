@@ -52,14 +52,14 @@ def test_cross_device_copies_then_deletes(fake_home, monkeypatch):
 
 def test_a_leftover_partial_copy_is_redone(fake_home, monkeypatch):
     _legacy(fake_home)
-    partial = paths.state_dir() / "backups.partial"
+    partial = paths.backups_root() / "loadout-1.partial"  # backups move entry by entry
     partial.mkdir(parents=True)
     (partial / "junk").write_text("half")
     real = os.replace
     monkeypatch.setattr(migrate.os, "replace", lambda s, d: real(s, d) if ".partial" in str(s)
                         else (_ for _ in ()).throw(OSError(errno.EXDEV, "x")))
     migrate.migrate_state()
-    assert not partial.exists() and not (paths.backups_root() / "junk").exists()
+    assert not partial.exists() and not (paths.backups_root() / "loadout-1" / "junk").exists()
     assert (paths.backups_root() / "loadout-1" / "manifest.json").exists()
 
 
@@ -240,3 +240,20 @@ def test_check_survives_an_unreadable_old_folder(fake_home, monkeypatch):
                         lambda self: (_ for _ in ()).throw(PermissionError("denied")) if self.name == ".loadout" else real(self))
     [row] = check._legacy_state()
     assert not row.ok and "denied" in row.detail
+
+
+def test_claude_code_s_own_files_in_its_backups_folder_stay(fake_home):
+    """~/.claude/backups is shared: Claude Code keeps its .claude.json rotation copies there."""
+    _legacy(fake_home)
+    theirs = paths.legacy_backups_root() / ".claude.json.backup.1791900553516"
+    theirs.write_text("{}")
+    (paths.legacy_backups_root() / "pre-loadout-baseline-1").mkdir()  # a hand-made snapshot, no manifest
+    (paths.legacy_backups_root() / "loadout-notes").write_text("a file, not one of loadout's backups")
+    lines = migrate.migrate_state()
+    assert theirs.read_text() == "{}", "Claude Code's file stays where Claude Code rotates it"
+    assert not (paths.backups_root() / theirs.name).exists()
+    assert (paths.backups_root() / "loadout-1").is_dir()
+    assert (paths.legacy_backups_root() / "pre-loadout-baseline-1").is_dir()
+    assert (paths.legacy_backups_root() / "loadout-notes").is_file()
+    assert not migrate.pending() and check._legacy_state() == [check.CheckResult("loadout state", True)]
+    assert migrate.migrate_state() == [] and lines  # nothing of loadout's left: later runs stay quiet

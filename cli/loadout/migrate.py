@@ -17,6 +17,15 @@ WAIT = 10.0  # seconds to wait for another run that is moving the files right no
 SESSION_FILES = {"advisor-pending.json", "advisor-done.json", "reload-notified.json"}
 
 
+def _ours(entry: Path) -> bool:
+    """~/.claude/backups is shared (Claude Code keeps its .claude.json rotation copies there): only a folder
+    loadout made, `loadout-<timestamp>` with a manifest, belongs to loadout. ~/.claude/.loadout is all loadout's."""
+    if entry.parent.name != "backups":
+        return True
+    return entry.name.startswith("loadout-") and entry.is_dir() and not entry.is_symlink() \
+        and (entry / "manifest.json").is_file()
+
+
 def _files(root: Path) -> dict[str, int]:
     """Every file and link below root with its size (0 for a link): what a complete copy must match."""
     return {p.relative_to(root).as_posix(): 0 if p.is_symlink() else p.stat().st_size
@@ -69,6 +78,8 @@ def _merge(old: Path, new: Path) -> tuple[list[Path], int]:
     Returns (the old entries kept, how many moved)."""
     kept, moved = [], 0
     for entry in sorted(old.iterdir()):
+        if not _ours(entry):
+            continue  # not loadout's: it stays where its owner keeps it
         target = new / entry.name
         session = entry.name in SESSION_FILES
         if target.exists() or target.is_symlink():
@@ -85,7 +96,7 @@ def _merge(old: Path, new: Path) -> tuple[list[Path], int]:
                 entry.unlink()
             else:
                 kept.append(entry)
-    if not kept:
+    if not kept and not any(old.iterdir()):  # other owners' files keep the folder
         old.unlink() if old.is_symlink() else old.rmdir()  # a symlinked folder: remove the link, never its target
     return kept, moved
 
@@ -141,7 +152,8 @@ def migrate_state(wait: float | None = None) -> list[str]:
         for old, new in ((old_state, state), (old_backups, paths.backups_root())):
             if not old.is_dir():
                 continue
-            if new.exists():
+            if new.exists() or old == old_backups:  # the shared backups folder: entry by entry, never whole
+                new.mkdir(parents=True, exist_ok=True)
                 k, m = _merge(old, new)
                 kept += k
                 moved += m
@@ -172,7 +184,8 @@ def pending() -> bool:
     try:
         for old, new in ((paths.legacy_state_dir(), paths.state_dir()),
                          (paths.legacy_backups_root(), paths.backups_root())):
-            if old.is_dir() and any(e.name not in SESSION_FILES and not ((new / e.name).exists() or (new / e.name).is_symlink())
+            if old.is_dir() and any(_ours(e) and e.name not in SESSION_FILES
+                                    and not ((new / e.name).exists() or (new / e.name).is_symlink())
                                     for e in old.iterdir()):
                 return True
     except OSError:
