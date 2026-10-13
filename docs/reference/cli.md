@@ -203,7 +203,7 @@ It has no flags. It prints `settings updated` or `settings already up to date`. 
 
 ## loadout update
 
-Update outdated tool binaries. It prints each command and asks before it runs, unless `--yes` is given.
+Update outdated tool binaries and the plugins loadout enables. It prints each command and asks before it runs, unless `--yes` is given.
 
 ```
 loadout update [--yes]
@@ -213,7 +213,7 @@ loadout update [--yes]
 |---|---|
 | `--yes` | Run every update command without asking. Each is still printed. |
 
-It first refreshes the plugin marketplaces (`claude plugin marketplace update`). Then, for each outdated tool, it picks the package manager that installed it (`pkgmgr.update_plan`):
+It first refreshes the plugin marketplaces (`claude plugin marketplace update`). Then, with Claude Code on, it runs `claude plugin update <id> --scope user` for each plugin that is enabled in the merged settings and installed with user scope, and with Codex on it refreshes the Codex plugins the same way as `loadout bootstrap`. It prints one line per plugin that changed (`plugin <id>: updated`) or failed (`plugin <id>: failed: ...`; the others still run), and a closing line to run `/reload-plugins` or restart the agent when something changed. Plugins already at the latest version print nothing. The daily background sync does not do this; Claude Code updates the kit's own marketplaces by itself (see [the daily sync](../explanation/architecture.md#the-daily-sync)). Then, for each outdated tool, it picks the package manager that installed it (`pkgmgr.update_plan`):
 
 - `mise upgrade <tool>` when the binary lives under mise's `installs` directory, also behind a mise shim. The mise tool name is the catalog id, or `npm:<package>` for mise's npm backend; a catalog entry can override it with `"mise": "<name>"`. For these tools mise itself decides what is outdated (`mise outdated`), so its `minimum_release_age` and pins are respected.
 - `brew upgrade <formula>` when the binary resolves into Homebrew's `Cellar/<formula>/`. Casks and npm packages installed with Homebrew's node are not formulae and keep their own updater.
