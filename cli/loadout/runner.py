@@ -26,19 +26,20 @@ def _is_windows() -> bool:
     return os.name == "nt"
 
 
-def _in_cwd(exe: str) -> bool:
-    try:
-        return os.path.dirname(os.path.abspath(exe)) == os.path.abspath(os.getcwd())
-    except OSError:
-        return False
-
-
 def _resolve(binary: str) -> str | None:
-    """shutil.which without the current folder: Windows searches it before PATH, so a repo could ship git.exe."""
-    if _is_windows():
+    """The program's absolute path, searched only in PATH's absolute folders: never the current folder (Windows
+    searches it first, so a repo could ship git.exe) and never a relative PATH entry (node_modules/.bin, ".")."""
+    if _is_windows():  # also inherited by children, so cmd.exe running a .cmd shim skips the current folder too
         os.environ["NoDefaultCurrentDirectoryInExePath"] = "1"
-    exe = shutil.which(binary)
-    return None if exe is None or _in_cwd(exe) else exe
+    if os.path.dirname(binary):  # an explicit path: only an absolute one
+        exe = shutil.which(binary)
+        return exe if exe and os.path.isabs(exe) else None
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        if folder and os.path.isabs(folder):
+            exe = shutil.which(os.path.join(folder, binary))  # a path with a folder is checked as is, no search
+            if exe:
+                return exe
+    return None
 
 
 def which(binary: str) -> str | None:
@@ -161,6 +162,8 @@ def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict 
     extra = {}
     if _is_windows():  # no console window per child (maintenance runs detached, without a console)
         extra["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if env is not None:  # a hand-built env (copied before the first lookup) must still skip the current folder
+            env = {**env, "NoDefaultCurrentDirectoryInExePath": "1"}
     try:
         proc = subprocess.run([exe, *cmd[1:]], cwd=cwd, capture_output=True, text=True,
                               encoding="utf-8", errors="replace", timeout=timeout, env=env, **extra)

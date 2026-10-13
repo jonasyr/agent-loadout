@@ -4,17 +4,43 @@ import os
 from loadout import maintenance, runner
 
 
-def test_which_drops_a_result_in_the_current_folder(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(runner.shutil, "which", lambda name, path=None: str(tmp_path / "git.exe"))
-    assert runner.which("git") is None
-    assert runner.have("git") is False
+def _tool(folder, name="tool"):
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / (name + (".cmd" if os.name == "nt" else ""))
+    path.write_text("@echo off\n" if os.name == "nt" else "#!/bin/sh\n")
+    path.chmod(0o755)
+    return path
 
 
-def test_which_keeps_a_result_elsewhere(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(runner.shutil, "which", lambda name, path=None: "/usr/bin/git")
-    assert runner.which("git") == "/usr/bin/git"
+def test_a_program_in_the_current_folder_is_never_found(tmp_path, monkeypatch):
+    _tool(tmp_path / "repo")
+    monkeypatch.chdir(tmp_path / "repo")
+    monkeypatch.setenv("PATH", os.pathsep.join([".", "", str(tmp_path / "empty")]))
+    assert runner.which("tool") is None
+    assert runner.have("tool") is False
+    assert runner.run(["tool"]).returncode == 127
+
+
+def test_a_relative_path_entry_is_ignored(tmp_path, monkeypatch):
+    _tool(tmp_path / "repo" / "node_modules" / ".bin")
+    monkeypatch.chdir(tmp_path / "repo")
+    monkeypatch.setenv("PATH", os.path.join("node_modules", ".bin"))
+    assert runner.which("tool") is None
+
+
+def test_the_real_program_is_still_found_behind_a_planted_one(tmp_path, monkeypatch):
+    _tool(tmp_path / "repo")  # planted in the repo
+    real = _tool(tmp_path / "bin")
+    monkeypatch.chdir(tmp_path / "repo")
+    monkeypatch.setenv("PATH", os.pathsep.join([".", str(tmp_path / "bin")]))
+    assert os.path.normcase(runner.which("tool")) == os.path.normcase(str(real))
+
+
+def test_a_path_folder_that_is_also_the_current_folder_still_works(tmp_path, monkeypatch):
+    real = _tool(tmp_path / "bin")
+    monkeypatch.chdir(tmp_path / "bin")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    assert os.path.normcase(runner.which("tool")) == os.path.normcase(str(real))
 
 
 def test_windows_lookup_skips_the_current_folder(monkeypatch):
@@ -23,12 +49,6 @@ def test_windows_lookup_skips_the_current_folder(monkeypatch):
     runner.which("git")
     assert os.environ.get("NoDefaultCurrentDirectoryInExePath") == "1"
     monkeypatch.delenv("NoDefaultCurrentDirectoryInExePath", raising=False)
-
-
-def test_run_refuses_a_program_in_the_current_folder(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(runner.shutil, "which", lambda name, path=None: str(tmp_path / "git.exe"))
-    assert runner.run(["git", "status"]).returncode == 127
 
 
 def test_maintenance_starts_from_home(monkeypatch, fake_home):
@@ -44,12 +64,14 @@ def test_typecheck_hook_uses_the_absolute_path(tmp_path, monkeypatch):
     spec = importlib.util.spec_from_file_location("tc", paths.kit_root() / "plugins/loadout/hooks/typecheck.py")
     tc = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(tc)
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "a.py").write_text("x = 1\n")
-    monkeypatch.setattr(tc.shutil, "which", lambda name, path=None: str(tmp_path / "pyright.cmd"))
-    assert tc.checks([tmp_path / "a.py"]) == []  # a pyright in the project folder is not used
-    monkeypatch.setattr(tc.shutil, "which", lambda name, path=None: "/opt/bin/pyright")
-    assert tc.checks([tmp_path / "a.py"])[0][0][0] == "/opt/bin/pyright"
+    _tool(tmp_path / "repo", "pyright")  # planted in the project
+    real = _tool(tmp_path / "bin", "pyright")
+    monkeypatch.chdir(tmp_path / "repo")
+    (tmp_path / "repo" / "a.py").write_text("x = 1\n")
+    monkeypatch.setenv("PATH", ".")
+    assert tc.checks([tmp_path / "repo" / "a.py"]) == []  # a pyright in the project folder is not used
+    monkeypatch.setenv("PATH", os.pathsep.join([".", str(tmp_path / "bin")]))
+    assert os.path.normcase(tc.checks([tmp_path / "repo" / "a.py"])[0][0][0]) == os.path.normcase(str(real))
 
 
 def test_typecheck_never_passes_cmd_metacharacters_to_a_windows_shim(tmp_path, monkeypatch):
@@ -59,8 +81,24 @@ def test_typecheck_never_passes_cmd_metacharacters_to_a_windows_shim(tmp_path, m
     tc = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(tc)
     monkeypatch.setattr(tc, "_is_windows", lambda: True)
-    monkeypatch.setattr(tc.shutil, "which", lambda name, path=None: "/opt/npm/pyright.cmd")
+    folder = tmp_path / "npm"
+    folder.mkdir()
+    shim = folder / "pyright.cmd"
+    shim.write_text("@echo off\n")
+    shim.chmod(0o755)
+    monkeypatch.setattr(tc, "_which", lambda name: str(shim))
     bad = tmp_path / "a&calc&.py"
     good = tmp_path / "b.py"
     assert tc.checks([bad]) == []          # cmd.exe would run "calc"
-    assert tc.checks([good])[0][0][0] == "/opt/npm/pyright.cmd"
+    assert tc.checks([good])[0][0][0] == str(shim)
+
+
+def test_a_hand_built_env_still_skips_the_current_folder(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(runner, "_is_windows", lambda: True)
+    monkeypatch.setattr(runner, "_resolve", lambda name: "/usr/bin/git")
+    monkeypatch.setattr(runner.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+    monkeypatch.setattr(runner.subprocess, "run", lambda cmd, **kw: seen.update(kw) or runner.subprocess.CompletedProcess(cmd, 0, "", ""))
+    runner.run(["git", "pull"], env={"PATH": "/usr/bin"})
+    assert seen["env"]["NoDefaultCurrentDirectoryInExePath"] == "1"
+    monkeypatch.delenv("NoDefaultCurrentDirectoryInExePath", raising=False)

@@ -43,17 +43,20 @@ def _safe(cmd: list) -> bool:
                 and any(set(str(a)) & CMD_METACHARS for a in cmd[1:]))
 
 
-def _which(name: str):
-    """shutil.which without the current folder (Windows searches it first); the absolute path or None."""
-    if _is_windows():
+def _which(binary: str):
+    """The program's absolute path, searched only in PATH's absolute folders: never the current folder (Windows
+    searches it first, so a repo could ship git.exe) and never a relative PATH entry (node_modules/.bin, ".")."""
+    if _is_windows():  # also inherited by children, so cmd.exe running a .cmd shim skips the current folder too
         os.environ["NoDefaultCurrentDirectoryInExePath"] = "1"
-    exe = shutil.which(name)
-    try:
-        if exe is None or os.path.dirname(os.path.abspath(exe)) == os.path.abspath(os.getcwd()):
-            return None
-    except OSError:
-        return None
-    return exe
+    if os.path.dirname(binary):  # an explicit path: only an absolute one
+        exe = shutil.which(binary)
+        return exe if exe and os.path.isabs(exe) else None
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        if folder and os.path.isabs(folder):
+            exe = shutil.which(os.path.join(folder, binary))  # a path with a folder is checked as is, no search
+            if exe:
+                return exe
+    return None
 
 
 def checks(files: list) -> list:
