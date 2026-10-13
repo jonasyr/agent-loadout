@@ -553,6 +553,8 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         if remaining and secrets_ok and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
             for line in fix_secrets(remaining, bk):
                 print(redact(line))
+        elif remaining and not secrets_ok:
+            print("plaintext secrets left as they are (add `secrets` to --groups to move them)")
         if interactive and own_spec is None:
             _offer_profiles(new_profiles, ask)
         if acting and interactive and own_spec is None:

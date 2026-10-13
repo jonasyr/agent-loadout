@@ -343,9 +343,12 @@ def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[s
         todo = [pid for pid, on in get_dict(desired_settings(), "enabledPlugins").items()
                 if on and isinstance(installed.get(pid), list)
                 and any(isinstance(e, dict) and e.get("scope") == "user" for e in installed[pid])]
+    if codex_on and (reason := codex.unavailable()) is not None:
+        print(f"Codex: {reason}; its plugins are left as they are")
+        codex_on = False
     if not todo and not codex_on:
         return
-    where = " and ".join(([f"{len(todo)} in Claude Code"] if todo else []) + (["Codex's"] if codex_on else []))
+    where = " and ".join(([f"{len(todo)} in Claude Code"] if todo else []) + (["the Codex plugins"] if codex_on else []))
     print(f"plugins: refresh {where}")
     if not yes and ask("  refresh them? [y/N] ").strip().lower() != "y":
         print("  left as they are (run `loadout update --yes` to refresh them)")

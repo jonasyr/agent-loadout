@@ -287,8 +287,8 @@ def _normalised(data: dict) -> dict:
     (treated as missing), and each marketplace is an object with an object `source`."""
     out = {k: v for k, v in data.items() if k not in _DICT_KEYS or isinstance(v, dict)}
     if "extraKnownMarketplaces" in out:
-        out["extraKnownMarketplaces"] = {
-            name: {**cfg, "source": cfg["source"] if isinstance(cfg.get("source"), dict) else {}}
+        out["extraKnownMarketplaces"] = {  # a source of the wrong shape is dropped, a missing one stays missing
+            name: {k: v for k, v in cfg.items() if k != "source" or isinstance(v, dict)}
             for name, cfg in out["extraKnownMarketplaces"].items() if isinstance(cfg, dict)}
     return out
 

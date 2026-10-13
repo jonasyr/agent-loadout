@@ -51,8 +51,8 @@ def test_desired_settings_keeps_the_kit_dicts_when_personal_has_a_wrong_containe
 def test_desired_settings_marketplace_source_is_a_dict(fake_home, bad):
     _personal("settings.json", {"extraKnownMarketplaces": {"mine": {"source": bad}, "other": bad}})
     desired = settings_merge.desired_settings()
-    assert isinstance(desired["extraKnownMarketplaces"]["mine"]["source"], dict)
-    assert all(isinstance(m, dict) and isinstance(m.get("source"), dict)
+    assert "source" not in desired["extraKnownMarketplaces"]["mine"]  # dropped, never replaced by an empty one
+    assert all(isinstance(m, dict) and isinstance(m.get("source", {}), dict)
                for m in desired["extraKnownMarketplaces"].values())
 
 
@@ -83,10 +83,18 @@ def test_configure_show_and_addons_with_wrong_personal_settings(fake_home, bad):
 def test_configure_set_plugin_and_mcp_over_a_wrong_container(fake_home, bad):
     """Reader: configure.set_plugin / set_mcp write into a container the user's file holds in a wrong shape."""
     _personal("settings.json", {"enabledPlugins": bad})
-    configure.set_plugin("x@y", True)
-    assert jsonio.load_json(paths.personal_root() / "settings.json")["enabledPlugins"] == {"x@y": True}
+    if bad is None:  # nothing to lose: written into
+        configure.set_plugin("x@y", True)
+        assert jsonio.load_json(paths.personal_root() / "settings.json")["enabledPlugins"] == {"x@y": True}
+    else:  # refused with the file's name, never replaced
+        with pytest.raises(ValueError, match="settings.json"):
+            configure.set_plugin("x@y", True)
     _personal("mcp.json", {"mcpServers": bad})
-    configure.set_mcp("addon-dbhub-global", True)
+    if bad is None:
+        configure.set_mcp("addon-dbhub-global", True)
+    else:
+        with pytest.raises(ValueError, match="mcp.json"):
+            configure.set_mcp("addon-dbhub-global", True)
 
 
 @pytest.mark.parametrize("bad", WRONG, ids=IDS)
@@ -299,3 +307,29 @@ def test_restore_tolerates_a_damaged_manifest(fake_home, fake_runner, manifest):
     assert all(isinstance(line, str) for line in lines)
     if manifest.get("steps") is None or isinstance(manifest.get("steps"), (str, int)):
         assert not ok and any("damaged" in line for line in lines)
+
+
+def test_configure_set_refuses_a_damaged_section_instead_of_replacing_it(fake_home):
+    import json
+    import pytest
+    from loadout import configure, paths
+    f = paths.personal_root() / "mcp.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"mcpServers": ["serena"]}))
+    with pytest.raises(ValueError, match="mcp.json"):
+        configure.set_mcp("addon-dbhub-global", True)
+    assert json.loads(f.read_text()) == {"mcpServers": ["serena"]}
+    s = paths.personal_root() / "settings.json"
+    s.write_text(json.dumps({"enabledPlugins": 5}))
+    with pytest.raises(ValueError, match="settings.json"):
+        configure.set_plugin("x@m", True)
+    assert json.loads(s.read_text()) == {"enabledPlugins": 5}
+
+
+def test_a_marketplace_without_source_gets_no_empty_source(fake_home):
+    import json
+    from loadout import paths, settings_merge
+    s = paths.personal_root() / "settings.json"
+    s.parent.mkdir(parents=True, exist_ok=True)
+    s.write_text(json.dumps({"extraKnownMarketplaces": {"mine": {"autoUpdate": True}}}))
+    assert "source" not in settings_merge.desired_settings()["extraKnownMarketplaces"]["mine"]

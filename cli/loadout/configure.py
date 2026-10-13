@@ -69,9 +69,16 @@ def is_on(addon: Addon) -> bool:
     return all(name in servers for name in entry["offer"]["mcp"])
 
 
+def _writable(data: dict, key: str, path) -> dict:
+    """data[key] to write into; a hand-damaged value is refused, never replaced (it may be the user's only copy)."""
+    if data.get(key) is not None and not isinstance(data[key], dict):
+        raise ValueError(f"{path}: {key} is not an object; fix it, then run this again")
+    return ensure(data, key)
+
+
 def set_plugin(plugin_id: str, on: bool) -> None:
     data = load_json(_personal_settings_path())
-    plugins = ensure(data, "enabledPlugins")
+    plugins = _writable(data, "enabledPlugins", _personal_settings_path())
     if bool(_kit_plugins().get(plugin_id, False)) == on:
         plugins.pop(plugin_id, None)   # same as the kit default: no override needed
     else:
@@ -105,7 +112,7 @@ def set_mcp(catalog_id: str, on: bool) -> list[str]:
         raise ValueError(f"no MCP add-on '{catalog_id}' in the catalog (available: {names})")
     path = paths.personal_root() / "mcp.json"
     data = load_json(path)
-    servers = ensure(data, "mcpServers")
+    servers = _writable(data, "mcpServers", path)
     for name, cfg in entry["offer"]["mcp"].items():
         if on:
             servers[name] = cfg

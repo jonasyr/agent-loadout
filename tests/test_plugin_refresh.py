@@ -8,6 +8,8 @@ SETTINGS = {"enabledPlugins": {"a@m": True, "b@m": True, "off@m": False, "proj@m
 
 def _setup(fake_home, monkeypatch, claude=True, codex=False):
     targets.set_agents({"claude": claude, "codex": codex})
+    from loadout import codex as codex_mod
+    monkeypatch.setattr(codex_mod, "unavailable", lambda: None)  # a usable codex (fake_runner has no version)
     monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: SETTINGS)
     f = paths.claude_home() / "plugins" / "installed_plugins.json"
@@ -102,3 +104,14 @@ def test_codex_hint_follows_real_version_changes_not_notes(fake_home, fake_runne
     maintenance._update(True, lambda q: "")
     out = capsys.readouterr().out
     assert "plugin x@m: updated" in out and "Restart Codex" in out
+
+
+def test_an_unusable_codex_gets_no_plugin_commands(fake_home, fake_runner, monkeypatch, capsys):
+    _setup(fake_home, monkeypatch, claude=False, codex=True)
+    from loadout import codex
+    seen = []
+    monkeypatch.setattr(codex, "unavailable", lambda: "codex is not installed")
+    monkeypatch.setattr(codex, "apply_plugins", lambda bk, refresh=False, say=None: seen.append(1) or [])
+    maintenance._update(True, lambda q: "")
+    assert seen == []
+    assert "codex is not installed" in capsys.readouterr().out
