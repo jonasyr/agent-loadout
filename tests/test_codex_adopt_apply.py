@@ -141,3 +141,14 @@ def test_a_failed_codex_handoff_is_reported_as_not_done(codex_on, fake_runner, m
     rec = own.record_global(_mcp({"type": "stdio", "command": "m"}), backup.Backup(description="t"))
     with pytest.raises(OSError, match="codex mcp remove mine"):
         rec.machine()
+
+
+def test_codex_only_adoption_leaves_claude_code_alone(codex_on, fake_runner, monkeypatch):
+    from loadout import link, settings_merge
+    touched = []
+    monkeypatch.setattr(link, "link_all", lambda bk, **k: touched.append("link") or [])
+    monkeypatch.setattr(settings_merge, "apply_settings", lambda *a, **k: touched.append("settings"))
+    monkeypatch.setattr(codex, "desired_tables", lambda: ({"mine": "x"}, []))
+    adopt.apply_own([(_mcp({"type": "stdio", "command": "m"}), own.Choice("global"))], backup.Backup(description="t"))
+    assert touched == []
+    assert ["codex", "mcp", "remove", "mine"] in fake_runner.calls

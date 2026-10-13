@@ -91,3 +91,10 @@ def test_codex_items_are_own_tools_not_catalog_matches(codex_on):
 def test_to_claude_refuses_odd_shapes(table):
     with pytest.raises(codex.Refused):
         codex.to_claude("a", table)
+
+
+@needs_tomllib
+def test_a_server_with_odd_args_is_listed_not_a_crash(codex_on):
+    _config('[mcp_servers.odd]\ncommand = "o"\nargs = 1\n')
+    (item,) = [i for i in inventory.collect(with_versions=False) if i.location == codex.CONFIG_LOCATION]
+    assert item.extra["config"] is None and "args" in item.extra["problem"]

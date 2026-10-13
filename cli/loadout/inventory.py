@@ -133,7 +133,8 @@ def _codex_items() -> list[Item]:
             cfg, problem = codex.to_claude(name, table), ""
         except codex.Refused as exc:
             cfg, problem = None, str(exc)
-        detail = " ".join([str(table.get("command") or ""), *map(str, table.get("args") or []), str(table.get("url") or "")]).strip()
+        args = table.get("args") if isinstance(table.get("args"), list) else []  # odd shapes are refused above
+        detail = " ".join([str(table.get("command") or ""), *map(str, args), str(table.get("url") or "")]).strip()
         items.append(Item("mcp", name, detail, codex.CONFIG_LOCATION, {"config": cfg, "problem": problem}))
     for path in codex.codex_only_skills():
         target = os.readlink(path) if path.is_symlink() else str(path)

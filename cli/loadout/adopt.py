@@ -695,7 +695,8 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             out += step()
         except (OSError, InvalidJSON) as exc:
             fail(v, exc)
-    if personal_changed:
+    from . import targets
+    if personal_changed and targets.claude_enabled():  # Codex-only: its own steps already applied the change
         try:
             out += link.link_all(bk)
             settings_path = paths.claude_home() / "settings.json"
