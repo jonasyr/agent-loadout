@@ -54,6 +54,18 @@ def test_not_installed_or_unknown_list_writes_nothing(fake_home, fake_runner, mo
     assert "plugins" not in _config()
 
 
+def test_turning_it_back_on_by_hand_with_exactly_enabled_true_stays_yours(fake_home, fake_runner, monkeypatch):
+    _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
+    _apply()
+    path = paths.codex_home() / "config.toml"
+    path.write_text(_config().replace("enabled = false", "enabled = true"), encoding="utf-8")  # your edit
+    for _ in range(2):  # released once, never taken over again
+        lines = _apply()
+        assert "enabled = true" in _config() and "enabled = false" not in _config()
+    assert any("your value" in line for line in lines)
+    assert 'plugins."x@m".enabled' not in codex.read_record()["keys"]
+
+
 def test_a_plugin_you_installed_yourself_is_untouched(fake_home, fake_runner, monkeypatch):
     _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m", "mine@else"])
     _apply()

@@ -498,6 +498,9 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     # force: True (loadout's value wins), False (a changed line is yours), or INSTALL_DEFAULT (also take over
     # exactly `enabled = true`, the line `codex plugin add` writes itself)
     switched = False  # a plugin switch changes: its own backup copy, so restore of this run undoes it
+    # a key loadout once owned or left as your value: its `enabled = true` is your choice, never the install default
+    released = {k for k in record.get("released", []) if isinstance(k, str)} \
+        if isinstance(record.get("released"), list) else set()
     for table, key, value, force in desired_keys():
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
@@ -507,6 +510,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             header = "[" + ".".join(toml_key(p) for p in table) + "]"
             sections.append([table, [header, line], []])
             owned_keys[dotted] = line
+            released.discard(dotted)
             switched = switched or plugin
             continue
         flags = [True] + target[2] if target[0] is not None else target[2]
@@ -519,22 +523,30 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             target[1].insert(insert, line)
             target[2].insert(insert - (1 if target[0] is not None else 0), True)
             owned_keys[dotted] = line
+            released.discard(dotted)
             switched = switched or plugin
         elif target[1][found].strip() == line:
             pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
         elif force is True or owned_keys.get(dotted) == target[1][found].strip() or (
-                force == INSTALL_DEFAULT and target[1][found].strip() == f"{key} = true"):
+                force == INSTALL_DEFAULT and dotted not in was_keys and dotted not in released
+                and target[1][found].strip() == f"{key} = true"):
             target[1][found] = line
             owned_keys[dotted] = line
             switched = switched or plugin
         else:
             lines.append(f"{dotted}: left as is in config.toml (your value)")
             owned_keys.pop(dotted, None)
+            if plugin:
+                released.add(dotted)
 
     parts = ["\n".join(sections[0][1]).strip("\n")] if any(l.strip() for l in sections[0][1]) else []
     parts += ["\n".join(s[1]).strip("\n") for s in sections[1:]]
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
     new_record = {**record, "tables": owned_tables, "keys": owned_keys}  # keeps project_plugins
+    if released:
+        new_record["released"] = sorted(released)
+    else:
+        new_record.pop("released", None)
     if new == old or (not old.strip() and not new.strip()):
         if new_record != {**record, "tables": record.get("tables", {}), "keys": record.get("keys", {})} and not dry_run:
             save_json(record_path(), new_record)

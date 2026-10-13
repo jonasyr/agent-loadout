@@ -78,7 +78,7 @@ def test_apply_instructions_keeps_windows_line_endings_too(fake_home, monkeypatc
     assert data.startswith(b"mine\r\nmore\r\n") and b"\n" not in data.replace(b"\r\n", b"")
 
 
-def test_the_refresh_waits_while_another_run_sets_up_codex(fake_home, monkeypatch):
+def test_the_refresh_is_skipped_while_another_run_sets_up_codex(fake_home, monkeypatch):
     _codex_on()
     _seed()
     monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")

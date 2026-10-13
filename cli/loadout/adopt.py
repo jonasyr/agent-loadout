@@ -148,7 +148,10 @@ def calm_group(group: str, members: list[Verdict]) -> str:
 
 
 def _codex_hint(f) -> str:
-    return " (Codex: name it in env_vars)" if f.location == "~/.codex/config.toml" else ""
+    if f.location != "~/.codex/config.toml":
+        return ""
+    return {"env": " (Codex: name it in env_vars)",
+            "headers": " (Codex: name it in env_http_headers)"}.get(f.field, "")
 
 
 def calm_secrets(findings: list) -> str:

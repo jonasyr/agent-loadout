@@ -33,3 +33,11 @@ def test_codex_only_adopt_reports_it_without_the_value(fake_home, fake_runner, m
     text = capsys.readouterr().out
     assert "~/.codex/config.toml" in text and TOKEN not in text
     assert "env_vars" in text
+
+
+def test_the_codex_hint_fits_the_field():
+    def f(field):
+        return secrets.Finding(server="s", field=field, key="K", value="v", location="~/.codex/config.toml", fixable=False)
+    assert "env_vars" in adopt._codex_hint(f("env"))
+    assert "env_http_headers" in adopt._codex_hint(f("headers"))
+    assert adopt._codex_hint(f("args")) == "" and adopt._codex_hint(f("url")) == ""
