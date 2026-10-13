@@ -301,17 +301,33 @@ def test_odd_projects_value_counts_as_untrusted(repo):
 
 
 def test_a_failed_marketplace_counts_for_its_plugins(repo):
-    lines = [f"marketplace {codex.OFFICIAL}: failed: boom", "plugin deepeval@?: not installed (its marketplace failed)"]
+    lines = [f"marketplace {codex.OFFICIAL}: failed: boom",
+             "plugin deepeval@claude-plugins-official: not installed (its marketplace failed)"]
     assert codex_project.failed_plugins(THESIS, lines) == {"deepeval@claude-plugins-official"}
 
 
 @needs_tomllib
-def test_install_routes_reports_each_plugin_of_a_failed_marketplace(fake_home, fake_runner):
-    from loadout import backup
-    fake_runner.responses[("codex", "plugin", "marketplace", "add")] = runner.Result(1, "", "boom")
-    lines, _ = codex._install_routes({codex.OFFICIAL: ["deepeval"]}, backup.Backup(description="t"), False,
-                                     lambda l: None, set())
-    assert "plugin deepeval@?: not installed (its marketplace failed)" in lines
+def test_a_failed_marketplace_skips_only_its_own_plugins(repo, fake_runner, monkeypatch):
+    import json
+    two = profiles.Profile(name="two", description="", install=["x@claude-plugins-official", "x@other"])
+    markets = {"other": {"source": {"source": "github", "repo": "o/other"}}}
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}, "extraKnownMarketplaces": markets})
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(0, json.dumps({"installed": []}), "")
+    fake_runner.responses[("codex", "plugin", "marketplace", "add", codex.OFFICIAL)] = runner.Result(1, "", "boom")
+    fake_runner.responses[("codex", "plugin", "marketplace", "add", "o/other")] = runner.Result(
+        0, json.dumps({"marketplaceName": "other", "alreadyAdded": True}), "")
+    lines = codex_project.plugins(two, dry_run=False)
+    assert codex_project.failed_plugins(two, lines) == {"x@claude-plugins-official"}
+
+
+@needs_tomllib
+def test_conflicts_left_as_is_fail_the_profile(repo, monkeypatch):
+    monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: [
+        "mcp chrome-devtools: left as is in x (a server of that name is already there)"])
+    assert project.add_profile(repo, "web", install=False) == 1
 
 
 def test_no_codex_route_makes_profile_exit_1(repo, fake_runner, monkeypatch):

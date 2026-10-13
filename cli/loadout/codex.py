@@ -539,7 +539,6 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
         info = _json(res.stdout) if res.ok else None
         if not isinstance(info, dict) or "marketplaceName" not in info:
             lines.append(f"marketplace {src}: failed: {_tail(res)}")
-            lines += [f"plugin {name}@?: not installed (its marketplace failed)" for name in plugins]
             continue
         market = info["marketplaceName"]
         if not info.get("alreadyAdded") and listed is not None:

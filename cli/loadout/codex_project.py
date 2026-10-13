@@ -142,6 +142,10 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     bk = backup.Backup(description=f"loadout profile {prof.name} (Codex)")
     out, installed = codex._install_routes(routes, bk, False, lambda line: None, listed)
     lines += out
+    for pid in wanted:  # name each plugin of a failed marketplace by its full id, so only that route is skipped
+        src = next(iter(codex.plugin_routes({"enabledPlugins": {pid: True}, "extraKnownMarketplaces": markets})[0]), None)
+        if src is not None and f"marketplace {src}: failed:" in "\n".join(out):
+            lines.append(f"plugin {pid}: not installed (its marketplace failed)")
     on = desired.get("enabledPlugins", {})
     for pid in wanted:
         if on.get(pid) is True or pid in codex.project_plugins():
@@ -179,7 +183,7 @@ def failed_plugins(prof: profiles.Profile, lines: list[str]) -> frozenset:
     """The profile's plugins that a line reports as not installed."""
     bad = (": failed", "not installed", "no Codex route")
     return frozenset(pid for pid in _wanted(prof)[1]
-                     if any(l.startswith((f"plugin {pid}:", f"plugin {pid.split('@')[0]}@?:")) and any(b in l for b in bad)
+                     if any(l.startswith((f"plugin {pid}:", f"plugin {pid.split('@')[0]}@?:")) and any(b in l for b in bad)  # @?: all failed
                             for l in lines))
 
 
