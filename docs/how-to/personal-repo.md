@@ -1,6 +1,6 @@
 # Keep your personal layer in a private git repo
 
-Use this page to sync your preferences, own tools and profiles across machines. Your personal layer is the folder that holds everything that is yours rather than the kit's: `rules/me.md`, your `settings.json` overrides, your MCP servers, skills, hooks and profiles. It lives in `~/.config/loadout/personal`; if you set `LOADOUT_PERSONAL`, use that folder in the commands below. Which file does what: [Personal layer](../reference/personal-layer.md).
+Use this page to sync your preferences, own tools and profiles across machines. Your personal layer is the folder that holds everything that is yours rather than the kit's: `rules/me.md`, your `settings.json` overrides, your MCP servers, skills, hooks, profiles and the agent choice (`targets.json`). It lives in `~/.config/loadout/personal`; if you set `LOADOUT_PERSONAL`, use that folder in the commands below. Which file does what: [Personal layer](../reference/personal-layer.md).
 
 Bootstrap creates a starter layer when you press Enter at its first question. A starter stays on that machine until you make it a git repo. Make it **private**: it describes how you work and which tools you use. Your secrets are not in it; they live in `~/.config/loadout/secrets.env`.
 
@@ -66,5 +66,6 @@ If bootstrap already created a starter on that machine, move it aside first (`mv
 ## Day to day
 
 - **Changes:** after `loadout configure` or an interactive `loadout adopt`, loadout offers to commit and push your personal layer. It refuses while a `*.env` file or a key or credential file would be committed. You can also commit and push yourself, like any repo.
-- **Other machines:** the daily sync pulls your personal layer in the background and re-applies settings, MCP servers and links when new commits arrive ([the daily sync](../explanation/architecture.md#the-daily-sync)). A checkout with uncommitted changes is skipped, so a local edit is never overwritten.
-- **What stays on one machine:** your `leave` decisions for own tools and the state in `~/.claude/.loadout/` ([Machine-local state](../reference/personal-layer.md#machine-local-state)).
+- **Other machines:** the daily sync pulls your personal layer in the background and re-applies settings, MCP servers and links when new commits arrive, for each agent that is on ([the daily sync](../explanation/architecture.md#the-daily-sync)). A checkout with uncommitted changes is skipped, so a local edit is never overwritten.
+- **What stays on one machine:** your `leave` decisions for own tools and the state in `~/.claude/.loadout/`, which also holds Codex's records ([Machine-local state](../reference/personal-layer.md#machine-local-state), [loadout's own files](../explanation/architecture.md#loadouts-own-files)).
+- **Which agents:** the choice of Claude Code, Codex or both is `targets.json` in your personal layer, so it follows you; a second machine gets the same choice unless you pass `--agents` to bootstrap ([Use loadout with Codex](codex.md#switch-it-on)).

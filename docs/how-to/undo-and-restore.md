@@ -32,7 +32,7 @@ Restore replays the steps in reverse:
 - A moved item is moved back. If something else now sits at that place, it goes into the new pre-restore backup first when it is a link or when loadout itself had replaced the original. In any other case the step is skipped with `skipped (exists)` and the backup is not marked as restored.
 - A saved file (such as `settings.json` before a merge) is copied back unless it is identical.
 - A file loadout created (a new `me.md`, `settings.json`, `secrets.env` or shell startup file) is moved aside, not deleted.
-- A recorded command runs through `claude` again: reinstall a plugin, re-add a marketplace or an MCP server. Plugins were uninstalled with `--keep-data`, so their data is still there. On a Windows `claude.cmd` shim, which cannot take JSON, the command is written to a private `manual-commands.txt` for you to run by hand.
+- A recorded command runs through `claude` again (or, for Codex, through `codex`): reinstall a plugin, re-add a marketplace or an MCP server. Plugins were uninstalled with `--keep-data`, so their data is still there. On a Windows `claude.cmd` shim, which cannot take JSON, the command is written to a private `manual-commands.txt` for you to run by hand.
 
 Restore only trusts backups that loadout made: a folder outside `~/.claude/backups`, a backup copy outside its own `files/` folder, or an undo command loadout never records is refused, so a hand-edited or foreign manifest cannot make it run anything beyond the undo commands loadout records.
 
@@ -45,10 +45,14 @@ Whatever restore replaces goes into a new `pre-restore` backup, so a restore can
 - On native Windows, the folders added to your user PATH. The old value is in the backup folder.
 - The tools `--install` installed: uv, Claude Code, mise and what mise installed. See [Uninstall](uninstall.md#what-stays).
 - The "# loadout secrets" line that bootstrap appended to an existing shell startup file on Linux and macOS. A startup file that bootstrap created, and a Windows PowerShell profile (a copy is saved first), are covered.
-- Plugins and marketplaces that bootstrap or `configure` installed. Uninstall them with `claude plugin uninstall ID`.
+- Claude Code plugins and marketplaces that bootstrap or `configure` installed. They stay; uninstall them with `claude plugin uninstall ID`. (Restore does remove the Codex plugins and marketplaces loadout installed; see [Codex](#codex).)
 - A profile applied to a repo with `loadout profile` or `loadout init`. It writes the repo's committed `.claude/settings.json` and `.mcp.json`; use git there.
 - The routine settings merge. `loadout configure`, `apply-settings` and the daily maintenance write `~/.claude/settings.json` and the managed-settings snapshot `~/.claude/.loadout/managed-settings.json` without a backup, and `apply_mcp` re-adds or removes your personal MCP servers without a backup. They change only what the kit manages (see [Settings merge](../reference/settings-merge.md)); bootstrap and adopt do save `settings.json` and the snapshot before their merge. Your personal layer's git history is the record of what you asked for.
 - The git credential helper that bootstrap sets with `gh auth setup-git` when `gh` is logged in. Bootstrap prints the undo command: `git config --global --unset-all credential.https://github.com.helper`.
+
+## Codex
+
+With Codex on, the first change to an existing `~/.codex/AGENTS.md` or `~/.codex/config.toml` saves a copy in the backup (`$CODEX_HOME` replaces `~/.codex` if set). A file loadout created is moved aside on restore. Restore also runs the recorded `codex plugin remove` and `codex plugin marketplace remove` for the plugins and marketplaces loadout installed, so they are gone afterwards; ones that were already there stay. `loadout adopt` removing a Codex-only MCP server saves `config.toml` first, and a removed skill moves into the backup, so restore brings both back. To turn Codex off, see [Use loadout with Codex](codex.md#switch-it-on); to remove it fully, [Uninstall](uninstall.md#codex).
 
 ## The managed-settings snapshot
 

@@ -25,11 +25,11 @@ WSL 1 has a regression where Claude Code's native binary fails with `Exec format
 
 Open the WSL terminal, not PowerShell. Run `cd ~`, then follow [Step 1 of the tutorial](../tutorials/getting-started.md#step-1-run-bootstrap) inside WSL.
 
-Keep the clone in the Linux home: the installed links point into it. Then restart Claude Code and run `loadout check`.
+Keep the clone in the Linux home: the installed links point into it. Choose Claude Code, Codex or both when bootstrap asks. Then restart your agent (what to restart: [Use loadout with Codex](codex.md#switch-it-on)) and run `loadout check`.
 
 ## 3. Know which install loadout configures
 
-A Windows-native install uses `%USERPROFILE%\.claude` and a WSL install uses the Linux `~/.claude`; they do not share configuration. loadout configures the one it runs in. If you use both, you must set up both, and your personal layer in each home is separate until you sync it through git (see [Sync](../reference/personal-layer.md#sync)).
+A Windows-native install uses `%USERPROFILE%\.claude` (and `%USERPROFILE%\.codex` for Codex) and a WSL install uses the Linux `~/.claude` and `~/.codex` (or `$CODEX_HOME`); they do not share configuration. loadout configures the one it runs in. If you use both, you must set up both, and your personal layer in each home is separate until you sync it through git (see [Sync](../reference/personal-layer.md#sync)).
 
 ## 4. Keep repos in the Linux filesystem
 
@@ -37,7 +37,7 @@ Work in `~/`, for example `~/code/app`, not under `/mnt/c`. Projects on `/mnt/c`
 
 ## 5. Check that the tools are Linux binaries
 
-WSL imports the Windows `PATH`. `claude`, `node` or `uv` can then resolve to a Windows program under `/mnt/c`, which fails in odd ways ([troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install#npm-install-errors-in-wsl)). Check each one:
+WSL imports the Windows `PATH`. `claude`, `node` or `uv` (the tools `loadout check` tests) can then resolve to a Windows program under `/mnt/c`, which fails in odd ways ([troubleshoot-install](https://code.claude.com/docs/en/troubleshoot-install#npm-install-errors-in-wsl)). Check each one:
 
 ```bash
 which claude node npm uv git

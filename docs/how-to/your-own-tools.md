@@ -2,7 +2,7 @@
 
 Use this page when `loadout adopt` or `loadout check` lists tools that loadout does not manage, and you want them to follow you to other machines, live in one project, stay put, or go away.
 
-`loadout adopt` looks at every user-scope plugin, marketplace, MCP server (`~/.claude.json`, `~/.claude/.mcp.json`), skill (`~/.claude/skills`) and hook (`~/.claude/settings.json`). What the [catalog](../reference/catalog-format.md) does not know is listed under **Your own tools: loadout doesn't know these** (`--verbose`: **YOUR OWN TOOLS**). Items already in your personal layer show as keep, and so does a plugin that a personal profile holds while it is disabled globally. Project-level config is not inspected.
+`loadout adopt` looks at every user-scope plugin, marketplace, MCP server (`~/.claude.json`, `~/.claude/.mcp.json`), skill (`~/.claude/skills`) and hook (`~/.claude/settings.json`) of Claude Code. With Codex on, it also lists the MCP servers in `~/.codex/config.toml` and the skills in `~/.agents/skills` that only Codex has ([below](#tools-only-codex-has)). With Claude Code turned off, bootstrap skips its adopt step. What the [catalog](../reference/catalog-format.md) does not know is listed under **Your own tools: loadout doesn't know these** (`--verbose`: **YOUR OWN TOOLS**). Items already in your personal layer show as keep, and so does a plugin that a personal profile holds while it is disabled globally. Project-level config is not inspected.
 
 `loadout configure own` lists the same items. Flags and exit codes of the commands are in the [CLI reference](../reference/cli.md#loadout-adopt).
 
@@ -23,7 +23,17 @@ A profile name that matches a kit profile (for example `db`) starts as a copy of
 
 After `project` choices, interactive adopt offers to apply the profile to repos. The default is none. It suggests repos known to Claude Code (`~/.claude.json`) whose project config mentions the item, or you type paths. Applying a profile is the same as running `loadout profile` in that repo: it writes the repo's committed `.claude/settings.json` and `.mcp.json`, and `loadout restore` does not undo it. `--own` never applies profiles to repos.
 
-When something was recorded or removed, adopt and `configure set own` end with "Restart Claude Code (or run /reload-plugins) to load the changes."
+When something was recorded or removed, adopt and `configure set own` end with a restart line for the agents that are on: "Restart Claude Code (or run /reload-plugins) and Codex to load the changes." with both, "Restart Codex to load the changes." with Codex only, "Restart Claude Code (or run /reload-plugins) to load the changes." with Claude Code only.
+
+## Tools only Codex has
+
+What you add directly in one agent lives only there. The daily sync and `loadout check` report it, for example `MCP server "x" only in Claude Code` or `skill "y" only in Codex`. Everything from the kit and your personal layer reaches both agents.
+
+- **Only in Claude Code:** record it with `loadout adopt` as above; the next sync puts it into both.
+- **Only in Codex:** adopt lists MCP servers in `~/.codex/config.toml` and skills in `~/.agents/skills` that only Codex has, with the choices `global`, `leave` and `remove`:
+  - **global** writes the server to your personal layer's `mcp.json` (secrets go to `secrets.env`) or copies the skill into its `skills/`, then hands the server's section to loadout and links the skill for both agents. A server with keys Claude Code cannot express (a `tools` section, timeouts) cannot be recorded; leave it or remove it. Neither can a server whose plaintext secret would have to move under another variable name, because Codex forwards a variable only under its own name: put it in `secrets.env` under its key's name by hand, then record it.
+  - **leave** is remembered on this machine and silences the report for that item.
+  - **remove** saves `config.toml` in the backup, then runs `codex mcp remove`; a skill moves into the backup. `loadout restore` brings both back.
 
 ## Be asked again about a left item
 
@@ -69,7 +79,7 @@ git add -A && git commit -m "chore: record own tools" && git push
 
 `leave` decisions stay on the machine where you made them.
 
-On the second machine, the [daily sync](../explanation/architecture.md#the-daily-sync) links the pulled skills and hook scripts, merges the hooks, and Claude Code installs the plugins at its next start.
+On the second machine, the [daily sync](../explanation/architecture.md#the-daily-sync) links the pulled skills (for Codex into `~/.agents/skills`) and hook scripts, merges the hooks, and Claude Code installs the plugins at its next start. Hooks you recorded as global are a Claude Code feature; Codex does not receive them.
 
 ## Secret guard
 

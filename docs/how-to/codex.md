@@ -1,10 +1,10 @@
 # Use loadout with Codex
 
-Use this page when you also work with OpenAI's Codex CLI and want it set up exactly like Claude Code: the same rules and preferences, plugins, MCP servers, skills and hooks, from the same kit and personal layer, kept current by the same daily sync.
+Most of loadout works the same in both agents: the kit, your personal layer, the daily sync and the commands do not depend on which agent you use. This page holds what only applies to Codex: how to switch it on, the version it needs, its hook approval and the places where it stays different. What Codex receives is listed per file in the [personal layer](../reference/personal-layer.md), per setting in the [hooks](../reference/hooks.md) and [profile](../reference/profile-format.md#in-codex) references.
 
 ## Switch it on
 
-On a new machine, bootstrap first asks which coding agents to set up: Claude Code, Codex, or both. With Codex it installs Codex too (through mise). Scripts can pass the choice: `bootstrap.sh --install --agents codex` (or `claude`, or `claude,codex`). On a machine set up before this choice existed, bootstrap asks only when `codex` is on your PATH. A personal layer you clone that already holds a choice (`targets.json`) wins over the answer, and bootstrap says so; `--agents` wins over both.
+On a new machine, bootstrap first asks which coding agents to set up: Claude Code, Codex, or both. With Codex it installs Codex too (through mise). Scripts can pass the choice: `bootstrap.sh --install --agents codex` (or `claude`, or `claude,codex`). On a machine set up before this choice existed, bootstrap asks only when `codex` is on your PATH. A personal layer you clone that already holds a choice (`targets.json`) wins over the answer, and bootstrap says so; `--agents` wins over both ([bootstrap flags](../reference/cli.md#loadout-bootstrap)).
 
 To switch an agent on or off later:
 
@@ -19,21 +19,11 @@ One agent must stay on. Switching an agent off uninstalls nothing; loadout just 
 
 The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; it prints every step. Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
 
-Then approve loadout's hooks once in Codex: start `codex` and run `/hooks`. Codex runs plugin hooks only after you approve them, and again after they change.
+Then approve loadout's hooks once in Codex: start `codex` and run `/hooks`. Codex runs plugin hooks only after you approve them, and again after they change ([which hooks](../reference/hooks.md)).
 
 ## What Codex gets
 
-| Kit part | In Codex |
-|---|---|
-| The kit's rules and your `me.md` | A block between `<!-- loadout:start -->` and `<!-- loadout:end -->` in `~/.codex/AGENTS.md`; your own text in that file stays as it is |
-| The loadout plugin: skills, Serena, codebase-memory | The same plugin from the same marketplace; Serena runs in its Codex mode |
-| The plugins you have enabled for Claude Code | The same plugins from the same marketplaces (Codex reads Claude Code marketplaces) |
-| Type errors after each edit (Claude Code's LSP plugins) | A Codex-only hook runs pyright, `tsc --noEmit` or `cargo check` on the changed files and reports the errors; Serena's diagnostics tool works on request |
-| Your personal MCP servers | Sections in `~/.codex/config.toml`; secrets only as variable names (`env_vars`) |
-| Your personal skills | Links in `~/.agents/skills` |
-| Effort and notifications | `model_reasoning_effort` and `tui.notifications` |
-
-Preferences that live in `me.md` (answer language, commit style and so on) reach Codex through the instruction block. Claude Code settings without a Codex equivalent (thinking mode, auto mode, the permission list) have no effect on Codex.
+The same kit and personal layer reach Codex. Where each part goes (the instruction block in `~/.codex/AGENTS.md`, `config.toml`, `~/.agents/skills`) is in [Personal layer](../reference/personal-layer.md#files); the plugins it installs are in [Included tools](../reference/included-tools.md); the type-check hook that stands in for Claude Code's LSP plugins is in [Hooks](../reference/hooks.md). Claude Code settings without a Codex equivalent (thinking mode, auto mode, the permission list) have no effect on Codex.
 
 ## What stays different
 
@@ -44,30 +34,12 @@ Preferences that live in `me.md` (answer language, commit style and so on) reach
 - **MCP tools load on demand in Codex.** Codex shows the model Serena's, codebase-memory's and the other servers' tools only when it searches for them, so a session can claim "Serena is not available" without looking. loadout's instruction block tells Codex to search first; if it still does not use them, ask for them by name ("use Serena's find_symbol").
 - **Type checks run per edit** instead of a language server that keeps running. Large TypeScript projects can take a few seconds; after 20 seconds the check reports itself as skipped.
 
-## Keep both the same
+## Project trust
 
-Everything that comes from the kit and your personal layer reaches both agents. Something you add directly in one agent lives only there: the daily sync and `loadout check` report it, for example `MCP server "x" only in Claude Code`.
+With Codex on, `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you.
 
-- **Only in Claude Code:** run `loadout adopt` and record it globally; the next sync puts it into both.
-- **Only in Codex:** run `loadout adopt` too. It lists MCP servers in `~/.codex/config.toml` and skills in `~/.agents/skills` that only Codex has, with the choices global, leave and remove:
-  - **global** writes the server to your personal layer's `mcp.json` (secrets go to `secrets.env`) or copies the skill into its `skills/`, then hands the server's section to loadout and links the skill for both agents. A server with keys Claude Code cannot express (a `tools` section, timeouts) cannot be recorded; leave it or remove it. Neither can a server whose plaintext secret would have to move under another variable name, because Codex forwards a variable only under its own name: put it in `secrets.env` under its key's name by hand, then record it.
-  - **leave** is remembered on this machine and silences the report for that item.
-  - **remove** saves `config.toml` in the backup, then runs `codex mcp remove`; a skill moves into the backup. `loadout restore` brings both back.
+## Where to read more
 
-## Projects
-
-With Codex on, `loadout init` and `loadout profile NAME` also set up Codex in the repo:
-
-- The profile's MCP servers become sections in the repo's `.codex/config.toml`. loadout only adds sections: one you already have under that name stays and is reported. A server the profile turns off for Claude Code gets `enabled = false`. A server whose arguments need `${VAR}` (the `db` profile's DBHub) is skipped for Codex with the reason, because Codex does not expand variables in arguments.
-- Every skill in the repo's `.claude/skills` is linked into `.agents/skills`, including skills a profile command installs there.
-- The profile's plugins are installed in Codex and switched on only in that repo (a plugin you had already installed in Codex stays on everywhere): `[plugins."NAME@MARKET"] enabled = true` in the repo's file and `enabled = false` in `~/.codex/config.toml`. loadout keeps the user-level switch off even after `codex plugin add` turns it on again. To have such a plugin everywhere, enable it in your personal layer's `settings.json`.
-
-Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you.
-
-## What loadout changes in `~/.codex`
-
-- `~/.codex/AGENTS.md`: only its own marked block.
-- `~/.codex/config.toml`: only the `[mcp_servers.*]` sections and keys it wrote itself, plus the `enabled` switch of plugins a profile installed for one project. It records what it wrote in `~/.claude/.loadout/codex-config.json` and never changes a section or key you edited or wrote yourself.
-- Plugins and marketplaces through `codex plugin` commands.
-
-The first change to an existing `AGENTS.md` or `config.toml` saves a copy in the backup; `loadout restore` brings it back and removes the plugins loadout installed. Turn it off with `loadout configure set target codex off`; what was set up stays until you remove it.
+- What loadout changes in `~/.codex`, and what it never touches: [Security and trust](../explanation/security-and-trust.md).
+- Record a Codex-only MCP server or skill (`loadout adopt`): [Handle your own tools](your-own-tools.md#tools-only-codex-has).
+- Undo and remove: [Undo what loadout changed](undo-and-restore.md#codex) and [Uninstall](uninstall.md#codex). Turning Codex off with `loadout configure set target codex off` removes nothing.

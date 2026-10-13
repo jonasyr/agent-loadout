@@ -16,8 +16,8 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 | `could not get Python 3.11 or newer through uv (offline?). Check your connection and run this again.` | uv could not find or download a Python for loadout. Check your network and run the command again; installing Python 3.11 or newer yourself also works. |
 | `loadout needs curl to download uv. Install it, then run this again:` | Install curl (Linux: `sudo apt install curl`), then run bootstrap again. |
 | A required tool is missing | Re-run `./bootstrap.sh --install` (Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install`). `loadout check` shows manual install steps for what it cannot install, for example rtk on native Windows. |
-| No session notices, or the daily sync never runs | `loadout` must be on the `PATH` that Claude Code's hooks see. The plugin's hook runner exits 0 silently when the command is missing (`plugins/loadout/hooks/run.sh`). Add `~/.local/bin` to the `PATH` of the environment Claude Code starts from, then restart it. |
-| A plugin or MCP server is missing in Claude Code | Restart Claude Code. Then `loadout check` lists what is missing and how to fix it. Enabled plugins install at the next Claude Code start. |
+| No session notices, or the daily sync never runs | `loadout` must be on the `PATH` that the agent's hooks see (Claude Code, or Codex after you approved the hooks). The plugin's hook runner exits 0 silently when the command is missing (`plugins/loadout/hooks/run.sh`). Add `~/.local/bin` to the `PATH` of the environment the agent starts from, then restart it. |
+| A plugin or MCP server is missing in Claude Code | Restart Claude Code (for Codex, see [below](#codex)). Then `loadout check` lists what is missing and how to fix it. Enabled plugins install at the next Claude Code start. |
 | loadout skills or hooks are missing in a session that started before an update | Run `/reload-plugins` (loadout reminds you once per session), or start a new session. |
 
 ## Settings
@@ -46,6 +46,20 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 | `loadout check` warns "own tools" | Some tools are not managed by loadout. Decide with `loadout adopt --apply` or `loadout configure own`. See [Handle your own tools](your-own-tools.md). |
 | A global skill or hook script is missing on another machine | Commit and push the personal layer on the first machine. The other machine links them after its daily pull (or `loadout bootstrap`). See [Sync to other machines](your-own-tools.md#sync-to-other-machines). |
 
+## Codex
+
+Only if Codex is on ([Use loadout with Codex](codex.md)). `loadout check` names each of these.
+
+| Symptom | Fix |
+|---|---|
+| No loadout session notice, no type check after edits in Codex; `loadout check` shows `Codex hooks` | Codex runs plugin hooks only after you approve them. Start `codex`, run `/hooks` and approve loadout's hooks. You need to do it again after they change. loadout never approves them for you ([Hooks](../reference/hooks.md)). |
+| The repo's `.codex/config.toml` servers or plugin switches have no effect | Codex reads that file only in a trusted project. Start `codex` in the repo once and accept the trust question. |
+| Codex says "Serena is not available" | Codex loads MCP tools on demand. Ask for them by name ("use Serena's find_symbol"). See [what stays different](codex.md#what-stays-different). |
+| Codex ignores the rules and your `me.md` (`loadout check` warns `Codex instructions`) | `AGENTS.override.md` in the Codex folder (`~/.codex`, or `$CODEX_HOME`) shadows `AGENTS.md`, where loadout's block is. Merge the block into the override file or remove the override. |
+| `plugin NAME@MARKET: no Codex route (its marketplace is not on GitHub)` | Codex gets plugins only from GitHub marketplaces. The plugin keeps working in Claude Code; Codex does without it. |
+| An MCP server waits for a login in Codex | Run `codex mcp login NAME`. For Context7 the login is optional ([details](codex.md#what-stays-different)). |
+| `MCP server "x" only in Claude Code` (or `only in Codex`) in the check or the session notice | You added it in one agent only. Record it with `loadout adopt` so both get it ([Handle your own tools](your-own-tools.md#tools-only-codex-has)). |
+
 ## Windows
 
 | Symptom | Fix |
@@ -60,7 +74,7 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 
 | Symptom | Fix |
 |---|---|
-| An MCP server does not see a key from `secrets.env` | Bootstrap adds a line to your shell startup file that loads `~/.config/loadout/secrets.env`. It only reaches Claude Code started from a shell that read that file: open a new terminal and start Claude Code from there. |
+| An MCP server does not see a key from `secrets.env` | Bootstrap adds a line to your shell startup file that loads `~/.config/loadout/secrets.env`. It only reaches an agent (Claude Code or Codex) started from a shell that read that file: open a new terminal and start it from there. |
 
 ## Cost
 
