@@ -50,8 +50,8 @@ def test_codex_only_bootstrap_never_touches_claude(fake_home, fake_runner, monke
     assert json.loads(targets.path().read_text()) == {"claude": False, "codex": True}
 
 
-def test_cloned_choice_wins_and_installs_what_is_missing(fake_home, fake_runner, monkeypatch):
-    def cloned_layer(ask, bk, interactive):
+def test_cloned_choice_decides_without_asking(fake_home, fake_runner, monkeypatch):
+    def cloned_layer(ask, bk, interactive, **kw):
         root = paths.personal_root()
         root.mkdir(parents=True)
         (root / "targets.json").write_text(json.dumps({"claude": True, "codex": True}))
@@ -63,13 +63,15 @@ def test_cloned_choice_wins_and_installs_what_is_missing(fake_home, fake_runner,
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
     monkeypatch.setattr(codex, "open_steps", lambda: [])
-    _run(install=True, yes=False, interactive=True, ask=lambda q: "1" if "coding agents" in q else "")
-    assert targets.codex_enabled(), "the cloned layer's choice wins over the answered question"
-    assert len(calls) == 2 and "codex" in calls[1], "prerequisites run again for the newly chosen agent"
+    asked = []
+    _run(install=True, yes=False, interactive=True, ask=lambda q: asked.append(q) or "")
+    assert targets.codex_enabled(), "the cloned layer's choice is used"
+    assert not any("coding agents" in q for q in asked), "a layer that already chose is never asked again"
+    assert len(calls) == 1 and "codex" in calls[0], "prerequisites run once, for the layer's agents"
 
 
 def test_an_explicit_agents_flag_wins_over_the_cloned_layer(fake_home, fake_runner, monkeypatch):
-    def cloned_layer(ask, bk, interactive):
+    def cloned_layer(ask, bk, interactive, **kw):
         paths.personal_root().mkdir(parents=True)
         (paths.personal_root() / "targets.json").write_text(json.dumps({"claude": True, "codex": True}))
         return "cloned", True
@@ -85,3 +87,23 @@ def test_next_line_names_the_chosen_agent(fake_home, fake_runner, monkeypatch, c
     monkeypatch.setattr(codex, "open_steps", lambda: [])
     _run(agents="codex")
     assert "run `codex`" in capsys.readouterr().out
+
+
+def test_a_starter_layer_asks_the_agents_before_its_own_questions(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
+    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    asked, seen = [], []
+
+    def ask(q):
+        asked.append(q)
+        if "Your name" in q:
+            seen.append(targets.claude_enabled())  # the starter's questions already know the choice
+        return "2" if "coding agents" in q else ""
+    _run(yes=False, interactive=True, ask=ask)
+    agents = next(i for i, q in enumerate(asked) if "coding agents" in q)
+    url = next(i for i, q in enumerate(asked) if "Personal layer" in q)
+    name = next(i for i, q in enumerate(asked) if "Your name" in q)
+    assert url < agents < name
+    assert seen == [False], "a Codex-only starter never reads Claude Code's settings"
+    assert json.loads(targets.path().read_text()) == {"claude": False, "codex": True}

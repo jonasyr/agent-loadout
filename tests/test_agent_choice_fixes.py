@@ -52,7 +52,7 @@ def test_set_target_claude_on_without_claude_points_to_bootstrap(fake_home, fake
 
 
 def test_cloned_choice_is_announced(fake_home, fake_runner, monkeypatch, capsys):
-    def cloned_layer(ask, bk, interactive):
+    def cloned_layer(ask, bk, interactive, **kw):
         paths.personal_root().mkdir(parents=True)
         (paths.personal_root() / "targets.json").write_text(json.dumps({"claude": False, "codex": True}))
         return "cloned", True

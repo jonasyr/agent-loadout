@@ -227,8 +227,10 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
     return missing
 
 
-def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None = None) -> tuple[str, bool]:
-    """Returns (message, ok). ok is False only when a clone was asked for and failed."""
+def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None = None,
+                    before_starter=None) -> tuple[str, bool]:
+    """Returns (message, ok). ok is False only when a clone was asked for and failed.
+    before_starter: called before a starter layer asks its questions (bootstrap settles the agents there)."""
     bk = bk if bk is not None else Backup(description="bootstrap")
     interactive = ui.is_interactive() if interactive is None else interactive
     root = paths.personal_root()
@@ -245,6 +247,8 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
                   else "use an SSH URL, or install gh (bootstrap --install) and log in")
         return (f"clone failed: {redact(res.stderr.strip())}\n"
                 f"  {access}, then re-run bootstrap; continuing without a personal layer"), False
+    if before_starter is not None:
+        before_starter()
     root.mkdir(parents=True, exist_ok=True)
     (root / "settings.json").write_text("{}\n", encoding="utf-8")
     bk.record_created(root / "settings.json", "created personal settings.json")
@@ -515,7 +519,7 @@ def choose_agents(ask, interactive: bool, flag) -> dict:
     return _choose_agents(ask, interactive, flag)[0]
 
 
-def _choose_agents(ask, interactive: bool, flag) -> tuple[dict, bool]:
+def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -> tuple[dict, bool]:
     """(choice, store it): --agents first, then a decided personal layer, then the question (interactive), else
     Claude Code as before. Only an explicit choice is stored: writing the default into an existing git-backed
     personal layer would leave it dirty and pause the daily sync."""
@@ -525,7 +529,8 @@ def _choose_agents(ask, interactive: bool, flag) -> tuple[dict, bool]:
     stored = targets.from_file()
     if stored is not None:
         return stored, False
-    existing = paths.personal_root().exists()
+    if existing is None:
+        existing = paths.personal_root().exists()
     if not interactive or (existing and not runner.have("codex")):
         return {"claude": True, "codex": False}, False  # as before this change: no new question without Codex
     default = "3" if runner.have("codex") else "1"
@@ -559,21 +564,18 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         out.status("WSL", f"WSL {version}")
         for line in wsl.report_lines(version, wsl.current_dir()):
             out.problem(line)
-    chosen, store = _choose_agents(ask, interactive and not yes, agents)
-    targets.OVERRIDE = chosen  # the right tools get installed before the personal layer exists to store the choice
-    _step("Prerequisites")
-    installed: list[str] = []
-    notes: list[str] = []
-    missing = check_prereqs(install, ask, installed=installed, notes=notes)
-    summary, level = _prereq_summary(missing, installed)
-    out.status("Prerequisites", summary, level)
-    for line in notes:
-        out.problem(line)
+    # the personal layer first: a layer that already chose (a clone, or this machine's) is never asked again;
+    # a starter asks before its own questions, which read only the chosen agents' files
     bk = Backup(description="bootstrap")
     _step("Personal layer")
     fresh = not paths.personal_root().exists()
-    message, personal_ok = ensure_personal(ask, bk, interactive)
-    # a starter layer was just created and its preference questions asked (a clone has .git)
+    decided: dict = {}
+
+    def decide() -> None:
+        decided["choice"] = _choose_agents(ask, interactive and not yes, agents, existing=not fresh)
+        targets.OVERRIDE = decided["choice"][0]  # the starter's questions and the installs follow the choice
+
+    message, personal_ok = ensure_personal(ask, bk, interactive, before_starter=decide)
     starter = fresh and personal_ok and paths.personal_root().exists() and not (paths.personal_root() / ".git").exists()
     where = _tilde(paths.personal_root())
     if personal_ok:
@@ -582,20 +584,24 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     else:
         out.status("Personal layer", "clone failed", "fail")
         out.problem(message)
-    if personal_ok:
-        stored = targets.from_file()
-        if stored is not None and agents is None and stored != chosen:  # a cloned layer chose: its choice wins
-            chosen = stored
-            targets.OVERRIDE = chosen
-            names = " and ".join(n for n, on in (("Claude Code", chosen["claude"]), ("Codex", chosen["codex"])) if on)
+    if "choice" not in decided:
+        cloned_choice = fresh and personal_ok and agents is None and targets.from_file() is not None
+        decide()
+        if cloned_choice:
+            names = " and ".join(n for n, on in (("Claude Code", decided["choice"][0]["claude"]),
+                                                 ("Codex", decided["choice"][0]["codex"])) if on)
             print(f"using your personal layer's agents: {names}")
-            more_notes: list[str] = []
-            check_prereqs(install, ask, installed=installed, notes=more_notes)  # install what the layer adds
-            for line in more_notes:
-                if line not in notes:  # the first run already showed the rest
-                    out.problem(line)
-        elif store:
-            targets.set_agents(chosen)
+    chosen, store = decided["choice"]
+    if personal_ok and store:
+        targets.set_agents(chosen)
+    _step("Prerequisites")
+    installed: list[str] = []
+    notes: list[str] = []
+    missing = check_prereqs(install, ask, installed=installed, notes=notes)
+    summary, level = _prereq_summary(missing, installed)
+    out.status("Prerequisites", summary, level)
+    for line in notes:
+        out.problem(line)
     claude_on = chosen["claude"]
     _step("Links")
     link_lines = (link.link_all(bk, retry_symlinks=True) if claude_on else []) + link.link_bin(bk)
