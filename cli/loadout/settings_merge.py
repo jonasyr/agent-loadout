@@ -41,7 +41,9 @@ def get_path(d: Any, path: tuple) -> Any:
 
 def _set_path(d: dict, path: tuple, value: Any) -> None:
     for key in path[:-1]:
-        d = d.setdefault(key, {})
+        if not isinstance(d.get(key), dict):  # a scalar or list on the way is replaced: the kit owns this path
+            d[key] = {}
+        d = d[key]
     d[path[-1]] = value
 
 
@@ -50,8 +52,10 @@ def _delete_path(d: dict, path: tuple) -> None:
     node = d
     for key in path[:-1]:
         chain.append((node, key))
-        node = node[key]
-    del node[path[-1]]
+        node = node.get(key) if isinstance(node, dict) else None
+        if not isinstance(node, dict):
+            return  # the key changed shape (object to scalar or list): nothing to delete down this path
+    node.pop(path[-1], None)
     for parent, key in reversed(chain):
         if parent[key] == {}:
             del parent[key]
