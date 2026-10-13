@@ -82,6 +82,12 @@ def main(argv: list[str] | None = None) -> int:
             pass
 
     args = build_parser().parse_args(argv)
+    try:  # ADR 0025: loadout's files leave ~/.claude once; never let this stop a command
+        from .migrate import migrate_state
+        for line in migrate_state():
+            print(line, file=sys.stderr)
+    except Exception as exc:
+        print(f"loadout: could not move its state from ~/.claude ({exc}); it tries again next time", file=sys.stderr)
     try:
         return int(args.func(args) or 0)
     except (InvalidJSON, ValueError) as exc:

@@ -193,10 +193,21 @@ def _codex() -> list[CheckResult]:
     return codex.checks()
 
 
+def _legacy_state() -> list[CheckResult]:
+    """Files the migration kept in ~/.claude because the new location already had them (ADR 0025)."""
+    left = [p for root in (paths.legacy_state_dir(), paths.legacy_backups_root()) if root.is_dir()
+            for p in sorted(root.iterdir())]
+    if not left:
+        return [CheckResult("loadout state", True)]
+    names = ", ".join(str(p) for p in left[:5]) + (" …" if len(left) > 5 else "")
+    return [CheckResult("loadout state", False, f"left in ~/.claude: {names}",
+                        f"compare with {paths.state_dir()} and delete them by hand", "warn")]
+
+
 def run_checks() -> list[CheckResult]:
     from . import targets
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
-    return [*_python(), *_wsl(),
+    return [*_python(), *_wsl(), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(), *(_connectors() if on else []), *_own(),
             *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
