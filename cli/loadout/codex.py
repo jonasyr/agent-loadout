@@ -615,6 +615,8 @@ def user_servers() -> dict[str, dict]:
         servers = tl.loads(path.read_text(encoding="utf-8")).get("mcp_servers", {})
     except Exception:
         return {}
+    if not isinstance(servers, dict):
+        return {}
     owned = set(load_json(record_path()).get("tables", {}))
     return {n: t for n, t in servers.items() if isinstance(t, dict) and n not in owned}
 

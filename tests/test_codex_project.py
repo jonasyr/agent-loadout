@@ -211,3 +211,11 @@ def test_a_failed_plugin_list_makes_nothing_project_only(repo, fake_runner, monk
         0, json.dumps({"marketplaceName": "claude-plugins-official", "alreadyAdded": True}), "")
     codex_project.plugins(THESIS, dry_run=False)
     assert codex.project_plugins() == []
+
+
+def test_trust_note_repeats_on_a_second_run_while_untrusted(repo, monkeypatch):
+    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run: [])
+    monkeypatch.setattr(codex_project, "skills", lambda p, dry_run: [])
+    assert codex_project.TRUST_NOTE in codex_project.apply(WEB, repo, install=False, dry_run=False)
+    empty = profiles.Profile(name="empty", description="")
+    assert codex_project.TRUST_NOTE not in codex_project.apply(empty, repo, install=False, dry_run=False)

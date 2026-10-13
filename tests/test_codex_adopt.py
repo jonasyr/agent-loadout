@@ -98,3 +98,9 @@ def test_a_server_with_odd_args_is_listed_not_a_crash(codex_on):
     _config('[mcp_servers.odd]\ncommand = "o"\nargs = 1\n')
     (item,) = [i for i in inventory.collect(with_versions=False) if i.location == codex.CONFIG_LOCATION]
     assert item.extra["config"] is None and "args" in item.extra["problem"]
+
+
+@needs_tomllib
+def test_a_non_table_mcp_servers_value_is_not_a_crash(codex_on):
+    _config("mcp_servers = 1\n")
+    assert codex.user_servers() == {}

@@ -157,6 +157,8 @@ def apply(prof: profiles.Profile, project: Path, install: bool, dry_run: bool) -
     lines = config(prof, project, dry_run) + skills(project, dry_run)
     if install:
         lines += plugins(prof, dry_run)
-    if lines and not dry_run and not _trusted(project):
+    tables, plugins_, _ = _wanted(prof)
+    has_codex_parts = bool(tables or plugins_) or any((project / ".agents" / "skills").glob("*"))
+    if has_codex_parts and not dry_run and not _trusted(project):  # on every run until trusted, not only on changes
         lines.append(TRUST_NOTE)
     return lines
