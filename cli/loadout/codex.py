@@ -111,6 +111,8 @@ def apply_instructions(bk) -> str:
     if new is None:
         return f"skipped {path}: its loadout markers are unbalanced or duplicated; fix them by hand"
     if new == old:
+        if load_json(record_path()).get("block") != _block_hash(old):  # a block from before the record: now known
+            _remember_block(old)
         return "instructions up to date"
     if path.exists() and START not in old:
         bk.save_copy(path, "Codex AGENTS.md before loadout added its block")
@@ -145,11 +147,17 @@ def refresh_instructions() -> str | None:
     if START not in old:
         return None
     new = splice(old, render_instructions())
-    if new is None or new == old:
+    if new is None:
         return None
     record = load_json(record_path())
     current = _block_hash(old)
-    if record.get("block") and record["block"] != current:  # you edited inside the block: it stays as you left it
+    if new == old:
+        if record.get("block") != current:  # a block from before the record, still current: now known as loadout's
+            _remember_block(old)
+        return None
+    if not record.get("block"):  # not known to be as loadout wrote it: left until bootstrap or the sync rewrite it
+        return None
+    if record["block"] != current:  # you edited inside the block: it stays as you left it
         if record.get("block_notice") != current:
             from .maintenance import notify
             notify(f"{_tilde(path)}: you edited inside loadout's block, so it is no longer refreshed at a session "
