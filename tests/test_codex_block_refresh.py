@@ -98,6 +98,44 @@ def test_the_refresh_is_skipped_while_another_run_sets_up_codex(fake_home, monke
     assert codex.refresh_instructions() is None and "old block" in _agents().read_text()
 
 
+def test_the_automatic_refresh_is_in_a_backup(fake_home, monkeypatch):
+    from loadout import backup
+    _codex_on()
+    _seed()
+    before = _agents().read_bytes()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    codex.refresh_instructions()
+    [root] = [d for d in paths.backups_root().iterdir() if (d / "manifest.json").is_file()]
+    _, ok, _ = backup.restore(root)
+    assert ok and _agents().read_bytes() == before
+
+
+def test_an_explicit_rewrite_of_the_block_is_in_a_backup_too(fake_home, monkeypatch):
+    from loadout import backup
+    _seed()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    bk = backup.Backup(description="t")
+    codex.apply_instructions(bk)
+    assert any("restore-file" in s["undo"] for s in bk.steps)
+
+
+def test_your_edit_inside_the_block_stops_the_automatic_refresh(fake_home, monkeypatch):
+    from loadout import backup
+    _codex_on()
+    _agents().parent.mkdir(parents=True, exist_ok=True)
+    _agents().write_text("mine\n", encoding="utf-8")
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nv1\n{codex.END}\n")
+    codex.apply_instructions(backup.Backup(description="t"))  # loadout's block, recorded
+    _agents().write_text(_agents().read_text().replace("v1", "v1\nmy own line"), encoding="utf-8")
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nv2\n{codex.END}\n")
+    told = []
+    monkeypatch.setattr(maintenance, "notify", told.append)
+    for _ in range(2):
+        maintenance.session_start(0)
+        assert "my own line" in _agents().read_text() and "v2" not in _agents().read_text()
+    assert len(told) == 1 and "AGENTS.md" in told[0]  # said once, not at every session
+
+
 def test_a_damaged_targets_file_never_breaks_the_session_start(fake_home):
     paths.personal_root().mkdir(parents=True)
     (paths.personal_root() / "targets.json").write_text("{broken")

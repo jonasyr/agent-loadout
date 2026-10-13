@@ -88,6 +88,22 @@ def _read_exact(path: Path) -> str:
     return path.read_bytes().decode("utf-8")
 
 
+def _block_hash(text: str) -> str | None:
+    """sha256 of loadout's block in text (line endings as LF), or None without one balanced block."""
+    if not (text.count(START) == text.count(END) == 1 and text.index(START) < text.index(END)):
+        return None
+    import hashlib
+    block = text[text.index(START):text.index(END) + len(END)].replace("\r\n", "\n")
+    return hashlib.sha256(block.encode("utf-8")).hexdigest()
+
+
+def _remember_block(text: str) -> None:
+    record = load_json(record_path())
+    record = {k: v for k, v in record.items() if k != "block_notice"}
+    record_path().parent.mkdir(parents=True, exist_ok=True)
+    save_json(record_path(), {**record, "block": _block_hash(text)})
+
+
 def apply_instructions(bk) -> str:
     path = paths.codex_home() / "AGENTS.md"
     old = _read_exact(path) if path.exists() else ""
@@ -98,10 +114,13 @@ def apply_instructions(bk) -> str:
         return "instructions up to date"
     if path.exists() and START not in old:
         bk.save_copy(path, "Codex AGENTS.md before loadout added its block")
-    elif not path.exists():
+    elif path.exists():
+        bk.save_copy(path, "Codex AGENTS.md before loadout rewrote its block")
+    else:
         bk.record_created(path, "created Codex AGENTS.md")
     from .jsonio import write_atomic
     write_atomic(path, new)
+    _remember_block(new)
     return f"instructions written to {_tilde(path)}"
 
 
@@ -128,8 +147,22 @@ def refresh_instructions() -> str | None:
     new = splice(old, render_instructions())
     if new is None or new == old:
         return None
+    record = load_json(record_path())
+    current = _block_hash(old)
+    if record.get("block") and record["block"] != current:  # you edited inside the block: it stays as you left it
+        if record.get("block_notice") != current:
+            from .maintenance import notify
+            notify(f"{_tilde(path)}: you edited inside loadout's block, so it is no longer refreshed at a session "
+                   "start. Move your text outside the markers, then run loadout bootstrap (it rewrites the block "
+                   "and keeps the old file in a backup).")
+            save_json(record_path(), {**record, "block_notice": current})
+        return None
+    from .backup import Backup
+    Backup(description="session start: Codex AGENTS.md block refreshed").save_copy(
+        path, "Codex AGENTS.md before loadout refreshed its block")
     from .jsonio import write_atomic
     write_atomic(path, new)
+    _remember_block(new)
     return f"refreshed loadout's block in {_tilde(path)}"
 
 
