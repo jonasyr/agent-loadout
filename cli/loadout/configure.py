@@ -192,15 +192,17 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
     claude_on, codex_on = targets.claude_enabled(), targets.codex_enabled()
     if setup and claude_on:
         apply_settings()
-        plugin_lines = bootstrap.setup_plugins(say=lambda line: print(line, flush=True))
+        plugin_lines = bootstrap.setup_plugins(say=out.progress)
+        out.end_progress()
         if any(line.endswith(": added") for line in plugin_lines):
             apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
         for line in plugin_lines + apply_mcp():
             print(line)
     if setup and codex_on and codex.unavailable() is None:  # the same choices reach Codex (plugins, MCP servers)
         from .backup import Backup
-        for line in codex.apply_all(Backup(description="configure: apply to Codex"),
-                                    say=lambda line: print(line, flush=True)):
+        codex_lines = codex.apply_all(Backup(description="configure: apply to Codex"), say=out.progress)
+        out.end_progress()
+        for line in codex_lines:
             print(line)
     offer_commit(ask)
     if setup:
@@ -252,7 +254,7 @@ def ask_preferences(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup
         # the same engine as a run without a terminal: unset answers take the default, auto mode is skipped
         for line in preferences.ask_all(ask, fill_defaults=True, interactive=False, bk=bk):
             (out.problem if out.PROBLEM.search(line) else out.detail)(line)
-        print("  auto mode trust: not drafted (run `loadout configure prefs` to draft it)")
+        out.detail("auto mode trust: not drafted (run `loadout configure prefs` to draft it)")
         return
     if interactive:
         print("\n-- Working preferences (enter = keep the current answer"

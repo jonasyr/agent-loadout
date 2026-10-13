@@ -41,7 +41,7 @@ git push -u origin main
 
 ## On every further machine
 
-Bootstrap asks which agents to set up, then for your personal layer. Paste your repo's URL there, and bootstrap clones it to `~/.config/loadout/personal` instead of creating a starter. If the cloned layer already holds an agent choice (`targets.json`), that choice wins over the answer you just gave, and bootstrap says so ("using your personal layer's agents: …").
+Bootstrap first asks for your personal layer. Paste your repo's URL there, and bootstrap clones it to `~/.config/loadout/personal` instead of creating a starter. If the cloned layer already holds an agent choice (`targets.json`), bootstrap uses it without asking which agents to set up, and says so ("using your personal layer's agents: …").
 
 A private repo needs access:
 

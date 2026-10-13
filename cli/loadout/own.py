@@ -951,14 +951,16 @@ def _existing_profiles() -> list[str]:
 def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
     if not verdicts:
         return []
-    first = ask("your own tools: [l]eave all (not asked again on this machine) / [c]hoose each "
+    first = ask("Your own tools: [l]eave all (not asked again on this machine) / [c]hoose each "
                 "(Enter: decide later): ").strip().lower()
     if first in ("l", "leave"):
         return [(v, Choice("leave")) for v in verdicts]
     if first not in ("c", "choose"):
         return []  # empty or unknown: nothing decided, nothing remembered
-    print("  global = personal layer, every machine · project = personal profile, per repo · "
-          "leave = this machine only, not asked again · remove = into the backup (loadout restore)")
+    print("  global   every machine (your personal layer)\n"
+          "  project  only repos you choose (a personal profile)\n"
+          "  leave    this machine only, not asked again\n"
+          "  remove   into the backup (loadout restore)")
     pairs, last_profile = [], ""
     for v in verdicts:
         opts = options(v.item)

@@ -15,7 +15,7 @@ Use this page when `loadout adopt` or `loadout check` lists tools that loadout d
 | `leave` | Stay as is, on this machine only. Not asked again here. |
 | `remove` | Remove it. It goes into a backup and `loadout restore` brings it back. |
 
-Nothing changes without an answer. In a terminal, adopt asks once: `your own tools: [l]eave all / [c]hoose each`. Enter decides nothing. After `c` it asks per item, and Enter (or three invalid answers) skips that item. Only an explicit `leave` is remembered, in `~/.claude/.loadout/own-decisions.json`, which is local to this machine. `--yes` and runs without a terminal decide nothing and remember nothing. `--skip NAME,...` skips items for one run and remembers nothing.
+Nothing changes without an answer. In a terminal, adopt asks once: `Your own tools: [l]eave all / [c]hoose each`. Enter decides nothing. After `c` it asks per item, and Enter (or three invalid answers) skips that item. Only an explicit `leave` is remembered, in `~/.claude/.loadout/own-decisions.json`, which is local to this machine. `--yes` and runs without a terminal decide nothing and remember nothing. `--skip NAME,...` skips items for one run and remembers nothing.
 
 Catalog plugins that adopt would disable globally accept `global` ("keep global"): pick the group (`p`), then `k` for that plugin. Not every choice fits every item: marketplaces and skills that are links to a shared source cannot go into a profile, and servers in `~/.claude/.mcp.json` can only be left or removed. The prompt and `loadout configure own` list only what applies.
 

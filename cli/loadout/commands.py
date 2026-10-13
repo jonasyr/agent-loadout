@@ -199,7 +199,7 @@ def _register_configure(sub):
         if a.kind == "own":
             return configure.set_own(a.name, a.value)
         if a.kind == "target":
-            from . import codex, targets
+            from . import codex, out, targets
             on = configure.parse_switch(a.value, "target")
             print(targets.set_target(a.name, on))  # ValueError (unknown agent, last one off) -> exit 1
             if on and a.name == "claude":
@@ -222,7 +222,9 @@ def _register_configure(sub):
                 from .backup import Backup
                 bk = Backup(description="configure: set up Codex")
                 print("setting up Codex…")
-                for line in codex.apply_all(bk, say=lambda line: print(line, flush=True)):
+                codex_lines = codex.apply_all(bk, say=out.progress)
+                out.end_progress()
+                for line in codex_lines:
                     print(line)
                 for step in codex.open_steps():
                     print(f"Still to do: {step}")

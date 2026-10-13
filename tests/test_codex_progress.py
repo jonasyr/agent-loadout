@@ -17,7 +17,7 @@ def test_slow_steps_are_announced(fake_home, fake_runner, monkeypatch):
         0, json.dumps({"marketplaceName": "impeccable", "alreadyAdded": False}), "")
     said = []
     codex.apply_plugins(backup.Backup(description="t"), say=said.append)
-    assert any("pbakaus/impeccable" in s and "can take a few minutes" in s for s in said)
+    assert any("pbakaus/impeccable" in s and "a git clone" in s for s in said)
     assert any("impeccable@impeccable" in s for s in said)
 
 

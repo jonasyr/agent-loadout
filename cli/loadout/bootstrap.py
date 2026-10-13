@@ -217,18 +217,24 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
                 note(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
                 missing.append(name)
-    if runner.have("gh"):
-        if runner.run(["gh", "auth", "status"], timeout=20).ok:
-            res = runner.run(["gh", "auth", "setup-git"], timeout=20)
-            if res.ok:
-                out.detail("git uses your gh login for GitHub (gh auth setup-git; undo: git config --global --unset-all credential.https://github.com.helper)")
-        else:
-            note("gh is not logged in: run `gh auth login` (needed for private marketplaces)", problem=True)
+    if not _gh_for_git() and runner.have("gh"):
+        note("gh is not logged in: run `gh auth login` (needed for private marketplaces)", problem=True)
     return missing
 
 
-def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None = None) -> tuple[str, bool]:
-    """Returns (message, ok). ok is False only when a clone was asked for and failed."""
+def _gh_for_git() -> bool:
+    """A logged-in gh becomes git's GitHub credential helper. Returns whether gh is logged in."""
+    if not runner.have("gh") or not runner.run(["gh", "auth", "status"], timeout=20).ok:
+        return False
+    if runner.run(["gh", "auth", "setup-git"], timeout=20).ok:
+        out.detail("git uses your gh login for GitHub (gh auth setup-git; undo: git config --global --unset-all credential.https://github.com.helper)")
+    return True
+
+
+def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None = None,
+                    before_starter=None) -> tuple[str, bool]:
+    """Returns (message, ok). ok is False only when a clone was asked for and failed.
+    before_starter: called before a starter layer asks its questions (bootstrap settles the agents there)."""
     bk = bk if bk is not None else Backup(description="bootstrap")
     interactive = ui.is_interactive() if interactive is None else interactive
     root = paths.personal_root()
@@ -236,6 +242,8 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
         return f"personal layer: {root}", True
     url = ask("Personal layer: git URL to clone (empty = create a starter one): ").strip()
     if url:
+        prepend_tool_dirs()  # the clone runs before the prerequisites step: find tools installed earlier,
+        _gh_for_git()        # and let a logged-in gh answer for git (a private HTTPS repo)
         # no prompt: output is captured, so git's password prompt would be invisible and wait until the timeout
         res = runner.run(["git", "clone", "--", url, str(root)], timeout=300,
                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
@@ -245,6 +253,8 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
                   else "use an SSH URL, or install gh (bootstrap --install) and log in")
         return (f"clone failed: {redact(res.stderr.strip())}\n"
                 f"  {access}, then re-run bootstrap; continuing without a personal layer"), False
+    if before_starter is not None:
+        before_starter()
     root.mkdir(parents=True, exist_ok=True)
     (root / "settings.json").write_text("{}\n", encoding="utf-8")
     bk.record_created(root / "settings.json", "created personal settings.json")
@@ -260,6 +270,7 @@ def setup_plugins(say=None) -> list[str]:
     out = []
     desired = settings_merge.desired_settings()
     listed = runner.run(["claude", "plugin", "marketplace", "list"], timeout=60).stdout
+    markets = []
     for name, cfg in get_dict(desired, "extraKnownMarketplaces").items():
         if name in listed:
             continue
@@ -268,15 +279,20 @@ def setup_plugins(say=None) -> list[str]:
         if not isinstance(origin, str):
             out.append(f"marketplace {name}: skipped, no repo or url in its source (fix it in your personal settings.json)")
             continue
-        say(f"  marketplace {origin} (a git clone the first time; can take a few minutes)…")
+        markets.append((name, origin))
+    installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
+    plugins = [pid for pid, on in get_dict(desired, "enabledPlugins").items() if on and pid not in installed]
+    total, step = len(markets) + len(plugins), 0
+    for name, origin in markets:
+        step += 1
+        say(f"  adding marketplace {origin}, a git clone ({step} of {total})…")
         res = runner.run(["claude", "plugin", "marketplace", "add", origin], timeout=300)
         out.append(f"marketplace {name}: {'added' if res.ok else 'failed: ' + res.stderr.strip()}")
-    installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
-    for plugin_id, on in get_dict(desired, "enabledPlugins").items():
-        if on and plugin_id not in installed:
-            say(f"  plugin {plugin_id}…")
-            res = runner.run(["claude", "plugin", "install", plugin_id, "--scope", "user"], timeout=600)
-            out.append(f"plugin {plugin_id}: {'installed' if res.ok else 'failed: ' + res.stderr.strip()}")
+    for plugin_id in plugins:
+        step += 1
+        say(f"  installing plugin {plugin_id} ({step} of {total})…")
+        res = runner.run(["claude", "plugin", "install", plugin_id, "--scope", "user"], timeout=600)
+        out.append(f"plugin {plugin_id}: {'installed' if res.ok else 'failed: ' + res.stderr.strip()}")
     return out
 
 
@@ -509,7 +525,7 @@ def choose_agents(ask, interactive: bool, flag) -> dict:
     return _choose_agents(ask, interactive, flag)[0]
 
 
-def _choose_agents(ask, interactive: bool, flag) -> tuple[dict, bool]:
+def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -> tuple[dict, bool]:
     """(choice, store it): --agents first, then a decided personal layer, then the question (interactive), else
     Claude Code as before. Only an explicit choice is stored: writing the default into an existing git-backed
     personal layer would leave it dirty and pause the daily sync."""
@@ -519,7 +535,8 @@ def _choose_agents(ask, interactive: bool, flag) -> tuple[dict, bool]:
     stored = targets.from_file()
     if stored is not None:
         return stored, False
-    existing = paths.personal_root().exists()
+    if existing is None:
+        existing = paths.personal_root().exists()
     if not interactive or (existing and not runner.have("codex")):
         return {"claude": True, "codex": False}, False  # as before this change: no new question without Codex
     default = "3" if runner.have("codex") else "1"
@@ -544,6 +561,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
+    if agents is not None:
+        targets.parse_agents(agents)  # a typo in --agents stops here, before any question or clone (ValueError)
     print(INTRO)
     if not out.VERBOSE:
         print()
@@ -553,21 +572,18 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         out.status("WSL", f"WSL {version}")
         for line in wsl.report_lines(version, wsl.current_dir()):
             out.problem(line)
-    chosen, store = _choose_agents(ask, interactive and not yes, agents)
-    targets.OVERRIDE = chosen  # the right tools get installed before the personal layer exists to store the choice
-    _step("Prerequisites")
-    installed: list[str] = []
-    notes: list[str] = []
-    missing = check_prereqs(install, ask, installed=installed, notes=notes)
-    summary, level = _prereq_summary(missing, installed)
-    out.status("Prerequisites", summary, level)
-    for line in notes:
-        out.problem(line)
+    # the personal layer first: a layer that already chose (a clone, or this machine's) is never asked again;
+    # a starter asks before its own questions, which read only the chosen agents' files
     bk = Backup(description="bootstrap")
     _step("Personal layer")
     fresh = not paths.personal_root().exists()
-    message, personal_ok = ensure_personal(ask, bk, interactive)
-    # a starter layer was just created and its preference questions asked (a clone has .git)
+    decided: dict = {}
+
+    def decide() -> None:
+        decided["choice"] = _choose_agents(ask, interactive and not yes, agents, existing=not fresh)
+        targets.OVERRIDE = decided["choice"][0]  # the starter's questions and the installs follow the choice
+
+    message, personal_ok = ensure_personal(ask, bk, interactive, before_starter=decide)
     starter = fresh and personal_ok and paths.personal_root().exists() and not (paths.personal_root() / ".git").exists()
     where = _tilde(paths.personal_root())
     if personal_ok:
@@ -576,20 +592,24 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     else:
         out.status("Personal layer", "clone failed", "fail")
         out.problem(message)
-    if personal_ok:
-        stored = targets.from_file()
-        if stored is not None and agents is None and stored != chosen:  # a cloned layer chose: its choice wins
-            chosen = stored
-            targets.OVERRIDE = chosen
-            names = " and ".join(n for n, on in (("Claude Code", chosen["claude"]), ("Codex", chosen["codex"])) if on)
+    if "choice" not in decided:
+        cloned_choice = fresh and personal_ok and agents is None and targets.from_file() is not None
+        decide()
+        if cloned_choice:
+            names = " and ".join(n for n, on in (("Claude Code", decided["choice"][0]["claude"]),
+                                                 ("Codex", decided["choice"][0]["codex"])) if on)
             print(f"using your personal layer's agents: {names}")
-            more_notes: list[str] = []
-            check_prereqs(install, ask, installed=installed, notes=more_notes)  # install what the layer adds
-            for line in more_notes:
-                if line not in notes:  # the first run already showed the rest
-                    out.problem(line)
-        elif store:
-            targets.set_agents(chosen)
+    chosen, store = decided["choice"]
+    if personal_ok and store:
+        targets.set_agents(chosen)
+    _step("Prerequisites")
+    installed: list[str] = []
+    notes: list[str] = []
+    missing = check_prereqs(install, ask, installed=installed, notes=notes)
+    summary, level = _prereq_summary(missing, installed)
+    out.status("Prerequisites", summary, level)
+    for line in notes:
+        out.problem(line)
     claude_on = chosen["claude"]
     _step("Links")
     link_lines = (link.link_all(bk, retry_symlinks=True) if claude_on else []) + link.link_bin(bk)
@@ -622,7 +642,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         _report("Launcher", "linked", link_lines)
     if plugins and claude_on:
         _step("Marketplaces and plugins")
-        lines = setup_plugins(say=lambda line: print(line, flush=True))
+        lines = setup_plugins(say=out.progress)
+        out.end_progress()
         if any(line.endswith(": added") for line in lines):
             settings_merge.apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
         total = sum(1 for on in get_dict(settings_merge.desired_settings(), "enabledPlugins").values() if on)
@@ -634,7 +655,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if problem:
             out.status("Codex", problem, "warn")
         else:
-            lines = codex.apply_all(bk, say=lambda line: print(line, flush=True))
+            lines = codex.apply_all(bk, say=out.progress)
+            out.end_progress()
             failed = sum(1 for line in lines if PROBLEM.search(line))
             _report("Codex", "rules, plugins, MCP servers and skills set up" if not failed else f"{failed} problem(s) (below)", lines)
     adopt.LAST_BACKUP = None

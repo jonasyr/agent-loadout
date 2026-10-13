@@ -54,7 +54,7 @@ cd agent-loadout
 
 Keep the folder where it is: the installed links point into it.
 
-Bootstrap first asks which coding agents to set up (Claude Code, Codex or both), then for your personal layer, the folder for your own preferences and tools: paste the URL of your private repo for it, or press Enter for a starter you can [turn into one later](docs/how-to/personal-repo.md).
+Bootstrap first asks for your personal layer, the folder for your own preferences and tools: paste the URL of your private repo for it, or press Enter for a starter you can [turn into one later](docs/how-to/personal-repo.md). Then it asks which coding agents to set up (Claude Code, Codex or both), unless your personal layer already chose.
 
 <details>
 <summary>What the installer does</summary>
