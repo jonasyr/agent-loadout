@@ -104,7 +104,7 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
     if findings:
         lines.append("\nPLAINTEXT SECRETS (values hidden)")
         for f in findings:
-            how = "can move to secrets.env" if f.fixable else "report only: move it to secrets.env by hand"
+            how = "can move to secrets.env" if f.fixable else "report only: move it to secrets.env by hand" + _codex_hint(f)
             lines.append(f"  {f.server}.{f.field}.{f.key} ({f.location}) — {how}")
     return "\n".join(lines)
 
@@ -147,10 +147,14 @@ def calm_group(group: str, members: list[Verdict]) -> str:
     return "\n".join(lines)
 
 
+def _codex_hint(f) -> str:
+    return " (Codex: name it in env_vars)" if f.location == "~/.codex/config.toml" else ""
+
+
 def calm_secrets(findings: list) -> str:
     lines = [f"\n  {out.paint('Plaintext secrets (values hidden)', 'accent')}"]
     for f in findings:
-        how = "can move to secrets.env" if f.fixable else "move it to secrets.env by hand"
+        how = "can move to secrets.env" if f.fixable else "move it to secrets.env by hand" + _codex_hint(f)
         lines.append(f"    {out.sym('bullet')} {f.server} MCP: {f.key} in {f.location}  {out.sym('arrow')} {how}")
     return "\n".join(lines)
 
@@ -484,7 +488,9 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         interactive = ui.is_interactive()
     verdicts = inventory.classify(inventory.collect(with_versions=with_versions))
     from . import targets
-    findings = secrets.scan_all() if targets.claude_enabled() else []  # it scans Claude Code's files
+    # each agent's own files only while it is on; the personal layer's mcp.json belongs to neither
+    findings = (secrets.scan_all() if targets.claude_enabled() else secrets.scan_personal()) \
+        + (secrets.scan_codex() if targets.codex_enabled() else [])
     try:
         own_pairs = own.resolve(own.parse_spec(own_spec), verdicts) if own_spec is not None else None
     except ValueError as exc:

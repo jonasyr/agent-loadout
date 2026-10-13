@@ -323,6 +323,23 @@ def scan_all() -> list[Finding]:
     return found
 
 
+def scan_personal() -> list[Finding]:
+    """The personal layer's mcp.json: it belongs to no agent, so a Codex-only machine scans it too."""
+    from . import paths
+    from .jsonio import load_json
+    personal = paths.personal_root() / "mcp.json"
+    return scan(load_json(personal), str(personal), fixable=False)
+
+
+def scan_codex() -> list[Finding]:
+    """Plaintext secrets in the user's own [mcp_servers.*] tables of ~/.codex/config.toml. Report only: those
+    sections are not loadout's, so the fix is by hand (the value into secrets.env, its name into env_vars)."""
+    from . import codex
+    servers = {name: {"env": t.get("env"), "headers": t.get("http_headers"), "args": t.get("args"), "url": t.get("url")}
+               for name, t in codex.user_servers().items()}
+    return scan({"mcpServers": servers}, "~/.codex/config.toml", fixable=False)
+
+
 # secrets.env format: NAME='value' with POSIX single-quote escaping, so `. secrets.env` never
 # executes or mangles a value. The PowerShell loader (bootstrap.PS_BLOCK) parses the same format.
 _ENV_LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
