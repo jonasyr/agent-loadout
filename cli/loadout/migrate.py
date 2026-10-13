@@ -14,6 +14,7 @@ can stop them. So nothing is deleted in the run that copies it:
 from __future__ import annotations
 
 import errno
+import filecmp
 import os
 import shutil
 import stat
@@ -21,7 +22,7 @@ import time
 from pathlib import Path
 
 from . import paths
-from .jsonio import load_json, save_json
+from .jsonio import InvalidJSON, load_json, save_json
 
 LOCK = "migrate.lock"
 RECORD = "migrated.json"
@@ -34,6 +35,7 @@ OLD_LOCK_FRESH = 3600.0  # an old version's maintenance lock younger than this: 
 SESSION_FILES = {"advisor-pending.json", "advisor-done.json", "reload-notified.json"}
 SESSION_IDLE = 86400.0  # an old session file untouched this long belongs to no running session any more
 TRANSIENT = {"maintenance.lock", LOCK}  # locks are never copied: they belong to the process holding them
+_held: Path | None = None  # this run's lock, renewed while copying (_beat)
 
 
 def _ours(entry: Path) -> bool:
@@ -111,6 +113,21 @@ def _publish(src: Path, dst: Path) -> bool:
         return False
 
 
+def _beat(lock: Path | None = None) -> None:
+    """Renew the lock while copying, so a long copy never looks like a crashed run (STALE)."""
+    lock = lock or _held
+    if lock is not None:
+        try:
+            os.utime(lock)
+        except OSError:
+            pass
+
+
+def _copy_file(src, dst, *, follow_symlinks: bool = True):
+    _beat()
+    return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+
+
 def _stage(old: Path, new: Path) -> tuple[Path, list] | None:
     """A complete copy of old next to new (new.partial). Returns (partial, old's signature as copied), or None
     when old changed while it was copied (the next run tries again)."""
@@ -119,9 +136,9 @@ def _stage(old: Path, new: Path) -> tuple[Path, list] | None:
     if not _gone(partial):
         _remove(partial)  # an interrupted copy: start again
     if old.is_dir() and not old.is_symlink():
-        shutil.copytree(old, partial, symlinks=True)
+        shutil.copytree(old, partial, symlinks=True, copy_function=_copy_file)
     else:
-        shutil.copy2(old, partial, follow_symlinks=False)
+        _copy_file(old, partial, follow_symlinks=False)
     if _sig(old) != before:  # an old process wrote it meanwhile
         _remove(partial)
         return None
@@ -189,15 +206,27 @@ def _readopt(old: Path, new: Path, new_sig: list) -> tuple[list, list] | None:
     return before, _sig(new)
 
 
-def _lock(state: Path, wait: float) -> Path | None:
-    """The migration lock; waits up to `wait` seconds for another run. A lock older than STALE is from a crashed
-    run: it is renamed aside first, so only one run takes it over."""
+def _release(lock: Path, token: str) -> None:
+    """Remove the lock only if it is still this run's (a run that took over a stale lock wrote its own token)."""
+    try:
+        if lock.read_text(encoding="utf-8") == token:
+            lock.unlink()
+    except OSError:
+        pass
+
+
+def _lock(state: Path, wait: float) -> tuple[Path, str] | None:
+    """The migration lock, holding this run's token; waits up to `wait` seconds for another run. A lock not
+    renewed for STALE is from a crashed run: it is renamed aside first, so only one run takes it over."""
     lock = state / LOCK
+    token = f"{os.getpid()}-{time.time_ns()}"
     deadline = time.time() + wait
     while True:
         try:
-            os.close(os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
-            return lock
+            fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(token)
+            return lock, token
         except FileExistsError:
             try:
                 if time.time() - lock.stat().st_mtime >= STALE:
@@ -232,10 +261,42 @@ def _is_dir(path: Path) -> bool:
         return False
 
 
+def _valid(entry) -> bool:
+    if not (isinstance(entry, dict) and isinstance(entry.get("sig"), list)
+            and isinstance(entry.get("at"), (int, float)) and not isinstance(entry.get("at"), bool)):
+        return False
+    if "new" in entry:
+        return isinstance(entry["new"], str) and isinstance(entry.get("new_sig"), list)
+    return bool(entry.get("conflict")) or bool(entry.get("session"))
+
+
 def _record() -> dict:
-    data = load_json(paths.state_dir() / RECORD)
+    """The migration record. Anything that cannot be trusted (a damaged file or entry) is left out, so the copy
+    step looks at that old entry again: it fails closed."""
+    try:
+        data = load_json(paths.state_dir() / RECORD)
+    except (InvalidJSON, OSError, UnicodeDecodeError):
+        data = {}
     entries = data.get("entries") if isinstance(data, dict) else None
-    return {"entries": entries if isinstance(entries, dict) else {}}
+    entries = entries if isinstance(entries, dict) else {}
+    return {"entries": {k: e for k, e in entries.items() if isinstance(k, str) and _valid(e)}}
+
+
+def _identical(old: Path, new: Path) -> bool:
+    """Same content (a copy made earlier whose record was lost)."""
+    try:
+        if old.is_dir() and not old.is_symlink():
+            if not (new.is_dir() and not new.is_symlink()):
+                return False
+            a, b = _sig(old)[1], _sig(new)[1]
+            if [x[:2] for x in a] != [x[:2] for x in b]:
+                return False
+            return all(filecmp.cmp(old / name, new / name, shallow=False) for name, _, _ in a)
+        if old.is_symlink() or new.is_symlink():
+            return old.is_symlink() and new.is_symlink() and os.readlink(old) == os.readlink(new)
+        return new.is_file() and filecmp.cmp(old, new, shallow=False)
+    except OSError:
+        return False
 
 
 def _old_process_busy() -> bool:
@@ -280,14 +341,19 @@ def migrate_state(wait: float | None = None) -> list[str]:
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.name != "nt":
         state.chmod(0o700)
-    lock = _lock(state, WAIT if wait is None else wait)
-    if lock is None:
+    held = _lock(state, WAIT if wait is None else wait)
+    if held is None:
         return [f"loadout: another loadout run is moving its state out of ~/.claude right now ({state / LOCK}); "
                 "run this again in a moment"]
+    global _held
+    lock, token = held
+    _held = lock
     lines, copied, conflicts = [], 0, []
-    record = _record()
+    record = {"entries": {}}
     entries = record["entries"]
     try:
+        record = _record()
+        entries = record["entries"]
         now = time.time()
         for old_root, new_root in roots:
             new_root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -298,7 +364,11 @@ def migrate_state(wait: float | None = None) -> list[str]:
                 new = new_root / old.name
                 session = old.name in SESSION_FILES
                 if not _gone(new):  # the new place already has one of that name
-                    entries[key] = {"sig": _sig(old), "session": session, "at": now, "conflict": not session}
+                    if _identical(old, new):  # copied earlier (its record was lost): a copy, not a conflict
+                        entries[key] = {"sig": _sig(old), "new": str(new), "new_sig": _sig(new),
+                                        "session": session, "at": now}
+                    else:
+                        entries[key] = {"sig": _sig(old), "session": session, "at": now, "conflict": not session}
                     continue
                 sig = _copy(old, new)
                 if sig is None:
@@ -320,8 +390,11 @@ def migrate_state(wait: float | None = None) -> list[str]:
                 entry["named"] = True
         try:
             save_json(state / RECORD, record, mode=0o600)
+        except OSError:
+            pass
         finally:
-            lock.unlink(missing_ok=True)
+            _held = None
+            _release(lock, token)
     if copied:
         lines.insert(0, f"loadout: copied its state and backups from ~/.claude to {state}; "
                         "the old copies there go by themselves once nothing uses them")

@@ -126,6 +126,7 @@ def test_an_entry_changing_while_it_is_copied_waits_for_the_next_run(fake_home, 
 
     def copy_while_old_adopt_writes(src, dst, *a, **kw):
         out = real(src, dst, *a, **kw)
+        src = migrate.Path(src)
         if src.name == "loadout-1" and not (src / "files" / "late").exists():
             (src / "files" / "late").write_text("late")
         return out
@@ -326,3 +327,69 @@ def test_the_state_folder_is_private_from_the_start(fake_home):
     from loadout.__main__ import main
     assert main(["kit-path"]) == 0
     assert paths.state_dir().stat().st_mode & 0o777 == 0o700
+
+
+def test_a_malformed_record_entry_is_rechecked_not_trusted(fake_home):
+    _legacy(fake_home)
+    migrate.migrate_state()
+    record = paths.state_dir() / migrate.RECORD
+    data = json.loads(record.read_text())
+    key = str(paths.legacy_state_dir() / "managed-settings.json")
+    data["entries"][key] = {}  # damaged
+    record.write_text(json.dumps(data))
+    assert migrate.pending(), "an entry that cannot be trusted counts as not copied"
+    assert migrate.migrate_state() == []  # the copy is identical: re-recorded quietly, no conflict
+    assert not migrate.pending() and migrate.leftovers() == []
+    assert json.loads(record.read_text())["entries"][key].get("sig")
+
+
+def test_a_corrupt_record_is_rebuilt_and_the_lock_released(fake_home):
+    _legacy(fake_home)
+    migrate.migrate_state()
+    (paths.state_dir() / migrate.RECORD).write_text("{broken")
+    assert migrate.pending()
+    migrate.migrate_state()
+    assert not (paths.state_dir() / migrate.LOCK).exists()
+    assert not migrate.pending() and migrate.leftovers() == []
+
+
+def test_a_differing_copy_found_without_a_record_is_kept_and_named(fake_home):
+    old = _legacy(fake_home)
+    paths.state_dir().mkdir(parents=True)
+    (paths.state_dir() / "codex-config.json").write_text('{"other": true}')
+    lines = migrate.migrate_state()
+    assert any("codex-config.json" in line for line in lines)
+    assert migrate.leftovers() == [old / "codex-config.json"]
+
+
+def test_the_lock_is_renewed_while_copying_and_only_its_owner_removes_it(fake_home, monkeypatch):
+    _legacy(fake_home)
+    lock = paths.state_dir() / migrate.LOCK
+    seen = []
+    real = migrate.shutil.copy2
+
+    def copy_and_look(src, dst, *a, **kw):
+        seen.append(lock.read_text())
+        os.utime(lock, (0, 0))  # pretend the copy took long
+        out = real(src, dst, *a, **kw)
+        return out
+    monkeypatch.setattr(migrate.shutil, "copy2", copy_and_look)
+    migrate.migrate_state()
+    assert seen and all(seen), "the lock carries its owner's token"
+    assert not lock.exists()
+    # another run's lock (another token) is never removed by this run
+    paths.state_dir().mkdir(parents=True, exist_ok=True)
+    assert migrate._release(lock, "mine") is None
+    lock.write_text("theirs")
+    migrate._release(lock, "mine")
+    assert lock.read_text() == "theirs"
+
+
+def test_renewing_keeps_a_long_copy_s_lock_fresh(fake_home):
+    paths.state_dir().mkdir(parents=True)
+    lock = paths.state_dir() / migrate.LOCK
+    lock.write_text("t")
+    os.utime(lock, (0, 0))
+    migrate._beat(lock)
+    import time as _time
+    assert _time.time() - lock.stat().st_mtime < migrate.STALE
