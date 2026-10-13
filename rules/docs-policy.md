@@ -9,4 +9,4 @@ Every fact has exactly one home. Other layers link to it instead of copying it.
 | `.serena/memories/` | Agent working notes: per topic a 1–3 line summary plus a link into `docs/`; gotchas; debugging lessons; "to do X, touch these files"; current status | Never the only home of a fact a human would need |
 | `README.md` | What the project is, how to install and run it | Human entry point; links into `docs/` |
 
-When you change behaviour, update the layer that owns the fact (usually `docs/`), then fix links. At the end of a feature, run `/loadout:docs-sync`. For a full verification and cleanup, run `/loadout:docs-audit`.
+When you change behaviour, update the layer that owns the fact (usually `docs/`), then fix links. For a full verification and cleanup, run the `loadout:docs-audit` skill.

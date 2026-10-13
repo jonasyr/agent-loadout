@@ -44,12 +44,12 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
 - `preferences.py`, `configure.py` structured preferences and the wizard
 - `own.py` your own tools; `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks
-- `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_project.py` the Codex side of `init` and `profile`
+- `targets.py` which agents are on (`targets.json` in the personal layer); `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_project.py` the Codex side of `init` and `profile`
 - `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker
 
 Other kit parts:
 
-- `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`, `.mcp.json`)
+- `plugins/loadout/`: the plugin (`.claude-plugin/` and `.codex-plugin/` manifests, `skills/`, `hooks/` with `hooks.json` for Claude Code and `codex.json` for Codex, `evals/`, `evals-browser/`, `.mcp.json`)
 - `.claude/skills/diagrams`: repo-local skill for editing the docs diagrams (linked for Codex in `.agents/skills`)
 - `.github/`: CI workflows, issue forms and the PR template (see CONTRIBUTING.md)
 - `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)

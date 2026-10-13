@@ -52,4 +52,5 @@ def test_commands_the_agent_runs_after_a_yes_need_no_terminal():
     assert "`loadout adopt --apply --groups" in SKILL
     assert "`loadout init <names> --yes`" in SKILL  # otherwise no git init and no profile
     assert "also moves the plaintext secrets" not in SKILL  # the workaround is gone
-    assert ",secrets`" in SKILL and "include `update`, `install` or `secrets`, add `--yes`" in SKILL
+    assert ",secrets`" in SKILL and "include `update` or `install`, add `--yes`" in SKILL
+    assert "naming `secrets` is its consent" in SKILL  # adopt.py: a named group is the consent, no --yes
