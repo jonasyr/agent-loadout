@@ -71,6 +71,11 @@ def session_start(now: float) -> str | None:
             _spawn_background()
         except Exception:  # the notice above was already taken: still show it
             pass
+    try:  # a hand edit of a rule or me.md reaches Codex at the next session (Claude Code reads the files live)
+        from . import codex
+        codex.refresh_instructions()
+    except Exception:  # never break a session start
+        pass
     return out
 
 

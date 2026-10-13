@@ -2,7 +2,7 @@
 
 Use this page if you work on Windows. WSL 2 is the recommended setup for loadout. Native Windows is experimental and not recommended; its steps are in [Getting started](../tutorials/getting-started.md#experimental-native-windows).
 
-loadout detects WSL. `loadout check` prints `WSL 1` or `WSL 2` and warns about the problems below that it can see: WSL 1, the kit, the personal layer or the current folder under `/mnt/<drive>/`, `claude`, `node`, `npm`, `uv` or `git` resolving to a Windows program, and (WSL 2) missing bubblewrap or socat. Bootstrap prints the same warnings at its start and continues. The steps below are the fixes.
+loadout detects WSL. `loadout check` prints `WSL 1` or `WSL 2` and warns about the problems below that it can see: WSL 1, the kit, the personal layer or the current folder under `/mnt/<drive>/`, `claude`, `node`, `npm`, `uv` or `git` (and `codex`, when Codex is on) resolving to a Windows program, and (WSL 2) missing bubblewrap or socat. Bootstrap prints the same warnings at its start and continues. The steps below are the fixes.
 
 Anthropic supports both native Windows and WSL 2 for Claude Code and does not name a preferred one ([setup](https://code.claude.com/docs/en/setup)). loadout recommends WSL 2 for these reasons:
 

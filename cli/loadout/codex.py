@@ -68,32 +68,110 @@ def render_instructions() -> str:
 
 
 def splice(text: str, block: str) -> str | None:
-    """text with the block replaced or appended; None when the markers are unbalanced or duplicated."""
+    """text with the block replaced or appended; None when the markers are unbalanced or duplicated.
+    The block takes the file's line endings (Windows CRLF stays CRLF), so the user's text stays byte for byte."""
+    nl = "\r\n" if "\r\n" in text else "\n"
+    if nl != "\n":
+        block = block.replace("\r\n", "\n").replace("\n", nl)
     starts, ends = text.count(START), text.count(END)
     if starts == ends == 0:
-        return block if not text.strip() else text.rstrip("\n") + "\n\n" + block
+        return block if not text.strip() else text.rstrip("\r\n") + nl + nl + block
     if starts == ends == 1 and text.index(START) < text.index(END):
         before, rest = text.split(START, 1)
         after = rest.split(END, 1)[1]
-        return before + block.rstrip("\n") + after
+        return before + block.rstrip("\r\n") + after
     return None
+
+
+def _read_exact(path: Path) -> str:
+    """The file's text with its own line endings (read_text would turn CRLF into LF)."""
+    return path.read_bytes().decode("utf-8")
+
+
+def _block_hash(text: str) -> str | None:
+    """sha256 of loadout's block in text (line endings as LF), or None without one balanced block."""
+    if not (text.count(START) == text.count(END) == 1 and text.index(START) < text.index(END)):
+        return None
+    import hashlib
+    block = text[text.index(START):text.index(END) + len(END)].replace("\r\n", "\n")
+    return hashlib.sha256(block.encode("utf-8")).hexdigest()
+
+
+def _remember_block(text: str) -> None:
+    record = load_json(record_path())
+    record = {k: v for k, v in record.items() if k != "block_notice"}
+    record_path().parent.mkdir(parents=True, exist_ok=True)
+    save_json(record_path(), {**record, "block": _block_hash(text)})
 
 
 def apply_instructions(bk) -> str:
     path = paths.codex_home() / "AGENTS.md"
-    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    old = _read_exact(path) if path.exists() else ""
     new = splice(old, render_instructions())
     if new is None:
         return f"skipped {path}: its loadout markers are unbalanced or duplicated; fix them by hand"
     if new == old:
+        if load_json(record_path()).get("block") != _block_hash(old):  # a block from before the record: now known
+            _remember_block(old)
         return "instructions up to date"
     if path.exists() and START not in old:
         bk.save_copy(path, "Codex AGENTS.md before loadout added its block")
-    elif not path.exists():
+    elif path.exists():
+        bk.save_copy(path, "Codex AGENTS.md before loadout rewrote its block")
+    else:
         bk.record_created(path, "created Codex AGENTS.md")
     from .jsonio import write_atomic
     write_atomic(path, new)
+    _remember_block(new)
     return f"instructions written to {_tilde(path)}"
+
+
+def refresh_instructions() -> str | None:
+    """At a session start: rewrite loadout's block in ~/.codex/AGENTS.md when a rule or me.md changed by hand.
+    Only an existing, balanced block, only with Codex on; never creates the file or a block (bootstrap does)."""
+    from . import targets
+    if not targets.codex_enabled():
+        return None
+    import time
+    lock = paths.state_dir() / LOCK
+    try:  # another loadout run is setting Codex up right now: it writes the block itself
+        if time.time() - lock.stat().st_mtime < STALE_LOCK:
+            return None
+    except OSError:
+        pass
+    path = paths.codex_home() / "AGENTS.md"
+    try:
+        old = _read_exact(path)
+    except (OSError, UnicodeDecodeError):
+        return None
+    if START not in old:
+        return None
+    new = splice(old, render_instructions())
+    if new is None:
+        return None
+    record = load_json(record_path())
+    current = _block_hash(old)
+    if new == old:
+        if record.get("block") != current:  # a block from before the record, still current: now known as loadout's
+            _remember_block(old)
+        return None
+    if not record.get("block"):  # not known to be as loadout wrote it: left until bootstrap or the sync rewrite it
+        return None
+    if record["block"] != current:  # you edited inside the block: it stays as you left it
+        if record.get("block_notice") != current:
+            from .maintenance import notify
+            notify(f"{_tilde(path)}: you edited inside loadout's block, so it is no longer refreshed at a session "
+                   "start. Move your text outside the markers, then run loadout bootstrap (it rewrites the block "
+                   "and keeps the old file in a backup).")
+            save_json(record_path(), {**record, "block_notice": current})
+        return None
+    from .backup import Backup
+    Backup(description="session start: Codex AGENTS.md block refreshed").save_copy(
+        path, "Codex AGENTS.md before loadout refreshed its block")
+    from .jsonio import write_atomic
+    write_atomic(path, new)
+    _remember_block(new)
+    return f"refreshed loadout's block in {_tilde(path)}"
 
 
 SERENA = {"command": "serena", "args": ["start-mcp-server", "--context=codex", "--project-from-cwd"]}
@@ -261,7 +339,28 @@ def add_project_plugin(pid: str) -> None:
         save_json(record_path(), data)
 
 
-def desired_keys() -> list[tuple[tuple, str, object, bool]]:
+def _plugin_switches() -> list[tuple]:
+    """`enabled` keys for plugins loadout manages and Codex has installed: off when switched off for Claude Code
+    (over a line loadout wrote or its own `codex plugin add` caused; any other line is yours); back to true when
+    switched on again and loadout owns the line. Never guesses: without the installed list, no key."""
+    from .settings_merge import desired_settings
+    enabled = get_dict(desired_settings(), "enabledPlugins")
+    projects = set(project_plugins())
+    owned = read_record()["keys"]
+    on = [pid for pid, v in enabled.items() if v is True and isinstance(pid, str) and pid not in projects
+          and _dotted(("plugins", pid), "enabled") in owned]
+    off = [pid for pid, v in enabled.items() if v is False and isinstance(pid, str) and "@" in pid
+           and pid not in projects]
+    if not (on or off):
+        return []
+    listed = installed_plugins()
+    if listed is None:
+        return []
+    return ([(("plugins", pid), "enabled", True, False) for pid in on if pid in listed]
+            + [(("plugins", pid), "enabled", False, False) for pid in off if pid in listed])
+
+
+def desired_keys() -> list[tuple[tuple, str, object, object]]:
     """(table path, key, value, force); path () is the top level. force: loadout's value wins even over a changed
     line, used for project-only plugins because `codex plugin add` switches them back on."""
     from . import preferences
@@ -276,7 +375,7 @@ def desired_keys() -> list[tuple[tuple, str, object, bool]]:
     if plugins:
         on = get_dict(desired_settings(), "enabledPlugins")
         keys += [(("plugins", pid), "enabled", on.get(pid) is True, True) for pid in plugins]
-    return keys
+    return keys + _plugin_switches()
 
 
 def _dotted(path: tuple, key: str) -> str:
@@ -352,6 +451,31 @@ def _sections(lines: list[str], tl) -> list[list]:
             out[-1][1].append(line)
             out[-1][2].append(top)
     return out
+
+
+def _enabled_line(pid: str) -> str | None:
+    """The `enabled` line of [plugins."pid"] in ~/.codex/config.toml as written, or None."""
+    path = paths.codex_home() / "config.toml"
+    try:
+        text = _read_exact(path) if path.exists() else ""
+    except (OSError, UnicodeDecodeError):
+        return None
+    sec = next((s for s in _sections(text.splitlines(), _tomllib()) if s[0] == ("plugins", pid)), None)
+    if sec is None:
+        return None
+    return next((l.strip() for l, top in zip(sec[1][1:], sec[2][1:]) if top and re.match(r"^\s*enabled\s*=", l)), None)
+
+
+def _record_install_line(pid: str, before: str | None) -> None:
+    """After loadout's own `codex plugin add`: the `enabled = true` it caused is loadout's to switch later.
+    Only a line that appeared, or replaced loadout's own line; a line you wrote stays yours."""
+    after = _enabled_line(pid)
+    record = read_record()
+    dotted = _dotted(("plugins", pid), "enabled")
+    if after != "enabled = true" or (before is not None and before != record["keys"].get(dotted)):
+        return
+    lines = get_dict(record, "install_lines")
+    save_json(record_path(), {**record, "install_lines": {**lines, dotted: after}})
 
 
 def _text(section_lines: list[str]) -> str:
@@ -434,14 +558,26 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         owned_tables[name] = text
 
     # keys: one line each, in their table, only on lines that start outside strings and arrays
+    # force: True (loadout's value wins) or False (a changed line is yours). A plugin's `enabled = true` that
+    # loadout's own `codex plugin add` wrote (install_lines) counts as loadout's; any other line is yours
+    switched = False  # a plugin switch changes: its own backup copy, so restore of this run undoes it
+    install_lines = {k: v for k, v in get_dict(record, "install_lines").items() if isinstance(v, str)}
+    if install_lines:  # seen uninstalled: a later line is not from loadout's install any more
+        listed = installed_plugins()
+        if listed is not None:
+            present = {_dotted(("plugins", pid), "enabled") for pid in listed}
+            install_lines = {k: v for k, v in install_lines.items() if k in present}
     for table, key, value, force in desired_keys():
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
         target = sections[0] if not table else find(table)
+        plugin = bool(table) and table[0] == "plugins"
         if target is None:
             header = "[" + ".".join(toml_key(p) for p in table) + "]"
             sections.append([table, [header, line], []])
             owned_keys[dotted] = line
+            install_lines.pop(dotted, None)
+            switched = switched or plugin
             continue
         flags = [True] + target[2] if target[0] is not None else target[2]
         found = next((i for i, l in enumerate(target[1])
@@ -453,19 +589,28 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             target[1].insert(insert, line)
             target[2].insert(insert - (1 if target[0] is not None else 0), True)
             owned_keys[dotted] = line
+            install_lines.pop(dotted, None)
+            switched = switched or plugin
         elif target[1][found].strip() == line:
             pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
-        elif force or owned_keys.get(dotted) == target[1][found].strip():
+        elif force is True or target[1][found].strip() in (owned_keys.get(dotted), install_lines.get(dotted)):
             target[1][found] = line
             owned_keys[dotted] = line
+            install_lines.pop(dotted, None)
+            switched = switched or plugin
         else:
             lines.append(f"{dotted}: left as is in config.toml (your value)")
             owned_keys.pop(dotted, None)
+            install_lines.pop(dotted, None)
 
     parts = ["\n".join(sections[0][1]).strip("\n")] if any(l.strip() for l in sections[0][1]) else []
     parts += ["\n".join(s[1]).strip("\n") for s in sections[1:]]
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
     new_record = {**record, "tables": owned_tables, "keys": owned_keys}  # keeps project_plugins
+    if install_lines:
+        new_record["install_lines"] = install_lines
+    else:
+        new_record.pop("install_lines", None)
     if new == old or (not old.strip() and not new.strip()):
         if new_record != {**record, "tables": record.get("tables", {}), "keys": record.get("keys", {})} and not dry_run:
             save_json(record_path(), new_record)
@@ -481,6 +626,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         return lines + ["config.toml: changes pending"]
     if path.exists() and not (record.get("tables") or record.get("keys")):  # project_plugins alone wrote nothing
         bk.save_copy(path, "Codex config.toml before loadout's first change")
+    elif path.exists() and switched:
+        bk.save_copy(path, "Codex config.toml before switching plugins on or off")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")
     from .jsonio import write_atomic
@@ -548,9 +695,10 @@ def installed_plugins() -> set[str] | None:
     return {p["pluginId"] for p in get_list(data, "installed") if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
 
 
-def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None
-                    ) -> tuple[list[str], set[str]]:
-    """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards."""
+def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
+                    frozen: frozenset = frozenset()) -> tuple[list[str], set[str]]:
+    """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards.
+    frozen: marketplaces a refresh leaves as they are (`autoUpdate: false`); missing plugins are still installed."""
     lines, installed = [], set(listed or ())
     have = {pid.split("@")[0] for pid in installed}
     total = len(routes) + sum(1 for names in routes.values() for name in names if refresh or name not in have)
@@ -566,18 +714,20 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
         market = info["marketplaceName"]
         if not info.get("alreadyAdded") and listed is not None:
             bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
-        elif refresh:
+        elif refresh and market not in frozen:
             runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=900)
         for name in plugins:
             pid = f"{name}@{market}"
-            if pid in installed and not refresh:
+            if pid in installed and (not refresh or market in frozen):
                 continue
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
+            before = _enabled_line(pid)
             res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
                 continue
+            _record_install_line(pid, before)
             if pid not in installed and listed is not None:
                 bk.record_command(f"codex plugin {pid}", ["codex", "plugin", "remove", pid])
                 lines.append(f"plugin {pid}: installed")
@@ -585,13 +735,18 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
     return lines, installed
 
 
-def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
-    """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs)."""
+def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False) -> list[str]:
+    """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs).
+    auto: an automatic refresh (the daily sync): marketplaces set to `autoUpdate: false` stay as they are, as in
+    Claude Code; an explicit `loadout update` passes False and updates every marketplace."""
     say = say or (lambda line: None)
     from .settings_merge import desired_settings
-    routes, missing = plugin_routes(desired_settings())
+    desired = desired_settings()
+    routes, missing = plugin_routes(desired)
+    frozen = frozenset(name for name, cfg in get_dict(desired, "extraKnownMarketplaces").items()
+                       if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False)
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
-    return lines + _install_routes(routes, bk, refresh, say, installed_plugins())[0]
+    return lines + _install_routes(routes, bk, refresh, say, installed_plugins(), frozen)[0]
 
 
 def skill_links() -> list[tuple[Path, Path]]:
@@ -629,8 +784,9 @@ CONFIG_LOCATION = "~/.codex/config.toml"
 _CODEX_KEYS = {"command", "args", "env", "env_vars", "url", "bearer_token_env_var", "http_headers", "env_http_headers"}
 
 
-def user_servers() -> dict[str, dict]:
-    """The user's [mcp_servers.*] tables in ~/.codex/config.toml, without the ones loadout wrote."""
+def user_servers(edited: bool = False) -> dict[str, dict]:
+    """The user's [mcp_servers.*] tables in ~/.codex/config.toml, without the ones loadout wrote.
+    edited: also the tables of loadout's that you changed since (the secret scan looks at what you added)."""
     tl = _tomllib()
     path = paths.codex_home() / "config.toml"
     if not path.exists():
@@ -641,8 +797,15 @@ def user_servers() -> dict[str, dict]:
         return {}
     if not isinstance(servers, dict):
         return {}
-    owned = set(read_record()["tables"])
-    return {n: t for n, t in servers.items() if isinstance(t, dict) and n not in owned}
+    owned = read_record()["tables"]
+
+    def as_written(name, table):
+        try:
+            return tl.loads(owned[name]).get("mcp_servers", {}).get(name) == table
+        except Exception:
+            return False
+    return {n: t for n, t in servers.items()
+            if isinstance(t, dict) and (n not in owned or (edited and not as_written(n, t)))}
 
 
 def _strs(value, kind) -> bool:
@@ -770,7 +933,7 @@ def apply_all(bk, refresh: bool = False, say=None) -> list[str]:
     if lock is None:
         return ["skipped: another loadout run is setting up Codex right now; run this again when it has finished"]
     try:
-        return [apply_instructions(bk), *apply_config(bk), *apply_skills(bk), *apply_plugins(bk, refresh=refresh, say=say)]
+        return [apply_instructions(bk), *apply_config(bk), *apply_skills(bk), *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
     finally:
         try:
             lock.unlink()

@@ -1,0 +1,179 @@
+"""A hand edit of a rule or me.md reaches Codex's block at the next session start."""
+import json
+
+import pytest
+
+from loadout import codex, maintenance, paths
+
+
+@pytest.fixture(autouse=True)
+def _no_background_run(monkeypatch):
+    """session_start would start a real detached `loadout maintenance` (git pull, update check)."""
+    spawned = []
+    monkeypatch.setattr(maintenance, "_spawn_background", lambda: spawned.append(1))
+    return spawned
+
+
+def _codex_on():
+    paths.personal_root().mkdir(parents=True, exist_ok=True)
+    (paths.personal_root() / "targets.json").write_text(json.dumps({"claude": True, "codex": True}))
+
+
+def _agents():
+    return paths.codex_home() / "AGENTS.md"
+
+
+def _seed(text_before="my own notes\n", text_after="\nmore of mine\n"):
+    _agents().parent.mkdir(parents=True, exist_ok=True)
+    _agents().write_text(text_before + codex.START + "\nold block\n" + codex.END + text_after, encoding="utf-8")
+    codex._remember_block(_agents().read_text(encoding="utf-8"))  # the block loadout wrote last
+
+
+def test_a_stale_block_is_rewritten_and_your_text_kept(fake_home, monkeypatch):
+    _codex_on()
+    _seed()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    maintenance.session_start(0)
+    text = _agents().read_text(encoding="utf-8")
+    assert "new rules" in text and "old block" not in text
+    assert text.startswith("my own notes\n") and text.endswith("\nmore of mine\n")
+
+
+def test_nothing_happens_with_codex_off_without_a_block_or_with_broken_markers(fake_home, monkeypatch):
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew\n{codex.END}\n")
+    _seed()
+    assert codex.refresh_instructions() is None  # Codex off (no targets.json)
+    _codex_on()
+    _agents().write_text("only mine\n", encoding="utf-8")
+    assert codex.refresh_instructions() is None and _agents().read_text() == "only mine\n"
+    _agents().write_text(codex.START + "\nx\n" + codex.START + "\n", encoding="utf-8")
+    before = _agents().read_text()
+    assert codex.refresh_instructions() is None and _agents().read_text() == before
+    _agents().unlink()
+    assert codex.refresh_instructions() is None and not _agents().exists()
+
+
+def test_a_real_rule_edit_reaches_the_block(fake_home):
+    _codex_on()
+    rules = paths.personal_root() / "rules"
+    rules.mkdir(parents=True)
+    (rules / "me.md").write_text("I like tabs.\n", encoding="utf-8")
+    _seed()
+    codex.refresh_instructions()
+    assert "I like tabs." in _agents().read_text(encoding="utf-8")
+    (rules / "me.md").write_text("I like spaces.\n", encoding="utf-8")  # a hand edit
+    maintenance.session_start(0)
+    text = _agents().read_text(encoding="utf-8")
+    assert "I like spaces." in text and "I like tabs." not in text
+
+
+def test_windows_line_endings_stay_byte_for_byte(fake_home, monkeypatch):
+    _codex_on()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    _agents().parent.mkdir(parents=True, exist_ok=True)
+    mine_before, mine_after = b"my own notes\r\nline two\r\n", b"\r\nmore of mine\r\n"
+    _agents().write_bytes(mine_before + codex.START.encode() + b"\r\nold\r\n" + codex.END.encode() + mine_after)
+    codex._remember_block(_agents().read_bytes().decode())
+    codex.refresh_instructions()
+    data = _agents().read_bytes()
+    assert data.startswith(mine_before) and data.endswith(mine_after)
+    assert b"new rules" in data and b"\n" not in data.replace(b"\r\n", b"")
+
+
+def test_apply_instructions_keeps_windows_line_endings_too(fake_home, monkeypatch):
+    from loadout import backup
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    _agents().parent.mkdir(parents=True, exist_ok=True)
+    _agents().write_bytes(b"mine\r\nmore\r\n")  # no block yet: it is appended
+    codex.apply_instructions(backup.Backup(description="t"))
+    data = _agents().read_bytes()
+    assert data.startswith(b"mine\r\nmore\r\n") and b"\n" not in data.replace(b"\r\n", b"")
+
+
+def test_the_refresh_is_skipped_while_another_run_sets_up_codex(fake_home, monkeypatch):
+    _codex_on()
+    _seed()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    lock = paths.state_dir() / codex.LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("")
+    assert codex.refresh_instructions() is None and "old block" in _agents().read_text()
+
+
+def test_the_automatic_refresh_is_in_a_backup(fake_home, monkeypatch):
+    from loadout import backup
+    _codex_on()
+    _seed()
+    before = _agents().read_bytes()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    codex.refresh_instructions()
+    [root] = [d for d in paths.backups_root().iterdir() if (d / "manifest.json").is_file()]
+    _, ok, _ = backup.restore(root)
+    assert ok and _agents().read_bytes() == before
+
+
+def test_an_explicit_rewrite_of_the_block_is_in_a_backup_too(fake_home, monkeypatch):
+    from loadout import backup
+    _seed()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    bk = backup.Backup(description="t")
+    codex.apply_instructions(bk)
+    assert any("restore-file" in s["undo"] for s in bk.steps)
+
+
+def test_your_edit_inside_the_block_stops_the_automatic_refresh(fake_home, monkeypatch):
+    from loadout import backup
+    _codex_on()
+    _agents().parent.mkdir(parents=True, exist_ok=True)
+    _agents().write_text("mine\n", encoding="utf-8")
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nv1\n{codex.END}\n")
+    codex.apply_instructions(backup.Backup(description="t"))  # loadout's block, recorded
+    _agents().write_text(_agents().read_text().replace("v1", "v1\nmy own line"), encoding="utf-8")
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nv2\n{codex.END}\n")
+    told = []
+    monkeypatch.setattr(maintenance, "notify", told.append)
+    for _ in range(2):
+        maintenance.session_start(0)
+        assert "my own line" in _agents().read_text() and "v2" not in _agents().read_text()
+    assert len(told) == 1 and "AGENTS.md" in told[0]  # said once, not at every session
+
+
+def _legacy(block_text):
+    """A block from before loadout recorded what it wrote: no `block` in codex-config.json."""
+    _agents().parent.mkdir(parents=True, exist_ok=True)
+    _agents().write_text("mine\n\n" + block_text, encoding="utf-8")
+
+
+def test_an_unrecorded_block_that_is_current_is_recorded_so_a_later_edit_is_kept(fake_home, monkeypatch):
+    _codex_on()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nv1\n{codex.END}\n")
+    _legacy(f"{codex.START}\nv1\n{codex.END}\n")
+    codex.refresh_instructions()  # nothing to write, but the block is now known as loadout's
+    _agents().write_text(_agents().read_text().replace("v1", "v1\nmy own line"), encoding="utf-8")
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nv2\n{codex.END}\n")
+    codex.refresh_instructions()
+    assert "my own line" in _agents().read_text()
+
+
+def test_an_unrecorded_block_that_differs_is_left_until_bootstrap(fake_home, monkeypatch):
+    from loadout import backup
+    _codex_on()
+    _legacy(f"{codex.START}\nold, maybe edited by you\n{codex.END}\n")
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nv2\n{codex.END}\n")
+    assert codex.refresh_instructions() is None and "maybe edited" in _agents().read_text()
+    codex.apply_instructions(backup.Backup(description="bootstrap"))  # explicit: rewrites and records
+    assert "v2" in _agents().read_text() and codex.load_json(codex.record_path()).get("block")
+
+
+def test_apply_instructions_records_a_block_that_is_already_current(fake_home, monkeypatch):
+    from loadout import backup
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nv1\n{codex.END}\n")
+    _legacy(f"{codex.START}\nv1\n{codex.END}\n")
+    assert codex.apply_instructions(backup.Backup(description="t")) == "instructions up to date"
+    assert codex.load_json(codex.record_path()).get("block")
+
+
+def test_a_damaged_targets_file_never_breaks_the_session_start(fake_home):
+    paths.personal_root().mkdir(parents=True)
+    (paths.personal_root() / "targets.json").write_text("{broken")
+    maintenance.session_start(0)  # no exception

@@ -23,4 +23,6 @@ Codex became a second target in [ADR 0022](0022-codex-as-a-second-target.md), bu
 - `loadout restore` removes the Codex plugins and marketplaces loadout installed.
 - A plugin whose marketplace is not on GitHub has no Codex route; loadout says so.
 - Type checks run once per edit, with a limit of 20 seconds per check.
+- Switching a plugin off reaches Codex as an owned `enabled = false`.
+- The automatic Codex refresh honours `autoUpdate: false`; `loadout update` updates all.
 - Tool binaries keep their weekly notice ([ADR 0011](0011-tool-binaries-notice-and-deliberate-update.md)); `loadout update` now refreshes plugins in the same run, and says which ones changed.

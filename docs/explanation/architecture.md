@@ -67,7 +67,7 @@ At each session start the plugin runs `loadout hook-session-start`. It prints qu
 
 <sub>[Source](../diagrams/architecture-daily-sync.mmd)</sub>
 
-**Plugin updates.** In Claude Code the sync does not run `claude plugin update`. `settings.base.json` sets `"autoUpdate": true` on the marketplaces it declares, so Claude Code updates those plugins itself (after a random delay in a running session; then `/reload-plugins`). For Codex, loadout refreshes the plugins in the Codex step below, after a pull that brought commits. `loadout update` updates the enabled plugins at once, in Claude Code and Codex, after a yes. How both agents' plugins are updated is decided in [0024](../adr/0024-codex-parity-update-model.md).
+**Plugin updates.** In Claude Code the sync does not run `claude plugin update`. `settings.base.json` sets `"autoUpdate": true` on the marketplaces it declares, so Claude Code updates those plugins itself (after a random delay in a running session; then `/reload-plugins`). For Codex, loadout refreshes the plugins in the Codex step below, after a pull that brought commits. That refresh leaves marketplaces set to `autoUpdate: false` as they are. `loadout update` updates the enabled plugins at once, in Claude Code and Codex, after a yes. How both agents' plugins are updated is decided in [0024](../adr/0024-codex-parity-update-model.md).
 
 Details, from `maintenance._maintain`:
 

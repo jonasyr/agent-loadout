@@ -31,6 +31,7 @@ NOT_PLANS = "/.claude/plans/"  # Claude Code plan mode: already approved when wr
 HEADER_LINES = 15
 TICKED = re.compile(r"^\s*- \[[xX]\]", re.M)
 LEDGER_DONE = re.compile(r"^Task \d+: complete", re.M)
+PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+?)\s*$", re.M)  # the same headers as hooks/typecheck.py
 KEEP_PENDING = 50
 KEEP_DONE = 200
 INSTRUCTION = ("A plan was just finished: {path}. Before the user picks an execution method, invoke "
@@ -107,20 +108,33 @@ def record(payload: dict) -> None:
     session = payload.get("session_id")
     if not isinstance(tool_input, dict) or not isinstance(session, str):
         return
-    path = tool_input.get("file_path")
-    if not isinstance(path, str) or not is_plan_path(path):
-        return
-    text = _read(path)
-    if text is None or not looks_like_plan(text):
+    found = []
+    for path in _edited(payload, tool_input):
+        if is_plan_path(path):
+            text = _read(path)
+            if text is not None and looks_like_plan(text):
+                found.append(path)
+    if not found:
         return
     data = _load("advisor-pending.json")
     plans = [e for e in data.get("plans", []) if isinstance(e, dict)] if isinstance(data.get("plans"), list) else []
-    entry = next((e for e in plans if e.get("path") == path and e.get("session_id") == session), None)
-    if entry is None:
-        entry = {"path": path, "session_id": session, "recorded": int(time.time())}
-        plans.append(entry)
-    entry["written"] = True  # written since the last Stop
+    for path in found:
+        entry = next((e for e in plans if e.get("path") == path and e.get("session_id") == session), None)
+        if entry is None:
+            entry = {"path": path, "session_id": session, "recorded": int(time.time())}
+            plans.append(entry)
+        entry["written"] = True  # written since the last Stop
     _save("advisor-pending.json", {"plans": plans[-KEEP_PENDING:]})
+
+
+def _edited(payload: dict, tool_input: dict) -> list[str]:
+    """The files an edit wrote: Claude Code names one (file_path); a Codex apply_patch names them in its headers,
+    relative to the session's folder (cwd)."""
+    names = PATCH_FILE.findall(tool_input["command"]) if isinstance(tool_input.get("command"), str) else []
+    if isinstance(tool_input.get("file_path"), str):
+        names.append(tool_input["file_path"])
+    cwd = payload.get("cwd")
+    return [n if os.path.isabs(n) or not isinstance(cwd, str) else os.path.join(cwd, n) for n in names]
 
 
 def stop(payload: dict) -> str | None:
