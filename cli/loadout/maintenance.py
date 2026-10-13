@@ -329,30 +329,57 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
         _release_lock()
 
 
-def _update_plugins(claude_on: bool, codex_on: bool) -> None:
-    """Refresh the plugins the kit enables, in each agent that is on, and say what changed."""
+def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[str], str]) -> None:
+    """Refresh the plugins the kit enables, in each agent that is on, after a yes, and say what changed."""
     from . import codex, targets
     from .jsonio import get_dict
     from .settings_merge import desired_settings
-    changed = False
+    todo = []
     if claude_on:
         installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
-        for pid, on in get_dict(desired_settings(), "enabledPlugins").items():
-            entries = installed.get(pid)
-            if not on or not isinstance(entries, list) or not any(
-                    isinstance(e, dict) and e.get("scope") == "user" for e in entries):
-                continue
-            res = runner.run(["claude", "plugin", "update", pid, "--scope", "user"], timeout=300)
-            if not res.ok:
-                print(f"plugin {pid}: failed: {redact((res.stderr or res.stdout).strip()[:300])}")
-            elif "already at the latest version" not in res.stdout.lower() + res.stderr.lower():
-                print(f"plugin {pid}: updated")
-                changed = True
+        todo = [pid for pid, on in get_dict(desired_settings(), "enabledPlugins").items()
+                if on and isinstance(installed.get(pid), list)
+                and any(isinstance(e, dict) and e.get("scope") == "user" for e in installed[pid])]
+    if not todo and not codex_on:
+        return
+    where = " and ".join(([f"{len(todo)} in Claude Code"] if todo else []) + (["Codex's"] if codex_on else []))
+    print(f"plugins: refresh {where}")
+    if not yes and ask("  refresh them? [y/N] ").strip().lower() != "y":
+        print("  left as they are (run `loadout update --yes` to refresh them)")
+        return
+    changed = False
+    for pid in todo:
+        print(f"  plugin {pid}…", flush=True)
+        _touch_lock()
+        res = runner.run(["claude", "plugin", "update", pid, "--scope", "user"], timeout=300)
+        if not res.ok:
+            print(f"plugin {pid}: failed: {redact((res.stderr or res.stdout).strip()[:300])}")
+        elif "already at the latest version" not in res.stdout.lower() + res.stderr.lower():
+            print(f"plugin {pid}: updated")
+            changed = True
     if codex_on:
-        lines = codex.apply_plugins(Backup(description="update: Codex plugins"), refresh=True)
-        for line in lines:
-            print(redact(line))
-        changed = changed or bool(lines)
+        lock = codex._lock()
+        if lock is None:
+            print("Codex: another loadout run is setting it up right now; run this again when it has finished")
+        else:
+            bk = Backup(description="update: Codex plugins")
+            try:
+                before = codex.plugin_versions()
+                for line in codex.apply_plugins(bk, refresh=True, say=lambda l: print(l, flush=True)):
+                    print(redact(line))
+                    changed = changed or line.endswith(": installed")
+                after = codex.plugin_versions()
+            finally:
+                try:
+                    lock.unlink()
+                except OSError:
+                    pass
+            for pid in sorted(after):
+                if pid in before and before[pid] != after[pid]:
+                    print(f"plugin {pid}: updated")
+                    changed = True
+            if not bk.empty:
+                print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     if changed:
         print(targets.restart_hint())
 
@@ -362,7 +389,7 @@ def _update(yes: bool, ask: Callable[[str], str]) -> int:
     if targets.claude_enabled():  # Codex only: no Claude Code marketplaces to refresh
         runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
     claude_on = targets.claude_enabled()
-    _update_plugins(claude_on, targets.codex_enabled())
+    _update_plugins(claude_on, targets.codex_enabled(), yes, ask)
     settings_path = paths.claude_home() / "settings.json"
     before = load_json(settings_path) if claude_on else {}  # Codex only: Claude Code's file is not read at all
     outdated = find_outdated()

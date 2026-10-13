@@ -532,6 +532,14 @@ def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
     return routes, missing
 
 
+def plugin_versions() -> dict[str, str]:
+    """{plugin id: version} of the installed Codex plugins; {} when the list fails."""
+    res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
+    data = _json(res.stdout) if res.ok else None
+    return {p["pluginId"]: str(p.get("version", "")) for p in get_list(data if isinstance(data, dict) else {}, "installed")
+            if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
+
+
 def installed_plugins() -> set[str] | None:
     res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None

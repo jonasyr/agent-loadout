@@ -41,7 +41,7 @@ At each session start the plugin runs `loadout hook-session-start`. It prints qu
 
 <sub>[Source](../diagrams/architecture-daily-sync.mmd)</sub>
 
-**Plugin updates.** The sync does not run `claude plugin update`. `settings.base.json` sets `"autoUpdate": true` on the kit's own marketplaces, so Claude Code updates those plugins itself (after a random delay in a running session; then `/reload-plugins`). `loadout update` updates the enabled plugins at once, in Claude Code and Codex.
+**Plugin updates.** The sync does not run `claude plugin update`. `settings.base.json` sets `"autoUpdate": true` on the marketplaces it declares, so Claude Code updates those plugins itself (after a random delay in a running session; then `/reload-plugins`). After a pull, the sync refreshes the Codex plugins. `loadout update` updates the enabled plugins at once, in Claude Code and Codex, after a yes.
 
 Details, from `maintenance._maintain`:
 

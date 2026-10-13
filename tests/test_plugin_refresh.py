@@ -37,7 +37,7 @@ def test_updates_enabled_user_scope_plugins_after_the_marketplace(fake_home, fak
     assert _updates(fake_runner) == [["claude", "plugin", "update", "a@m", "--scope", "user"],
                                      ["claude", "plugin", "update", "b@m", "--scope", "user"]]
     out = capsys.readouterr().out
-    assert "a@m" in out and "b@m" not in out
+    assert "plugin a@m: updated" in out and "plugin b@m: updated" not in out
     assert "/reload-plugins" in out
 
 
@@ -54,20 +54,51 @@ def test_a_failing_update_is_one_line_and_the_loop_continues(fake_home, fake_run
     maintenance._update(True, lambda q: "")
     assert len(_updates(fake_runner)) == 2
     out = capsys.readouterr().out
-    assert [l for l in out.splitlines() if "a@m" in l and "failed:" in l and "boom" in l].__len__() == 1
+    assert len([l for l in out.splitlines() if "a@m" in l and "failed:" in l and "boom" in l]) == 1
 
 
 def test_claude_off_makes_no_claude_call(fake_home, fake_runner, monkeypatch):
     _setup(fake_home, monkeypatch, claude=False, codex=True)
-    maintenance._update(True, lambda q: "")
-    assert not any(c[0] == "claude" for c in fake_runner.calls)
-
-
-def test_codex_on_refreshes_codex_plugins(fake_home, fake_runner, monkeypatch, capsys):
-    _setup(fake_home, monkeypatch, codex=True)
     seen = []
     from loadout import codex
-    monkeypatch.setattr(codex, "apply_plugins", lambda bk, refresh=False, say=None: seen.append(refresh) or ["plugin x: updated"])
+    monkeypatch.setattr(codex, "apply_plugins", lambda bk, refresh=False, say=None: seen.append(refresh) or [])
     maintenance._update(True, lambda q: "")
-    assert seen == [True]
-    assert "plugin x: updated" in capsys.readouterr().out
+    assert not any(c[0] == "claude" for c in fake_runner.calls)
+    assert seen == [True]  # Codex is still refreshed
+
+
+def test_plugins_are_not_touched_without_a_yes(fake_home, fake_runner, monkeypatch, capsys):
+    _setup(fake_home, monkeypatch, codex=True)
+    from loadout import codex
+    seen = []
+    monkeypatch.setattr(codex, "apply_plugins", lambda bk, refresh=False, say=None: seen.append(1) or [])
+    maintenance._update(False, lambda q: "")  # no terminal: the question gets an empty answer
+    assert _updates(fake_runner) == [] and seen == []
+    assert "--yes" in capsys.readouterr().out
+
+
+def _codex_versions(fake_runner, before, after):
+    calls = {"n": 0}
+    real = fake_runner.__call__
+
+    def fake(cmd, cwd=None, timeout=300, env=None):
+        if cmd[:3] == ["codex", "plugin", "list"]:
+            calls["n"] += 1
+            data = before if calls["n"] == 1 else after
+            return runner.Result(0, json.dumps({"installed": [{"pluginId": k, "version": v} for k, v in data.items()]}), "")
+        return real(cmd, cwd=cwd, timeout=timeout, env=env)
+    return fake
+
+
+def test_codex_hint_follows_real_version_changes_not_notes(fake_home, fake_runner, monkeypatch, capsys):
+    _setup(fake_home, monkeypatch, claude=False, codex=True)
+    from loadout import codex
+    monkeypatch.setattr(codex, "apply_plugins",
+                        lambda bk, refresh=False, say=None: ["plugin y@url: no Codex route (its marketplace is not on GitHub)"])
+    monkeypatch.setattr(runner, "run", _codex_versions(fake_runner, {"x@m": "1"}, {"x@m": "1"}))
+    maintenance._update(True, lambda q: "")
+    assert "Restart" not in capsys.readouterr().out
+    monkeypatch.setattr(runner, "run", _codex_versions(fake_runner, {"x@m": "1"}, {"x@m": "2"}))
+    maintenance._update(True, lambda q: "")
+    out = capsys.readouterr().out
+    assert "plugin x@m: updated" in out and "Restart Codex" in out
