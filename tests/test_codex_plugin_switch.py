@@ -58,3 +58,36 @@ def test_a_plugin_you_installed_yourself_is_untouched(fake_home, fake_runner, mo
     _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m", "mine@else"])
     _apply()
     assert "mine@else" not in _config()
+
+
+def test_codex_s_own_install_line_is_taken_over_and_switched_off(fake_home, fake_runner, monkeypatch):
+    """`codex plugin add` writes [plugins."ID"] enabled = true itself: that default is not your choice."""
+    path = paths.codex_home() / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('[plugins."x@m"]\nenabled = true\n', encoding="utf-8")
+    _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
+    lines = _apply()
+    assert "enabled = false" in _config() and not any("your value" in line for line in lines)
+    assert 'plugins."x@m".enabled' in codex.read_record()["keys"]
+
+
+def test_every_switch_change_is_in_a_backup(fake_home, fake_runner, monkeypatch):
+    _setup(fake_runner, monkeypatch, {"x@m": True}, ["x@m"])
+    _apply()  # loadout's first write: effort and notifications
+    path = paths.codex_home() / "config.toml"
+    path.write_text(_config() + '\n[plugins."x@m"]\nenabled = true\n', encoding="utf-8")  # codex plugin add
+    _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
+    bk = backup.Backup(description="switch off")
+    codex.apply_config(bk)
+    assert "enabled = false" in _config()
+    assert any("restore-file" in s["undo"] for s in bk.steps), "switching a plugin off is undoable on its own"
+
+
+def test_switching_on_again_does_not_recreate_a_removed_plugin_s_table(fake_home, fake_runner, monkeypatch):
+    _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
+    _apply()
+    path = paths.codex_home() / "config.toml"
+    path.write_text(_config().replace('[plugins."x@m"]\nenabled = false\n', ""), encoding="utf-8")  # removed
+    _setup(fake_runner, monkeypatch, {"x@m": True}, [])
+    _apply()
+    assert "x@m" not in _config()

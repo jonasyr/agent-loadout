@@ -261,26 +261,31 @@ def add_project_plugin(pid: str) -> None:
         save_json(record_path(), data)
 
 
-def _plugin_switches() -> list[tuple[tuple, str, bool, bool]]:
-    """`enabled` keys for plugins loadout manages: off in Codex when switched off for Claude Code and installed
-    in Codex; back to true when switched on again and loadout owns the line. Never guesses: no list, no key."""
+INSTALL_DEFAULT = "install-default"  # desired_keys force: also take over `enabled = true`, which codex plugin add writes
+
+
+def _plugin_switches() -> list[tuple]:
+    """`enabled` keys for plugins loadout manages and Codex has installed: off when switched off for Claude Code
+    (taking over the `enabled = true` line `codex plugin add` wrote; any other line is yours); back to true when
+    switched on again and loadout owns the line. Never guesses: without the installed list, no key."""
     from .settings_merge import desired_settings
     enabled = get_dict(desired_settings(), "enabledPlugins")
     projects = set(project_plugins())
     owned = read_record()["keys"]
-    keys = [(("plugins", pid), "enabled", True, False) for pid, on in enabled.items()
-            if on is True and isinstance(pid, str) and pid not in projects
-            and _dotted(("plugins", pid), "enabled") in owned]
-    off = [pid for pid, on in enabled.items() if on is False and isinstance(pid, str) and "@" in pid
+    on = [pid for pid, v in enabled.items() if v is True and isinstance(pid, str) and pid not in projects
+          and _dotted(("plugins", pid), "enabled") in owned]
+    off = [pid for pid, v in enabled.items() if v is False and isinstance(pid, str) and "@" in pid
            and pid not in projects]
-    if off:
-        listed = installed_plugins()
-        if listed is not None:
-            keys += [(("plugins", pid), "enabled", False, False) for pid in off if pid in listed]
-    return keys
+    if not (on or off):
+        return []
+    listed = installed_plugins()
+    if listed is None:
+        return []
+    return ([(("plugins", pid), "enabled", True, False) for pid in on if pid in listed]
+            + [(("plugins", pid), "enabled", False, INSTALL_DEFAULT) for pid in off if pid in listed])
 
 
-def desired_keys() -> list[tuple[tuple, str, object, bool]]:
+def desired_keys() -> list[tuple[tuple, str, object, object]]:
     """(table path, key, value, force); path () is the top level. force: loadout's value wins even over a changed
     line, used for project-only plugins because `codex plugin add` switches them back on."""
     from . import preferences
@@ -453,14 +458,19 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         owned_tables[name] = text
 
     # keys: one line each, in their table, only on lines that start outside strings and arrays
+    # force: True (loadout's value wins), False (a changed line is yours), or INSTALL_DEFAULT (also take over
+    # exactly `enabled = true`, the line `codex plugin add` writes itself)
+    switched = False  # a plugin switch changes: its own backup copy, so restore of this run undoes it
     for table, key, value, force in desired_keys():
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
         target = sections[0] if not table else find(table)
+        plugin = bool(table) and table[0] == "plugins"
         if target is None:
             header = "[" + ".".join(toml_key(p) for p in table) + "]"
             sections.append([table, [header, line], []])
             owned_keys[dotted] = line
+            switched = switched or plugin
             continue
         flags = [True] + target[2] if target[0] is not None else target[2]
         found = next((i for i, l in enumerate(target[1])
@@ -472,11 +482,14 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             target[1].insert(insert, line)
             target[2].insert(insert - (1 if target[0] is not None else 0), True)
             owned_keys[dotted] = line
+            switched = switched or plugin
         elif target[1][found].strip() == line:
             pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
-        elif force or owned_keys.get(dotted) == target[1][found].strip():
+        elif force is True or owned_keys.get(dotted) == target[1][found].strip() or (
+                force == INSTALL_DEFAULT and target[1][found].strip() == f"{key} = true"):
             target[1][found] = line
             owned_keys[dotted] = line
+            switched = switched or plugin
         else:
             lines.append(f"{dotted}: left as is in config.toml (your value)")
             owned_keys.pop(dotted, None)
@@ -500,6 +513,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         return lines + ["config.toml: changes pending"]
     if path.exists() and not (record.get("tables") or record.get("keys")):  # project_plugins alone wrote nothing
         bk.save_copy(path, "Codex config.toml before loadout's first change")
+    elif path.exists() and switched:
+        bk.save_copy(path, "Codex config.toml before switching plugins on or off")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")
     from .jsonio import write_atomic
