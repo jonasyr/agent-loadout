@@ -96,14 +96,19 @@ def skills(project: Path, dry_run: bool) -> list[str]:
         if entry.name.startswith(".") or not entry.is_dir():
             continue
         dest = dest_root / entry.name
+        want = f"../../.claude/skills/{entry.name}"
+        if dest.is_symlink() and Path(os.readlink(dest)) == Path(want):
+            continue
         if dest.exists() or dest.is_symlink():
+            out.append(f"skill {entry.name}: .agents/skills/{entry.name} is not a link to .claude/skills/{entry.name}, "
+                       "left as is (Codex uses that one)")
             continue
         if dry_run:
             out.append(f"would link skill {entry.name} for Codex -> .agents/skills/{entry.name}")
             continue
         dest_root.mkdir(parents=True, exist_ok=True)
         try:
-            os.symlink(f"../../.claude/skills/{entry.name}", dest, target_is_directory=True)
+            os.symlink(want, dest, target_is_directory=True)
         except OSError as exc:  # e.g. Windows without symlink rights
             out.append(f"skill {entry.name}: not linked for Codex ({exc.strerror or exc})")
             continue

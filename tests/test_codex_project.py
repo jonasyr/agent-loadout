@@ -326,3 +326,20 @@ def test_init_exits_1_when_a_profile_failed(repo, monkeypatch):
     monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
     monkeypatch.setattr(project, "add_profile", lambda *a, **k: 1)
     assert project.init(repo, ["web"], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False) == 1
+
+
+def test_failed_skill_links_make_profile_exit_1(repo, monkeypatch):
+    monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: ["skill pw: not linked for Codex (denied)"])
+    assert project.add_profile(repo, "web", install=False) == 1
+
+
+def test_a_different_skill_under_the_same_name_is_reported(repo):
+    (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
+    (repo / ".agents" / "skills" / "pw").mkdir(parents=True)
+    lines = codex_project.skills(repo, dry_run=False)
+    assert any("pw" in l and "left as is" in l for l in lines)
+    (repo / ".agents" / "skills" / "pw").rmdir()
+    codex_project.skills(repo, dry_run=False)
+    assert codex_project.skills(repo, dry_run=False) == []  # our own link: silent
