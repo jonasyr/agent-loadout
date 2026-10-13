@@ -41,7 +41,7 @@ The automatic refresh after a pull (`apply_all(refresh=True)`, called by the dai
 
 ### 5. The plaintext-secret scan covers Codex (`cli/loadout/secrets.py`, `cli/loadout/adopt.py`)
 
-`secrets.scan_codex() -> list[Finding]` reads the `[mcp_servers.*]` tables of `~/.codex/config.toml` (with `tomllib`; a file that does not parse gives no findings and one note), maps each server's `env`, `args`, `url` and `http_headers` to the shape `secrets.scan` reads, and returns its findings with `location="~/.codex/config.toml"` and `fixable=False` (report only: loadout does not own those sections; the fix is "move it to `secrets.env` and name it in `env_vars`").
+`secrets.scan_codex() -> list[Finding]` reads the `[mcp_servers.*]` tables of `~/.codex/config.toml` (through `codex.user_servers()`, which leaves out loadout's own tables; a file that does not parse gives no findings), maps each server's `env`, `args`, `url` and `http_headers` to the shape `secrets.scan` reads, and returns its findings with `location="~/.codex/config.toml"` and `fixable=False` (report only: loadout does not own those sections; the fix is "move it to `secrets.env` and name it in `env_vars`").
 
 `adopt` scans Claude Code's files when Claude Code is on and Codex's when Codex is on (so Codex-only users are covered). Reported values stay hidden, as today.
 
