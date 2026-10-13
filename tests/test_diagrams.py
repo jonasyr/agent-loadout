@@ -1,6 +1,9 @@
 """The docs' diagrams: Mermaid sources in docs/diagrams/, rendered SVGs that match them, and the embeds in the docs."""
 import json
+import os
 import re
+
+import pytest
 
 from diagrams_support import DIAGRAMS, HASH_COMMENT, VARIANTS, image_ref, source_hash, sources
 from loadout import paths
@@ -172,3 +175,14 @@ def test_every_diagram_is_embedded():
             embedded.add((md.parent / light[1]).resolve())
     missing = [n for n in sources() if (DIAGRAMS / f"{n}.light.svg").resolve() not in embedded]
     assert not missing, f"diagrams no page shows (embed or delete them): {missing}"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="git checks symlinks out as files on Windows runners")
+def test_diagram_skill_reaches_both_agents():
+    skill = ROOT / ".claude" / "skills" / "diagrams" / "SKILL.md"
+    front = re.match(r"---\n(.*?)\n---\n", skill.read_text(encoding="utf-8"), re.S)
+    assert front, "SKILL.md needs YAML frontmatter"
+    assert re.search(r"^name: diagrams$", front.group(1), re.M)
+    assert re.search(r"^description: \S", front.group(1), re.M)
+    link = ROOT / ".agents" / "skills" / "diagrams"
+    assert link.is_symlink() and os.readlink(link) == "../../.claude/skills/diagrams"

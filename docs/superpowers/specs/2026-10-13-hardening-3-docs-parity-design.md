@@ -71,7 +71,7 @@ Every Codex claim in a rewritten page is checked against the code before it is w
 
 ### 3. Diagrams and the diagram skill
 
-New repo-local skill `.agents/skills/diagrams/SKILL.md` (Codex reads `.agents/skills`), linked from `.claude/skills/diagrams` (Claude Code). About 80 lines:
+New repo-local skill `.claude/skills/diagrams/SKILL.md` (Claude Code), linked from `.agents/skills/diagrams` (Codex) the way `loadout init` links project skills. About 80 lines:
 
 - Points to `CONTRIBUTING.md#diagrams` and `docs/diagrams/README.md` instead of copying them.
 - Class vocabulary from `palette.light.mmd` with when to use each class; `%% palette` as the last line; no inline colours or `style` lines.
