@@ -60,3 +60,13 @@ def test_update_never_reads_claude_settings_when_claude_code_is_off(fake_home, f
     settings.write_text("{not json")
     monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
     assert maintenance._update(yes=True, ask=lambda q: "") == 0
+
+
+def test_codex_only_adopt_ignores_a_broken_claude_settings_file(fake_home, monkeypatch):
+    _codex_only(monkeypatch)
+    settings = paths.claude_home() / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{not json")
+    (paths.agents_skills() / "solo").mkdir(parents=True)
+    verdicts = inventory.classify(inventory.collect(with_versions=False))
+    assert any(v.item.name == "solo" for v in verdicts)

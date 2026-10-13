@@ -65,6 +65,9 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
         lines.append(("would add" if dry_run else "added") + f" mcp {name} to {path}")
     for pid in plugins:
         if pid in before.get("plugins", {}):
+            entry = before["plugins"][pid]
+            if not (isinstance(entry, dict) and entry.get("enabled", True) is True):
+                lines.append(f"plugin {pid}: switched off in {path}, left as is (Codex will not load it here)")
             continue
         added.append(f"[plugins.{codex.toml_key(pid)}]\nenabled = true\n")
         keys.append(f"plugins.{codex.toml_key(pid)}.enabled")

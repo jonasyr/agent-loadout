@@ -343,3 +343,12 @@ def test_a_different_skill_under_the_same_name_is_reported(repo):
     (repo / ".agents" / "skills" / "pw").rmdir()
     codex_project.skills(repo, dry_run=False)
     assert codex_project.skills(repo, dry_run=False) == []  # our own link: silent
+
+
+@needs_tomllib
+def test_a_repo_switch_that_is_off_is_reported_as_a_problem(repo):
+    cfg = repo / ".codex" / "config.toml"
+    cfg.parent.mkdir()
+    cfg.write_text('[plugins."deepeval@claude-plugins-official"]\nenabled = false\n')
+    lines = codex_project.config(THESIS, repo, dry_run=False)
+    assert any("deepeval" in l and "switched off" in l for l in lines)

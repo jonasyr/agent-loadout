@@ -140,7 +140,8 @@ def personal_index() -> dict[str, dict]:
     settings = load_json(root / "settings.json")
     index = {k: {} for k in KINDS}
     index["_profile"] = {k: {} for k in KINDS}
-    enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins")
+    from . import targets
+    enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins") if targets.claude_enabled() else {}
     index["_disabled"] = {pid for pid, on in (enabled if isinstance(enabled, dict) else {}).items() if on is False}
     for pid, on in (settings.get("enabledPlugins") or {}).items():
         if on:

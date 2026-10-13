@@ -45,7 +45,8 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     if targets.codex_enabled():
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
             print(line)
-            if line.startswith("skipped") or any(s in line for s in (": failed", "not installed", "no Codex route", "not linked")):
+            if line.startswith("skipped") or any(s in line for s in (": failed", "not installed", "no Codex route", "not linked",
+                                                                  "switched off")):
                 ok = False
     if prof.notes:
         print(f"note ({name}): {prof.notes}")
