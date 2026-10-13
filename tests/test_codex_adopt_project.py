@@ -85,6 +85,15 @@ def test_a_bad_or_secret_looking_profile_name_is_refused_in_adopt(codex_on, fake
     assert not (paths.personal_root() / "profiles").exists()
 
 
+def test_a_codex_tool_whose_name_looks_like_a_secret_is_refused_for_project(codex_on, fake_runner):
+    name = "sk-" + "a1b2c3d4" * 5
+    for v in (_skill(name), Verdict(Item("mcp", name, "m", codex.CONFIG_LOCATION,
+                                         {"config": {"type": "stdio", "command": "m"}, "problem": ""}), "own", "")):
+        rec = own.record_project(v, "mine", backup.Backup(description="t"))
+        assert not rec.ok and name not in " ".join(rec.lines)
+    assert not (paths.personal_root() / "profiles").exists()
+
+
 def test_codex_server_whose_secret_would_be_renamed_is_refused_like_global(codex_on, fake_runner):
     """Codex forwards a variable only under its own name: API_KEY cannot become ${MINE_API_KEY}."""
     token = "ghp_" + "Z" * 36

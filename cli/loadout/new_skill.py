@@ -66,6 +66,9 @@ def _global(name: str, description: str, bk: Backup) -> list[str]:
     dests = ([paths.claude_home() / "skills"] if targets.claude_enabled() else []) + \
             ([paths.agents_skills()] if targets.codex_enabled() else [])
     _refuse_taken(name, [root, *dests])
+    for folder in (root, *dests):
+        if (folder.exists() or folder.is_symlink()) and not folder.is_dir():
+            raise Refused(f"skill {name}: {folder} is not a folder; nothing written")
     from .jsonio import load_json
     try:
         pointers = load_json(paths.personal_root() / "skills.json")
@@ -110,7 +113,7 @@ def create(name: str, to: str = "global", description: str | None = None, cwd: P
 def _project(name: str, profile: str, description: str, bk: Backup) -> list[str]:
     from . import own
     from .jsonio import load_json
-    if not own.PROFILE_NAME.fullmatch(profile):
+    if not own.PROFILE_NAME.fullmatch(profile) or len(profile) > 64:  # also a file name: keep it short
         raise BadInput(f"profile name '{profile}': use lowercase letters, digits, - and _")
     path = paths.personal_root() / "profiles" / f"{profile}.json"
     if path.exists():
@@ -139,6 +142,10 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
     if Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
         raise Refused(f"--to repo: the repo found is your home folder ({root}, a dotfiles repo?), where "
                       ".claude/skills is Claude Code's own folder; run it inside a project repo")
+    if dest_root is not None and (dest_root.parent.is_symlink() or dest_root.is_symlink()):
+        # the relative link ../../.claude/skills/NAME resolves from the real folder, which a link moves
+        raise Refused(f"--to repo: {dest_root.parent} or {dest_root} is a link; make it a plain folder, then run "
+                      "this again")
     for folder in (src_root, dest_root):
         if folder is not None and not (paths.inside(folder.parent, root) and paths.inside(folder, root)):
             raise Refused(f"--to repo: {folder} points outside {root} (a symlinked folder); nothing written")

@@ -826,6 +826,8 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
         raise ValueError(f"{label(item)}: project is not available for this item")
     where = f"personal profile {profile} ({_profile_path(profile)})"
     try:
+        if secrets.redact(item.name) != item.name:  # the name becomes a folder, a JSON key and a backup label
+            raise Collision(f"{item.kind}: its name looks like a secret; rename it, then record it")
         if item.kind == "plugin":
             def change(data):
                 _append_once(ensure(data, "install", list), item.name)

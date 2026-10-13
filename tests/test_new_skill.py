@@ -226,6 +226,32 @@ def test_a_profile_name_with_a_trailing_newline_is_bad_input(fake_home, monkeypa
     assert not (paths.personal_root() / "profiles").exists()
 
 
+def test_an_agent_skills_path_that_is_a_file_is_refused_before_writing(fake_home, monkeypatch):
+    _agents(monkeypatch)
+    paths.claude_home().mkdir(parents=True, exist_ok=True)
+    (paths.claude_home() / "skills").write_text("not a folder")
+    with pytest.raises(new_skill.Refused, match="not a folder"):
+        new_skill.create("notes", bk=backup.Backup(description="t"))
+    assert not (paths.personal_root() / "skills" / "notes").exists()
+
+
+def test_an_overlong_profile_name_is_bad_input(fake_home, monkeypatch):
+    _agents(monkeypatch)
+    with pytest.raises(new_skill.BadInput):
+        new_skill.create("notes", to="project:" + "a" * 300, bk=backup.Backup(description="t"))
+    assert not (paths.personal_root() / "profiles").exists()
+
+
+def test_repo_agents_symlinked_inside_the_repo_is_refused(fake_home, monkeypatch, tmp_path):
+    _agents(monkeypatch)
+    repo = _repo(tmp_path)
+    (repo / "nested" / ".agents").mkdir(parents=True)
+    (repo / ".agents").symlink_to(repo / "nested" / ".agents", target_is_directory=True)
+    with pytest.raises(new_skill.Refused, match="link"):
+        new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
+    assert not (repo / ".claude").exists()
+
+
 def test_a_damaged_skills_json_is_refused(fake_home, monkeypatch):
     _agents(monkeypatch)
     pointers = paths.personal_root() / "skills.json"
