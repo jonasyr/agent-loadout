@@ -40,6 +40,12 @@ trap 'exit 130' INT TERM
 mkdir -p "$HOME/.cache"
 stub=$(mktemp -d "$HOME/.cache/loadout-eval-stub.XXXXXX")
 install -m 755 "$here/bin/loadout" "$stub/loadout"
+# The doc skills read the kit's rules and writing guide from `loadout kit-path`; the sandbox can read the stub
+# directory, so a copy goes there and the stub prints it.
+kit=$(cd "$here/../../.." && pwd)
+mkdir -p "$stub/kit/docs/explanation"
+cp -r "$kit/rules" "$stub/kit/rules"
+cp "$kit/docs/explanation/documentation-strategy.md" "$stub/kit/docs/explanation/"
 # Never start a real browser from an eval run: playwright-cli is a logging stub, and the
 # browser binaries an agent might fall back to fail fast (they log to ./.browser-calls.log).
 install -m 755 "$here/bin/playwright-cli" "$stub/playwright-cli"

@@ -263,3 +263,17 @@ def _register_advisor(sub):
 
 
 EXTRA_COMMANDS.append(_register_advisor)
+
+
+def _register_kit_path(sub):
+    p = sub.add_parser("kit-path", help="print the kit's folder (its rules/ and docs/ are read by the doc skills)")
+
+    def run(a):
+        from . import paths
+        print(paths.kit_root().as_posix())  # forward slashes work in Git Bash and PowerShell
+        return 0
+
+    p.set_defaults(func=run)
+
+
+EXTRA_COMMANDS.append(_register_kit_path)

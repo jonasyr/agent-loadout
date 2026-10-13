@@ -106,6 +106,7 @@ EOF2
       *) echo "usage: loadout configure set <plugin|mcp|pref-choice|pref|own> <name> <value>" >&2; exit 2 ;;
     esac ;;
   "configure "*) echo "the interactive wizard needs a terminal; use: loadout configure show | set ..." >&2; exit 2 ;;
+  "kit-path "*) printf '%s\n' "$(cd "$(dirname "$0")" && pwd)/kit" ;;  # run.sh copies the kit's rules and guide there
   "advisor-mark "*) [ -f "${2:-}" ] || { echo "loadout: no such plan: ${2:-}" >&2; exit 1; }
     echo "marked ${2} as evaluated (0123456789ab)" ;;
   "profile "*) echo "added profile ${2:-}: plugins installed with --scope project" ;;

@@ -214,3 +214,19 @@ def test_hook_path_case_replays_the_current_hook_instruction():
     prompt = (EVALS / "execution-advisor-hook/prompt.md").read_text(encoding="utf-8")
     expected = hook.INSTRUCTION.format(path="docs/superpowers/plans/2026-10-09-title-cleanup.md")
     assert expected in prompt, "regenerate the case's hook text from hooks/advisor.py INSTRUCTION"
+
+
+@posix_only
+def test_eval_stub_answers_kit_path_with_a_readable_copy(tmp_path):
+    import shutil
+    import subprocess
+    evals = paths.kit_root() / "plugins/loadout/evals"
+    stub = tmp_path / "stub"
+    stub.mkdir()
+    shutil.copy(evals / "bin/loadout", stub / "loadout")
+    (stub / "kit").mkdir()
+    out = subprocess.run(["bash", str(stub / "loadout"), "kit-path"], capture_output=True, text=True, cwd=tmp_path)
+    assert out.stdout.strip() == str(stub / "kit")
+    run_sh = (evals / "run.sh").read_text(encoding="utf-8")
+    for part in ("rules", "docs/explanation/documentation-strategy.md"):
+        assert part in run_sh, part  # run.sh copies what the doc skills read into $stub/kit

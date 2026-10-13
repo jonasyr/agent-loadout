@@ -16,6 +16,22 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 - Conventional Commits (`type(scope): subject`); no `Co-Authored-By` or other AI attribution.
 - One home per fact: edit `docs/`, link from here (see `docs/explanation/documentation-strategy.md`).
 
+## Code Review Rules
+
+### User files
+- loadout changes only what it recorded as its own in a user's files (`~/.claude/settings.json`, `~/.codex/config.toml`, `AGENTS.md`, shell startup files); text the user wrote stays byte for byte. Safe path: exact-text record, parse guard, atomic write. Treat a write that can change or lose user entries as P1.
+- Every destructive change is undoable: a backup step or an undo command before it acts, so `loadout restore` reverts it. A removal or overwrite without one is P1.
+- With an agent turned off (`targets.json`), nothing reads or changes that agent's files. P1.
+
+### Secrets
+- No plaintext secret is written to the personal layer, `mcp.json`, `config.toml`, the backup manifest or the output. Only variable names; values go to `secrets.env`. P1.
+
+### External commands
+- External commands run only through `runner.run` with argument lists, never a shell string built from user or file data. Restore replays only allowlisted undo commands. P1.
+
+### Tests
+- Tests use `fake_home` and `fake_runner`; a test that can reach the real `~/.claude`, `~/.claude.json`, `~/.codex` or `~/.config/loadout`, or run real `claude`/`codex`/installers, is P1.
+
 ## Where things are
 
 `cli/loadout/` modules:

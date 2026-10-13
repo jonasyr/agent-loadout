@@ -2,7 +2,7 @@
 
 `loadout` is the command-line tool of the kit. Run `loadout --help` or `loadout <command> --help` for the built-in help. The flag tables below match that help.
 
-The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update` and `restore`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They have no `--help` entry and are not meant to be run by hand.
+The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update`, `restore` and `kit-path`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They have no `--help` entry and are not meant to be run by hand.
 
 `loadout --version` prints the release and the kit's commit, for example `loadout 0.1.0 (54af5b7)`; the commit is left out when the kit is not a git clone. Bug reports ask for it.
 
@@ -250,3 +250,13 @@ loadout restore [--list] [--force] [BACKUP_DIR]
 Without `BACKUP_DIR` it lists the backups, like `--list`.
 
 Exit codes: 0 when listing or when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed.
+
+## loadout kit-path
+
+Print the kit's folder (your clone). The doc skills read the kit's `rules/` and `docs/explanation/documentation-strategy.md` from there, so they work the same in Claude Code and Codex.
+
+```
+loadout kit-path
+```
+
+Exit code: 0.
