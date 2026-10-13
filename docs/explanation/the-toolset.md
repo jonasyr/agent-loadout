@@ -1,6 +1,6 @@
 # The toolset
 
-loadout does not install a pile of tools. It installs a small set where each one does one job, and rules that tell Claude which tool to use for which question. Together they form one workflow, from a rough idea to a reviewed, documented change. This page explains that workflow and why each tool is in it. The exact list, with settings and versions, is in [Included tools](../reference/included-tools.md).
+loadout does not install a pile of tools. It installs a small set where each one does one job, and rules that tell your agent (Claude Code or Codex) which tool to use for which question. Together they form one workflow, from a rough idea to a reviewed, documented change. This page explains that workflow and why each tool is in it. The exact list, with settings and versions, is in [Included tools](../reference/included-tools.md).
 
 ## One change, start to finish
 
@@ -33,7 +33,7 @@ The kit's rules make this the default path, not a suggestion you have to remembe
 
 ## Finish
 
-- **Review.** One review pass per change: Claude Code's built-in `/code-review`, or superpowers' *requesting-code-review*. **[security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance)** warns about security mistakes while code is written and reviews each commit.
+- **Review.** One review pass per change: Claude Code's built-in `/code-review` (in Codex, the built-in `/review`), or superpowers' *requesting-code-review*. **[security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance)** warns about security mistakes while code is written and reviews each commit.
 - **Documentation.** **`/loadout:docs-sync`** updates the docs a change made wrong, and **`/loadout:docs-audit`** checks a whole repo's docs against its code. Where each fact belongs is in [Documentation strategy](documentation-strategy.md).
 - **Commit.** **[commit-commands](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/commit-commands)** commits, pushes and opens pull requests. **[claude-md-management](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management)** keeps `CLAUDE.md` and `AGENTS.md` healthy.
 

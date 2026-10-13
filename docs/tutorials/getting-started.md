@@ -1,15 +1,15 @@
 # Getting started
 
-This tutorial takes you from nothing to a first Claude Code session with loadout. It follows one path. For details on any step, follow the links to the how-to and reference pages.
+This tutorial takes you from nothing to a first session in Claude Code or Codex with loadout. It follows one path. For details on any step, follow the links to the how-to and reference pages.
 
 ## Before you start
 
 | | Linux / WSL | macOS | Windows (experimental) |
 |---|---|---|---|
 | git and curl | `sudo apt install git curl` (Debian/Ubuntu; other distros: their package manager) | `xcode-select --install` (provides git; curl is included) | `winget install --id Git.Git -e`, then open a new PowerShell (Git Bash runs the hooks) |
-| After bootstrap | `claude` (log in), then `gh auth login` and `gh auth setup-git` | same | same |
+| After bootstrap | log in to your agents (`claude`, `codex`), then `gh auth login` and `gh auth setup-git` | same | same |
 
-Bootstrap installs everything else that is missing, in your home folder and without sudo: uv (which also provides Python), Claude Code, Node.js, gh and the tools in [Included tools](../reference/included-tools.md#command-line-tools). It never replaces a tool you already have. The installers run without a further prompt; see [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
+Bootstrap installs everything else that is missing, in your home folder and without sudo: uv (which also provides Python), the agents you chose (Claude Code, Codex), Node.js, gh and the tools in [Included tools](../reference/included-tools.md#command-line-tools). It never replaces a tool you already have. The installers run without a further prompt; see [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
 
 Optional, only if you turn on Claude Code's sandbox (Linux, WSL 2): `sudo apt-get install bubblewrap socat`.
 
@@ -40,7 +40,7 @@ Go on with [What bootstrap asks](#what-bootstrap-asks).
 
 Native Windows is experimental and not recommended. Use WSL 2 if you can.
 
-1. Install Git for Windows (`winget install --id Git.Git -e`), then open a new PowerShell. `bootstrap.ps1` only warns when `bash` is missing, but Claude Code hooks need Git Bash. Python is not needed: uv provides it.
+1. Install Git for Windows (`winget install --id Git.Git -e`), then open a new PowerShell. `bootstrap.ps1` only warns when `bash` is missing, but the hooks of both agents run in Git Bash. Python is not needed: uv provides it.
 2. In PowerShell, run the one-liner (it clones into `.\agent-loadout` in the current folder):
 
    ```powershell
@@ -82,12 +82,19 @@ Open a new terminal so the new PATH applies. Then do the "Still to do" items boo
 
 ```bash
 claude                                  # log in to Claude Code
+codex                                   # log in to Codex (if you chose it)
 gh auth login && gh auth setup-git      # log in to GitHub
 ```
 
+Log in only to the agents you chose.
+
+### Codex only: approve the hooks
+
+Codex runs plugin hooks only after you approve them. Start `codex`, run `/hooks` and approve loadout's hooks. loadout never does this for you; which hooks there are is in [Hooks](../reference/hooks.md).
+
 ## Verify
 
-Restart Claude Code. Then run:
+Restart your agent: Claude Code (or run `/reload-plugins`) and Codex; if you chose only one, restart that one. Then run:
 
 ```bash
 loadout check
@@ -104,10 +111,11 @@ cd my-project
 loadout init
 ```
 
-`loadout init` creates `AGENTS.md`, `CLAUDE.md`, a `docs/` folder and `.gitignore` entries, and suggests profiles for domain tools. It never overwrites an existing scaffold file; profiles merge into `.claude/settings.json` and `.mcp.json`. Add `--dry-run` for a preview (it does not show the settings diff). Then open Claude Code in the repo and run:
+`loadout init` creates `AGENTS.md`, `CLAUDE.md`, a `docs/` folder and `.gitignore` entries, and suggests profiles for domain tools. It never overwrites an existing scaffold file. Profiles are written for each agent that is on (Claude Code: `.claude/settings.json` and `.mcp.json`; Codex: `.codex/config.toml`); the table is in the [CLI reference](../reference/cli.md#loadout-profile). Add `--dry-run` for a preview (it does not show the settings diff). With Codex on, start `codex` in the repo once and accept the trust question, or Codex ignores the repo's `.codex/config.toml` ([project trust](../how-to/codex.md#project-trust)). Then open your agent in the repo and run the onboard skill:
 
 ```
-/loadout:onboard
+/loadout:onboard      # Claude Code
+$loadout:onboard      # Codex
 ```
 
 The skill reads the project and fills in the documentation. To add a profile later, run `loadout profile <name>` (see [Profile format](../reference/profile-format.md)).
@@ -116,7 +124,7 @@ The skill reads the project and fills in the documentation. To add a profile lat
 
 After setup you do not have to run anything to stay current.
 
-Claude Code updates the plugins, a session hook pulls the kit and your personal layer once a day, and a weekly check tells you when tool binaries have updates (`loadout update` applies them after asking). How this works: [The daily sync](../explanation/architecture.md#the-daily-sync). What runs without asking, and how to opt out, is in [Security and trust](../explanation/security-and-trust.md).
+A session hook pulls the kit and your personal layer once a day, and a weekly check tells you when tool binaries have updates (`loadout update` applies them after asking). Claude Code updates its plugins itself; for Codex, loadout refreshes them after a pull that brought new commits. How this works: [The daily sync](../explanation/architecture.md#the-daily-sync). What runs without asking, and how to opt out, is in [Security and trust](../explanation/security-and-trust.md).
 
 ## Next
 

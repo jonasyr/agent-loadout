@@ -90,7 +90,7 @@ def test_hero_shows_the_wordmark_in_both_variants():
     assert '<source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark.dark.svg">' in hero
     # sized by width, so GitHub's max-width: 100% can scale it down on a phone (a fixed height would clip it)
     assert re.search(r'<img alt="loadout" src="docs/assets/wordmark\.light\.svg" width="\d+">', hero)
-    assert "Claude Code, fully set up in one command." in hero
+    assert "Claude Code and Codex, fully set up in one command." in hero
 
 
 def _hero_problems(hero):
