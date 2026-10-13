@@ -68,20 +68,29 @@ def render_instructions() -> str:
 
 
 def splice(text: str, block: str) -> str | None:
-    """text with the block replaced or appended; None when the markers are unbalanced or duplicated."""
+    """text with the block replaced or appended; None when the markers are unbalanced or duplicated.
+    The block takes the file's line endings (Windows CRLF stays CRLF), so the user's text stays byte for byte."""
+    nl = "\r\n" if "\r\n" in text else "\n"
+    if nl != "\n":
+        block = block.replace("\r\n", "\n").replace("\n", nl)
     starts, ends = text.count(START), text.count(END)
     if starts == ends == 0:
-        return block if not text.strip() else text.rstrip("\n") + "\n\n" + block
+        return block if not text.strip() else text.rstrip("\r\n") + nl + nl + block
     if starts == ends == 1 and text.index(START) < text.index(END):
         before, rest = text.split(START, 1)
         after = rest.split(END, 1)[1]
-        return before + block.rstrip("\n") + after
+        return before + block.rstrip("\r\n") + after
     return None
+
+
+def _read_exact(path: Path) -> str:
+    """The file's text with its own line endings (read_text would turn CRLF into LF)."""
+    return path.read_bytes().decode("utf-8")
 
 
 def apply_instructions(bk) -> str:
     path = paths.codex_home() / "AGENTS.md"
-    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    old = _read_exact(path) if path.exists() else ""
     new = splice(old, render_instructions())
     if new is None:
         return f"skipped {path}: its loadout markers are unbalanced or duplicated; fix them by hand"
@@ -102,10 +111,17 @@ def refresh_instructions() -> str | None:
     from . import targets
     if not targets.codex_enabled():
         return None
+    import time
+    lock = paths.state_dir() / LOCK
+    try:  # another loadout run is setting Codex up right now: it writes the block itself
+        if time.time() - lock.stat().st_mtime < STALE_LOCK:
+            return None
+    except OSError:
+        pass
     path = paths.codex_home() / "AGENTS.md"
     try:
-        old = path.read_text(encoding="utf-8")
-    except OSError:
+        old = _read_exact(path)
+    except (OSError, UnicodeDecodeError):
         return None
     if START not in old:
         return None

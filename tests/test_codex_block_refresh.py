@@ -40,3 +40,55 @@ def test_nothing_happens_with_codex_off_without_a_block_or_with_broken_markers(f
     assert codex.refresh_instructions() is None and _agents().read_text() == before
     _agents().unlink()
     assert codex.refresh_instructions() is None and not _agents().exists()
+
+
+def test_a_real_rule_edit_reaches_the_block(fake_home):
+    _codex_on()
+    rules = paths.personal_root() / "rules"
+    rules.mkdir(parents=True)
+    (rules / "me.md").write_text("I like tabs.\n", encoding="utf-8")
+    _seed()
+    codex.refresh_instructions()
+    assert "I like tabs." in _agents().read_text(encoding="utf-8")
+    (rules / "me.md").write_text("I like spaces.\n", encoding="utf-8")  # a hand edit
+    maintenance.session_start(0)
+    text = _agents().read_text(encoding="utf-8")
+    assert "I like spaces." in text and "I like tabs." not in text
+
+
+def test_windows_line_endings_stay_byte_for_byte(fake_home, monkeypatch):
+    _codex_on()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    _agents().parent.mkdir(parents=True, exist_ok=True)
+    mine_before, mine_after = b"my own notes\r\nline two\r\n", b"\r\nmore of mine\r\n"
+    _agents().write_bytes(mine_before + codex.START.encode() + b"\r\nold\r\n" + codex.END.encode() + mine_after)
+    codex.refresh_instructions()
+    data = _agents().read_bytes()
+    assert data.startswith(mine_before) and data.endswith(mine_after)
+    assert b"new rules" in data and b"\n" not in data.replace(b"\r\n", b"")
+
+
+def test_apply_instructions_keeps_windows_line_endings_too(fake_home, monkeypatch):
+    from loadout import backup
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    _agents().parent.mkdir(parents=True, exist_ok=True)
+    _agents().write_bytes(b"mine\r\nmore\r\n")  # no block yet: it is appended
+    codex.apply_instructions(backup.Backup(description="t"))
+    data = _agents().read_bytes()
+    assert data.startswith(b"mine\r\nmore\r\n") and b"\n" not in data.replace(b"\r\n", b"")
+
+
+def test_the_refresh_waits_while_another_run_sets_up_codex(fake_home, monkeypatch):
+    _codex_on()
+    _seed()
+    monkeypatch.setattr(codex, "render_instructions", lambda: f"{codex.START}\nnew rules\n{codex.END}\n")
+    lock = paths.state_dir() / codex.LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("")
+    assert codex.refresh_instructions() is None and "old block" in _agents().read_text()
+
+
+def test_a_damaged_targets_file_never_breaks_the_session_start(fake_home):
+    paths.personal_root().mkdir(parents=True)
+    (paths.personal_root() / "targets.json").write_text("{broken")
+    maintenance.session_start(0)  # no exception
