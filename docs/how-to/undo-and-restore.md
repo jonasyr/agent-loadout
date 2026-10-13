@@ -34,6 +34,8 @@ Restore replays the steps in reverse:
 - A file loadout created (a new `me.md`, `settings.json`, `secrets.env` or shell startup file) is moved aside, not deleted.
 - A recorded command runs through `claude` again: reinstall a plugin, re-add a marketplace or an MCP server. Plugins were uninstalled with `--keep-data`, so their data is still there. On a Windows `claude.cmd` shim, which cannot take JSON, the command is written to a private `manual-commands.txt` for you to run by hand.
 
+Restore only trusts backups that loadout made: a folder outside `~/.claude/backups`, a backup copy outside its own `files/` folder, or an undo command loadout never records is refused, so a hand-edited or foreign manifest cannot make it run anything.
+
 Whatever restore replaces goes into a new `pre-restore` backup, so a restore can be undone too. A step that failed is reported, and a backup with a failed step is not marked as restored: fix the cause and run the same restore again. A backup that was already restored is refused unless you pass `--force`.
 
 ## What restore does not undo

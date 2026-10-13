@@ -6,6 +6,7 @@ new "pre-restore" backup, so a restore can itself be undone.
 from __future__ import annotations
 
 import filecmp
+import json
 import os
 import shutil
 import stat
@@ -151,8 +152,44 @@ def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, st
     return skip
 
 
+def _allowed_run(cmd) -> bool:
+    """Only the undo commands loadout itself records; a manifest cannot make restore run anything else."""
+    if not isinstance(cmd, list) or not all(isinstance(a, str) for a in cmd):
+        return False
+    if any(a.startswith("-") for a in cmd[3:] if a not in ("-s", "--scope", "user")):
+        return False
+    n = len(cmd)
+    if cmd[:3] == ["claude", "mcp", "add-json"] and n == 7 and cmd[3:5] == ["-s", "user"]:
+        try:
+            return isinstance(json.loads(cmd[6]), dict)
+        except ValueError:
+            return False
+    if cmd[:3] == ["claude", "mcp", "remove"]:
+        return n == 6 and cmd[3:5] == ["-s", "user"]
+    if cmd[:2] == ["claude", "plugin"] and n == 6 and cmd[2] in ("enable", "install"):
+        return cmd[4:] == ["--scope", "user"]
+    if cmd[:4] == ["claude", "plugin", "marketplace", "add"]:
+        return n == 5
+    if cmd[:3] == ["codex", "plugin", "remove"]:
+        return n == 4
+    if cmd[:4] == ["codex", "plugin", "marketplace", "remove"]:
+        return n == 5
+    return False
+
+
+def _inside(path: Path, folder: Path) -> bool:
+    try:  # resolve the folder around the entry, not the entry itself: a backed-up symlink stays a symlink
+        (path.parent.resolve() / path.name).relative_to(folder.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
 def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
     undo, label = step["undo"], step["label"]
+    for key in ("move", "restore-file"):
+        if key in undo and not _inside(Path(undo[key][0]), (root or pre.root) / "files"):
+            return f"failed: {label}: its backup copy is not inside {root or pre.root}"
     if "move" in undo:
         src, dst = map(Path, undo["move"])
         if not _exists(src):
@@ -185,9 +222,9 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
         return f"not restored automatically: {label}; the old value is in {undo['kept']}, restore it by hand"
     elif "run" in undo:
         cmd = undo["run"]
-        codex_undo = cmd[:3] == ["codex", "plugin", "remove"] or cmd[:4] == ["codex", "plugin", "marketplace", "remove"]
-        if not cmd or not (cmd[0] == "claude" or codex_undo):  # the agents' own undo commands only, never a shell
-            return f"failed: refusing to run this command from a manifest: {' '.join(cmd)}"
+        if not _allowed_run(cmd):  # the undo commands loadout records only, never a shell
+            shown = " ".join(map(str, cmd)) if isinstance(cmd, list) else str(cmd)
+            return f"failed: refusing to run this command from a manifest: {shown}"
         if runner.would_refuse(cmd):
             where = runner.write_manual_commands(root or pre.root, f"restore: {label} (full command, contains secrets)", [cmd])
             return f"failed: {label}: cannot run through this claude (Windows .cmd shim); run the command in {where} by hand"
@@ -199,6 +236,8 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
 
 def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | None]:
     """Replay a backup's undo steps in reverse. Returns (messages, all_ok, pre-restore backup root)."""
+    if not _inside(root, paths.backups_root()):
+        return [f"loadout only restores backups under {paths.backups_root()}; move it there first"], False, None
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
         return [f"no loadout backup at {root} (manifest.json missing); see `loadout restore --list`"], False, None

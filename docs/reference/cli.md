@@ -249,6 +249,8 @@ loadout restore [--list] [--force] [BACKUP_DIR]
 
 Without `BACKUP_DIR` it lists the backups, like `--list`.
 
+Restore only accepts folders under `~/.claude/backups` and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
+
 Exit codes: 0 when listing or when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed.
 
 ## loadout kit-path
