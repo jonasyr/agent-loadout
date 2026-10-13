@@ -15,15 +15,15 @@ The one place for loadout questions and changes. Never edit `~/.claude/settings.
 
 ## Other changes
 
-Map the request to a command, show the planned commands as a short list, and run them only after a yes:
+Map the request to a command, show the planned commands as a short list, and run them only after a yes. Your shell has no terminal, so a command that would ask again gets its answer as a flag (the user's yes is that answer):
 
 | Request | Command |
 |---|---|
 | Turn an agent on or off | `loadout configure set target <claude or codex> <on or off>` |
 | Tools for one repo | `loadout profile <name>` in that repo (`loadout init` for a new one) |
 | Is everything working? | `loadout check` |
-| Review the existing setup | `loadout adopt` (a dry run; `--apply` only after a yes) |
-| Update tools | `loadout update` |
+| Review the existing setup | `loadout adopt` (a dry run); after a yes, `loadout adopt --apply --groups <the agreed groups>` or `--own NAME=CHOICE` |
+| Update tools | `loadout update` lists what is outdated; after a yes, `loadout update --yes` |
 | Undo a change | `loadout restore --list`, then `loadout restore <dir>` after a yes |
 
 When no command covers the request, say which doc page describes the manual way and let the user decide; never edit the files yourself.

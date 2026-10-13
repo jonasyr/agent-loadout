@@ -44,3 +44,9 @@ def test_eval_runner_copies_the_whole_docs_folder():
 def test_routing_cases_exist():
     for case in ("configure-answer", "configure-target"):
         assert (KIT / f"plugins/loadout/evals/{case}/case.yaml").exists(), case
+
+
+def test_commands_the_agent_runs_after_a_yes_need_no_terminal():
+    # the agent's shell has no terminal: a command that asks again would skip silently
+    assert "`loadout update --yes`" in SKILL
+    assert "`loadout adopt --apply --groups" in SKILL
