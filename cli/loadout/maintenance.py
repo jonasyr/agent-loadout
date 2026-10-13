@@ -329,11 +329,40 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
         _release_lock()
 
 
+def _update_plugins(claude_on: bool, codex_on: bool) -> None:
+    """Refresh the plugins the kit enables, in each agent that is on, and say what changed."""
+    from . import codex, targets
+    from .jsonio import get_dict
+    from .settings_merge import desired_settings
+    changed = False
+    if claude_on:
+        installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
+        for pid, on in get_dict(desired_settings(), "enabledPlugins").items():
+            entries = installed.get(pid)
+            if not on or not isinstance(entries, list) or not any(
+                    isinstance(e, dict) and e.get("scope") == "user" for e in entries):
+                continue
+            res = runner.run(["claude", "plugin", "update", pid, "--scope", "user"], timeout=300)
+            if not res.ok:
+                print(f"plugin {pid}: failed: {redact((res.stderr or res.stdout).strip()[:300])}")
+            elif "already at the latest version" not in res.stdout.lower() + res.stderr.lower():
+                print(f"plugin {pid}: updated")
+                changed = True
+    if codex_on:
+        lines = codex.apply_plugins(Backup(description="update: Codex plugins"), refresh=True)
+        for line in lines:
+            print(redact(line))
+        changed = changed or bool(lines)
+    if changed:
+        print(targets.restart_hint())
+
+
 def _update(yes: bool, ask: Callable[[str], str]) -> int:
     from . import targets
     if targets.claude_enabled():  # Codex only: no Claude Code marketplaces to refresh
         runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
     claude_on = targets.claude_enabled()
+    _update_plugins(claude_on, targets.codex_enabled())
     settings_path = paths.claude_home() / "settings.json"
     before = load_json(settings_path) if claude_on else {}  # Codex only: Claude Code's file is not read at all
     outdated = find_outdated()
