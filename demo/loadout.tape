@@ -60,6 +60,10 @@ Enter
 # answers in the order bootstrap asks (VHS's Wait reads the top of the scrollback, so it cannot follow a
 # scrolling screen; typed answers queue in the terminal, the pauses only set the pace)
 Sleep 5s
+# which agents: Enter takes [1] Claude Code
+Sleep 1500ms
+Enter
+# personal layer: empty creates a starter
 Sleep 1500ms
 Enter
 Sleep 700ms

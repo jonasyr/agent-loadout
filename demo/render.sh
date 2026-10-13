@@ -16,7 +16,7 @@ if [ -n "${DEMO_KEEP_DIR:-}" ]; then mkdir -p "$DEMO_KEEP_DIR"; keep=(-v "$DEMO_
   set -e
   git config --global user.name demo && git config --global user.email demo@example.com
   git config --global init.defaultBranch main
-  mkdir /kit && cd /src && git ls-files -co --exclude-standard -z | xargs -0 cp --parents -t /kit
+  mkdir /kit && cd /src && git ls-files -co --exclude-standard -z | xargs -0 cp -P --parents -t /kit
   cd /kit && git init -q && git add -A && git commit -qm demo
   vhs demo/loadout.tape
   W=1280 H=800 FILL=0x181a24
