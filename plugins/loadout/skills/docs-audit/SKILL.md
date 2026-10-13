@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Docs audit
 
-Thorough by design: it may take long and use many tokens. Correctness over speed. Follow `~/.claude/rules/loadout/docs-policy.md` and `memory-policy.md`.
+Thorough by design: it may take long and use many tokens. Correctness over speed. Follow the kit's `rules/docs-policy.md` and `rules/memory-policy.md`. Before step 5, read these sections of the kit's `docs/explanation/documentation-strategy.md`: "The model: one home per fact", "Diátaxis: four kinds of docs" and "ADRs: decisions with their reasons". The kit's folder is what `loadout kit-path` prints; without loadout, read the same paths in https://github.com/jonasyr/agent-loadout.
 
 ## 0. Resume or start
 
@@ -38,7 +38,7 @@ Dispatch parallel subagents (superpowers:dispatching-parallel-agents), one per d
 - **Paths:** check existence.
 - **Commands:** verify with harmless forms only (`--help`, `--version`, dry run, `--collect-only`). Ask the user before running tests or builds. Never run anything that deploys, deletes or writes outside the repo.
 - **Behaviour:** read the implementing code; quote the lines that confirm or refute the claim.
-- **Classification**, with evidence for each claim: `correct` | `stale` | `wrong` | `unclear` | `contradictory` (with the other claim's location) | `duplicated` | `misplaced` (wrong layer) | `unverifiable`.
+- **Classification**, with evidence for each claim: `correct` | `stale` | `wrong` | `unclear` | `contradictory` (with the other claim's location) | `duplicated` | `misplaced` (wrong layer, or a page that mixes Diátaxis kinds) | `unverifiable`.
 
 Then find **missing** documentation: modules, entry points, CLI commands, config options and env vars that no doc mentions but that a user or contributor would need.
 
@@ -68,7 +68,8 @@ Get approval.
 ## 6. Rewrite
 
 - Facts go into their single home in `docs/`; corrected per the verification and answers.
-- Decisions found in prose become ADRs.
+- Each page is one Diátaxis kind; a page that mixes kinds is split. Create only the kinds the repo has content for.
+- Decisions found in prose become ADRs in the guide's format (numbered, Status, Context, Decision, Consequences). Never edit an accepted ADR's decision: supersede it with a new one.
 - `AGENTS.md`: short and accurate (purpose, verified commands, hard conventions, map).
 - Serena memories: a 1–3 line summary plus link per topic, plus genuine agent notes (gotchas, task recipes, status). Delete memories that only duplicated docs.
 - `README.md`: human entry point linking into `docs/`.

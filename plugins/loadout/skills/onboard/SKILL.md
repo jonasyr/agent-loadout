@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Onboard a repository
 
-Read `~/.claude/rules/loadout/docs-policy.md` and `memory-policy.md` first; everything you write must follow them.
+Read the kit's `rules/docs-policy.md` and `rules/memory-policy.md` first; everything you write must follow them. Before you create `docs/` pages, read the section "Diátaxis: four kinds of docs" of the kit's `docs/explanation/documentation-strategy.md`; before you write an ADR, read its section "ADRs: decisions with their reasons". The kit's folder is what `loadout kit-path` prints; without loadout, read the same paths in https://github.com/jonasyr/agent-loadout.
 
 ## 1. Detect the mode
 

@@ -5,7 +5,7 @@ description: Cheap end-of-feature documentation pass — find which doc layers (
 
 # Docs sync
 
-Follow `~/.claude/rules/loadout/docs-policy.md`.
+Follow the kit's `rules/docs-policy.md`. Before you add or move a page, read the section "Diátaxis: four kinds of docs" of the kit's `docs/explanation/documentation-strategy.md`; before you write or supersede an ADR, read its section "ADRs: decisions with their reasons". Read only the section you need. The kit's folder is what `loadout kit-path` prints; without loadout, read the same paths in https://github.com/jonasyr/agent-loadout.
 
 1. Determine the change: `git diff --stat <base>...HEAD` (base: the merge base with the default branch) plus uncommitted changes.
 2. For each changed area, decide which facts changed (commands, behaviour, configuration, architecture, decisions) and which layer owns each fact.
