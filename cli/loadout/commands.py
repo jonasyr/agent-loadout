@@ -81,6 +81,10 @@ def _register_check(sub):
     p = sub.add_parser("apply-settings", help="merge kit + personal settings into ~/.claude/settings.json")
 
     def run_apply(a):
+        from . import targets
+        if not targets.claude_enabled():  # a turned-off agent's files stay untouched
+            print("Claude Code is turned off (loadout configure set target claude on); nothing to merge")
+            return 0
         before, after = settings_merge.apply_settings()
         print("settings updated" if before != after else "settings already up to date")
         return 0
