@@ -36,10 +36,23 @@ def agents_skills() -> Path:
 
 
 def state_dir() -> Path:
-    return claude_home() / ".loadout"
+    """loadout's own state: $XDG_STATE_HOME/loadout, else ~/.local/state/loadout (ADR 0025).
+    A relative or empty XDG_STATE_HOME is ignored, as the XDG spec requires."""
+    base = os.environ.get("XDG_STATE_HOME", "")
+    root = Path(base) if base and Path(base).is_absolute() else home() / ".local" / "state"
+    return root / "loadout"
 
 
 def backups_root() -> Path:
+    return state_dir() / "backups"
+
+
+def legacy_state_dir() -> Path:
+    """Where state lived before ADR 0025; read only by the migration and by restore's path mapping."""
+    return claude_home() / ".loadout"
+
+
+def legacy_backups_root() -> Path:
     return claude_home() / "backups"
 
 

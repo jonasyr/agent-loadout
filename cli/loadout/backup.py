@@ -190,8 +190,32 @@ def _inside(path: Path, folder: Path) -> bool:
         return False
 
 
+def _map_legacy(value: str) -> str:
+    """A path written before ADR 0025 (under ~/.claude/backups or ~/.claude/.loadout) moved with the migration:
+    point it at the new location. Any other path stays as it is."""
+    path = Path(value)
+    for old, new in ((paths.legacy_backups_root(), paths.backups_root()),
+                     (paths.legacy_state_dir(), paths.state_dir())):
+        try:
+            return str(new / path.relative_to(old))
+        except ValueError:
+            continue
+    return value
+
+
+def _mapped(undo: dict) -> dict:
+    out = dict(undo)
+    for key in ("move", "restore-file"):
+        if isinstance(out.get(key), list):
+            out[key] = [_map_legacy(str(v)) for v in out[key]]
+    for key in ("created", "kept"):
+        if isinstance(out.get(key), str):
+            out[key] = _map_legacy(out[key])
+    return out
+
+
 def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
-    undo, label = step["undo"], step["label"]
+    undo, label = _mapped(step["undo"]), step["label"]
     for key in ("move", "restore-file"):
         if key in undo and not _inside(Path(undo[key][0]), (root or pre.root) / "files"):
             return f"failed: {label}: its backup copy is not inside {root or pre.root}"
@@ -241,6 +265,14 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
 
 def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | None]:
     """Replay a backup's undo steps in reverse. Returns (messages, all_ok, pre-restore backup root)."""
+    mapped = Path(_map_legacy(str(root)))  # a path printed before ADR 0025 moved with the migration
+    from .migrate import copied_to
+    if mapped != root and (root / "manifest.json").is_file() and copied_to(root) != mapped:  # old one still there
+        if (mapped / "manifest.json").is_file():
+            return [f"{root} is still there, and {mapped} is a different backup of the same name; "
+                    "compare them and restore the one you mean by its new path"], False, None
+        return [f"{root} has not moved to {paths.backups_root()} yet; run `loadout check`, then this again"], False, None
+    root = mapped
     try:  # the backup folder itself, resolved: a symlinked or `..` folder is not one of loadout's backups
         base = paths.backups_root().resolve()
         root = root.resolve()

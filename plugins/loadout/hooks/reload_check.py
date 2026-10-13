@@ -38,6 +38,13 @@ def outdated(root: Path, home: Path) -> bool:
     return bool(paths) and root not in paths
 
 
+def state_dir(home: Path) -> Path:
+    """The same rule as loadout's paths.state_dir() (this hook cannot import loadout)."""
+    base = os.environ.get("XDG_STATE_HOME", "")
+    root = Path(base) if base and Path(base).is_absolute() else home / ".local" / "state"
+    return root / "loadout"
+
+
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read())
@@ -47,7 +54,7 @@ def main() -> int:
         home = _home()
         if not outdated(_resolve(Path(__file__)).parent.parent, home):
             return 0
-        state = home / ".claude" / ".loadout" / "reload-notified.json"
+        state = state_dir(home) / "reload-notified.json"
         try:
             seen = json.loads(state.read_text(encoding="utf-8")).get("sessions", [])
             seen = [s for s in seen if isinstance(s, str)] if isinstance(seen, list) else []
@@ -55,7 +62,9 @@ def main() -> int:
             seen = []
         if session in seen:
             return 0
-        state.parent.mkdir(parents=True, exist_ok=True)
+        state.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if os.name != "nt":
+            os.chmod(state.parent, 0o700)  # private, like the rest of loadout's state
         tmp = state.with_name(f".{state.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps({"sessions": (seen + [session])[-KEEP:]}) + "\n", encoding="utf-8")
         os.replace(tmp, state)  # record first: never repeat the notice when the state cannot be written

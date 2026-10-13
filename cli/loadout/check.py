@@ -193,10 +193,30 @@ def _codex() -> list[CheckResult]:
     return codex.checks()
 
 
+def _legacy_state() -> list[CheckResult]:
+    """What the move out of ~/.claude (ADR 0025) could not settle: old entries kept because both places have them,
+    or old entries not copied yet. Old copies waiting to be retired are normal and not listed."""
+    from . import migrate
+    try:
+        left = migrate.leftovers()
+        waiting = migrate.pending()
+    except OSError as exc:
+        return [CheckResult("loadout state", False, f"cannot read the old folder in ~/.claude ({exc})",
+                            "check its permissions, then run loadout again", "warn")]
+    if waiting:
+        return [CheckResult("loadout state", False, "not everything was copied out of ~/.claude yet",
+                            "run any loadout command; if this stays, move the entry it names by hand", "warn")]
+    if not left:
+        return [CheckResult("loadout state", True)]
+    names = ", ".join(str(p) for p in left[:5]) + (" …" if len(left) > 5 else "")
+    return [CheckResult("loadout state", False, f"kept in ~/.claude because both places have it: {names}",
+                        f"compare with {paths.state_dir()} and delete them by hand", "warn")]
+
+
 def run_checks() -> list[CheckResult]:
     from . import targets
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
-    return [*_python(), *_wsl(),
+    return [*_python(), *_wsl(), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(), *(_connectors() if on else []), *_own(),
             *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]

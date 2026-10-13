@@ -45,8 +45,7 @@ def test_codex_only_bootstrap_never_touches_claude(fake_home, fake_runner, monke
     monkeypatch.setattr(codex, "open_steps", lambda: [])
     _run(agents="codex", plugins=True, adopt_step=True)  # both on: with Claude Code off they must be skipped
     assert not any(c[0] == "claude" for c in fake_runner.calls)
-    created = {p.relative_to(paths.claude_home()).parts[0] for p in paths.claude_home().rglob("*")} if paths.claude_home().exists() else set()
-    assert created <= {".loadout", "backups"}, created
+    assert not paths.claude_home().exists(), "loadout keeps its own files outside ~/.claude (ADR 0025)"
     assert json.loads(targets.path().read_text()) == {"claude": False, "codex": True}
 
 

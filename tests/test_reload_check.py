@@ -65,7 +65,7 @@ def test_state_keeps_last_20_sessions(home):
     _installed(home, [{"scope": "user", "installPath": str(_cache(home, "bbb"))}])
     for i in range(25):
         _run(home, script, session=f"s{i}")
-    data = json.loads((home / ".claude/.loadout/reload-notified.json").read_text())
+    data = json.loads((home / ".local/state/loadout/reload-notified.json").read_text())
     assert data["sessions"] == [f"s{i}" for i in range(5, 25)]
 
 
@@ -102,7 +102,8 @@ def test_bad_stdin_is_silent(home, raw):
 def test_unwritable_state_is_silent(home):
     script = _plugin(_cache(home, "aaa"))
     _installed(home, [{"scope": "user", "installPath": str(_cache(home, "bbb"))}])
-    (home / ".claude/.loadout").write_text("a file, not a folder")
+    (home / ".local/state/loadout").parent.mkdir(parents=True, exist_ok=True)
+    (home / ".local/state/loadout").write_text("a file, not a folder")
     assert _run(home, script) == ""  # cannot record the session: say nothing rather than repeat every turn
 
 

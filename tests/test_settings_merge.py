@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from loadout import jsonio, settings_merge as sm
+from loadout import jsonio, paths, settings_merge as sm
 
 
 def test_adds_desired_keys_and_keeps_user_keys():
@@ -52,7 +52,7 @@ def test_apply_settings_writes_result_and_snapshot(fake_home, monkeypatch, tmp_p
     before, after = sm.apply_settings()
     assert before == {"model": "opus"}
     assert after == {"model": "opus", "enabledPlugins": {"loadout@agent-loadout": True}, "effortLevel": "medium"}
-    snap = jsonio.load_json(fake_home / ".claude/.loadout/managed-settings.json")
+    snap = jsonio.load_json(paths.state_dir() / "managed-settings.json")
     assert snap == {"enabledPlugins": {"loadout@agent-loadout": True}, "effortLevel": "medium"}
 
 
@@ -66,7 +66,7 @@ def test_apply_settings_refuses_invalid_json_and_writes_nothing(fake_home, monke
     with pytest.raises(jsonio.InvalidJSON):
         sm.apply_settings()
     assert target.read_text() == "{ broken"
-    assert not (fake_home / ".claude/.loadout/managed-settings.json").exists()
+    assert not (paths.state_dir() / "managed-settings.json").exists()
 
 
 def test_drift_lists_paths_differing_from_desired(fake_home, monkeypatch, tmp_path):

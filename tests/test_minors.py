@@ -193,7 +193,7 @@ def test_restore_list_shows_time_and_home_relative_path(fake_home):
     bk = backup.Backup(description="adopt")
     bk.move(f, "move a")
     rows = backup.list_backups()
-    assert rows[0].startswith("~/.claude/backups/loadout-") or rows[0].startswith("~\\.claude\\backups\\loadout-")
+    assert rows[0].startswith("~/.local/state/loadout/backups/loadout-") or rows[0].startswith("~\\.local\\state\\loadout\\backups\\loadout-")
     assert time.strftime("%Y-%m-%d") in rows[0] and "adopt" in rows[0]
 
 

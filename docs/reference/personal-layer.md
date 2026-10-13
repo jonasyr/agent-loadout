@@ -40,7 +40,7 @@ The kit's own rules are linked the same way, to `~/.claude/rules/loadout` for Cl
 
 ### Links and copies
 
-loadout links with symlinks. If the system cannot create them (Windows without Developer Mode), it writes a marker `~/.claude/.loadout/copy-mode` and copies the files instead. Copied folders carry a `.loadout-copy` file and are refreshed after each [daily sync](../explanation/architecture.md#the-daily-sync) and by `loadout bootstrap`. A copy you edited in place is moved into a backup on the next refresh, so edit the source in the personal layer. `loadout bootstrap` returns to links when they work again.
+loadout links with symlinks. If the system cannot create them (Windows without Developer Mode), it writes a marker `~/.local/state/loadout/copy-mode` and copies the files instead. Copied folders carry a `.loadout-copy` file and are refreshed after each [daily sync](../explanation/architecture.md#the-daily-sync) and by `loadout bootstrap`. A copy you edited in place is moved into a backup on the next refresh, so edit the source in the personal layer. `loadout bootstrap` returns to links when they work again.
 
 If a link target would replace something you own, the old item goes into a backup first.
 
@@ -57,7 +57,7 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 
 ## Machine-local state
 
-`~/.claude/.loadout/` belongs to this machine and is not part of the personal layer. Do not sync it.
+`~/.local/state/loadout/` (or `$XDG_STATE_HOME/loadout`) belongs to this machine and is not part of the personal layer. Do not sync it. Older versions kept it in `~/.claude/.loadout/`; loadout moves it once ([loadout's own files](../explanation/architecture.md#loadouts-own-files)).
 
 | File | Holds |
 |---|---|

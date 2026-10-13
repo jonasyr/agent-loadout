@@ -40,10 +40,17 @@ What the Codex side maps, and what stays different, is in [Use loadout with Code
 
 ## loadout's own files
 
-Two folders belong to loadout itself, for every user, Codex-only included. They sit under `~/.claude` because that is where loadout always kept them; the path does not depend on whether Claude Code is on (`paths.state_dir`, `paths.backups_root`).
+Two folders belong to loadout itself, for every user, Codex-only included. They sit in `$XDG_STATE_HOME/loadout` (an absolute path), or `~/.local/state/loadout` when that is not set, on every OS. The path does not depend on whether Claude Code is on (`paths.state_dir`, `paths.backups_root`), so a Codex-only machine has no `~/.claude`. See [ADR 0025](../adr/0025-state-in-xdg-state-home.md).
 
-- `~/.claude/.loadout/`: machine-local state. It records what the merge last applied (the snapshot), which `config.toml` entries loadout owns (`codex-config.json`), your `leave` decisions, queued notices and the maintenance timestamps. It is not synced.
-- `~/.claude/backups/`: one `loadout-<timestamp>` folder per change that moved or replaced something you own, with a manifest of undo steps. See [Undo what loadout changed](../how-to/undo-and-restore.md).
+- `~/.local/state/loadout/`: machine-local state. It records what the merge last applied (the snapshot), which `config.toml` entries loadout owns (`codex-config.json`), your `leave` decisions, queued notices and the maintenance timestamps. It is not synced.
+- `~/.local/state/loadout/backups/`: one `loadout-<timestamp>` folder per change that moved or replaced something you own, with a manifest of undo steps. See [Undo what loadout changed](../how-to/undo-and-restore.md).
+
+Older versions kept both folders in `~/.claude`. loadout moves them in two steps, because an older loadout run or the hooks of a Claude Code session that has not reloaded its plugins can still write the old place:
+
+1. **Copy.** At the start of every loadout command that can change something (and of the session hook; `check` and `kit-path` stay read-only and skip it), under a lock, everything of loadout's in `~/.claude/.loadout` and its own `loadout-<timestamp>` folders in `~/.claude/backups` are copied to the new place; nothing there is overwritten (Claude Code's own `.claude.json` copies in `~/.claude/backups` stay where they are). Another run waits up to 10 seconds for the lock. Until everything is copied, commands that change things stop with exit code 1 and say why; `kit-path`, `check` and `restore` still run, the session hook exits quietly, and the next run continues. If an entry can never be copied (for example a file owned by root after a `sudo` run), move or delete it by hand; `loadout check` names it.
+2. **Retire.** Ten minutes later at the earliest, and only when no older loadout run holds its maintenance lock, a later run deletes each old copy that is still exactly what was copied. An old copy that an older run changed after the copy replaces the new copy right away, in the next run and before the command does anything, if the new copy is untouched; when both changed, both stay, the old one is named once, and `loadout check` warns (row `loadout state`) until you delete it by hand. Session files of an older plugin are never copied back over the new ones; their old copies go once they have been untouched for a day.
+
+An empty `~/.claude` is removed afterwards only when Claude Code is off.
 
 ## The settings merge
 

@@ -2,7 +2,7 @@
 """Execution-advisor hooks (stdlib only, no network; always exit 0, silent on error).
 
   advisor.py record   PostToolUse Write|Edit|MultiEdit: remember a finished implementation plan
-                      ({path, session_id}) in ~/.claude/.loadout/advisor-pending.json and mark
+                      ({path, session_id}) in ~/.local/state/loadout/advisor-pending.json and mark
                       it "written since the last Stop".
   advisor.py stop     Stop: for a plan written in this turn that is not being executed yet
                       (no ticked box and no `Task N: complete` line in its sdd-workspace ledger), not yet evaluated and not yet nudged about, block the stop
@@ -41,8 +41,11 @@ INSTRUCTION = ("A plan was just finished: {path}. Before the user picks an execu
 
 
 def state_dir() -> Path:
+    """The same rule as loadout's paths.state_dir() (this hook cannot import loadout)."""
     home = os.environ.get("HOME") or os.environ.get("USERPROFILE") or str(Path.home())
-    return Path(home) / ".claude" / ".loadout"
+    base = os.environ.get("XDG_STATE_HOME", "")
+    root = Path(base) if base and Path(base).is_absolute() else Path(home) / ".local" / "state"
+    return root / "loadout"
 
 
 def _load(name: str) -> dict:
@@ -55,7 +58,9 @@ def _load(name: str) -> dict:
 
 def _save(name: str, data: dict) -> None:
     d = state_dir()
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name != "nt":
+        os.chmod(d, 0o700)  # plan paths and session ids: private, like the rest of loadout's state
     tmp = d / f".{name}.{os.getpid()}.tmp"
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     os.replace(tmp, d / name)
