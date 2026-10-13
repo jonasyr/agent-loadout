@@ -103,12 +103,16 @@ loadout init
 
 Then open Claude Code there and run `/loadout:onboard`: it reads the project and writes its documentation.
 
+### Questions or changes later
+
+Ask your agent in plain words ("how do I undo yesterday's change?", "turn off Codex"). The loadout plugin answers from these docs and makes changes through the `loadout` commands after your yes ([how it works](docs/how-to/ask-about-loadout.md)).
+
 ## What you get
 
 - **Curated defaults.** The toolset complements itself instead of overlapping, and every keep or drop decision has a written reason in [`catalog.json`](catalog.json).
 - **Works on existing setups.** `loadout adopt` shows what it would change and why, asks first, and backs up what it replaces ([your own tools](docs/how-to/your-own-tools.md)).
 - **Stays up to date by itself.** Claude Code updates the plugins, loadout pulls the kit and your personal layer daily, and you get a notice when tools have updates ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
-- **Yours on top.** Your preferences, own tools and profiles live in your personal layer, ideally a private git repo, so they follow you to every machine ([set it up](docs/how-to/personal-repo.md)); change them with `loadout configure` or `/loadout:configure` ([preferences](docs/how-to/set-preferences.md)).
+- **Yours on top.** Your preferences, own tools and profiles live in your personal layer, ideally a private git repo, so they follow you to every machine ([set it up](docs/how-to/personal-repo.md)); change them with `loadout configure` or by asking your agent ([preferences](docs/how-to/set-preferences.md)).
 - **Codex too.** Turn on Codex and it gets the same rules, tools and preferences, kept current the same way ([Use loadout with Codex](docs/how-to/codex.md)).
 - **Projects too.** `loadout init` prepares any repo for agent work, profiles add domain tools only where needed, and three skills keep the docs true ([documentation strategy](docs/explanation/documentation-strategy.md)).
 
@@ -149,6 +153,7 @@ The full index is [docs/README.md](docs/README.md).
 
 | I want to | Read |
 |---|---|
+| Ask a question or change my setup | [Ask your agent about loadout](docs/how-to/ask-about-loadout.md) |
 | Install step by step, per platform | [Getting started](docs/tutorials/getting-started.md) |
 | Decide what happens to tools I already have | [Handle your own tools](docs/how-to/your-own-tools.md) |
 | Undo something loadout changed | [Undo what loadout changed](docs/how-to/undo-and-restore.md) |

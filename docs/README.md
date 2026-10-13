@@ -2,12 +2,15 @@
 
 Which page answers which question. The pages follow [Diátaxis](https://diataxis.fr/): a tutorial teaches one path, how-to pages solve one task, reference pages list the facts, explanation pages say why. Each fact has one home, and other pages link to it. How this is organised, and why: [Documentation strategy](explanation/documentation-strategy.md).
 
+Questions about loadout, or a change to your setup? Ask your agent in plain words; see [Ask your agent about loadout](how-to/ask-about-loadout.md).
+
 ## Tutorials
 
 - [Getting started](tutorials/getting-started.md). Read this when you install loadout for the first time, on Linux, macOS, WSL 2 or native Windows (experimental).
 
 ## How-to guides
 
+- [Ask your agent about loadout](how-to/ask-about-loadout.md). Read this when you have a question about loadout or want to change your setup without looking up the command.
 - [Handle your own tools](how-to/your-own-tools.md). Read this when `adopt` or `check` lists tools loadout does not manage and you want to keep, move, leave or remove them.
 - [Keep your personal layer in a private git repo](how-to/personal-repo.md). Read this when you want your preferences and own tools on more than one machine.
 - [Use loadout with Codex](how-to/codex.md). Read this when you also use the Codex CLI and want it set up like Claude Code.

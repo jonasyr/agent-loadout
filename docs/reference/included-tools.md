@@ -39,7 +39,7 @@ How these keys are merged with yours: [Settings merge](settings-merge.md).
 `plugins/loadout/` provides:
 
 - **MCP servers:** Serena (symbolic code navigation and editing) and codebase-memory (a code graph for structure and call-chain questions), from `plugins/loadout/.mcp.json`. Both binaries are installed by bootstrap.
-- **Skills:** `/loadout:onboard`, `/loadout:configure`, `/loadout:docs-audit`, `/loadout:docs-sync` and `/loadout:execution-advisor`. The documentation skills are described in [Documentation strategy](../explanation/documentation-strategy.md#how-the-kit-keeps-it-true), the advisor in [The execution advisor](../explanation/execution-advisor.md), configure in [Set your working preferences](../how-to/set-preferences.md#by-asking-claude).
+- **Skills:** `/loadout:onboard`, `/loadout:configure`, `/loadout:docs-audit`, `/loadout:docs-sync` and `/loadout:execution-advisor`. The documentation skills are described in [Documentation strategy](../explanation/documentation-strategy.md#how-the-kit-keeps-it-true), the advisor in [The execution advisor](../explanation/execution-advisor.md), configure in [Ask your agent about loadout](../how-to/ask-about-loadout.md).
 - **Hooks:** the session-start maintenance hook, tool hooks for rtk, Serena and codebase-memory, and the execution-advisor hooks. All are listed in [Hooks](hooks.md).
 
 The kit's `rules/` folder is linked to `~/.claude/rules/loadout` and loaded in every session: `tooling.md` (which tool for which question), `workflow.md` (process skills, review, UI checks), `docs-policy.md` and `memory-policy.md` (where facts and notes live) and `rtk.md`.

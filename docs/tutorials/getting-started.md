@@ -120,6 +120,7 @@ Claude Code updates the plugins, a session hook pulls the kit and your personal 
 
 ## Next
 
+- Questions or changes from now on: ask your agent in plain words ([Ask your agent about loadout](../how-to/ask-about-loadout.md)).
 - Change preferences: [Set your working preferences](../how-to/set-preferences.md).
 - Something went wrong: [Undo what loadout changed](../how-to/undo-and-restore.md).
 - All commands: [CLI reference](../reference/cli.md).
