@@ -79,7 +79,7 @@ def test_another_run_holding_the_lock_is_left_alone(fake_home, monkeypatch):
     _legacy(fake_home)
     paths.state_dir().mkdir(parents=True)
     (paths.state_dir() / migrate.LOCK).write_text("")
-    assert migrate.migrate_state() == []
+    assert all("another loadout run" in line for line in migrate.migrate_state())
     assert paths.legacy_state_dir().exists()
 
 
@@ -184,3 +184,59 @@ def test_a_platform_without_linkat_copies_instead(fake_home, monkeypatch):
     migrate.migrate_state()
     assert (paths.state_dir() / "managed-settings.json").read_text() == '{"a": 1}'
     assert not paths.legacy_state_dir().exists()
+
+
+def test_an_old_session_s_hook_files_are_merged_quietly(fake_home):
+    """A Claude Code session still running the old plugin keeps writing its session files to ~/.claude/.loadout."""
+    paths.state_dir().mkdir(parents=True)
+    (paths.state_dir() / "advisor-pending.json").write_text('{"plans": []}')
+    old = paths.legacy_state_dir()
+    old.mkdir(parents=True)
+    (old / "advisor-pending.json").write_text('{"plans": [1]}')  # same name: disposable, not "kept"
+    (old / "reload-notified.json").write_text("{}")  # new name: moved, but no notice for it
+    assert migrate.migrate_state() == []
+    assert not old.exists() and (paths.state_dir() / "reload-notified.json").exists()
+    assert check._legacy_state() == [check.CheckResult("loadout state", True)]
+
+
+def test_another_run_holding_the_lock_is_named(fake_home, monkeypatch):
+    monkeypatch.setattr(migrate, "WAIT", 0)
+    _legacy(fake_home)
+    paths.state_dir().mkdir(parents=True)
+    (paths.state_dir() / migrate.LOCK).write_text("")
+    [line] = migrate.migrate_state()
+    assert "another loadout run" in line
+
+
+def test_the_session_hook_waits_only_briefly(fake_home, monkeypatch):
+    from loadout.__main__ import main
+    waits = []
+    monkeypatch.setattr(migrate, "migrate_state", lambda wait=None: waits.append(wait) or [])
+    main(["hook-session-start"])
+    assert waits and waits[0] is not None and waits[0] <= 2
+
+
+def test_restore_and_a_bare_loadout_are_not_blocked(fake_home, monkeypatch, capsys):
+    from loadout.__main__ import EXEMPT
+    assert {"restore", "kit-path", "check", None} <= EXEMPT
+
+
+def test_a_symlinked_old_state_folder_is_moved_and_unlinked(fake_home, tmp_path):
+    real = tmp_path / "dotfiles-state"
+    real.mkdir()
+    (real / "managed-settings.json").write_text('{"a": 1}')
+    paths.claude_home().mkdir()
+    paths.legacy_state_dir().symlink_to(real, target_is_directory=True)
+    assert any("moved" in line for line in migrate.migrate_state())
+    assert (paths.state_dir() / "managed-settings.json").exists()
+    assert not paths.legacy_state_dir().is_symlink() and not paths.legacy_state_dir().exists()
+    assert migrate.migrate_state() == []
+
+
+def test_check_survives_an_unreadable_old_folder(fake_home, monkeypatch):
+    paths.legacy_state_dir().mkdir(parents=True)
+    real = type(paths.legacy_state_dir()).iterdir
+    monkeypatch.setattr(type(paths.legacy_state_dir()), "iterdir",
+                        lambda self: (_ for _ in ()).throw(PermissionError("denied")) if self.name == ".loadout" else real(self))
+    [row] = check._legacy_state()
+    assert not row.ok and "denied" in row.detail

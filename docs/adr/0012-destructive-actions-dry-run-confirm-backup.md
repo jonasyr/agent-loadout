@@ -1,6 +1,6 @@
 # 0012. Destructive actions: dry run, confirm, backup, restore
 
-- Status: Accepted
+- Status: Accepted. Backups now live in `~/.local/state/loadout/backups`; see [ADR 0025](0025-state-in-xdg-state-home.md).
 - Date: 2026-10-08
 - Source: [Design spec, decision D12 and section 6.2](../superpowers/specs/2026-10-08-agent-loadout-design.md#2-decisions)
 

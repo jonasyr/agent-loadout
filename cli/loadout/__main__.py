@@ -69,7 +69,8 @@ def _verbose(a) -> None:
         out.VERBOSE = True
 
 
-READ_ONLY = {"kit-path", "check"}  # commands that may run while the state move is unfinished
+# commands that may run while the state move is unfinished: they read only, or (restore) map old paths themselves
+EXEMPT = {"kit-path", "check", "restore", None}
 
 EXTRA_COMMANDS: list = []  # later modules append register(subparsers) functions here
 
@@ -86,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     from .migrate import migrate_state, pending
     try:  # ADR 0025: loadout's files leave ~/.claude once
-        lines = migrate_state()
+        lines = migrate_state(wait=2.0 if args.command == "hook-session-start" else None)
     except KeyboardInterrupt:
         print("\nloadout: interrupted; run the same command again to continue (it picks up where it stopped)",
               file=sys.stderr)
@@ -95,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         lines = [f"loadout: could not move its state from ~/.claude ({exc}); it tries again next time"]
     for line in lines:
         print(line, file=sys.stderr)
-    if args.command not in READ_ONLY and pending():
+    if args.command not in EXEMPT and pending():
         # writing now would start fresh state files next to the unmoved ones, and they would win later
         if args.command == "hook-session-start":
             return 0

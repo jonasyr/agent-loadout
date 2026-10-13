@@ -10,8 +10,11 @@ from pathlib import Path
 from . import paths
 
 LOCK = "migrate.lock"
-STALE = 3600.0
+STALE = 300.0  # the move is normally one rename: a lock this old is from a run that was killed
 WAIT = 10.0  # seconds to wait for another run that is moving the files right now
+# session files of the loadout hooks: an older plugin still running in an open Claude Code session keeps writing
+# them to ~/.claude/.loadout until /reload-plugins; they are merged quietly, never "kept"
+SESSION_FILES = {"advisor-pending.json", "advisor-done.json", "reload-notified.json"}
 
 
 def _files(root: Path) -> dict[str, int]:
@@ -67,24 +70,31 @@ def _merge(old: Path, new: Path) -> tuple[list[Path], int]:
     kept, moved = [], 0
     for entry in sorted(old.iterdir()):
         target = new / entry.name
+        session = entry.name in SESSION_FILES
         if target.exists() or target.is_symlink():
-            kept.append(entry)
+            if session:
+                entry.unlink()  # the new location's copy is the live one
+            else:
+                kept.append(entry)
             continue
         try:
             _move(entry, target)
-            moved += 1
+            moved += 0 if session else 1
         except FileExistsError:  # it appeared meanwhile: the new one wins
-            kept.append(entry)
+            if session:
+                entry.unlink()
+            else:
+                kept.append(entry)
     if not kept:
-        old.rmdir()
+        old.unlink() if old.is_symlink() else old.rmdir()  # a symlinked folder: remove the link, never its target
     return kept, moved
 
 
-def _lock(state: Path) -> Path | None:
-    """The move lock; waits up to WAIT seconds for another run. A lock older than STALE is from a crashed run:
+def _lock(state: Path, wait: float) -> Path | None:
+    """The move lock; waits up to `wait` seconds for another run. A lock older than STALE is from a crashed run:
     it is renamed aside first, so only one run takes it over."""
     lock = state / LOCK
-    deadline = time.time() + WAIT
+    deadline = time.time() + wait
     while True:
         try:
             os.close(os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
@@ -111,23 +121,25 @@ def _claude_code_off() -> bool:
         return False
 
 
-def migrate_state() -> list[str]:
-    """Returns notice lines; empty when there was nothing to move."""
+def migrate_state(wait: float | None = None) -> list[str]:
+    """Returns notice lines; empty when there was nothing to move. wait: seconds to wait for another run's lock
+    (default WAIT; the session hook passes less, so it never runs into its own timeout)."""
     old_state, old_backups = paths.legacy_state_dir(), paths.legacy_backups_root()
-    if not (old_state.exists() or old_backups.exists()):
+    if not (old_state.is_dir() or old_backups.is_dir()):  # a plain file of that name is not loadout's
         return []
     state = paths.state_dir()
     state.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
         state.chmod(0o700)
-    lock = _lock(state)
+    lock = _lock(state, WAIT if wait is None else wait)
     if lock is None:
-        return []
+        return [f"loadout: another loadout run is moving its state out of ~/.claude right now ({state / LOCK}); "
+                "run this again in a moment"]
     lines, kept, moved = [], [], 0
     try:
         # state first: the lock already lives in the new state folder, so state always merges entry by entry
         for old, new in ((old_state, state), (old_backups, paths.backups_root())):
-            if not old.exists():
+            if not old.is_dir():
                 continue
             if new.exists():
                 k, m = _merge(old, new)
@@ -160,7 +172,7 @@ def pending() -> bool:
     try:
         for old, new in ((paths.legacy_state_dir(), paths.state_dir()),
                          (paths.legacy_backups_root(), paths.backups_root())):
-            if old.is_dir() and any(not ((new / e.name).exists() or (new / e.name).is_symlink())
+            if old.is_dir() and any(e.name not in SESSION_FILES and not ((new / e.name).exists() or (new / e.name).is_symlink())
                                     for e in old.iterdir()):
                 return True
     except OSError:
