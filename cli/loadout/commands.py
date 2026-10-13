@@ -7,7 +7,7 @@ from . import backup
 
 def _register_restore(sub):
     p = sub.add_parser("restore", help="undo a loadout backup (--list shows them)")
-    p.add_argument("backup_dir", nargs="?", help="backup directory printed by bootstrap/adopt, e.g. ~/.claude/backups/loadout-<timestamp>")
+    p.add_argument("backup_dir", nargs="?", help="backup directory printed by bootstrap/adopt, e.g. ~/.local/state/loadout/backups/loadout-<timestamp>")
     p.add_argument("--list", action="store_true", help="list backups, newest first")
     p.add_argument("--force", action="store_true", help="replay a backup that was already restored")
 
