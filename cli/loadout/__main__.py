@@ -69,6 +69,8 @@ def _verbose(a) -> None:
         out.VERBOSE = True
 
 
+READ_ONLY = {"kit-path", "check"}  # commands that may run while the state move is unfinished
+
 EXTRA_COMMANDS: list = []  # later modules append register(subparsers) functions here
 
 
@@ -82,12 +84,24 @@ def main(argv: list[str] | None = None) -> int:
             pass
 
     args = build_parser().parse_args(argv)
-    try:  # ADR 0025: loadout's files leave ~/.claude once; never let this stop a command
-        from .migrate import migrate_state
-        for line in migrate_state():
-            print(line, file=sys.stderr)
+    from .migrate import migrate_state, pending
+    try:  # ADR 0025: loadout's files leave ~/.claude once
+        lines = migrate_state()
+    except KeyboardInterrupt:
+        print("\nloadout: interrupted; run the same command again to continue (it picks up where it stopped)",
+              file=sys.stderr)
+        return 130
     except Exception as exc:
-        print(f"loadout: could not move its state from ~/.claude ({exc}); it tries again next time", file=sys.stderr)
+        lines = [f"loadout: could not move its state from ~/.claude ({exc}); it tries again next time"]
+    for line in lines:
+        print(line, file=sys.stderr)
+    if args.command not in READ_ONLY and pending():
+        # writing now would start fresh state files next to the unmoved ones, and they would win later
+        if args.command == "hook-session-start":
+            return 0
+        print("loadout: moving its state out of ~/.claude did not finish (see above); nothing was changed. "
+              "Run the command again; `loadout check` shows what is left.", file=sys.stderr)
+        return 1
     try:
         return int(args.func(args) or 0)
     except (InvalidJSON, ValueError) as exc:

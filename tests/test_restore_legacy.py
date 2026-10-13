@@ -58,3 +58,27 @@ def test_a_mapped_source_outside_files_is_still_refused(fake_home):
         {"label": "x", "undo": {"move": [escape, str(fake_home / "t")]}}]}))
     lines, ok, _ = backup.restore(root)
     assert not ok and any("not inside" in line for line in lines)
+
+
+def test_the_manifest_on_disk_keeps_its_original_paths(fake_home):
+    old_root = _old_backup(fake_home)
+    migrate.migrate_state()
+    backup.restore(paths.backups_root() / old_root.name)
+    steps = json.loads((paths.backups_root() / old_root.name / "manifest.json").read_text())["steps"]
+    assert steps[0]["undo"]["restore-file"][0].startswith(str(paths.legacy_backups_root()))
+
+
+def test_an_old_path_whose_backup_was_kept_in_both_places_is_refused(fake_home):
+    for root in (paths.legacy_backups_root() / "loadout-x", paths.backups_root() / "loadout-x"):
+        (root / "files").mkdir(parents=True)
+        (root / "manifest.json").write_text('{"steps": []}')
+    lines, ok, _ = backup.restore(paths.legacy_backups_root() / "loadout-x")
+    assert not ok and any("compare" in line for line in lines)
+
+
+def test_an_old_backup_not_yet_moved_says_so(fake_home):
+    root = paths.legacy_backups_root() / "loadout-y"
+    (root / "files").mkdir(parents=True)
+    (root / "manifest.json").write_text('{"steps": []}')
+    lines, ok, _ = backup.restore(root)
+    assert not ok and any("has not moved" in line for line in lines)

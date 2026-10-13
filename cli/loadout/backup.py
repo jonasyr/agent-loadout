@@ -265,7 +265,13 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
 
 def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | None]:
     """Replay a backup's undo steps in reverse. Returns (messages, all_ok, pre-restore backup root)."""
-    root = Path(_map_legacy(str(root)))  # a path printed before ADR 0025 moved with the migration
+    mapped = Path(_map_legacy(str(root)))  # a path printed before ADR 0025 moved with the migration
+    if mapped != root and (root / "manifest.json").is_file():  # the old folder is still there
+        if (mapped / "manifest.json").is_file():
+            return [f"{root} is still there, and {mapped} is a different backup of the same name; "
+                    "compare them and restore the one you mean by its new path"], False, None
+        return [f"{root} has not moved to {paths.backups_root()} yet; run `loadout check`, then this again"], False, None
+    root = mapped
     try:  # the backup folder itself, resolved: a symlinked or `..` folder is not one of loadout's backups
         base = paths.backups_root().resolve()
         root = root.resolve()
