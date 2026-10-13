@@ -6,6 +6,17 @@ Use this page when `loadout adopt` or `loadout check` lists tools that loadout d
 
 `loadout configure own` lists the same items. Flags and exit codes of the commands are in the [CLI reference](../reference/cli.md#loadout-adopt).
 
+## You installed a tool yourself
+
+You found a skill, MCP server or plugin and installed it with its own installer (`npx ...`, `claude mcp add`, `codex mcp add`, `/plugin install`). loadout never records or moves it on its own; it waits for your answer.
+
+1. **Where it landed decides who sees it.** Claude Code reads skills from `~/.claude/skills` (every project) and a repo's `.claude/skills` (that repo). Codex reads `~/.agents/skills` and a repo's `.agents/skills`. An installer writes to one of these; an MCP server goes to one agent's config. So right after the install, only that agent has it, and only on this machine.
+2. **loadout notices it** when you run `loadout check` or `loadout adopt`: it is listed under your own tools, and with both agents on as `skill "x" only in Claude Code` (or `only in Codex`).
+3. **Decide where it lives** with `loadout adopt` (or `loadout configure set own x CHOICE`): `global` for every machine and both agents, `project:<profile>` for some repos, `leave` to keep it here only, `remove` to take it away. The table [below](#where-a-tool-of-yours-can-live) shows what each one means.
+4. **Installed into one repo** (`.claude/skills` in that repo): adopt does not look there. Commit it to share it with the repo; `loadout init` or `loadout profile` links it into `.agents/skills` so Codex sees it too.
+
+To write a new skill yourself instead, see [Create a skill of your own](#create-a-skill-of-your-own).
+
 ## Where a tool of yours can live
 
 | | Personal layer (`global`) | Personal profile (`project:<profile>`) | Committed in one repo |
@@ -13,9 +24,9 @@ Use this page when `loadout adopt` or `loadout check` lists tools that loadout d
 | Files | `<personal>/skills/`, `mcp.json`, `settings.json` | `<personal>/profiles/<profile>.json` and `profiles/skills/` | the repo's `.claude/skills/`, `.mcp.json`, `.codex/config.toml` |
 | Which machines | every machine with your personal layer | every machine, but only in repos you apply the profile to | every clone of that repo |
 | Who else | nobody | nobody | everyone who clones the repo |
-| Claude Code gets it | linked into `~/.claude/skills`, servers through `claude mcp`, settings merged | copied into the repo by `loadout profile <profile>` | reads the repo's files |
-| Codex gets it | linked into `~/.agents/skills`, servers in `~/.codex/config.toml` | `loadout profile` links `.agents/skills` and writes `.codex/config.toml` | `.agents/skills` links (from `loadout init` or `new skill --to repo`) and `.codex/config.toml` |
-| Undo | `loadout restore` | `loadout restore` (the repo's copy stays; it is a copy) | `loadout restore` for what loadout created; your commits are yours |
+| Claude Code gets it | linked into `~/.claude/skills`, servers through `claude mcp`, settings merged | `loadout profile <profile>` copies the skills into the repo and merges servers and settings into its `.mcp.json` and `.claude/settings.json` | reads the repo's files |
+| Codex gets it | linked into `~/.agents/skills`, servers in `~/.codex/config.toml` | `loadout profile` links `.agents/skills` and writes `.codex/config.toml` (with Codex on) | the repo's `.agents/skills` links (made by `loadout profile`, by `init` when it applies a profile, or by `new skill --to repo`) and `.codex/config.toml` |
+| Undo | `loadout restore` | `loadout restore` (the repo's copy stays; it is a copy) | `loadout restore` for what `new skill --to repo` created; files and links from `init` and `profile`, and your commits, are yours to revert ([what restore does not undo](undo-and-restore.md#what-restore-does-not-undo)) |
 
 ## Create a skill of your own
 
@@ -25,7 +36,7 @@ loadout configure new skill db-tips --to project:db
 loadout configure new skill release --to repo
 ```
 
-The command writes a `SKILL.md` stub (name, description, a short body to fill in) and links it for the agents that are on. It refuses, writing nothing, when the name is taken in a place it would write or link (also in another case, or as a dangling link). `--to repo` works in a git repo; commit the new folder yourself. Every folder and link it creates is in a backup, so `loadout restore` removes it. For `global` and `project:<profile>` it ends with the commit offer, like adopt.
+The command writes a `SKILL.md` stub (name, description, a short body to fill in) and links it for the agents that are on. It refuses, writing nothing, when the name is taken in a place it would write or link (also in another case, as a dangling link, or for `global` as a pointer in `skills.json`), and when the description is empty, has a line break or looks like a secret. The description is stored as a quoted string, so `Use when: ...` is fine. `--to repo` works in a git repo, but not when that repo is your home folder (a dotfiles repo); commit the new folder yourself. Every folder and link it creates is in a backup, so `loadout restore` removes it. For `global` and `project:<profile>` it ends with the commit offer, like adopt.
 
 ## Choices
 
