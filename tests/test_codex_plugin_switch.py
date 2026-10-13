@@ -72,22 +72,77 @@ def test_a_plugin_you_installed_yourself_is_untouched(fake_home, fake_runner, mo
     assert "mine@else" not in _config()
 
 
-def test_codex_s_own_install_line_is_taken_over_and_switched_off(fake_home, fake_runner, monkeypatch):
-    """`codex plugin add` writes [plugins."ID"] enabled = true itself: that default is not your choice."""
+def _install_with_codex(fake_runner, monkeypatch, pid):
+    """loadout installs pid itself; like the real `codex plugin add`, the fake writes enabled = true."""
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {
+        "enabledPlugins": {pid: True},
+        "extraKnownMarketplaces": {"m": {"source": {"source": "github", "repo": "o/m"}}}})
+    fake_runner.responses[("codex", "plugin", "marketplace", "add")] = runner.Result(
+        0, json.dumps({"marketplaceName": "m", "alreadyAdded": True}), "")
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(
+        0, json.dumps({"installed": [], "available": []}), "")
+
+    def run(cmd, cwd=None, timeout=300, env=None):
+        if cmd[:4] == ["codex", "plugin", "add", pid]:
+            path = paths.codex_home() / "config.toml"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            text = path.read_text(encoding="utf-8") if path.exists() else ""
+            table = f'[plugins."{pid}"]'
+            if table in text:
+                text = text.replace(f"{table}\nenabled = false", f"{table}\nenabled = true")
+            else:
+                text += f"\n{table}\nenabled = true\n"
+            path.write_text(text, encoding="utf-8")
+        return fake_runner(cmd, cwd=cwd, timeout=timeout, env=env)
+    monkeypatch.setattr(runner, "run", run)
+    codex.apply_plugins(backup.Backup(description="install"))
+    monkeypatch.setattr(runner, "run", fake_runner)
+
+
+def test_an_enabled_true_line_loadout_did_not_cause_stays_yours(fake_home, fake_runner, monkeypatch):
+    """Nothing proves `codex plugin add` wrote it rather than you: without that proof the line is yours."""
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('[plugins."x@m"]\nenabled = true\n', encoding="utf-8")
+    _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
+    lines = _apply()
+    assert "enabled = true" in _config() and "enabled = false" not in _config()
+    assert any("your value" in line for line in lines)
+
+
+def test_the_line_loadout_s_own_install_wrote_is_switched_off_later(fake_home, fake_runner, monkeypatch):
+    _install_with_codex(fake_runner, monkeypatch, "x@m")
     _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
     lines = _apply()
     assert "enabled = false" in _config() and not any("your value" in line for line in lines)
     assert 'plugins."x@m".enabled' in codex.read_record()["keys"]
 
 
+def test_a_reinstall_by_loadout_after_an_uninstall_is_loadout_s_line_again(fake_home, fake_runner, monkeypatch):
+    _install_with_codex(fake_runner, monkeypatch, "x@m")
+    _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
+    _apply()  # owned enabled = false
+    _install_with_codex(fake_runner, monkeypatch, "x@m")  # uninstalled meanwhile, switched on, loadout reinstalls
+    _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
+    lines = _apply()
+    assert "enabled = false" in _config() and not any("your value" in line for line in lines)
+
+
+def test_the_install_record_does_not_hide_loadout_s_first_change_backup(fake_home, fake_runner, monkeypatch):
+    path = paths.codex_home() / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("# mine\n", encoding="utf-8")
+    _install_with_codex(fake_runner, monkeypatch, "x@m")
+    _setup(fake_runner, monkeypatch, {"x@m": True}, ["x@m"])
+    bk = backup.Backup(description="first")
+    codex.apply_config(bk)
+    assert any("restore-file" in s["undo"] for s in bk.steps)
+
+
 def test_every_switch_change_is_in_a_backup(fake_home, fake_runner, monkeypatch):
+    _install_with_codex(fake_runner, monkeypatch, "x@m")
     _setup(fake_runner, monkeypatch, {"x@m": True}, ["x@m"])
     _apply()  # loadout's first write: effort and notifications
-    path = paths.codex_home() / "config.toml"
-    path.write_text(_config() + '\n[plugins."x@m"]\nenabled = true\n', encoding="utf-8")  # codex plugin add
     _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
     bk = backup.Backup(description="switch off")
     codex.apply_config(bk)

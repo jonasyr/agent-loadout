@@ -336,7 +336,7 @@ def scan_codex() -> list[Finding]:
     sections are not loadout's, so the fix is by hand (the value into secrets.env, its name into env_vars)."""
     from . import codex
     servers = {name: {"env": t.get("env"), "headers": t.get("http_headers"), "args": t.get("args"), "url": t.get("url")}
-               for name, t in codex.user_servers().items()}
+               for name, t in codex.user_servers(edited=True).items()}
     return scan({"mcpServers": servers}, "~/.codex/config.toml", fixable=False)
 
 

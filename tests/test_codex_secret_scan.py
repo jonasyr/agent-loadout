@@ -35,6 +35,16 @@ def test_codex_only_adopt_reports_it_without_the_value(fake_home, fake_runner, m
     assert "env_vars" in text
 
 
+def test_a_secret_you_add_to_a_table_loadout_wrote_is_found(fake_home, monkeypatch):
+    from loadout import codex
+    _config('[mcp_servers.serena]\ncommand = "uvx"\n')
+    monkeypatch.setattr(codex, "read_record",
+                        lambda: {"tables": {"serena": '[mcp_servers.serena]\ncommand = "uvx"'}, "keys": {}})
+    assert secrets.scan_codex() == []  # loadout's own table, unchanged
+    _config(f'[mcp_servers.serena]\ncommand = "uvx"\n[mcp_servers.serena.env]\nGITHUB_TOKEN = "{TOKEN}"\n')
+    assert [(f.server, f.field) for f in secrets.scan_codex()] == [("serena", "env")]
+
+
 def test_the_codex_hint_fits_the_field():
     def f(field):
         return secrets.Finding(server="s", field=field, key="K", value="v", location="~/.codex/config.toml", fixable=False)

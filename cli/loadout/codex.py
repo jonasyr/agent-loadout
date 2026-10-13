@@ -298,12 +298,9 @@ def add_project_plugin(pid: str) -> None:
         save_json(record_path(), data)
 
 
-INSTALL_DEFAULT = "install-default"  # desired_keys force: also take over `enabled = true`, which codex plugin add writes
-
-
 def _plugin_switches() -> list[tuple]:
     """`enabled` keys for plugins loadout manages and Codex has installed: off when switched off for Claude Code
-    (taking over the `enabled = true` line `codex plugin add` wrote; any other line is yours); back to true when
+    (over a line loadout wrote or its own `codex plugin add` caused; any other line is yours); back to true when
     switched on again and loadout owns the line. Never guesses: without the installed list, no key."""
     from .settings_merge import desired_settings
     enabled = get_dict(desired_settings(), "enabledPlugins")
@@ -319,7 +316,7 @@ def _plugin_switches() -> list[tuple]:
     if listed is None:
         return []
     return ([(("plugins", pid), "enabled", True, False) for pid in on if pid in listed]
-            + [(("plugins", pid), "enabled", False, INSTALL_DEFAULT) for pid in off if pid in listed])
+            + [(("plugins", pid), "enabled", False, False) for pid in off if pid in listed])
 
 
 def desired_keys() -> list[tuple[tuple, str, object, object]]:
@@ -415,6 +412,31 @@ def _sections(lines: list[str], tl) -> list[list]:
     return out
 
 
+def _enabled_line(pid: str) -> str | None:
+    """The `enabled` line of [plugins."pid"] in ~/.codex/config.toml as written, or None."""
+    path = paths.codex_home() / "config.toml"
+    try:
+        text = _read_exact(path) if path.exists() else ""
+    except (OSError, UnicodeDecodeError):
+        return None
+    sec = next((s for s in _sections(text.splitlines(), _tomllib()) if s[0] == ("plugins", pid)), None)
+    if sec is None:
+        return None
+    return next((l.strip() for l, top in zip(sec[1][1:], sec[2][1:]) if top and re.match(r"^\s*enabled\s*=", l)), None)
+
+
+def _record_install_line(pid: str, before: str | None) -> None:
+    """After loadout's own `codex plugin add`: the `enabled = true` it caused is loadout's to switch later.
+    Only a line that appeared, or replaced loadout's own line; a line you wrote stays yours."""
+    after = _enabled_line(pid)
+    record = read_record()
+    dotted = _dotted(("plugins", pid), "enabled")
+    if after != "enabled = true" or (before is not None and before != record["keys"].get(dotted)):
+        return
+    lines = get_dict(record, "install_lines")
+    save_json(record_path(), {**record, "install_lines": {**lines, dotted: after}})
+
+
 def _text(section_lines: list[str]) -> str:
     return "\n".join(section_lines).rstrip("\n").rstrip() + "\n"
 
@@ -495,12 +517,10 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         owned_tables[name] = text
 
     # keys: one line each, in their table, only on lines that start outside strings and arrays
-    # force: True (loadout's value wins), False (a changed line is yours), or INSTALL_DEFAULT (also take over
-    # exactly `enabled = true`, the line `codex plugin add` writes itself)
+    # force: True (loadout's value wins) or False (a changed line is yours). A plugin's `enabled = true` that
+    # loadout's own `codex plugin add` wrote (install_lines) counts as loadout's; any other line is yours
     switched = False  # a plugin switch changes: its own backup copy, so restore of this run undoes it
-    # a key loadout once owned or left as your value: its `enabled = true` is your choice, never the install default
-    released = {k for k in record.get("released", []) if isinstance(k, str)} \
-        if isinstance(record.get("released"), list) else set()
+    install_lines = {k: v for k, v in get_dict(record, "install_lines").items() if isinstance(v, str)}
     for table, key, value, force in desired_keys():
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
@@ -510,7 +530,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             header = "[" + ".".join(toml_key(p) for p in table) + "]"
             sections.append([table, [header, line], []])
             owned_keys[dotted] = line
-            released.discard(dotted)
+            install_lines.pop(dotted, None)
             switched = switched or plugin
             continue
         flags = [True] + target[2] if target[0] is not None else target[2]
@@ -523,30 +543,28 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             target[1].insert(insert, line)
             target[2].insert(insert - (1 if target[0] is not None else 0), True)
             owned_keys[dotted] = line
-            released.discard(dotted)
+            install_lines.pop(dotted, None)
             switched = switched or plugin
         elif target[1][found].strip() == line:
             pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
-        elif force is True or owned_keys.get(dotted) == target[1][found].strip() or (
-                force == INSTALL_DEFAULT and dotted not in was_keys and dotted not in released
-                and target[1][found].strip() == f"{key} = true"):
+        elif force is True or target[1][found].strip() in (owned_keys.get(dotted), install_lines.get(dotted)):
             target[1][found] = line
             owned_keys[dotted] = line
+            install_lines.pop(dotted, None)
             switched = switched or plugin
         else:
             lines.append(f"{dotted}: left as is in config.toml (your value)")
             owned_keys.pop(dotted, None)
-            if plugin:
-                released.add(dotted)
+            install_lines.pop(dotted, None)
 
     parts = ["\n".join(sections[0][1]).strip("\n")] if any(l.strip() for l in sections[0][1]) else []
     parts += ["\n".join(s[1]).strip("\n") for s in sections[1:]]
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
     new_record = {**record, "tables": owned_tables, "keys": owned_keys}  # keeps project_plugins
-    if released:
-        new_record["released"] = sorted(released)
+    if install_lines:
+        new_record["install_lines"] = install_lines
     else:
-        new_record.pop("released", None)
+        new_record.pop("install_lines", None)
     if new == old or (not old.strip() and not new.strip()):
         if new_record != {**record, "tables": record.get("tables", {}), "keys": record.get("keys", {})} and not dry_run:
             save_json(record_path(), new_record)
@@ -658,10 +676,12 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 continue
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
+            before = _enabled_line(pid)
             res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
                 continue
+            _record_install_line(pid, before)
             if pid not in installed and listed is not None:
                 bk.record_command(f"codex plugin {pid}", ["codex", "plugin", "remove", pid])
                 lines.append(f"plugin {pid}: installed")
@@ -718,8 +738,9 @@ CONFIG_LOCATION = "~/.codex/config.toml"
 _CODEX_KEYS = {"command", "args", "env", "env_vars", "url", "bearer_token_env_var", "http_headers", "env_http_headers"}
 
 
-def user_servers() -> dict[str, dict]:
-    """The user's [mcp_servers.*] tables in ~/.codex/config.toml, without the ones loadout wrote."""
+def user_servers(edited: bool = False) -> dict[str, dict]:
+    """The user's [mcp_servers.*] tables in ~/.codex/config.toml, without the ones loadout wrote.
+    edited: also the tables of loadout's that you changed since (the secret scan looks at what you added)."""
     tl = _tomllib()
     path = paths.codex_home() / "config.toml"
     if not path.exists():
@@ -730,8 +751,15 @@ def user_servers() -> dict[str, dict]:
         return {}
     if not isinstance(servers, dict):
         return {}
-    owned = set(read_record()["tables"])
-    return {n: t for n, t in servers.items() if isinstance(t, dict) and n not in owned}
+    owned = read_record()["tables"]
+
+    def as_written(name, table):
+        try:
+            return tl.loads(owned[name]).get("mcp_servers", {}).get(name) == table
+        except Exception:
+            return False
+    return {n: t for n, t in servers.items()
+            if isinstance(t, dict) and (n not in owned or (edited and not as_written(n, t)))}
 
 
 def _strs(value, kind) -> bool:
