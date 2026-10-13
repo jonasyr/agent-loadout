@@ -143,7 +143,7 @@ loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
 
 Without a terminal, no `PROFILE` and no `--yes`, no profile is applied. If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
 
-Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes).
+Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes) or when a repo file was skipped because it is, or lies behind, a symlink out of the repo.
 
 ## loadout profile
 
@@ -158,7 +158,7 @@ loadout profile [--no-install] NAME
 | `NAME` | Profile name, for example `thesis`, `web`, `db`, `sonar`, `android`, or one in `<personal>/profiles`. |
 | `--no-install` | Do not install the profile's plugins or run its commands. |
 
-With Codex on, `init` and `profile` also write the repo's `.codex/config.toml`, link `.claude/skills` into `.agents/skills` and install the profile's plugins in Codex for that repo only (see [Use loadout with Codex](../how-to/codex.md#projects)). The file format is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name.
+With Codex on, `init` and `profile` also write the repo's `.codex/config.toml`, link `.claude/skills` into `.agents/skills` and install the profile's plugins in Codex for that repo only (see [Use loadout with Codex](../how-to/codex.md#projects)). The file format is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name or when a repo file was skipped because of a symlink out of the repo.
 
 ## loadout check
 

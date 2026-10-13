@@ -55,6 +55,13 @@ It does not touch:
 
 Items you own that loadout removes or replaces are moved to a backup first. The routine sync of what the kit itself manages (managed settings keys, your personal MCP servers) is not backed up, and neither is the shell startup file bootstrap appends to on Linux and macOS; your personal layer's git history is the record. See [What restore does not undo](../how-to/undo-and-restore.md#what-restore-does-not-undo).
 
+## Programs and repo files
+
+- **Program lookup.** loadout resolves external programs (`git`, `claude`, `codex`, installers) only from absolute `PATH` entries, never from the current folder or a relative entry. On Windows this also rules out the current-folder lookup `cmd` would do.
+- **Repo symlinks.** `init` and `profile` never write through a symlink that leads out of the repo, and never run `git init` through a `.git` symlink. A skipped file is reported and the command exits 1.
+- **Restore** trusts only backups under `~/.claude/backups`, copies only from a backup's own `files/` folder, and replays only the undo commands loadout records ([details](../how-to/undo-and-restore.md)).
+- **Codex type-check hook.** For Rust repos its `cargo check` runs the build scripts and procedural macros of the repo you edit. That is normal cargo behaviour; do not edit untrusted repos with the hook on.
+
 ## Backups and restore
 
 Backups go to `~/.claude/backups/loadout-<timestamp>` with a manifest of undo steps, and `loadout restore` replays them. They can hold old configs and secrets. Which commands make them, their file modes, and what restore does not undo: [Undo what loadout changed](../how-to/undo-and-restore.md).
