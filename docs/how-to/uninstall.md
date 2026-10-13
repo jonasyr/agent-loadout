@@ -30,7 +30,7 @@ Only if Codex was on. `$CODEX_HOME` replaces `~/.codex` below if you set it. Tur
 
 1. In `~/.codex/AGENTS.md`, delete the block from `<!-- loadout:start -->` to `<!-- loadout:end -->`. If loadout created the file, it holds only that block. Your own text stays.
 2. In `~/.codex/config.toml`, remove the `[mcp_servers.NAME]` sections loadout wrote: `serena`, `context7` and one per MCP server of your personal `mcp.json`. The list of names is the `tables` entry in `~/.claude/.loadout/codex-config.json`; the same file's `keys` entry lists the lines loadout added (`model_reasoning_effort`, `tui.notifications`). A section you changed yourself is not in the list. Also remove the `[plugins."NAME@MARKET"]` sections of plugins that loadout installed for a single repo (`enabled = false` there), if you have any.
-3. Remove the links in `~/.agents/skills` that point into your personal layer's `skills/` or at `~/.claude/skills`. Skills you put there yourself stay.
+3. Remove the links in `~/.agents/skills` that point into your personal layer's `skills/`, at `~/.claude/skills`, or at the paths in your personal `skills.json`. Skills you put there yourself stay.
 4. Remove the plugins and marketplaces loadout added. `codex plugin list` shows their ids:
 
    ```bash

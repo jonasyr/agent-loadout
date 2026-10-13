@@ -51,7 +51,7 @@ Exit codes:
 ## loadout adopt
 
 Review an existing Claude Code setup and migrate it. It is a dry run unless `--apply` is given.
-With Codex on, it also lists the MCP servers and skills that only Codex has; their choices are `global`, `leave` and `remove` (see [Handle your own tools](../how-to/your-own-tools.md#tools-only-codex-has)).
+With Codex on, it also lists the MCP servers and skills that only Codex has; their choices are `global`, `leave` and `remove` (see [Handle your own tools](../how-to/your-own-tools.md#tools-only-one-agent-has)).
 
 ```
 loadout adopt [--apply] [--groups GROUPS] [--skip SKIP] [--yes]

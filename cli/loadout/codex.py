@@ -809,7 +809,7 @@ def checks() -> list:
         results.append(CheckResult("Codex logins", False, "waiting for a login: " + ", ".join(logins),
                                    "; ".join(f"codex mcp login {n}" for n in logins), "warn"))
     lines = drift()
-    results.append(CheckResult("Codex drift", not lines, "; ".join(lines), "loadout adopt (see docs/how-to/codex.md)", "warn"))
+    results.append(CheckResult("Codex drift", not lines, "; ".join(lines), "loadout adopt (see docs/how-to/your-own-tools.md)", "warn"))
     return results
 
 

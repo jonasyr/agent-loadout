@@ -55,10 +55,10 @@ Only if Codex is on ([Use loadout with Codex](codex.md)). `loadout check` names 
 | No loadout session notice, no type check after edits in Codex; `loadout check` shows `Codex hooks` | Codex runs plugin hooks only after you approve them. Start `codex`, run `/hooks` and approve loadout's hooks. You need to do it again after they change. loadout never approves them for you ([Hooks](../reference/hooks.md)). |
 | The repo's `.codex/config.toml` servers or plugin switches have no effect | Codex reads that file only in a trusted project. Start `codex` in the repo once and accept the trust question. |
 | Codex says "Serena is not available" | Codex loads MCP tools on demand. Ask for them by name ("use Serena's find_symbol"). See [what stays different](codex.md#what-stays-different). |
-| Codex ignores the rules and your `me.md` (`loadout check` warns `Codex instructions`) | `AGENTS.override.md` in the Codex folder (`~/.codex`, or `$CODEX_HOME`) shadows `AGENTS.md`, where loadout's block is. Merge the block into the override file or remove the override. |
+| Codex ignores the rules and your `me.md` (`loadout check` warns `Codex instructions`) | `AGENTS.override.md` in the Codex folder (`~/.codex`, or `$CODEX_HOME`) shadows `AGENTS.md`, where loadout's block is. Move what you need from `AGENTS.override.md` into `AGENTS.md`, then delete the override. |
 | `plugin NAME@MARKET: no Codex route (its marketplace is not on GitHub)` | Codex gets plugins only from GitHub marketplaces. The plugin keeps working in Claude Code; Codex does without it. |
 | An MCP server waits for a login in Codex | Run `codex mcp login NAME`. For Context7 the login is optional ([details](codex.md#what-stays-different)). |
-| `MCP server "x" only in Claude Code` (or `only in Codex`) in the check or the session notice | You added it in one agent only. Record it with `loadout adopt` so both get it ([Handle your own tools](your-own-tools.md#tools-only-codex-has)). |
+| `MCP server "x" only in Claude Code` (or `only in Codex`) in the check or the session notice | You added it in one agent only. Record it with `loadout adopt` so both get it ([Handle your own tools](your-own-tools.md#tools-only-one-agent-has)). |
 
 ## Windows
 

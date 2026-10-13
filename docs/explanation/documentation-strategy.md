@@ -183,8 +183,8 @@ The copy had already drifted: the code says `MAX_TITLE_LEN = 120`.
 
 | Situation | Steps |
 |---|---|
-| New project | `loadout init`, then `/loadout:onboard` in either agent |
-| Existing repo | `loadout init` (never overwrites a scaffold file; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then `/loadout:onboard` |
+| New project | `loadout init`, then the onboard skill (`/loadout:onboard` in Claude Code, `$loadout:onboard` in Codex) |
+| Existing repo | `loadout init` (never overwrites a scaffold file; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then the onboard skill |
 | Existing repo with messy docs | Then `/loadout:docs-audit` |
 | Every feature | `/loadout:docs-sync` before merging |
 

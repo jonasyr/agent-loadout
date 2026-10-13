@@ -2,7 +2,7 @@
 
 Use this page when `loadout adopt` or `loadout check` lists tools that loadout does not manage, and you want them to follow you to other machines, live in one project, stay put, or go away.
 
-`loadout adopt` looks at every user-scope plugin, marketplace, MCP server (`~/.claude.json`, `~/.claude/.mcp.json`), skill (`~/.claude/skills`) and hook (`~/.claude/settings.json`) of Claude Code. With Codex on, it also lists the MCP servers in `~/.codex/config.toml` and the skills in `~/.agents/skills` that only Codex has ([below](#tools-only-codex-has)). With Claude Code turned off, bootstrap skips its adopt step. What the [catalog](../reference/catalog-format.md) does not know is listed under **Your own tools: loadout doesn't know these** (`--verbose`: **YOUR OWN TOOLS**). Items already in your personal layer show as keep, and so does a plugin that a personal profile holds while it is disabled globally. Project-level config is not inspected.
+`loadout adopt` looks at every user-scope plugin, marketplace, MCP server (`~/.claude.json`, `~/.claude/.mcp.json`), skill (`~/.claude/skills`) and hook (`~/.claude/settings.json`) of Claude Code. With Codex on, it also lists the MCP servers in `~/.codex/config.toml` and the skills in `~/.agents/skills` that only Codex has ([below](#tools-only-one-agent-has)). With Claude Code turned off, bootstrap skips its adopt step. What the [catalog](../reference/catalog-format.md) does not know is listed under **Your own tools: loadout doesn't know these** (`--verbose`: **YOUR OWN TOOLS**). Items already in your personal layer show as keep, and so does a plugin that a personal profile holds while it is disabled globally. Project-level config is not inspected.
 
 `loadout configure own` lists the same items. Flags and exit codes of the commands are in the [CLI reference](../reference/cli.md#loadout-adopt).
 
@@ -21,13 +21,13 @@ Catalog plugins that adopt would disable globally accept `global` ("keep global"
 
 A profile name that matches a kit profile (for example `db`) starts as a copy of that kit profile and replaces it for you. Later changes to the kit profile no longer reach you. Adopt prints a note when this happens. See [Personal and kit profiles](../reference/profile-format.md#personal-and-kit-profiles).
 
-After `project` choices, interactive adopt offers to apply the profile to repos. The default is none. It suggests repos known to Claude Code (`~/.claude.json`) whose project config mentions the item, or you type paths. Applying a profile is the same as running `loadout profile` in that repo: it writes the repo's committed `.claude/settings.json` and `.mcp.json`, and `loadout restore` does not undo it. `--own` never applies profiles to repos.
+After `project` choices, interactive adopt offers to apply the profile to repos. The default is none. It suggests repos known to Claude Code (`~/.claude.json`) whose project config mentions the item, or you type paths. Applying a profile is the same as running `loadout profile` in that repo: it writes the repo's committed files (see [what restore does not undo](undo-and-restore.md#what-restore-does-not-undo)). `--own` never applies profiles to repos.
 
 When something was recorded or removed, adopt and `configure set own` end with a restart line for the agents that are on: "Restart Claude Code (or run /reload-plugins) and Codex to load the changes." with both, "Restart Codex to load the changes." with Codex only, "Restart Claude Code (or run /reload-plugins) to load the changes." with Claude Code only.
 
-## Tools only Codex has
+## Tools only one agent has
 
-What you add directly in one agent lives only there. The daily sync and `loadout check` report it, for example `MCP server "x" only in Claude Code` or `skill "y" only in Codex`. Everything from the kit and your personal layer reaches both agents.
+What you add directly in one agent lives only there. With both agents on, `loadout check` reports it, and so does the daily sync after a pull that brought new commits, for example `MCP server "x" only in Claude Code` or `skill "y" only in Codex`. Everything from the kit and your personal layer reaches both agents.
 
 - **Only in Claude Code:** record it with `loadout adopt` as above; the next sync puts it into both.
 - **Only in Codex:** adopt lists MCP servers in `~/.codex/config.toml` and skills in `~/.agents/skills` that only Codex has, with the choices `global`, `leave` and `remove`:
