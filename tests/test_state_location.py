@@ -44,3 +44,16 @@ def test_hooks_use_the_same_folder(fake_home, tmp_path, monkeypatch):
     assert advisor.state_dir() == paths.state_dir()
     reload_check = _hook("reload_check")
     assert reload_check.state_dir(fake_home) == paths.state_dir()
+
+
+def test_codex_only_bootstrap_leaves_no_claude_folder(fake_home, fake_runner, monkeypatch):
+    import json
+    from loadout import bootstrap, codex, out
+    monkeypatch.setattr(out, "VERBOSE", False)
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
+    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    bootstrap.bootstrap(install=False, yes=True, plugins=True, adopt_step=True, ask=lambda q: "",
+                        interactive=False, agents="codex")
+    assert not (fake_home / ".claude").exists(), sorted(str(p) for p in (fake_home / ".claude").rglob("*"))
+    assert json.loads((paths.personal_root() / "targets.json").read_text()) == {"claude": False, "codex": True}
