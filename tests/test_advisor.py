@@ -310,3 +310,25 @@ def test_ledger_rule_applies_only_under_docs_superpowers_plans(home, tmp_path):
     _ledger(other, "Task 1: complete\n")  # a ledger where a docs/superpowers plan's would be: not this plan's
     _record(home, other)
     assert json.loads(_stop(home).stdout)["decision"] == "block"
+
+
+def test_a_plan_written_through_codex_apply_patch_is_recorded(home, tmp_path):
+    repo = tmp_path / "repo"
+    plan = _write(repo / "docs/superpowers/plans/2026-10-13-export.md")
+    patch = "*** Begin Patch\n*** Add File: docs/superpowers/plans/2026-10-13-export.md\n+# x\n*** End Patch\n"
+    payload = {"session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "cwd": str(repo),
+               "tool_input": {"command": patch}}
+    r = _hook("record", payload, home)
+    assert r.returncode == 0 and r.stderr == ""
+    assert [p["path"] for p in _pending(home)["plans"]] == [str(plan)]
+
+
+def test_advisor_and_typecheck_read_the_same_patch_headers():
+    import importlib.util
+    mods = []
+    for name in ("advisor", "typecheck"):
+        spec = importlib.util.spec_from_file_location(name, PLUGIN / "hooks" / f"{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mods.append(mod)
+    assert mods[0].PATCH_FILE.pattern == mods[1].PATCH_FILE.pattern
