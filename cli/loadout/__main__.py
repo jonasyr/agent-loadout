@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -96,6 +97,14 @@ def main(argv: list[str] | None = None) -> int:
         lines = [f"loadout: could not move its state from ~/.claude ({exc}); it tries again next time"]
     for line in lines:
         print(line, file=sys.stderr)
+    try:  # loadout's state is private (plan paths, ownership records, backups) from its first use
+        from . import paths
+        state = paths.state_dir()
+        state.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if os.name != "nt":
+            os.chmod(state, 0o700)
+    except OSError:
+        pass
     if args.command not in EXEMPT and pending():
         # writing now would start fresh state files next to the unmoved ones, and they would win later
         if args.command == "hook-session-start":

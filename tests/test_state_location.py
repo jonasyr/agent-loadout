@@ -2,6 +2,8 @@
 import importlib.util
 import os
 
+import pytest
+
 from loadout import paths
 
 HOOKS = paths.kit_root() / "plugins" / "loadout" / "hooks"
@@ -63,3 +65,9 @@ def test_hooks_ignore_a_tilde_xdg_state_home_too(fake_home, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", "~/state")
     assert _hook("advisor").state_dir() == paths.state_dir() == fake_home / ".local" / "state" / "loadout"
     assert _hook("reload_check").state_dir(fake_home) == paths.state_dir()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_hooks_create_the_state_folder_privately(fake_home):
+    _hook("advisor")._save("advisor-done.json", {"evaluated": {}})
+    assert paths.state_dir().stat().st_mode & 0o777 == 0o700

@@ -46,11 +46,8 @@ def _publish(src: Path, dst: Path) -> bool:
             os.link(src, dst, follow_symlinks=False)  # a file: link is the no-replace primitive
         except FileExistsError:
             raise
-        except (NotImplementedError, OSError) as exc:  # no hard links on this filesystem
-            if dst.exists() or dst.is_symlink():
-                raise FileExistsError(str(dst)) from exc
-            os.replace(src, dst)
-            return True
+        except (NotImplementedError, OSError):  # no hard links on this filesystem
+            _exclusive_copy(src, dst)
         src.unlink()
         return True
     except OSError as exc:
@@ -58,6 +55,17 @@ def _publish(src: Path, dst: Path) -> bool:
             raise
         shutil.rmtree(src) if src.is_dir() and not src.is_symlink() else src.unlink(missing_ok=True)
         return False
+
+
+def _exclusive_copy(src: Path, dst: Path) -> None:
+    """Copy src to dst only if dst does not exist (FileExistsError otherwise): the name is claimed with O_EXCL,
+    then filled. A hook that writes dst meanwhile replaces it atomically, so the hook's file wins."""
+    if src.is_symlink():
+        os.symlink(os.readlink(src), dst)  # fails when dst exists
+        return
+    fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+    with os.fdopen(fd, "wb") as w, open(src, "rb") as r:
+        shutil.copyfileobj(r, w)
 
 
 def _move_file(old: Path, new: Path) -> bool:
@@ -129,17 +137,21 @@ def _merge(old: Path, new: Path) -> tuple[list[Path], int]:
 
 
 def _merge_session(old: Path, new: Path) -> None:
-    """An old session's hook file. Hooks write without the migration lock, so the new file is never rewritten:
-    when it is missing, the old one moves in (never overwriting one a hook wrote meanwhile); when it exists, the
-    old one stays for the old session that still reads it, and goes once it is untouched for SESSION_IDLE."""
+    """An old session's hook file. Hooks write without the migration lock, and the old session keeps reading
+    its own copy: the new file is never rewritten (when it is missing, a copy goes there without overwriting one
+    a hook wrote meanwhile), and the old file stays until it is untouched for SESSION_IDLE."""
     if not (new.exists() or new.is_symlink()):
+        partial = new.with_name(new.name + ".partial")
         try:
-            if _move_file(old, new):
-                return
+            shutil.copy2(old, partial, follow_symlinks=False)
+            _publish(partial, new)
         except OSError:
-            return  # it stays; the next run tries again
-    if time.time() - old.stat().st_mtime >= SESSION_IDLE:
-        old.unlink()
+            partial.unlink(missing_ok=True)  # the next run tries again
+    try:
+        if time.time() - old.stat().st_mtime >= SESSION_IDLE:
+            old.unlink()
+    except OSError:
+        pass
 
 
 def _lock(state: Path, wait: float) -> Path | None:

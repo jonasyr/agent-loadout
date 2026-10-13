@@ -62,7 +62,9 @@ def main() -> int:
             seen = []
         if session in seen:
             return 0
-        state.parent.mkdir(parents=True, exist_ok=True)
+        state.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if os.name != "nt":
+            os.chmod(state.parent, 0o700)  # private, like the rest of loadout's state
         tmp = state.with_name(f".{state.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps({"sessions": (seen + [session])[-KEEP:]}) + "\n", encoding="utf-8")
         os.replace(tmp, state)  # record first: never repeat the notice when the state cannot be written

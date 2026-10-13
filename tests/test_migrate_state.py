@@ -311,3 +311,37 @@ def test_a_cross_device_copy_never_overwrites_a_file_that_appeared(fake_home, mo
     assert json.loads(target.read_text()) == {"hook": True}, "the file that appeared wins"
     assert json.loads((old / "codex-hooks.json").read_text()) == {"old": True}, "the old one is kept, not lost"
     assert not list(paths.state_dir().glob("*.partial"))
+
+
+def test_a_recent_session_file_is_copied_and_kept_for_its_session(fake_home):
+    import time as _time
+    old = paths.legacy_state_dir()
+    old.mkdir(parents=True)
+    (old / "advisor-pending.json").write_text('{"plans": [1]}')  # just written by a running old session
+    (old / "advisor-done.json").write_text('{"evaluated": {}}')
+    stale = _time.time() - 3 * 86400
+    os.utime(old / "advisor-done.json", (stale, stale))
+    migrate.migrate_state()
+    assert (paths.state_dir() / "advisor-pending.json").read_text() == '{"plans": [1]}'
+    assert (old / "advisor-pending.json").read_text() == '{"plans": [1]}', "its session still reads it there"
+    assert (paths.state_dir() / "advisor-done.json").exists() and not (old / "advisor-done.json").exists()
+
+
+def test_publish_without_hard_links_never_overwrites(fake_home, tmp_path, monkeypatch):
+    monkeypatch.setattr(migrate.os, "link", lambda s, d, **kw: (_ for _ in ()).throw(NotImplementedError()))
+    src, dst = tmp_path / "a.partial", tmp_path / "a"
+    src.write_text("copy")
+    dst.write_text("hook")
+    assert migrate._publish(src, dst) is False
+    assert dst.read_text() == "hook" and not src.exists()
+    src.write_text("copy")
+    dst.unlink()
+    assert migrate._publish(src, dst) is True
+    assert dst.read_text() == "copy" and not src.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_the_state_folder_is_private_from_the_start(fake_home):
+    from loadout.__main__ import main
+    assert main(["kit-path"]) == 0
+    assert paths.state_dir().stat().st_mode & 0o777 == 0o700

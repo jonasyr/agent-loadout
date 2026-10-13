@@ -58,7 +58,9 @@ def _load(name: str) -> dict:
 
 def _save(name: str, data: dict) -> None:
     d = state_dir()
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name != "nt":
+        os.chmod(d, 0o700)  # plan paths and session ids: private, like the rest of loadout's state
     tmp = d / f".{name}.{os.getpid()}.tmp"
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     os.replace(tmp, d / name)
