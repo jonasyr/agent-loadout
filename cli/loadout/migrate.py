@@ -36,6 +36,7 @@ SESSION_FILES = {"advisor-pending.json", "advisor-done.json", "reload-notified.j
 SESSION_IDLE = 86400.0  # an old session file untouched this long belongs to no running session any more
 TRANSIENT = {"maintenance.lock", LOCK}  # locks are never copied: they belong to the process holding them
 _held: Path | None = None  # this run's lock, renewed while copying (_beat)
+CHUNK = 1 << 20  # copy in pieces of this size, renewing the lock after each
 
 
 def _ours(entry: Path) -> bool:
@@ -93,10 +94,14 @@ def _exclusive_copy(src: Path, dst: Path) -> None:
 def _publish(src: Path, dst: Path) -> bool:
     """Rename src to dst unless dst exists: never overwrite. Returns False, with src removed, when dst exists."""
     try:
-        if os.name == "nt" or (src.is_dir() and not src.is_symlink()):
-            if not _gone(dst):
-                raise FileExistsError(str(dst))
-            os.rename(src, dst)  # Windows: never replaces; a folder: fails on a non-empty one
+        if src.is_dir() and not src.is_symlink():
+            os.mkdir(dst, 0o700)  # claims the name: a folder another run created meanwhile is never replaced
+            for child in sorted(src.iterdir()):
+                os.rename(child, dst / child.name)  # into our own fresh folder
+            os.rmdir(src)
+            return True
+        if os.name == "nt":
+            os.rename(src, dst)  # Windows: rename never replaces
             return True
         try:
             os.link(src, dst, follow_symlinks=False)  # a file: link is the no-replace primitive
@@ -124,8 +129,21 @@ def _beat(lock: Path | None = None) -> None:
 
 
 def _copy_file(src, dst, *, follow_symlinks: bool = True):
+    """shutil.copy2 in pieces, renewing the lock after each, so even one huge file never lets the lock go stale."""
+    src, dst = Path(src), Path(dst)
     _beat()
-    return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+    if src.is_symlink() and not follow_symlinks:
+        os.symlink(os.readlink(src), dst)
+        return dst
+    with open(src, "rb") as r, open(dst, "wb") as w:
+        while True:
+            block = r.read(CHUNK)
+            if not block:
+                break
+            w.write(block)
+            _beat()
+    shutil.copystat(src, dst)
+    return dst
 
 
 def _stage(old: Path, new: Path) -> tuple[Path, list] | None:
@@ -230,10 +248,15 @@ def _lock(state: Path, wait: float) -> tuple[Path, str] | None:
         except FileExistsError:
             try:
                 if time.time() - lock.stat().st_mtime >= STALE:
+                    stale = lock.read_text(encoding="utf-8")
                     aside = lock.with_name(f"{LOCK}.stale-{os.getpid()}-{time.time_ns()}")
                     os.rename(lock, aside)
-                    aside.unlink()
-                    continue
+                    if aside.read_text(encoding="utf-8") == stale:
+                        aside.unlink()
+                        continue
+                    # another run took the stale lock over between our check and our rename: give it back
+                    if not _put_back(aside, lock):
+                        aside.unlink(missing_ok=True)
             except OSError:
                 pass  # another run took it over meanwhile: wait for it like for any other
         if time.time() >= deadline:

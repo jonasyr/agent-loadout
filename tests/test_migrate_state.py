@@ -145,15 +145,15 @@ def test_a_file_that_appears_at_the_new_place_while_copying_wins(fake_home, monk
     paths.state_dir().mkdir(parents=True)
     target = paths.state_dir() / "codex-hooks.json"
     monkeypatch.setattr(migrate.os, "link", lambda s, d, **kw: (_ for _ in ()).throw(OSError(errno.EXDEV, "x")))
-    real = migrate.shutil.copy2
+    real = migrate._copy_file
 
     def copy_then_writer(src, dst, **kw):
         out = real(src, dst, **kw)
         target.write_text('{"current": true}')
         return out
-    monkeypatch.setattr(migrate.shutil, "copy2", copy_then_writer)
+    monkeypatch.setattr(migrate, "_copy_file", copy_then_writer)
     migrate.migrate_state()
-    monkeypatch.setattr(migrate.shutil, "copy2", real)
+    monkeypatch.setattr(migrate, "_copy_file", real)
     migrate.migrate_state()
     assert json.loads(target.read_text()) == {"current": True}
     assert json.loads((old / "codex-hooks.json").read_text()) == {"old": True}
@@ -245,7 +245,7 @@ def test_ctrl_c_during_the_copy_is_a_clean_exit(fake_home, monkeypatch, capsys):
     from loadout.__main__ import main
     _legacy(fake_home)
     monkeypatch.setattr(migrate, "_copy", lambda old, new: (_ for _ in ()).throw(KeyboardInterrupt()))
-    assert main(["kit-path"]) == 130
+    assert main(["apply-settings"]) == 130
     assert "interrupted" in capsys.readouterr().err
     assert not (paths.state_dir() / migrate.LOCK).exists()
 
@@ -253,7 +253,7 @@ def test_ctrl_c_during_the_copy_is_a_clean_exit(fake_home, monkeypatch, capsys):
 def test_main_reports_on_stderr_only(fake_home, capsys):
     from loadout.__main__ import main
     _legacy(fake_home)
-    assert main(["kit-path"]) == 0
+    assert main(["apply-settings"]) == 0
     captured = capsys.readouterr()
     assert "copied its state" in captured.err and "copied" not in captured.out
 
@@ -325,7 +325,7 @@ def test_check_warns_while_something_is_not_copied(fake_home, monkeypatch):
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
 def test_the_state_folder_is_private_from_the_start(fake_home):
     from loadout.__main__ import main
-    assert main(["kit-path"]) == 0
+    assert main(["apply-settings"]) == 0
     assert paths.state_dir().stat().st_mode & 0o777 == 0o700
 
 
@@ -366,14 +366,14 @@ def test_the_lock_is_renewed_while_copying_and_only_its_owner_removes_it(fake_ho
     _legacy(fake_home)
     lock = paths.state_dir() / migrate.LOCK
     seen = []
-    real = migrate.shutil.copy2
+    real = migrate._copy_file
 
     def copy_and_look(src, dst, *a, **kw):
         seen.append(lock.read_text())
         os.utime(lock, (0, 0))  # pretend the copy took long
         out = real(src, dst, *a, **kw)
         return out
-    monkeypatch.setattr(migrate.shutil, "copy2", copy_and_look)
+    monkeypatch.setattr(migrate, "_copy_file", copy_and_look)
     migrate.migrate_state()
     assert seen and all(seen), "the lock carries its owner's token"
     assert not lock.exists()
@@ -393,3 +393,53 @@ def test_renewing_keeps_a_long_copy_s_lock_fresh(fake_home):
     migrate._beat(lock)
     import time as _time
     assert _time.time() - lock.stat().st_mtime < migrate.STALE
+
+
+def test_check_and_kit_path_change_nothing(fake_home):
+    from loadout.__main__ import main
+    _legacy(fake_home)
+    main(["check"])
+    main(["kit-path"])
+    assert not paths.state_dir().exists(), "read-only commands neither copy nor create anything"
+
+
+def test_publishing_a_folder_never_replaces_one_created_meanwhile(fake_home, tmp_path):
+    src, dst = tmp_path / "loadout-1.partial", tmp_path / "loadout-1"
+    (src / "files").mkdir(parents=True)
+    (src / "manifest.json").write_text("migrated")
+    dst.mkdir()  # an empty backup folder another run just created
+    assert migrate._publish(src, dst) is False
+    assert dst.is_dir() and not any(dst.iterdir()) and not src.exists()
+    dst.rmdir()
+    (src / "files").mkdir(parents=True)
+    (src / "manifest.json").write_text("migrated")
+    assert migrate._publish(src, dst) is True
+    assert (dst / "manifest.json").read_text() == "migrated" and (dst / "files").is_dir() and not src.exists()
+
+
+def test_a_large_file_renews_the_lock_while_it_is_copied(fake_home, tmp_path, monkeypatch):
+    beats = []
+    monkeypatch.setattr(migrate, "_beat", lambda lock=None: beats.append(1))
+    monkeypatch.setattr(migrate, "CHUNK", 4)
+    src, dst = tmp_path / "big", tmp_path / "copy"
+    src.write_bytes(b"0123456789abcdef")
+    migrate._copy_file(src, dst)
+    assert dst.read_bytes() == b"0123456789abcdef" and len(beats) >= 4
+
+
+def test_a_fresh_lock_taken_by_another_run_is_never_stolen(fake_home, monkeypatch):
+    paths.state_dir().mkdir(parents=True)
+    lock = paths.state_dir() / migrate.LOCK
+    lock.write_text("crashed")
+    os.utime(lock, (0, 0))
+    real_rename = migrate.os.rename
+
+    def another_run_takes_it_first(src, dst):
+        if str(src) == str(lock) and ".stale-" in str(dst) and lock.read_text() == "crashed":
+            lock.unlink()
+            lock.write_text("other-run")  # the other run took over between our check and our rename
+        return real_rename(src, dst)
+    monkeypatch.setattr(migrate.os, "rename", another_run_takes_it_first)
+    monkeypatch.setattr(migrate, "WAIT", 0)
+    assert migrate._lock(paths.state_dir(), 0) is None
+    assert lock.read_text() == "other-run", "the other run's lock is left where it is"

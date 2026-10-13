@@ -72,6 +72,7 @@ def _verbose(a) -> None:
 
 # commands that may run while the state move is unfinished: they read only, or (restore) map old paths themselves
 EXEMPT = {"kit-path", "check", "restore", None}
+READ_ONLY = {"kit-path", "check"}  # promised read-only: no migration, no state folder
 
 EXTRA_COMMANDS: list = []  # later modules append register(subparsers) functions here
 
@@ -87,31 +88,32 @@ def main(argv: list[str] | None = None) -> int:
 
     args = build_parser().parse_args(argv)
     from .migrate import migrate_state, pending
-    try:  # ADR 0025: loadout's files leave ~/.claude once
-        lines = migrate_state(wait=2.0 if args.command == "hook-session-start" else None)
-    except KeyboardInterrupt:
-        print("\nloadout: interrupted; run the same command again to continue (it picks up where it stopped)",
-              file=sys.stderr)
-        return 130
-    except Exception as exc:
-        lines = [f"loadout: could not move its state from ~/.claude ({exc}); it tries again next time"]
-    for line in lines:
-        print(line, file=sys.stderr)
-    try:  # loadout's state is private (plan paths, ownership records, backups) from its first use
-        from . import paths
-        state = paths.state_dir()
-        state.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if os.name != "nt":
-            os.chmod(state, 0o700)
-    except OSError:
-        pass
-    if args.command not in EXEMPT and pending():
-        # writing now would start fresh state files next to the unmoved ones, and they would win later
-        if args.command == "hook-session-start":
-            return 0
-        print("loadout: moving its state out of ~/.claude did not finish (see above); nothing was changed. "
-              "Run the command again; `loadout check` shows what is left.", file=sys.stderr)
-        return 1
+    if args.command not in READ_ONLY:  # promised read-only: no migration, no state folder
+        try:  # ADR 0025: loadout's files leave ~/.claude once
+            lines = migrate_state(wait=2.0 if args.command == "hook-session-start" else None)
+        except KeyboardInterrupt:
+            print("\nloadout: interrupted; run the same command again to continue (it picks up where it stopped)",
+                  file=sys.stderr)
+            return 130
+        except Exception as exc:
+            lines = [f"loadout: could not move its state from ~/.claude ({exc}); it tries again next time"]
+        for line in lines:
+            print(line, file=sys.stderr)
+        try:  # loadout's state is private (plan paths, ownership records, backups) from its first use
+            from . import paths
+            state = paths.state_dir()
+            state.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if os.name != "nt":
+                os.chmod(state, 0o700)
+        except OSError:
+            pass
+        if args.command not in EXEMPT and pending():
+            # writing now would start fresh state files next to the unmoved ones, and they would win later
+            if args.command == "hook-session-start":
+                return 0
+            print("loadout: moving its state out of ~/.claude did not finish (see above); nothing was changed. "
+                  "Run the command again; `loadout check` shows what is left.", file=sys.stderr)
+            return 1
     try:
         return int(args.func(args) or 0)
     except (InvalidJSON, ValueError) as exc:
