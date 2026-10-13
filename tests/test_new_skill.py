@@ -188,6 +188,23 @@ def test_repo_skills_folder_linking_outside_is_refused(fake_home, monkeypatch, t
     assert not any(outside.iterdir())
 
 
+def test_a_name_with_a_trailing_newline_is_bad_input(fake_home, monkeypatch):
+    _agents(monkeypatch)
+    with pytest.raises(new_skill.BadInput):
+        new_skill.create("notes\n", bk=backup.Backup(description="t"))
+    assert not (paths.personal_root() / "skills").exists()
+
+
+def test_a_damaged_skills_json_is_refused(fake_home, monkeypatch):
+    _agents(monkeypatch)
+    pointers = paths.personal_root() / "skills.json"
+    pointers.parent.mkdir(parents=True, exist_ok=True)
+    pointers.write_text("{broken")
+    with pytest.raises(new_skill.Refused, match="skills.json"):
+        new_skill.create("notes", bk=backup.Backup(description="t"))
+    assert not (paths.personal_root() / "skills" / "notes").exists()
+
+
 def _frontmatter(path):
     """name and description as a YAML loader reads a double-quoted scalar (a JSON string is one)."""
     lines = path.read_text(encoding="utf-8").split("---\n")[1].splitlines()

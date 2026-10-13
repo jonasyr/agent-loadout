@@ -219,7 +219,7 @@ def _register_configure(sub):
             print(f"Fill in SKILL.md. {targets.restart_hint()}")
             if a.to != "repo":
                 configure.offer_commit(_ask)
-            return 0
+            return 1 if any(": not linked" in line for line in lines) else 0  # an agent that is on cannot see it
         if not (a.kind and a.name and a.value) or a.kind == "skill":  # skill is for `new skill` only
             raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own|target <name> <value>"
                              + ("; to create a skill: loadout configure new skill NAME" if a.kind == "skill" else ""))

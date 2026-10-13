@@ -69,8 +69,9 @@ def _global(name: str, description: str, bk: Backup) -> list[str]:
     from .jsonio import load_json
     try:
         pointers = load_json(paths.personal_root() / "skills.json")
-    except Exception:
-        pointers = {}
+    except Exception as exc:  # without the pointers, a name clash cannot be ruled out
+        raise Refused(f"{paths.personal_root() / 'skills.json'} does not parse ({exc}); fix it, then run this "
+                      "again") from None
     if isinstance(pointers, dict) and any(str(k).lower() == name.lower() for k in pointers):
         raise Refused(f"skill {name}: already a pointer in {paths.personal_root() / 'skills.json'}; nothing written")
     skill_md = _write(root, name, description, bk)
@@ -82,7 +83,7 @@ def _global(name: str, description: str, bk: Backup) -> list[str]:
 def create(name: str, to: str = "global", description: str | None = None, cwd: Path | None = None,
            bk: Backup | None = None) -> list[str]:
     """Write the stub where `to` says (global, project:<profile>, repo) and link it for the agents that are on."""
-    if not NAME.match(name or ""):
+    if not NAME.fullmatch(name or ""):  # fullmatch: `$` alone would let a trailing newline through
         raise BadInput(f"skill name '{name}': use lowercase letters, digits and -, starting with a letter or "
                        "digit, at most 64 characters")
     text = DEFAULT_DESCRIPTION if description is None else description.strip()

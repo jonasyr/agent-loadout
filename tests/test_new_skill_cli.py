@@ -38,6 +38,22 @@ def test_repo_target_offers_no_commit(fake_home, fake_runner, monkeypatch, tmp_p
     assert offered == []
 
 
+def test_repo_skill_codex_cannot_see_exits_1(fake_home, fake_runner, monkeypatch, tmp_path):
+    """Windows without symlink rights: the skill is written, but Codex does not get it; say so with exit 1."""
+    import os
+    _on(monkeypatch)
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: None)
+    repo = tmp_path / "r"
+    (repo / ".git").mkdir(parents=True)
+    monkeypatch.chdir(repo)
+
+    def no_symlinks(*a, **k):
+        raise OSError(1, "A required privilege is not held by the client")
+    monkeypatch.setattr(os, "symlink", no_symlinks)
+    assert main(["configure", "new", "skill", "notes", "--to", "repo"]) == 1
+    assert (repo / ".claude" / "skills" / "notes" / "SKILL.md").is_file()
+
+
 def test_set_skill_is_refused_and_writes_no_setting(fake_home, fake_runner, monkeypatch):
     """`skill` is a kind for `new` only: `set skill x on` must not fall through to `set pref`."""
     _on(monkeypatch)
