@@ -148,7 +148,7 @@ The preference ids and options are in [preferences-format](preferences-format.md
 Prepare the current project (what it writes per agent is in the table under [loadout profile](#loadout-profile)): `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries and profiles. It never overwrites an existing scaffold file. How profiles merge into the repo's files, and why there is no backup, is in [Applying a profile](profile-format.md#what-applying-a-profile-does).
 
 ```
-loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
+loadout init [--yes] [--no-install] [--dry-run] [--verbose] [PROFILE ...]
 ```
 
 | Flag | Meaning |
@@ -156,6 +156,7 @@ loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
 | `PROFILE ...` | Profiles to apply. Default: suggest profiles from the project and ask. |
 | `--yes` | No questions: run `git init` if needed and apply the suggested profiles. |
 | `--no-install` | Do not install the profiles' plugins or run their commands. |
+| `--verbose` | Print every file, command and note. Without it, `init` prints one status line per profile and one for the scaffold, then the next step; problems always show. |
 | `--dry-run` | Change nothing. Print what would happen (see [Applying a profile](profile-format.md#what-applying-a-profile-does)) and the files and `.gitignore` entries `init` would create. |
 
 Without a terminal, no `PROFILE` and no `--yes`, no profile is applied. If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
@@ -167,13 +168,14 @@ Exit codes: 0 on success; 1 for an unknown profile name (every name is checked b
 Add one profile to the current project. It does what `init` does for a single profile, without the scaffolding.
 
 ```
-loadout profile [--no-install] NAME
+loadout profile [--no-install] [--verbose] NAME
 ```
 
 | Flag | Meaning |
 |---|---|
 | `NAME` | Profile name, for example `thesis`, `web`, `db`, `sonar`, `android`, or one in `<personal>/profiles`. |
 | `--no-install` | Do not install the profile's plugins or run its commands. |
+| `--verbose` | Print every file, command and note instead of the one status line. |
 
 What `init` and `profile` write in the repo, per agent:
 

@@ -9,7 +9,7 @@ def test_claude_plugin_step_announces_slow_work(fake_home, fake_runner, monkeypa
     fake_runner.responses[("claude", "plugin", "marketplace", "list")] = runner.Result(0, "", "")
     said = []
     bootstrap.setup_plugins(say=said.append)
-    assert any("pbakaus/impeccable" in s and "can take a few minutes" in s for s in said)
+    assert any("pbakaus/impeccable" in s and "a git clone" in s for s in said)
     assert any("impeccable@impeccable" in s for s in said)
 
 

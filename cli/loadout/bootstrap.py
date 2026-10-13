@@ -260,6 +260,7 @@ def setup_plugins(say=None) -> list[str]:
     out = []
     desired = settings_merge.desired_settings()
     listed = runner.run(["claude", "plugin", "marketplace", "list"], timeout=60).stdout
+    markets = []
     for name, cfg in get_dict(desired, "extraKnownMarketplaces").items():
         if name in listed:
             continue
@@ -268,15 +269,20 @@ def setup_plugins(say=None) -> list[str]:
         if not isinstance(origin, str):
             out.append(f"marketplace {name}: skipped, no repo or url in its source (fix it in your personal settings.json)")
             continue
-        say(f"  marketplace {origin} (a git clone the first time; can take a few minutes)…")
+        markets.append((name, origin))
+    installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
+    plugins = [pid for pid, on in get_dict(desired, "enabledPlugins").items() if on and pid not in installed]
+    total, step = len(markets) + len(plugins), 0
+    for name, origin in markets:
+        step += 1
+        say(f"  adding marketplace {origin}, a git clone ({step} of {total})…")
         res = runner.run(["claude", "plugin", "marketplace", "add", origin], timeout=300)
         out.append(f"marketplace {name}: {'added' if res.ok else 'failed: ' + res.stderr.strip()}")
-    installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
-    for plugin_id, on in get_dict(desired, "enabledPlugins").items():
-        if on and plugin_id not in installed:
-            say(f"  plugin {plugin_id}…")
-            res = runner.run(["claude", "plugin", "install", plugin_id, "--scope", "user"], timeout=600)
-            out.append(f"plugin {plugin_id}: {'installed' if res.ok else 'failed: ' + res.stderr.strip()}")
+    for plugin_id in plugins:
+        step += 1
+        say(f"  installing plugin {plugin_id} ({step} of {total})…")
+        res = runner.run(["claude", "plugin", "install", plugin_id, "--scope", "user"], timeout=600)
+        out.append(f"plugin {plugin_id}: {'installed' if res.ok else 'failed: ' + res.stderr.strip()}")
     return out
 
 
@@ -622,7 +628,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         _report("Launcher", "linked", link_lines)
     if plugins and claude_on:
         _step("Marketplaces and plugins")
-        lines = setup_plugins(say=lambda line: print(line, flush=True))
+        lines = setup_plugins(say=out.progress)
+        out.end_progress()
         if any(line.endswith(": added") for line in lines):
             settings_merge.apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
         total = sum(1 for on in get_dict(settings_merge.desired_settings(), "enabledPlugins").values() if on)
@@ -634,7 +641,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if problem:
             out.status("Codex", problem, "warn")
         else:
-            lines = codex.apply_all(bk, say=lambda line: print(line, flush=True))
+            lines = codex.apply_all(bk, say=out.progress)
+            out.end_progress()
             failed = sum(1 for line in lines if PROBLEM.search(line))
             _report("Codex", "rules, plugins, MCP servers and skills set up" if not failed else f"{failed} problem(s) (below)", lines)
     adopt.LAST_BACKUP = None

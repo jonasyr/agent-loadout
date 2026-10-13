@@ -17,7 +17,7 @@ One agent must stay on. Switching an agent off uninstalls nothing; loadout just 
 
 **Codex only.** Without Claude Code, bootstrap does not install Claude Code and skips everything that belongs to it: the links under `~/.claude`, the Claude settings, its plugins and `adopt`. `loadout check` and the daily sync then look at Codex only. Codex still gets the plugins the kit enables, the rules, your personal layer and the tools. Add Claude Code later with `loadout configure set target claude on`; if Claude Code is not installed yet, it tells you to run `loadout bootstrap --install`, which installs and sets it up.
 
-The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; it prints every step. Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
+The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; a progress line names each step (with `--verbose`, or without a terminal, one line each). Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
 
 Then approve loadout's hooks once in Codex: start `codex` and run `/hooks`. Codex runs plugin hooks only after you approve them, and again after they change ([which hooks](../reference/hooks.md)).
 

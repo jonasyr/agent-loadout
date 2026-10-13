@@ -42,12 +42,12 @@ def test_first_prompt_and_legend(machine, capsys):
     vs = [_get("skill", "my-skill")]
     ask, asked = _asks(["c", ""])
     assert own.ask_choices(vs, ask) == []
-    assert asked[0] == ("your own tools: [l]eave all (not asked again on this machine) / [c]hoose each "
+    assert asked[0] == ("Your own tools: [l]eave all (not asked again on this machine) / [c]hoose each "
                         "(Enter: decide later): ")
     assert asked[1].endswith("(Enter: decide later): ") and "default: skip" not in asked[1]
     out = capsys.readouterr().out
-    assert out.count("global = personal layer, every machine") == 1
-    assert "remove = into the backup (loadout restore)" in out
+    assert out.count("global   every machine (your personal layer)") == 1
+    assert "remove   into the backup (loadout restore)" in out
 
 
 def test_profile_prompt_enter_skips_without_error(machine, capsys):

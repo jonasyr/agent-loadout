@@ -552,8 +552,12 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                     ) -> tuple[list[str], set[str]]:
     """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards."""
     lines, installed = [], set(listed or ())
+    have = {pid.split("@")[0] for pid in installed}
+    total = len(routes) + sum(1 for names in routes.values() for name in names if refresh or name not in have)
+    step = 0
     for src, plugins in routes.items():
-        say(f"  marketplace {src} (a git clone the first time; can take a few minutes)…")
+        step += 1
+        say(f"  adding marketplace {src}, a git clone ({step} of {total})…")
         res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
         info = _json(res.stdout) if res.ok else None
         if not isinstance(info, dict) or "marketplaceName" not in info:
@@ -568,7 +572,8 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             pid = f"{name}@{market}"
             if pid in installed and not refresh:
                 continue
-            say(f"  plugin {pid}…")
+            step += 1
+            say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
             res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")

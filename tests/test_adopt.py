@@ -543,7 +543,7 @@ def test_run_interactive_offers_repo_for_new_profile(machine, fake_runner, monke
     monkeypatch.setattr(project, "add_profile", lambda path, name, **kw: applied.append((path, name)) or 0)
     offered = []
     monkeypatch.setattr(configure, "offer_commit", lambda ask: offered.append(1))
-    script = {"your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y", "these repos": "y"}
+    script = {"Your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y", "these repos": "y"}
 
     def ask(q):
         return next((a for k, a in script.items() if k in q), "")
@@ -575,7 +575,7 @@ def test_run_interactive_leave_all_asks_nothing_more(machine, fake_runner, monke
     from loadout import configure
     monkeypatch.setattr(configure, "offer_commit", lambda ask: pytest.fail("commit offer"))
     asked = []
-    ask = _scripted({"item(s)": "n", "your own tools": "l"}, asked)
+    ask = _scripted({"item(s)": "n", "Your own tools": "l"}, asked)
     adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
     assert "left on this machine" in capsys.readouterr().out
     assert own.decisions()
@@ -592,7 +592,7 @@ def test_run_interactive_enter_on_own_prompt_changes_nothing(machine, fake_runne
 
 def test_run_declined_confirm_remembers_nothing(machine, fake_runner):
     asked = []
-    ask = _scripted({"item(s)": "n", "your own tools": "c", " — ": "g", "Apply": "n"}, asked)
+    ask = _scripted({"item(s)": "n", "Your own tools": "c", " — ": "g", "Apply": "n"}, asked)
     adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
     assert any("Apply" in q for q in asked)
     assert not own.decisions()
@@ -609,7 +609,7 @@ def test_offer_profiles_failure_does_not_stop_next_repo(machine, fake_runner, ca
         cfg["projects"][str(repo)] = {}
     (machine / "code/a-bad/.mcp.json").write_text('{"mcpServers": {"omarchy-kb": ')  # malformed, still mentions it
     (machine / ".claude.json").write_text(json.dumps(cfg))
-    ask = _scripted({"item(s)": "n", "your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y",
+    ask = _scripted({"item(s)": "n", "Your own tools": "c", "mcp omarchy-kb": "p", "profile (": "mine", "Apply": "y",
                        "these repos": "y"}, [])
     adopt.run(True, None, set(), False, ask=ask, with_versions=False, interactive=True)
     out = capsys.readouterr().out

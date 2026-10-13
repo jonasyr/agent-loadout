@@ -334,7 +334,7 @@ def update(yes: bool, ask: Callable[[str], str]) -> int:
 
 def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[str], str]) -> None:
     """Refresh the plugins the kit enables, in each agent that is on, after a yes, and say what changed."""
-    from . import codex, targets
+    from . import codex, out, targets
     from .jsonio import get_dict
     from .settings_merge import desired_settings
     todo = []
@@ -371,7 +371,9 @@ def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[s
             bk = Backup(description="update: Codex plugins")
             try:
                 before = codex.plugin_versions()
-                for line in codex.apply_plugins(bk, refresh=True, say=lambda l: print(l, flush=True)):
+                codex_lines = codex.apply_plugins(bk, refresh=True, say=out.progress)
+                out.end_progress()
+                for line in codex_lines:
                     print(redact(line))
                     changed = changed or line.endswith(": installed")
                 after = codex.plugin_versions()

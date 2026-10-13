@@ -49,16 +49,24 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", action="store_true", help="no questions: git init if needed, apply the suggested profiles")
     p.add_argument("--no-install", action="store_true", help="do not install the profiles' plugins or run their commands")
     p.add_argument("--dry-run", action="store_true", help="show what would change, change nothing")
-    p.set_defaults(func=lambda a: project.init(Path.cwd(), a.profiles, a.yes, not a.no_install, a.dry_run, _ask))
+    p.add_argument("--verbose", action="store_true", help="every file, command and note, not only the summary")
+    p.set_defaults(func=lambda a: _verbose(a) or project.init(Path.cwd(), a.profiles, a.yes, not a.no_install, a.dry_run, _ask))
 
     p = sub.add_parser("profile", help="add a profile to the current project")
     p.add_argument("name", help="profile name, e.g. thesis, web, db, sonar, android (or one in <personal>/profiles)")
     p.add_argument("--no-install", action="store_true", help="do not install the profile's plugins or run its commands")
-    p.set_defaults(func=lambda a: project.add_profile(Path.cwd(), a.name, install=not a.no_install))
+    p.add_argument("--verbose", action="store_true", help="every file, command and note, not only the summary")
+    p.set_defaults(func=lambda a: _verbose(a) or project.add_profile(Path.cwd(), a.name, install=not a.no_install))
 
     for register in EXTRA_COMMANDS:
         register(sub)
     return parser
+
+
+def _verbose(a) -> None:
+    if a.verbose:
+        from . import out
+        out.VERBOSE = True
 
 
 EXTRA_COMMANDS: list = []  # later modules append register(subparsers) functions here
