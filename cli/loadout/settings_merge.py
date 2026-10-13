@@ -41,7 +41,7 @@ def get_path(d: Any, path: tuple) -> Any:
 
 def _set_path(d: dict, path: tuple, value: Any) -> None:
     for key in path[:-1]:
-        if not isinstance(d.get(key), dict):  # a scalar or list on the way is replaced: the kit owns this path
+        if not isinstance(d.get(key), dict):  # defensive: the only caller reaches here with dict parents
             d[key] = {}
         d = d[key]
     d[path[-1]] = value
