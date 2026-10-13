@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from . import detect, profiles, runner, scaffold, ui
+from . import detect, paths, profiles, runner, scaffold, ui
 
 Ask = Callable[[str], str]
 
@@ -42,10 +42,12 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             print(f"updated {path}")
         for line in skipped:
             print(line)
+    skills_ok = True
     for line in profiles.copy_skills(prof, project, dry_run=dry_run):
         print(line)
+        skills_ok = skills_ok and not line.startswith("skills not copied")
     ok = _install(prof, project, dry_run) if install else True
-    if skipped:
+    if skipped or not skills_ok:
         ok = False
     from . import codex_project, targets
     if targets.codex_enabled():
@@ -68,7 +70,12 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     project = project.resolve()
     for name in names:
         profiles.load_profile(name)  # validate every name before changing anything
-    if not (project / ".git").exists():
+    rc = 0
+    git_dir = project / ".git"
+    if git_dir.is_symlink() and not paths.inside(git_dir, project):  # git init would follow it out of the repo
+        print("skipped git init: .git points outside the repo")
+        rc = 1
+    elif not git_dir.exists():
         if dry_run:
             print("would offer: git init")
         elif yes or ui.confirm(ask, f"{project} is not a git repository. Run git init? [y/N] "):
@@ -86,16 +93,20 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
             chosen = suggested if answer == "" else [] if answer == "-" else [a.strip() for a in answer.split(",") if a.strip()]
             for name in chosen:
                 profiles.load_profile(name)
-    rc = 0
     for name in chosen:
         rc = add_profile(project, name, install=install, dry_run=dry_run) or rc
     created, notes = scaffold.scaffold(project, dry_run=dry_run)
     for path in created:
         print(("would create " if dry_run else "created ") + str(path.relative_to(project)))
+    if not paths.inside(project / ".gitignore", project):
+        print("skipped .gitignore: it points outside the repo")
+        rc = 1
     for line in scaffold.ensure_gitignore(project, dry_run=dry_run):
         print(("would add to .gitignore: " if dry_run else "added to .gitignore: ") + line)
     for note in notes:
-        print(f"note: {note}")
+        print(note if note.startswith("skipped") else f"note: {note}")
+        if note.startswith("skipped"):
+            rc = 1
     from . import targets
     if targets.claude_enabled():
         print("next: start Claude Code here and run /loadout:onboard")
