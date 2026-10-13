@@ -124,7 +124,7 @@ def _codex_items() -> list[Item]:
     if not targets.codex_enabled():
         return []
     items = []
-    claude = load_json(paths.claude_json()).get("mcpServers", {})
+    claude = load_json(paths.claude_json()).get("mcpServers", {}) if targets.claude_enabled() else {}
     skip = codex._plugin_servers() | (set(claude) if isinstance(claude, dict) else set())
     for name, table in codex.user_servers().items():
         if name in skip:
@@ -143,8 +143,10 @@ def _codex_items() -> list[Item]:
 
 
 def collect(with_versions: bool = True) -> list[Item]:
-    return [*_mcp_items(), *_plugin_items(), *_marketplace_items(), *_skill_items(), *_codex_items(),
-            *_hook_items(), *_claude_md_items(), *_binary_items(with_versions)]
+    from . import targets
+    claude = [*_mcp_items(), *_plugin_items(), *_marketplace_items(), *_skill_items(), *_hook_items(),
+              *_claude_md_items()] if targets.claude_enabled() else []  # Codex only: Claude Code's files stay as they are
+    return [*claude, *_codex_items(), *_binary_items(with_versions)]
 
 
 def _why(entry: dict) -> str:

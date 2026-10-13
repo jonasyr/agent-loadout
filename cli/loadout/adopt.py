@@ -478,7 +478,8 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     if interactive is None:
         interactive = ui.is_interactive()
     verdicts = inventory.classify(inventory.collect(with_versions=with_versions))
-    findings = secrets.scan_all()
+    from . import targets
+    findings = secrets.scan_all() if targets.claude_enabled() else []  # it scans Claude Code's files
     try:
         own_pairs = own.resolve(own.parse_spec(own_spec), verdicts) if own_spec is not None else None
     except ValueError as exc:

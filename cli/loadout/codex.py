@@ -660,8 +660,9 @@ def codex_only_skills() -> list[Path]:
     root = paths.agents_skills()
     if not root.is_dir():
         return []
+    from . import targets
     ours = {dest.name for dest, _ in skill_links()}
-    claude = _skill_names(paths.claude_home() / "skills")
+    claude = _skill_names(paths.claude_home() / "skills") if targets.claude_enabled() else set()
     return [p for p in sorted(root.iterdir())
             if not p.name.startswith(".") and p.name != "synced" and p.name not in ours | claude]
 

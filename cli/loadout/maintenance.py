@@ -371,6 +371,8 @@ def _update(yes: bool, ask: Callable[[str], str]) -> int:
             _remember_refused(entry["id"], None)
             print(f"  updated to {versions.fmt(now)}; {versions.fmt(latest)} was not installed (held back by the package manager?)")
     after = load_json(settings_path)
+    if not targets.claude_enabled():  # Codex only: Claude Code's settings and servers are not loadout's to fix
+        return 0
     if after != before:
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
         bk = Backup(description="update: settings.json as modified by an installer")
