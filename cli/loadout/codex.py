@@ -567,9 +567,10 @@ def installed_plugins() -> set[str] | None:
     return {p["pluginId"] for p in get_list(data, "installed") if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
 
 
-def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None
-                    ) -> tuple[list[str], set[str]]:
-    """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards."""
+def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
+                    frozen: frozenset = frozenset()) -> tuple[list[str], set[str]]:
+    """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards.
+    frozen: marketplaces a refresh leaves as they are (`autoUpdate: false`); missing plugins are still installed."""
     lines, installed = [], set(listed or ())
     have = {pid.split("@")[0] for pid in installed}
     total = len(routes) + sum(1 for names in routes.values() for name in names if refresh or name not in have)
@@ -585,11 +586,11 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
         market = info["marketplaceName"]
         if not info.get("alreadyAdded") and listed is not None:
             bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
-        elif refresh:
+        elif refresh and market not in frozen:
             runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=900)
         for name in plugins:
             pid = f"{name}@{market}"
-            if pid in installed and not refresh:
+            if pid in installed and (not refresh or market in frozen):
                 continue
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
@@ -604,13 +605,18 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
     return lines, installed
 
 
-def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
-    """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs)."""
+def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False) -> list[str]:
+    """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs).
+    auto: an automatic refresh (the daily sync): marketplaces set to `autoUpdate: false` stay as they are, as in
+    Claude Code; an explicit `loadout update` passes False and updates every marketplace."""
     say = say or (lambda line: None)
     from .settings_merge import desired_settings
-    routes, missing = plugin_routes(desired_settings())
+    desired = desired_settings()
+    routes, missing = plugin_routes(desired)
+    frozen = frozenset(name for name, cfg in get_dict(desired, "extraKnownMarketplaces").items()
+                       if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False)
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
-    return lines + _install_routes(routes, bk, refresh, say, installed_plugins())[0]
+    return lines + _install_routes(routes, bk, refresh, say, installed_plugins(), frozen)[0]
 
 
 def skill_links() -> list[tuple[Path, Path]]:
@@ -789,7 +795,7 @@ def apply_all(bk, refresh: bool = False, say=None) -> list[str]:
     if lock is None:
         return ["skipped: another loadout run is setting up Codex right now; run this again when it has finished"]
     try:
-        return [apply_instructions(bk), *apply_config(bk), *apply_skills(bk), *apply_plugins(bk, refresh=refresh, say=say)]
+        return [apply_instructions(bk), *apply_config(bk), *apply_skills(bk), *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
     finally:
         try:
             lock.unlink()
