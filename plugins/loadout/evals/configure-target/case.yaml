@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: configure-target
+description: >-
+  A change request that does not name any skill: stop using Codex. The configure skill must fire,
+  propose `loadout configure set target codex off`, ask for a yes, and make no set call or file edit.
+tags: [configure, routing]
+context:
+  scaffold_script: scaffold.sh

@@ -30,9 +30,9 @@ loadout configure set pref effortLevel '"high"'
 
 Run `loadout configure` with no arguments for the full wizard, which also offers global add-ons. All forms are in the [CLI reference](../reference/cli.md#loadout-configure).
 
-## By asking Claude
+## By asking your agent
 
-In Claude Code, run `/loadout:configure` and say what you want, for example "answer in German" or "turn off AI attribution". The skill uses the same commands.
+Say what you want in Claude Code or Codex, for example "answer in German" or "turn off AI attribution". The loadout plugin's `configure` skill runs the same commands after your yes ([Ask your agent about loadout](ask-about-loadout.md)).
 
 ## What to expect
 
