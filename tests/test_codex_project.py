@@ -98,6 +98,7 @@ def test_repo_skills_are_linked_for_codex(repo):
     assert lines == ["linked skill pw for Codex -> .agents/skills/pw"]
 
 
+@needs_tomllib
 def test_profile_plugin_is_installed_and_recorded_project_only(repo, fake_runner, monkeypatch):
     import json
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
@@ -110,6 +111,7 @@ def test_profile_plugin_is_installed_and_recorded_project_only(repo, fake_runner
     assert codex.project_plugins() == ["deepeval@claude-plugins-official"]
 
 
+@needs_tomllib
 def test_a_plugin_already_on_everywhere_is_not_made_project_only(repo, fake_runner, monkeypatch):
     import json
     monkeypatch.setattr(settings_merge, "desired_settings",
@@ -166,6 +168,7 @@ def test_a_symlinked_skills_folder_outside_the_repo_is_refused(repo, tmp_path):
     assert list((tmp_path / "elsewhere").iterdir()) == []
 
 
+@needs_tomllib
 def test_a_plugin_the_user_installed_in_codex_is_not_switched_off(repo, fake_runner, monkeypatch):
     import json
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
@@ -179,6 +182,7 @@ def test_a_plugin_the_user_installed_in_codex_is_not_switched_off(repo, fake_run
     assert any("already installed in Codex" in l for l in lines)
 
 
+@needs_tomllib
 def test_recording_a_project_plugin_is_undoable(repo, fake_runner, monkeypatch):
     import json
     from loadout import backup
@@ -202,6 +206,7 @@ def test_codex_only_machine_never_runs_claude_plugin_install(repo, fake_runner, 
     assert not any(c[:2] == ["claude", "plugin"] for c in fake_runner.calls)
 
 
+@needs_tomllib
 def test_a_failed_plugin_list_makes_nothing_project_only(repo, fake_runner, monkeypatch):
     import json
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
@@ -229,6 +234,7 @@ def _official(fake_runner, listed):
         0, json.dumps({"marketplaceName": "claude-plugins-official", "alreadyAdded": True}), "")
 
 
+@needs_tomllib
 def test_nothing_is_installed_when_the_plugin_list_fails(repo, fake_runner, monkeypatch):
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
     monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
@@ -238,6 +244,7 @@ def test_nothing_is_installed_when_the_plugin_list_fails(repo, fake_runner, monk
     assert any("not installed" in l and "could not list" in l for l in lines)
 
 
+@needs_tomllib
 def test_config_toml_is_saved_before_a_project_switch_is_written(repo, fake_runner, monkeypatch):
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
     seen = []
@@ -263,3 +270,31 @@ def test_a_failed_install_leaves_the_repo_switch_out_and_exits_1(repo, fake_runn
     assert project.add_profile(repo, "thesis", install=True) == 1
     cfg = repo / ".codex" / "config.toml"
     assert not cfg.exists() or "deepeval" not in cfg.read_text()
+
+
+def test_no_project_plugin_installs_without_tomllib(repo, fake_runner, monkeypatch):
+    monkeypatch.setattr(codex, "_tomllib", lambda: None)
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    _official(fake_runner, [])
+    lines = codex_project.plugins(THESIS, dry_run=False)
+    assert not any(c[:3] == ["codex", "plugin", "add"] for c in fake_runner.calls)
+    assert any("not installed" in l and "3.11" in l for l in lines)
+
+
+@pytest.mark.parametrize("text", ["mcp_servers = 1\n", "plugins = 1\n"])
+def test_odd_containers_in_the_repo_config_are_reported(repo, text):
+    if codex._tomllib() is None:
+        pytest.skip("config edits need tomllib")
+    cfg = repo / ".codex" / "config.toml"
+    cfg.parent.mkdir()
+    cfg.write_text(text)
+    lines = codex_project.config(THESIS if "plugins" in text else WEB, repo, dry_run=False)
+    assert any(l.startswith("skipped") for l in lines)
+    assert cfg.read_text() == text
+
+
+def test_odd_projects_value_counts_as_untrusted(repo):
+    cfg = paths.codex_home() / "config.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("projects = 1\n")
+    assert codex_project._trusted(repo) is False

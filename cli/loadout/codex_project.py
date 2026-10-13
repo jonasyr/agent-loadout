@@ -52,6 +52,9 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
         before = tl.loads(old)
     except Exception as exc:
         return lines + [f"skipped {path}: it does not parse now ({exc}); fix it, then run loadout profile again"]
+    odd = [k for k in ("mcp_servers", "plugins") if not isinstance(before.get(k, {}), dict)]
+    if odd:
+        return lines + [f"skipped {path}: {', '.join(odd)} is not a table; fix it, then run loadout profile again"]
     added, keys = [], []
     for name, text in tables.items():
         if name in before.get("mcp_servers", {}):
@@ -121,6 +124,9 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
     if dry_run:
         return lines + [f"would install plugin {name} for Codex (from {src})" for src, names in routes.items() for name in names]
+    if codex._tomllib() is None:  # without both TOML edits a plugin would end up on in every project
+        return lines + [f"plugin {name}@?: not installed (keeping it to one project needs Python 3.11 or newer)"
+                        for names in routes.values() for name in names]
     listed = codex.installed_plugins()
     if listed is None:  # without the list, loadout cannot tell your plugins from new ones: install nothing
         return lines + [f"plugin {name}@?: not installed (could not list Codex plugins; run loadout profile again)"
@@ -156,7 +162,8 @@ def _trusted(project: Path) -> bool:
         data = tl.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return False
-    entry = data.get("projects", {}).get(str(project.resolve()), {})
+    projects = data.get("projects", {})
+    entry = projects.get(str(project.resolve()), {}) if isinstance(projects, dict) else {}
     return isinstance(entry, dict) and entry.get("trust_level") == "trusted"
 
 
