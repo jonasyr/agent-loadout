@@ -28,7 +28,7 @@ The fix is old and boring: treat documentation like code. Write it in plain text
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/documentation-layers.dark.svg">
-  <img alt="CLAUDE.md imports AGENTS.md, and AGENTS.md maps the Serena memories. README.md, AGENTS.md and the memories all link into docs/, the single source of truth. Claude Code's auto memory holds machine-local notes only, never project facts." src="../diagrams/documentation-layers.light.svg">
+  <img alt="CLAUDE.md imports AGENTS.md, and AGENTS.md maps the Serena memories. README.md, AGENTS.md and the memories all link into docs/, the single source of truth. The agent's own memory on this machine holds machine-local notes only, never project facts." src="../diagrams/documentation-layers.light.svg">
 </picture>
 
 <sub>[Source](../diagrams/documentation-layers.mmd)</sub>

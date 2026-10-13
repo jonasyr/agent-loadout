@@ -14,7 +14,7 @@ flowchart LR
     kPlugin["`**plugins/loadout/**
     hooks · skills · MCP servers`"]
     kRules["`**rules/**
-    how Claude uses the tools`"]
+    how your agent uses the tools`"]
     kBase["`**settings.base.json**
     the keys loadout manages`"]
   end
@@ -47,6 +47,17 @@ flowchart LR
     user-scope MCP servers`"]
   end
 
+  subgraph CX["Codex configuration"]
+    direction TB
+    xPlugin["`**codex plugin**
+    the same plugins and marketplaces`"]
+    xAgents["`**~/.codex/AGENTS.md**
+    loadout's block: rules and me.md`"]
+    xConf["`**~/.codex/config.toml**
+    your MCP servers, effort, notifications`"]
+    xSkills["`**~/.agents/skills/**`"]
+  end
+
   kPlugin -. "Claude Code installs and auto-updates" .-> cPlugin
   kRules -- link --> cRulesK
   pRules -- link --> cRulesP
@@ -56,6 +67,11 @@ flowchart LR
   snap <-. "read, then rewrite" .-> merge
   merge e7@==> cSet
   pMcp -- "claude mcp add-json" --> cMcp
+  kPlugin -. "loadout installs and refreshes" .-> xPlugin
+  kRules -- "copied into the block" --> xAgents
+  pRules -- "copied into the block" --> xAgents
+  pSkills -- "link skills" --> xSkills
+  pMcp -- "owned sections" --> xConf
 
   class kPlugin,kRules,kBase kit
   class pRules,pSkills,pSet,pMcp personal
@@ -65,5 +81,7 @@ flowchart LR
   class KIT kitGroup
   class PER personalGroup
   class CC claudeGroup
+  class xPlugin,xAgents,xConf,xSkills codex
+  class CX codexGroup
   class e4,e5,e7 emph
 %% palette

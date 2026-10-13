@@ -4,7 +4,7 @@ loadout has three parts: the kit repo (shared), your personal layer (yours) and 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-overview.dark.svg">
-  <img alt="Claude Code installs the kit's plugin and the kit's rules are linked into ~/.claude/rules/loadout. Your personal layer's rules, skills and hooks are linked into ~/.claude, and its mcp.json is added with claude mcp add-json. settings.base.json and your settings.json go through a three-way merge, which reads and rewrites a snapshot and writes ~/.claude/settings.json." src="../diagrams/architecture-overview.light.svg">
+  <img alt="For Claude Code: Claude Code installs the kit's plugin and the kit's rules are linked into ~/.claude/rules/loadout. Your personal layer's rules, skills and hooks are linked into ~/.claude, and its mcp.json is added with claude mcp add-json. settings.base.json and your settings.json go through a three-way merge, which reads and rewrites a snapshot and writes ~/.claude/settings.json. For Codex: loadout installs and refreshes the same plugins, copies the kit's rules and your me.md into its block in ~/.codex/AGENTS.md, links your skills into ~/.agents/skills, and writes your MCP servers, effort and notifications as owned sections of ~/.codex/config.toml." src="../diagrams/architecture-overview.light.svg">
 </picture>
 
 <sub>[Source](../diagrams/architecture-overview.mmd)</sub>
@@ -36,7 +36,7 @@ At each session start the plugin runs `loadout hook-session-start`. It prints qu
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-daily-sync.dark.svg">
-  <img alt="When a session starts, hook-session-start returns queued notices at once and, when due, starts maintenance in the background without making the session wait. Maintenance runs one at a time: daily it runs git pull --ff-only on the kit and personal repos (skipping a checkout with uncommitted changes) and, after new commits, merges settings and relinks skills and hooks; weekly it checks tool versions without installing anything. It queues notices for the next session." src="../diagrams/architecture-daily-sync.light.svg">
+  <img alt="When a session starts, hook-session-start returns queued notices at once and, when due, starts maintenance in the background without making the session wait. Maintenance runs one at a time: daily it runs git pull --ff-only on the kit and personal repos (skipping a checkout with uncommitted changes) and, after new commits, merges settings and relinks skills and hooks for Claude Code and refreshes plugins, config and skills for Codex (each only when that agent is on, Codex also only when it is usable); weekly it checks tool versions without installing anything. It queues notices for the next session." src="../diagrams/architecture-daily-sync.light.svg">
 </picture>
 
 <sub>[Source](../diagrams/architecture-daily-sync.mmd)</sub>

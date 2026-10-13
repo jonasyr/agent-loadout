@@ -2,6 +2,8 @@
 
 `loadout apply-settings` merges the kit's settings and your personal settings into `~/.claude/settings.json`. Bootstrap, `loadout configure` and the daily maintenance run the same merge. The code and its docstrings are in `cli/loadout/settings_merge.py`.
 
+This merge is for Claude Code. Codex has no settings file to merge: loadout writes the few settings Codex understands as its own keys in `~/.codex/config.toml` (see [Personal layer](personal-layer.md)).
+
 The merge uses three inputs:
 
 | Input | Is |
