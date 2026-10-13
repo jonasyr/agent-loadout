@@ -66,3 +66,48 @@ def test_a_real_backup_round_trips(fake_home):
     lines, ok, pre = backup.restore(bk.root)
     assert ok and f.read_text() == "old"
     assert backup.restore(pre)[1]  # a pre-restore backup is restorable too
+
+
+def test_a_symlinked_backup_folder_is_refused(fake_home, tmp_path):
+    outside = fake_home / "outside"
+    _manifest(outside, [])
+    paths.backups_root().mkdir(parents=True, exist_ok=True)
+    (paths.backups_root() / "link").symlink_to(outside)
+    lines, ok, _ = backup.restore(paths.backups_root() / "link")
+    assert not ok and "only restores backups under" in lines[0]
+
+
+@pytest.mark.parametrize("tail", ["..", "x/.."])
+def test_dot_dot_backup_paths_are_refused(fake_home, tail):
+    paths.backups_root().mkdir(parents=True, exist_ok=True)
+    (paths.backups_root() / "x").mkdir(exist_ok=True)
+    lines, ok, _ = backup.restore(paths.backups_root() / tail)
+    assert not ok
+
+
+def test_a_source_ending_in_dot_dot_is_refused(fake_home, tmp_path):
+    root = paths.backups_root() / "loadout-4"
+    _manifest(root, [{"label": "x", "undo": {"move": [str(root / "files" / ".."), str(tmp_path / "dest")]}}])
+    (root / "files").mkdir()
+    lines, ok, _ = backup.restore(root)
+    assert not ok and root.exists()
+
+
+def test_a_symlinked_restore_file_source_is_refused(fake_home):
+    secret = fake_home / "secret.txt"
+    secret.write_text("SECRET")
+    root = paths.backups_root() / "loadout-5"
+    _manifest(root, [{"label": "x", "undo": {"restore-file": [str(root / "files" / "001-x"), str(fake_home / "dest")]}}])
+    (root / "files").mkdir()
+    (root / "files" / "001-x").symlink_to(secret)
+    lines, ok, _ = backup.restore(root)
+    assert not ok and not (fake_home / "dest").exists()
+
+
+@pytest.mark.parametrize("cmd", [
+    ["claude", "plugin", "marketplace", "add", "--scope"],
+    ["claude", "plugin", "enable", "--scope", "--scope", "user"],
+    ["codex", "plugin", "remove", "-s"],
+])
+def test_options_never_fill_a_name_slot(cmd):
+    assert backup._allowed_run(cmd) is False

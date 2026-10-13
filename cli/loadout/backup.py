@@ -141,7 +141,7 @@ def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, st
         name = _mcp_target(cmd)[1]
         for j in range(i + 1, len(ordered)):
             other = ordered[j].get("undo", {}).get("run")
-            if other and _mcp_target(other) == ("add-json", name):
+            if other and _mcp_target(other) == ("add-json", name) and _allowed_run(cmd) and _allowed_run(other):
                 if runner.would_refuse(other):
                     where = runner.write_manual_commands(
                         root, f"restore: mcp {name} (remove, then add; full commands, contains secrets)", [cmd, other])
@@ -156,9 +156,12 @@ def _allowed_run(cmd) -> bool:
     """Only the undo commands loadout itself records; a manifest cannot make restore run anything else."""
     if not isinstance(cmd, list) or not all(isinstance(a, str) for a in cmd):
         return False
-    if any(a.startswith("-") for a in cmd[3:] if a not in ("-s", "--scope", "user")):
-        return False
     n = len(cmd)
+    slot = {"add-json": 5, "remove": 5}.get(cmd[2]) if cmd[:2] == ["claude", "mcp"] and n > 2 else n - 1
+    if cmd[:2] == ["claude", "plugin"] and n > 2 and cmd[2] in ("enable", "install"):
+        slot = 3
+    if slot is None or slot >= n or cmd[slot].startswith("-") or not cmd[slot]:  # the name, id or origin slot
+        return False
     if cmd[:3] == ["claude", "mcp", "add-json"] and n == 7 and cmd[3:5] == ["-s", "user"]:
         try:
             return isinstance(json.loads(cmd[6]), dict)
@@ -178,6 +181,8 @@ def _allowed_run(cmd) -> bool:
 
 
 def _inside(path: Path, folder: Path) -> bool:
+    if path.name in ("", ".", ".."):  # files/.. would be the backup itself
+        return False
     try:  # resolve the folder around the entry, not the entry itself: a backed-up symlink stays a symlink
         (path.parent.resolve() / path.name).relative_to(folder.resolve())
         return True
@@ -202,7 +207,7 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
         shutil.move(str(src), str(dst))
     elif "restore-file" in undo:
         src, dst = map(Path, undo["restore-file"])
-        if not src.is_file():
+        if src.is_symlink() or not src.is_file():  # save_copy always writes a regular file
             return f"failed: {label}: backup copy {src} is missing"
         if dst.is_file() and filecmp.cmp(src, dst, shallow=False):
             return f"unchanged: {label}"
@@ -236,7 +241,13 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
 
 def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | None]:
     """Replay a backup's undo steps in reverse. Returns (messages, all_ok, pre-restore backup root)."""
-    if not _inside(root, paths.backups_root()):
+    try:  # the backup folder itself, resolved: a symlinked or `..` folder is not one of loadout's backups
+        base = paths.backups_root().resolve()
+        root = root.resolve()
+        inside = root != base and root.is_relative_to(base)
+    except OSError:
+        inside = False
+    if not inside:
         return [f"loadout only restores backups under {paths.backups_root()}; move it there first"], False, None
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
