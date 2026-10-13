@@ -521,6 +521,11 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     # loadout's own `codex plugin add` wrote (install_lines) counts as loadout's; any other line is yours
     switched = False  # a plugin switch changes: its own backup copy, so restore of this run undoes it
     install_lines = {k: v for k, v in get_dict(record, "install_lines").items() if isinstance(v, str)}
+    if install_lines:  # seen uninstalled: a later line is not from loadout's install any more
+        listed = installed_plugins()
+        if listed is not None:
+            present = {_dotted(("plugins", pid), "enabled") for pid in listed}
+            install_lines = {k: v for k, v in install_lines.items() if k in present}
     for table, key, value, force in desired_keys():
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"

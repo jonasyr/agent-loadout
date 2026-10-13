@@ -128,6 +128,19 @@ def test_a_reinstall_by_loadout_after_an_uninstall_is_loadout_s_line_again(fake_
     assert "enabled = false" in _config() and not any("your value" in line for line in lines)
 
 
+def test_the_install_record_expires_once_the_plugin_is_seen_uninstalled(fake_home, fake_runner, monkeypatch):
+    _install_with_codex(fake_runner, monkeypatch, "x@m")
+    path = paths.codex_home() / "config.toml"
+    path.write_text(_config().replace('[plugins."x@m"]\nenabled = true\n', ""), encoding="utf-8")  # you uninstall
+    _setup(fake_runner, monkeypatch, {"x@m": True}, [])
+    _apply()  # a run sees it gone
+    path.write_text(_config() + '\n[plugins."x@m"]\nenabled = true\n', encoding="utf-8")  # you reinstall it
+    _setup(fake_runner, monkeypatch, {"x@m": False}, ["x@m"])
+    lines = _apply()
+    assert "enabled = true" in _config() and "enabled = false" not in _config()
+    assert any("your value" in line for line in lines)
+
+
 def test_the_install_record_does_not_hide_loadout_s_first_change_backup(fake_home, fake_runner, monkeypatch):
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
