@@ -6,6 +6,27 @@ Use this page when `loadout adopt` or `loadout check` lists tools that loadout d
 
 `loadout configure own` lists the same items. Flags and exit codes of the commands are in the [CLI reference](../reference/cli.md#loadout-adopt).
 
+## Where a tool of yours can live
+
+| | Personal layer (`global`) | Personal profile (`project:<profile>`) | Committed in one repo |
+|---|---|---|---|
+| Files | `<personal>/skills/`, `mcp.json`, `settings.json` | `<personal>/profiles/<profile>.json` and `profiles/skills/` | the repo's `.claude/skills/`, `.mcp.json`, `.codex/config.toml` |
+| Which machines | every machine with your personal layer | every machine, but only in repos you apply the profile to | every clone of that repo |
+| Who else | nobody | nobody | everyone who clones the repo |
+| Claude Code gets it | linked into `~/.claude/skills`, servers through `claude mcp`, settings merged | copied into the repo by `loadout profile <profile>` | reads the repo's files |
+| Codex gets it | linked into `~/.agents/skills`, servers in `~/.codex/config.toml` | `loadout profile` links `.agents/skills` and writes `.codex/config.toml` | `.agents/skills` links (from `loadout init` or `new skill --to repo`) and `.codex/config.toml` |
+| Undo | `loadout restore` | `loadout restore` (the repo's copy stays; it is a copy) | `loadout restore` for what loadout created; your commits are yours |
+
+## Create a skill of your own
+
+```bash
+loadout configure new skill notes --description "Use when taking meeting notes."
+loadout configure new skill db-tips --to project:db
+loadout configure new skill release --to repo
+```
+
+The command writes a `SKILL.md` stub (name, description, a short body to fill in) and links it for the agents that are on. It refuses, writing nothing, when the name is taken in a place it would write or link (also in another case, or as a dangling link). `--to repo` works in a git repo; commit the new folder yourself. Every folder and link it creates is in a backup, so `loadout restore` removes it. For `global` and `project:<profile>` it ends with the commit offer, like adopt.
+
 ## Choices
 
 | Choice | Meaning |
@@ -30,8 +51,9 @@ When something was recorded or removed, adopt and `configure set own` end with a
 What you add directly in one agent lives only there. With both agents on, `loadout check` reports it, and so does the daily sync after a pull that brought new commits, for example `MCP server "x" only in Claude Code` or `skill "y" only in Codex`. Everything from the kit and your personal layer reaches both agents.
 
 - **Only in Claude Code:** record it with `loadout adopt` as above; the next sync puts it into both.
-- **Only in Codex:** adopt lists MCP servers in `~/.codex/config.toml` and skills in `~/.agents/skills` that only Codex has, with the choices `global`, `leave` and `remove`:
+- **Only in Codex:** adopt lists MCP servers in `~/.codex/config.toml` and skills in `~/.agents/skills` that only Codex has, with the choices `global`, `project:<profile>`, `leave` and `remove` (a skill that is a link to a shared source: `global`, `leave`, `remove`):
   - **global** writes the server to your personal layer's `mcp.json` (secrets go to `secrets.env`) or copies the skill into its `skills/`, then hands the server's section to loadout and links the skill for both agents. A server with keys Claude Code cannot express (a `tools` section, timeouts) cannot be recorded; leave it or remove it. Neither can a server whose plaintext secret would have to move under another variable name, because Codex forwards a variable only under its own name: put it in `secrets.env` under its key's name by hand, then record it.
+  - **project** writes the server into the profile's `mcp` (same conversion and refusals as `global`) or copies the skill into `profiles/skills/`, then removes it from Codex's global setup with a backup, as `remove` does.
   - **leave** is remembered on this machine and silences the report for that item.
   - **remove** saves `config.toml` in the backup, then runs `codex mcp remove`; a skill moves into the backup. `loadout restore` brings both back.
 
