@@ -126,6 +126,8 @@ Writing good docs once is the easy part. loadout ships three Claude Code skills 
 | `/loadout:docs-sync` | End of every feature, before merging | Reads the branch diff, decides which facts changed and which layer owns each, updates only those (a new decision becomes an ADR), checks every link and path it touched, and commits separately as `docs: …` after approval. A small change usually touches zero or one doc file; if it finds widespread rot, it stops and recommends an audit. |
 | `/loadout:docs-audit` | On request, when docs may be stale or duplicated | Inventories every doc artifact, extracts each claim (commands, paths, symbols, defaults, behaviour, decisions, status), verifies it against the current code, and classifies it: correct, stale, wrong, unclear, contradictory, duplicated, misplaced or unverifiable. It also lists what is missing. Anything the code cannot settle it asks you, in batches; it never guesses intent. It proposes the target structure before rewriting, validates every link afterwards, and commits per layer after approval. Its checklist lives in `.loadout/docs-audit/<date>.md`, so it can resume after a context reset or in a new session. |
 
+All three read the rules and the sections of this page they need (the four kinds of docs, ADRs) from your clone of the kit (`loadout kit-path`), so they write pages and ADRs in this format in Claude Code and Codex alike.
+
 The audit is deliberately thorough and expensive; it runs only when you invoke it. docs-sync is the cheap habit that makes audits rare.
 
 ### Before and after: a typical repo
