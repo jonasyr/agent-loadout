@@ -38,7 +38,7 @@ It changes:
 - `~/.config/loadout/`: your personal layer and `secrets.env`.
 - `~/.claude/.loadout/`: machine-local state (snapshots, decisions, timestamps).
 - A two-line secrets-loading block appended to each existing `.bashrc` and `.zshrc` and to the startup file of your `$SHELL` (`bootstrap.setup_secrets`), or both PowerShell profiles on Windows.
-- `~/.local/bin/loadout`: a launcher script (on Windows `loadout.cmd` and a Git Bash shim), not a link. It runs Python 3.10 or newer if there is one, else a Python that uv manages, looked up from a neutral folder so a project's `.venv` or uv config is never used.
+- `~/.local/bin/loadout`: a launcher script (on Windows `loadout.cmd` and a Git Bash shim), not a link. It runs Python 3.11 or newer if there is one, else a Python that uv manages, looked up from a neutral folder so a project's `.venv` or uv config is never used.
 - A `# loadout PATH` … `# loadout PATH end` block appended to each existing `.bashrc` and `.zshrc` (and your shell's file) and to `~/.profile` (or `~/.bash_profile`). On native Windows bootstrap adds the folders to your user PATH instead and saves the old value in the backup.
 - Once the mise shims are on your `PATH`, `node`, `gh` and the other mise tools follow a project's `.tool-versions` or `mise.toml`, and mise may install the version it names.
 - Git's credential helper for `github.com`: when `gh` is logged in, bootstrap runs `gh auth setup-git` so git uses your `gh` login, and prints the undo command (`bootstrap.check_prereqs`).
@@ -54,6 +54,13 @@ It does not touch:
 - Your Claude login or claude.ai connectors. It does not change them. `loadout check` reads only the connector names in `~/.claude.json` (`claudeAiMcpEverConnected`) to warn about a plugin that duplicates one, and prints only names from the kit's catalog.
 
 Items you own that loadout removes or replaces are moved to a backup first. The routine sync of what the kit itself manages (managed settings keys, your personal MCP servers) is not backed up, and neither is the shell startup file bootstrap appends to on Linux and macOS; your personal layer's git history is the record. See [What restore does not undo](../how-to/undo-and-restore.md#what-restore-does-not-undo).
+
+## Programs and repo files
+
+- **Program lookup.** loadout resolves external programs (`git`, `claude`, `codex`, installers) only from absolute `PATH` entries, never from the current folder or a relative entry. On Windows this also rules out the current-folder lookup `cmd` would do.
+- **Repo symlinks.** `init` and `profile` never write through a symlink that leads out of the repo, and never run `git init` through a `.git` symlink. A skipped file is reported and the command exits 1.
+- **Restore** trusts only backups under `~/.claude/backups`, copies only from a backup's own `files/` folder, and replays only the undo commands loadout records ([details](../how-to/undo-and-restore.md)).
+- **Codex type-check hook.** For Rust repos its `cargo check` runs the build scripts and procedural macros of the repo you edit. That is normal cargo behaviour; do not edit untrusted repos with the hook on.
 
 ## Backups and restore
 

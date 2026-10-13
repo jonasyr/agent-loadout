@@ -121,7 +121,7 @@ def test_cmd_shim_ignores_the_current_folder(tmp_path):
     assert text.index('pushd "%SystemRoot%"') < text.index("uv python find")
 
 
-@pytest.mark.parametrize("version,code", [((3, 9), 1), ((3, 9, 18, "final", 0), 1), ((3, 10), 0), ((3, 12, 1, "final", 0), 0)])
+@pytest.mark.parametrize("version,code", [((3, 10), 1), ((3, 10, 18, "final", 0), 1), ((3, 11), 0), ((3, 12, 1, "final", 0), 0)])
 def test_version_predicates_really_reject_3_9(version, code):
     run_sh = re.search(r"-c '([^']*version_info[^']*)'", RUN_SH.read_text()).group(1)
     for pred in (link.PY_OK, run_sh):

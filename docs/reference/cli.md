@@ -143,7 +143,7 @@ loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
 
 Without a terminal, no `PROFILE` and no `--yes`, no profile is applied. If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
 
-Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes).
+Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes) or when a repo file was skipped because it is, or lies behind, a symlink out of the repo.
 
 ## loadout profile
 
@@ -158,7 +158,7 @@ loadout profile [--no-install] NAME
 | `NAME` | Profile name, for example `thesis`, `web`, `db`, `sonar`, `android`, or one in `<personal>/profiles`. |
 | `--no-install` | Do not install the profile's plugins or run its commands. |
 
-With Codex on, `init` and `profile` also write the repo's `.codex/config.toml`, link `.claude/skills` into `.agents/skills` and install the profile's plugins in Codex for that repo only (see [Use loadout with Codex](../how-to/codex.md#projects)). The file format is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name.
+With Codex on, `init` and `profile` also write the repo's `.codex/config.toml`, link `.claude/skills` into `.agents/skills` and install the profile's plugins in Codex for that repo only (see [Use loadout with Codex](../how-to/codex.md#projects)). The file format is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name or when a repo file was skipped because of a symlink out of the repo.
 
 ## loadout check
 
@@ -172,7 +172,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 
 | Check | Severity when it fails |
 |---|---|
-| The Python version that runs loadout (an `ok` line; loadout needs 3.10 or newer and stops before this on older versions) | — |
+| The Python version that runs loadout (an `ok` line; loadout needs 3.11 or newer and stops before this on older versions) | — |
 | Inside WSL: the WSL version (an ok line), then one warning per problem from [WSL 2](../how-to/wsl.md) | warn |
 | The links under `~/.claude` (rules, global skills, `hooks/personal`) | FAIL |
 | `settings.json` is valid JSON | FAIL |
@@ -248,6 +248,8 @@ loadout restore [--list] [--force] [BACKUP_DIR]
 | `--force` | Replay a backup that was already restored. |
 
 Without `BACKUP_DIR` it lists the backups, like `--list`.
+
+Restore only accepts folders under `~/.claude/backups` and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
 
 Exit codes: 0 when listing or when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed.
 

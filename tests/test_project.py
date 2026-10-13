@@ -25,12 +25,12 @@ def test_apply_profile_merges_and_is_idempotent(tmp_path):
     (proj / ".claude").mkdir(parents=True)
     (proj / ".claude/settings.json").write_text(json.dumps({"permissions": {"allow": ["Bash(x)"]}}))
     prof = profiles.load_profile("web")
-    changed = profiles.apply_profile(prof, proj)
+    changed, skipped = profiles.apply_profile(prof, proj)
     assert {c.name for c in changed} == {"settings.json", ".mcp.json"}
     settings = json.loads((proj / ".claude/settings.json").read_text())
     assert settings["permissions"] == {"allow": ["Bash(x)"]}
     assert settings["disabledMcpjsonServers"] == ["chrome-devtools"]
-    assert profiles.apply_profile(prof, proj) == []
+    assert profiles.apply_profile(prof, proj) == ([], [])
 
 
 def test_personal_profile_overrides_kit(fake_home, tmp_path):

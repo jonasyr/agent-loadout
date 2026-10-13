@@ -30,6 +30,8 @@ def LINKS() -> list[tuple[Path, Path]]:
     except InvalidJSON:
         pointers = {}  # never crash linking; loadout check reports the broken file
     for name, target in sorted(pointers.items()):
+        if not (name == Path(name).name and name not in ("", ".", "..") and not name.startswith("-")):
+            continue  # a key becomes a folder name under skills/, never a path
         if isinstance(target, str) and Path(target).expanduser().is_dir():
             out.append((skills / name, Path(target).expanduser()))
     out.append((paths.claude_home() / "hooks" / "personal", personal / "hooks"))
@@ -130,16 +132,16 @@ def link_all(bk: Backup, retry_symlinks: bool = False) -> list[str]:
 
 
 LAUNCHER_MARKER = "# loadout launcher"
-PY_OK = "import sys; sys.exit(sys.version_info < (3, 10))"
+PY_OK = "import sys; sys.exit(sys.version_info < (3, 11))"
 # uv looks for an interpreter from a neutral folder: started in the user's project it would pick up
 # a planted .venv (or its uv.toml); --system also ignores an activated VIRTUAL_ENV.
-UV_FIND = "uv python find --system --no-config --no-project \">=3.10\""
-UV_INSTALL = "uv python install --no-config \">=3.10\""
+UV_FIND = "uv python find --system --no-config --no-project \">=3.11\""
+UV_INSTALL = "uv python install --no-config \">=3.11\""
 
 
 def launcher_text(script: Path) -> str:
     s = script.as_posix().replace("'", "'\\''")
-    return (f"#!/bin/sh\n{LAUNCHER_MARKER} (written by loadout bootstrap; Python 3.10+ or uv runs it)\n"
+    return (f"#!/bin/sh\n{LAUNCHER_MARKER} (written by loadout bootstrap; Python 3.11+ or uv runs it)\n"
             f"script='{s}'\n"
             f'if command -v python3 >/dev/null 2>&1 && python3 -c "{PY_OK}" 2>/dev/null; then exec python3 "$script" "$@"; fi\n'
             'if command -v uv >/dev/null 2>&1; then\n'
@@ -147,7 +149,7 @@ def launcher_text(script: Path) -> str:
             f'  if [ -z "$py" ]; then (cd / && {UV_INSTALL}) >&2; py=$(cd / && {UV_FIND} 2>/dev/null); fi\n'
             '  if [ -n "$py" ]; then exec "$py" "$script" "$@"; fi\n'
             'fi\n'
-            'echo "loadout needs Python 3.10 or newer, or uv, on PATH" >&2\nexit 1\n')
+            'echo "loadout needs Python 3.11 or newer, or uv, on PATH" >&2\nexit 1\n')
 
 
 def cmd_shim_text(script: Path) -> str:
@@ -176,7 +178,7 @@ def cmd_shim_text(script: Path) -> str:
         f"for /f \"delims=\" %%i in ('{UV_FIND} 2^>nul') do set \"LOADOUT_PY=%%i\"",
         "exit /b 0",
         ":missing",
-        "echo loadout needs Python 3.10 or newer, or uv, on PATH 1>&2",
+        "echo loadout needs Python 3.11 or newer, or uv, on PATH 1>&2",
         "exit /b 1",
     ]
     return "\r\n".join(lines) + "\r\n"

@@ -14,7 +14,7 @@ curl_hint() {
 }
 
 find_python() {
-  (cd / && uv python find --system --no-config --no-project '>=3.10' 2>/dev/null) || true
+  (cd / && uv python find --system --no-config --no-project '>=3.11' 2>/dev/null) || true
 }
 
 git_hint() {
@@ -109,11 +109,11 @@ main() {
   local py
   py="$(find_python)"
   if [ -z "$py" ]; then
-    (cd / && uv python install --no-config '>=3.10') >&2 || true
+    (cd / && uv python install --no-config '>=3.11') >&2 || true
     py="$(find_python)"
   fi
   if [ -z "$py" ]; then
-    echo "could not get Python 3.10 or newer through uv (offline?). Check your connection and run this again." >&2
+    echo "could not get Python 3.11 or newer through uv (offline?). Check your connection and run this again." >&2
     exit 1
   fi
 

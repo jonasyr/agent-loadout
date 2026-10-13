@@ -6,7 +6,6 @@ import pytest
 
 from loadout import backup, codex, paths
 
-needs_tomllib = pytest.mark.skipif(sys.version_info < (3, 11), reason="config edits need tomllib")
 
 
 def _personal_mcp(servers):
@@ -58,7 +57,6 @@ def test_unsupported_keys_are_refused():
         codex.server("x", {"command": "x", "timeout": 5})
 
 
-@needs_tomllib
 def test_writes_servers_serena_and_keys(fake_home):
     _personal_mcp({"gh": {"command": "gh-mcp", "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"}}})
     _apply()
@@ -71,7 +69,6 @@ def test_writes_servers_serena_and_keys(fake_home):
     assert set(record["tables"]) == {"gh", "serena", "context7"}  # context7: the kit enables it and set(record["keys"]) == {"model_reasoning_effort", "tui.notifications"}
 
 
-@needs_tomllib
 def test_second_run_changes_nothing(fake_home):
     _personal_mcp({"gh": {"command": "gh-mcp"}})
     _apply()
@@ -79,7 +76,6 @@ def test_second_run_changes_nothing(fake_home):
     assert _apply() == [] and _config() == before
 
 
-@needs_tomllib
 def test_removed_server_disappears_and_changed_one_is_replaced(fake_home):
     _personal_mcp({"a": {"command": "a"}, "b": {"command": "b"}})
     _apply()
@@ -89,7 +85,6 @@ def test_removed_server_disappears_and_changed_one_is_replaced(fake_home):
     assert "[mcp_servers.a]" not in text and 'command = "b2"' in text and 'command = "b"\n' not in text
 
 
-@needs_tomllib
 def test_foreign_table_and_key_are_left_alone(fake_home):
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True)
@@ -103,7 +98,6 @@ def test_foreign_table_and_key_are_left_alone(fake_home):
     assert any("model_reasoning_effort" in l and "left as is" in l for l in lines)
 
 
-@needs_tomllib
 def test_user_edit_of_an_owned_table_is_kept(fake_home):
     _personal_mcp({"gh": {"command": "gh-mcp"}})
     _apply()
@@ -114,7 +108,6 @@ def test_user_edit_of_an_owned_table_is_kept(fake_home):
     assert "startup_timeout_sec = 30" in _config() and any("changed by you" in l for l in lines)
 
 
-@needs_tomllib
 def test_existing_tui_table_gets_the_key(fake_home):
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True)
@@ -124,7 +117,6 @@ def test_existing_tui_table_gets_the_key(fake_home):
     assert text.count("[tui]") == 1 and "[tui]\ntheme = \"dark\"\nnotifications = true\n" in text
 
 
-@needs_tomllib
 def test_unparseable_result_writes_nothing(fake_home):
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True)
@@ -135,7 +127,6 @@ def test_unparseable_result_writes_nothing(fake_home):
     assert any(l.startswith("skipped") and "parse" in l for l in lines)
 
 
-@needs_tomllib
 def test_dry_run_reports_pending_changes_without_writing(fake_home):
     _personal_mcp({"gh": {"command": "gh-mcp"}})
     assert codex.apply_config(backup.Backup(description="t"), dry_run=True) == ["config.toml: changes pending"]
@@ -153,7 +144,6 @@ def _write(text):
     return path
 
 
-@needs_tomllib
 def test_header_inside_a_multiline_string_is_not_a_table(fake_home):
     user = 'instructions = """\nfoo\n[tui]\nnotifications = false\n[mcp_servers.serena]\ncommand = "evil"\n"""\n'
     _write(user)
@@ -166,7 +156,6 @@ def test_header_inside_a_multiline_string_is_not_a_table(fake_home):
     assert data["mcp_servers"]["serena"]["command"] == "serena"
 
 
-@needs_tomllib
 def test_header_inside_a_multiline_array_and_stray_bracket_line_are_safe(fake_home):
     user = 'notify = [\n  "a",\n]\nx = """\n[unclosed\n"""\n'
     _write(user)
@@ -174,7 +163,6 @@ def test_header_inside_a_multiline_array_and_stray_bracket_line_are_safe(fake_ho
     assert 'notify = [\n  "a",\n]\nx = """\n[unclosed\n"""' in _config()
 
 
-@needs_tomllib
 def test_an_edit_that_would_change_user_content_writes_nothing(fake_home):
     user = '[mcp_servers.gh]\ncommand = "mine"\n\n[mcp_servers.gh.env]\nX = "1"\n'
     path = _write(user)
@@ -208,7 +196,6 @@ def test_del_character_is_escaped():
     assert codex.toml_value("a\x7fb") == '"a\\u007fb"'
 
 
-@needs_tomllib
 def test_unencodable_value_leaves_the_file_intact(fake_home):
     path = _write('model_reasoning_effort = "high"\n')
     _personal_mcp({"x": {"command": "x", "args": ["a\ud800"]}})
@@ -218,15 +205,6 @@ def test_unencodable_value_leaves_the_file_intact(fake_home):
     assert any("mcp x" in l and "skipped" in l for l in lines)
 
 
-def test_without_tomllib_config_is_not_edited(fake_home, monkeypatch):
-    monkeypatch.setattr(codex, "_tomllib", lambda: None)
-    path = _write('model_reasoning_effort = "high"\n')
-    lines = _apply()
-    assert path.read_text(encoding="utf-8") == 'model_reasoning_effort = "high"\n'
-    assert any("Python 3.11" in l for l in lines)
-
-
-@needs_tomllib
 def test_release_is_remembered_even_when_the_file_does_not_change(fake_home):
     _personal_mcp({"gh": {"command": "gh-mcp"}})
     _apply()
@@ -237,7 +215,6 @@ def test_release_is_remembered_even_when_the_file_does_not_change(fake_home):
     assert any("changed by you" in l for l in first) and not any("changed by you" in l for l in second)
 
 
-@needs_tomllib
 def test_dry_run_does_not_promise_an_edit_that_would_be_skipped(fake_home):
     _write('tui.notifications = false\n')
     assert not any("changes pending" in l for l in codex.apply_config(backup.Backup(description="t"), dry_run=True))

@@ -4,7 +4,7 @@ Thanks for helping. This page covers setup, tests, evals, catalog changes, issue
 
 ## Setup
 
-You need git, Python 3.10 or newer and [uv](https://docs.astral.sh/uv/). The CLI uses the Python standard library only, so there is nothing else to install.
+You need git, Python 3.11 or newer and [uv](https://docs.astral.sh/uv/). The CLI uses the Python standard library only, so there is nothing else to install.
 
 ```bash
 git clone https://github.com/jonasyr/agent-loadout
@@ -97,4 +97,5 @@ Blank issues are off. Read command output before you paste it, and replace token
 - Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, for example `feat(catalog): add <tool>`, `fix(adopt): ...`, `docs: ...`, `test: ...`. The PR title follows the same format.
 - Work on a branch and open a pull request against `main`. The [template](.github/pull_request_template.md) asks for three things: a summary with the issue it fixes, how you tested it (only what you actually ran, and on which platform), and which docs page you updated or why none was needed.
 - Whatever tools you use to write a change, you must understand it and have tested it yourself.
+- When Codex's GitHub review quota is used up, ask Claude Code to "run the codex-reviewer agent on this branch" (it applies Codex's open-source review rubric, see [`.claude/agents/codex-reviewer.md`](.claude/agents/codex-reviewer.md)). Post its findings and the fixes as PR comments, and repeat until it reports no findings.
 - CI must be green before a merge: the test suite on Linux and on Windows (including the hook scripts under Git Bash), and `claude plugin validate` for the marketplace and the plugin.

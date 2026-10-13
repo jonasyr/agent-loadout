@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from dataclasses import dataclass
 
@@ -22,21 +21,50 @@ class Result:
         return self.returncode == 0
 
 
-def have(binary: str) -> bool:
-    return shutil.which(binary) is not None
-
-
-def which(binary: str) -> str | None:
-    return shutil.which(binary)
-
-
 def _is_windows() -> bool:
     return os.name == "nt"
 
 
+def _candidates(folder: str, name: str) -> list:
+    """The files a program name can be in one folder; on Windows with each PATHEXT ending, done by hand because
+    Python 3.11's shutil.which skips PATHEXT for a path that has a folder."""
+    if not _is_windows():
+        return [os.path.join(folder, name)]
+    exts = [e for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";") if e]
+    if any(name.lower().endswith(e.lower()) for e in exts):
+        return [os.path.join(folder, name)]
+    return [os.path.join(folder, name + e) for e in exts]
+
+
+def _resolve(binary: str) -> str | None:
+    """The program's absolute path, searched only in PATH's absolute folders: never the current folder (Windows
+    searches it first, so a repo could ship git.exe) and never a relative PATH entry (node_modules/.bin, ".")."""
+    if _is_windows():  # also inherited by children, so cmd.exe running a .cmd shim skips the current folder too
+        os.environ["NoDefaultCurrentDirectoryInExePath"] = "1"
+    if os.path.dirname(binary):  # an explicit path: only an absolute one
+        folders, name = [os.path.dirname(binary)], os.path.basename(binary)
+    else:
+        folders, name = os.environ.get("PATH", "").split(os.pathsep), binary
+    for folder in folders:
+        if not folder or not os.path.isabs(folder):
+            continue
+        for candidate in _candidates(folder, name):
+            if os.path.isfile(candidate) and (_is_windows() or os.access(candidate, os.X_OK)):
+                return candidate
+    return None
+
+
+def which(binary: str) -> str | None:
+    return _resolve(binary)
+
+
+def have(binary: str) -> bool:
+    return _resolve(binary) is not None
+
+
 def would_refuse(cmd: list[str]) -> bool:
     """True when run() would refuse cmd: a Windows .cmd/.bat shim cannot take cmd.exe metacharacters."""
-    exe = shutil.which(cmd[0])
+    exe = _resolve(cmd[0])
     return bool(exe and _is_windows() and exe.lower().endswith((".cmd", ".bat"))
                 and any(set(a) & CMD_METACHARS for a in cmd[1:]))
 
@@ -136,7 +164,7 @@ def write_manual_commands(directory, title: str, cmds: list[list[str]], undo: li
 
 
 def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict | None = None) -> Result:
-    exe = shutil.which(cmd[0])
+    exe = _resolve(cmd[0])
     if exe is None:
         return Result(127, "", f"{cmd[0]}: not found")
     if would_refuse(cmd):
@@ -146,6 +174,8 @@ def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict 
     extra = {}
     if _is_windows():  # no console window per child (maintenance runs detached, without a console)
         extra["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if env is not None:  # a hand-built env (copied before the first lookup) must still skip the current folder
+            env = {**env, "NoDefaultCurrentDirectoryInExePath": "1"}
     try:
         proc = subprocess.run([exe, *cmd[1:]], cwd=cwd, capture_output=True, text=True,
                               encoding="utf-8", errors="replace", timeout=timeout, env=env, **extra)

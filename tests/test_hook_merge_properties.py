@@ -141,7 +141,7 @@ class Run:
 
     def bk(self):
         self.nbk += 1
-        return backup.Backup(root=self.base / "bk" / str(self.nbk))
+        return backup.Backup(root=self.home.root / ".claude" / "backups" / f"bk{self.nbk}")
 
     # -- operations -------------------------------------------------------------------------------------
     def op(self, kind, r):

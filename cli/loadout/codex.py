@@ -110,12 +110,9 @@ class Refused(Exception):
 
 
 def _tomllib():
-    """tomllib (Python 3.11+), which the config edit needs to prove it changed nothing of the user's."""
-    try:
-        import tomllib
-        return tomllib
-    except ImportError:
-        return None
+    """tomllib, which the config edit needs to prove it changed nothing of the user's."""
+    import tomllib
+    return tomllib
 
 
 def toml_key(key: str) -> str:
@@ -392,8 +389,6 @@ def _without_owned(data: dict, tables, keys, tl) -> dict:
 def apply_config(bk, dry_run: bool = False) -> list[str]:
     path = paths.codex_home() / "config.toml"
     tl = _tomllib()
-    if tl is None:
-        return [f"skipped {path}: editing it safely needs Python 3.11 or newer"]
     old = path.read_text(encoding="utf-8") if path.exists() else ""
     try:
         before = tl.loads(old)
@@ -609,7 +604,7 @@ def user_servers() -> dict[str, dict]:
     """The user's [mcp_servers.*] tables in ~/.codex/config.toml, without the ones loadout wrote."""
     tl = _tomllib()
     path = paths.codex_home() / "config.toml"
-    if tl is None or not path.exists():
+    if not path.exists():
         return {}
     try:
         servers = tl.loads(path.read_text(encoding="utf-8")).get("mcp_servers", {})
@@ -830,8 +825,6 @@ def hooks_status(remember: bool = False) -> str | None:
     the hooks file differs from the last approved one while the stored approvals did not change."""
     tl = _tomllib()
     path = paths.codex_home() / "config.toml"
-    if tl is None:
-        return None
     try:
         state = tl.loads(path.read_text(encoding="utf-8")).get("hooks", {}).get("state", {}) if path.exists() else {}
     except Exception:
@@ -878,7 +871,7 @@ def open_steps() -> list[str]:
     if not enabled() or not runner.have("codex"):
         return []
     status = hooks_status(remember=True)
-    # unknown (no tomllib on Python 3.10, unreadable config): remind, since the approval cannot be confirmed
+    # unknown (unreadable config): remind, since the approval cannot be confirmed
     steps = [HOOKS_CHANGED] if status == "changed" else [] if status == "trusted" else [HOOKS_TODO]
     return (steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
             + [f"optional: log in to {name} in Codex for higher limits: codex mcp login {name}" for name in logins_optional()])

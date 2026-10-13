@@ -1,6 +1,5 @@
 """Windows edge cases: paired restore steps, managed tracking, background notices, manual-commands format."""
 import json
-import shutil
 from pathlib import Path
 
 import pytest
@@ -13,7 +12,7 @@ SECRET = "ghp_" + "z" * 30
 @pytest.fixture
 def windows_cmd(monkeypatch):
     monkeypatch.setattr(runner, "_is_windows", lambda: True)
-    monkeypatch.setattr(shutil, "which", lambda name: r"C:\npm\claude.CMD")
+    monkeypatch.setattr(runner, "_resolve", lambda name: "/winnpm/claude.CMD")
 
 
 def _setup_personal(servers):

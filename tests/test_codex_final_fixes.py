@@ -6,7 +6,6 @@ import pytest
 
 from loadout import backup, codex, paths, runner
 
-needs_tomllib = pytest.mark.skipif(sys.version_info < (3, 11), reason="config edits need tomllib")
 
 
 def _personal_mcp(servers):
@@ -19,7 +18,6 @@ def _apply():
     return codex.apply_config(backup.Backup(description="t"))
 
 
-@needs_tomllib
 def test_owned_server_with_a_subtable_is_kept_not_orphaned(fake_home):
     """Codex refuses to start when [mcp_servers.foo.tools.bar] remains without [mcp_servers.foo]."""
     _personal_mcp({"foo": {"command": "foo"}})
@@ -34,7 +32,6 @@ def test_owned_server_with_a_subtable_is_kept_not_orphaned(fake_home):
     assert any("foo" in l and "left as is" in l for l in lines)
 
 
-@needs_tomllib
 def test_a_users_matching_key_stays_the_users(fake_home, monkeypatch):
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True)

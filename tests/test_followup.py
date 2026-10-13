@@ -1,7 +1,6 @@
 """Follow-up fixes N1 (Windows .cmd guard vs remove-then-add), N2 (piped answers), N4 (restore state)."""
 import json
 import os
-import shutil
 import stat
 from pathlib import Path
 
@@ -16,7 +15,7 @@ SECRET = "ghp_" + "q" * 30
 @pytest.fixture
 def windows_cmd(monkeypatch):
     monkeypatch.setattr(runner, "_is_windows", lambda: True)
-    monkeypatch.setattr(shutil, "which", lambda name: r"C:\npm\claude.CMD")
+    monkeypatch.setattr(runner, "_resolve", lambda name: "/winnpm/claude.CMD")
 
 
 def _mutations(fake_runner):
@@ -34,7 +33,7 @@ def test_would_refuse_matches_run_guard(windows_cmd):
 
 
 def test_would_refuse_false_off_windows(monkeypatch):
-    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/claude")
+    monkeypatch.setattr(runner, "_resolve", lambda name: "/usr/bin/claude")
     assert not runner.would_refuse(["claude", "mcp", "add-json", "s", '{"a": 1}'])
 
 

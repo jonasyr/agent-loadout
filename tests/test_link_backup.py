@@ -30,10 +30,12 @@ def test_backup_save_copy_restores_original_content(fake_home):
 
 def test_restore_runs_undo_commands_in_reverse(fake_home, fake_runner):
     bk = backup.Backup()
-    bk.record_command("one", ["claude", "1"])
-    bk.record_command("two", ["claude", "2"])
+    one = ["claude", "mcp", "remove", "-s", "user", "one"]
+    two = ["claude", "mcp", "remove", "-s", "user", "two"]
+    bk.record_command("one", one)
+    bk.record_command("two", two)
     backup.restore(bk.root)
-    assert fake_runner.calls == [["claude", "2"], ["claude", "1"]]
+    assert fake_runner.calls == [two, one]
 
 
 def _personal(fake_home):

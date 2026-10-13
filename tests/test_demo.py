@@ -69,7 +69,7 @@ def test_demo_curl_serves_only_the_readme_url(tmp_path):
 @pytest.mark.skipif(os.name == "nt", reason="sh stubs")
 def test_demo_uv_finds_the_real_python(tmp_path):
     (tmp_path / ".loadout-demo").touch()
-    p = subprocess.run(["sh", str(DEMO / "bin/uv"), "python", "find", "--system", ">=3.10"],
+    p = subprocess.run(["sh", str(DEMO / "bin/uv"), "python", "find", "--system", ">=3.11"],
                        env={**os.environ, "HOME": str(tmp_path)}, capture_output=True, text=True, timeout=30)
     assert p.returncode == 0 and "python3" in p.stdout
 

@@ -11,7 +11,7 @@ Only `description` is required. Missing fields are empty.
 | Field | Type | Meaning |
 |---|---|---|
 | `description` | string | One line. `loadout configure show` uses it as the reason for the plugins the profile installs. |
-| `install` | list of plugin ids | Plugins to install at project scope with `claude plugin install ID --scope project`. The marketplace of each id must be declared in `settings.base.json` for the kit's own profiles; a test checks this. |
+| `install` | list of plugin ids | Plugins to install at project scope with `claude plugin install ID --scope project`. Each id is `name@marketplace`; anything else is skipped with a message and `loadout profile` exits 1. The marketplace of each id must be declared in `settings.base.json` for the kit's own profiles; a test checks this. |
 | `settings` | object | Merged into the repo's `.claude/settings.json`. |
 | `mcp` | object | Merged into the repo's `.mcp.json`. Usually `{"mcpServers": {...}}`. Pin versions: the kit's own profiles must not use `@latest`. |
 | `commands` | list of commands | Commands run in the repo after the plugins, each a list of arguments, for example `["playwright-cli", "install", "--skills"]`. |
@@ -66,7 +66,7 @@ Both directories are searched, personal first. A personal profile with the name 
 
 When `loadout adopt` or `loadout configure set own` records a tool into a personal profile whose name is a kit profile, and no personal file exists yet, it starts the personal file as a copy of the kit profile and prints a note. If neither exists, the file starts with the description `Personal profile NAME (made by loadout adopt)`.
 
-A profile name chosen through `project:<profile>` must match `[a-z0-9][a-z0-9_-]*`.
+A profile name (the file name without `.json`) must match `[a-z0-9][a-z0-9_-]*`: lowercase letters, digits, `-` and `_`. A file with another name is not listed and cannot be applied.
 
 `loadout init` suggests profiles from the project's files:
 

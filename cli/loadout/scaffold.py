@@ -29,6 +29,13 @@ def scaffold(project: Path, dry_run: bool = False) -> tuple[list[Path], list[str
         dest = project / rel
         if rel.as_posix() in skip or dest.exists():
             continue
+        if dest.is_symlink():  # dangling: never followed; named when it points out of the repo
+            if not paths.inside(dest, project):
+                notes.append(f"skipped {rel.as_posix()}: it points outside the repo")
+            continue
+        if not paths.inside(dest, project) or not paths.inside(dest.parent, project):
+            notes.append(f"skipped {rel.as_posix()}: it points outside the repo")
+            continue
         created.append(dest)
         if not dry_run:
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -38,6 +45,8 @@ def scaffold(project: Path, dry_run: bool = False) -> tuple[list[Path], list[str
 
 def ensure_gitignore(project: Path, dry_run: bool = False) -> list[str]:
     path = project / ".gitignore"
+    if not paths.inside(path, project):
+        return []
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     existing = {line.strip() for line in text.splitlines()}
     missing = [line for line in GITIGNORE_LINES if line not in existing]

@@ -8,7 +8,6 @@ from loadout import adopt, backup, codex, own, paths, runner, targets
 from loadout.inventory import Item, Verdict
 from loadout.jsonio import load_json
 
-needs_tomllib = pytest.mark.skipif(sys.version_info < (3, 11), reason="handing a server to loadout needs tomllib")
 
 
 @pytest.fixture
@@ -26,7 +25,6 @@ def _mcp(cfg=None, problem=""):
     return Verdict(Item("mcp", "mine", "m", codex.CONFIG_LOCATION, {"config": cfg, "problem": problem}), "own", "")
 
 
-@needs_tomllib
 def test_record_global_writes_personal_mcp_and_hands_the_table_to_loadout(codex_on, fake_runner):
     bk = backup.Backup(description="t")
     rec = own.record_global(_mcp({"type": "stdio", "command": "m"}), bk)
@@ -77,7 +75,6 @@ def test_drift_points_codex_only_items_to_adopt(fake_home, fake_runner, monkeypa
     assert lines == ['MCP server "solo" only in Codex (record it with loadout adopt, then both get it)']
 
 
-@needs_tomllib
 def test_a_server_codex_could_not_take_back_is_not_recorded_or_removed(codex_on, fake_runner):
     v = _mcp({"type": "stdio", "command": "m", "env": {"API_KEY": "sk" + "-abcdefghijklmnopqrstuvwxyz0123456789"}})
     rec = own.record_global(v, backup.Backup(description="t"))
@@ -87,9 +84,6 @@ def test_a_server_codex_could_not_take_back_is_not_recorded_or_removed(codex_on,
 
 
 def test_restore_after_record_global_gives_the_server_back_to_the_user(fake_home, fake_runner, monkeypatch):
-    import sys
-    if sys.version_info < (3, 11):
-        pytest.skip("config edits need tomllib")
     from loadout import settings_merge
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
     monkeypatch.setattr(targets, "claude_enabled", lambda: False)
@@ -140,7 +134,6 @@ def test_codex_mcp_remove_runs_from_home(fake_home, fake_runner):
     assert fake_runner.cwds[i] == str(paths.home())
 
 
-@needs_tomllib
 def test_a_failed_codex_handoff_is_reported_as_not_done(codex_on, fake_runner, monkeypatch):
     fake_runner.responses[("codex", "mcp", "remove")] = runner.Result(1, "", "boom")
     monkeypatch.setattr(codex, "desired_tables", lambda: ({"mine": "x"}, []))
@@ -149,7 +142,6 @@ def test_a_failed_codex_handoff_is_reported_as_not_done(codex_on, fake_runner, m
         rec.machine()
 
 
-@needs_tomllib
 def test_codex_only_adoption_leaves_claude_code_alone(codex_on, fake_runner, monkeypatch):
     from loadout import link, settings_merge
     touched = []
@@ -161,7 +153,6 @@ def test_codex_only_adoption_leaves_claude_code_alone(codex_on, fake_runner, mon
     assert ["codex", "mcp", "remove", "mine"] in fake_runner.calls
 
 
-@needs_tomllib
 def test_failed_handoff_hint_names_a_command_that_reapplies(codex_on, fake_runner, monkeypatch):
     fake_runner.responses[("codex", "mcp", "remove")] = runner.Result(1, "", "boom")
     monkeypatch.setattr(codex, "desired_tables", lambda: ({"mine": "x"}, []))
@@ -170,9 +161,3 @@ def test_failed_handoff_hint_names_a_command_that_reapplies(codex_on, fake_runne
         rec.machine()
 
 
-def test_record_global_refuses_without_tomllib_before_removing(codex_on, fake_runner, monkeypatch):
-    monkeypatch.setattr(codex, "_tomllib", lambda: None)
-    rec = own.record_global(_mcp({"type": "stdio", "command": "m"}), backup.Backup(description="t"))
-    assert not rec.ok and "3.11" in rec.lines[0]
-    assert not (paths.personal_root() / "mcp.json").exists()
-    assert not any(c[:3] == ["codex", "mcp", "remove"] for c in fake_runner.calls)

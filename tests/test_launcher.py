@@ -107,4 +107,4 @@ def test_launcher_without_python_or_uv_explains(tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()
     proc = subprocess.run(["/bin/sh", str(launcher)], env={"PATH": str(empty)}, capture_output=True, text=True)
-    assert proc.returncode == 1 and "Python 3.10 or newer, or uv" in proc.stderr
+    assert proc.returncode == 1 and "Python 3.11 or newer, or uv" in proc.stderr

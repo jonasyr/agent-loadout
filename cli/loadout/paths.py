@@ -72,3 +72,12 @@ def tool_dirs() -> list[Path]:
     else:
         dirs = [base / ".local" / "bin", base / ".local" / "share" / "mise" / "shims"]
     return [d for d in dirs if d.is_dir()]
+
+
+def inside(path: Path, root: Path) -> bool:
+    """True if `path` really lives under `root`, following symlinks (a dangling one resolves to its target)."""
+    try:
+        Path(os.path.realpath(path)).relative_to(os.path.realpath(root))
+        return True
+    except ValueError:
+        return False

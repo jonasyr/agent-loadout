@@ -6,7 +6,6 @@ import pytest
 
 from loadout import bootstrap, check, codex, paths, runner
 
-needs_tomllib = pytest.mark.skipif(sys.version_info < (3, 11), reason="reads config.toml with tomllib")
 
 
 def _trust(keys, hash_="sha256:aa"):
@@ -22,7 +21,6 @@ def test_expected_hook_keys_follow_codex_json():
     assert "loadout@agent-loadout:hooks/codex.json:subagent_start:0:0" in keys
 
 
-@needs_tomllib
 def test_hooks_status_untrusted_trusted_and_changed(fake_home, monkeypatch):
     assert codex.hooks_status() == "untrusted"
     _trust(codex.hook_keys())
@@ -33,7 +31,6 @@ def test_hooks_status_untrusted_trusted_and_changed(fake_home, monkeypatch):
     assert codex.hooks_status(remember=True) == "trusted"
 
 
-@needs_tomllib
 def test_still_to_do_names_hooks_only_while_not_approved(fake_home, fake_runner):
     codex.set_enabled(True)
     fake_runner.responses[("codex", "mcp", "list")] = runner.Result(0, "[]", "")
@@ -50,7 +47,6 @@ def test_servers_that_need_a_login_are_named(fake_home, fake_runner):
     assert any("codex mcp login x-docs" in line for line in bootstrap.still_to_do("linux"))
 
 
-@needs_tomllib
 def test_check_reports_hooks_and_logins(fake_home, fake_runner, monkeypatch):
     codex.set_enabled(True)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
@@ -62,7 +58,6 @@ def test_check_reports_hooks_and_logins(fake_home, fake_runner, monkeypatch):
     assert not results["Codex logins"].ok and "codex mcp login x-docs" in results["Codex logins"].fix
 
 
-@needs_tomllib
 def test_context7_needs_no_login_in_codex(fake_home, monkeypatch):
     from loadout import settings_merge
     monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {"context7@claude-plugins-official": True}})
@@ -87,7 +82,6 @@ def test_servers_loadout_set_up_are_not_reported_as_needing_a_login(fake_home, f
     assert any(s.startswith("log in to other") for s in steps)
 
 
-@needs_tomllib
 def test_an_identical_existing_server_is_not_a_conflict(fake_home):
     """The user's own serena that already has the Codex context: nothing to report, nothing to claim."""
     from loadout import backup

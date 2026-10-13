@@ -233,7 +233,7 @@ def test_runner_hides_console_windows_on_windows(monkeypatch):
     import subprocess
     seen = {}
     monkeypatch.setattr(runner, "_is_windows", lambda: True)
-    monkeypatch.setattr(shutil, "which", lambda n: "/bin/echo")
+    monkeypatch.setattr(runner, "_resolve", lambda n: "/bin/echo")
     monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
 
     def fake_run(cmd, **kw):
