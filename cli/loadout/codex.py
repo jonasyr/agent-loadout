@@ -261,6 +261,25 @@ def add_project_plugin(pid: str) -> None:
         save_json(record_path(), data)
 
 
+def _plugin_switches() -> list[tuple[tuple, str, bool, bool]]:
+    """`enabled` keys for plugins loadout manages: off in Codex when switched off for Claude Code and installed
+    in Codex; back to true when switched on again and loadout owns the line. Never guesses: no list, no key."""
+    from .settings_merge import desired_settings
+    enabled = get_dict(desired_settings(), "enabledPlugins")
+    projects = set(project_plugins())
+    owned = read_record()["keys"]
+    keys = [(("plugins", pid), "enabled", True, False) for pid, on in enabled.items()
+            if on is True and isinstance(pid, str) and pid not in projects
+            and _dotted(("plugins", pid), "enabled") in owned]
+    off = [pid for pid, on in enabled.items() if on is False and isinstance(pid, str) and "@" in pid
+           and pid not in projects]
+    if off:
+        listed = installed_plugins()
+        if listed is not None:
+            keys += [(("plugins", pid), "enabled", False, False) for pid in off if pid in listed]
+    return keys
+
+
 def desired_keys() -> list[tuple[tuple, str, object, bool]]:
     """(table path, key, value, force); path () is the top level. force: loadout's value wins even over a changed
     line, used for project-only plugins because `codex plugin add` switches them back on."""
@@ -276,7 +295,7 @@ def desired_keys() -> list[tuple[tuple, str, object, bool]]:
     if plugins:
         on = get_dict(desired_settings(), "enabledPlugins")
         keys += [(("plugins", pid), "enabled", on.get(pid) is True, True) for pid in plugins]
-    return keys
+    return keys + _plugin_switches()
 
 
 def _dotted(path: tuple, key: str) -> str:
