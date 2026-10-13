@@ -10,7 +10,7 @@ The one place for loadout questions and changes. Never edit `~/.claude/settings.
 ## Answer a question
 
 1. Find the docs: `loadout kit-path` prints the kit's folder; open its `docs/README.md` (the map: which page answers which question), then read only the page that answers this question. Without loadout, read the same paths in https://github.com/jonasyr/agent-loadout.
-2. Answer from that page, in short, and name the page so the user can read on. When the user's own state matters ("is X on for me?"), run `loadout configure show`, `loadout configure own` or `loadout check` first, all read-only.
+2. Answer from that page, in short, and end with the page's title and path (for example "Undo what loadout changed, `docs/how-to/undo-and-restore.md`") so the user can read on. When the user's own state matters ("is X on for me?"), run `loadout configure show`, `loadout configure own` or `loadout check` first, all read-only.
 3. If the docs do not answer it, say so; do not guess how loadout behaves.
 
 ## Other changes
