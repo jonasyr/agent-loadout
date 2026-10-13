@@ -136,7 +136,7 @@ def test_add_profile_runs_codex_only_when_codex_is_on(repo, fake_runner, monkeyp
 
 
 def test_trust_note_unless_the_project_is_trusted(repo, monkeypatch):
-    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run: ["x"])
+    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run, skip=frozenset(): ["x"])
     monkeypatch.setattr(codex_project, "skills", lambda p, dry_run: [])
     assert codex_project.TRUST_NOTE in codex_project.apply(WEB, repo, install=False, dry_run=False)
     cfg = paths.codex_home() / "config.toml"
@@ -214,8 +214,52 @@ def test_a_failed_plugin_list_makes_nothing_project_only(repo, fake_runner, monk
 
 
 def test_trust_note_repeats_on_a_second_run_while_untrusted(repo, monkeypatch):
-    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run: [])
+    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run, skip=frozenset(): [])
     monkeypatch.setattr(codex_project, "skills", lambda p, dry_run: [])
     assert codex_project.TRUST_NOTE in codex_project.apply(WEB, repo, install=False, dry_run=False)
     empty = profiles.Profile(name="empty", description="")
     assert codex_project.TRUST_NOTE not in codex_project.apply(empty, repo, install=False, dry_run=False)
+
+
+def _official(fake_runner, listed):
+    import json
+    fake_runner.responses[("codex", "plugin", "list")] = (
+        runner.Result(1, "", "boom") if listed is None else runner.Result(0, json.dumps({"installed": listed}), ""))
+    fake_runner.responses[("codex", "plugin", "marketplace", "add", codex.OFFICIAL)] = runner.Result(
+        0, json.dumps({"marketplaceName": "claude-plugins-official", "alreadyAdded": True}), "")
+
+
+def test_nothing_is_installed_when_the_plugin_list_fails(repo, fake_runner, monkeypatch):
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    _official(fake_runner, None)
+    lines = codex_project.plugins(THESIS, dry_run=False)
+    assert not any(c[:3] == ["codex", "plugin", "add"] for c in fake_runner.calls)
+    assert any("not installed" in l and "could not list" in l for l in lines)
+
+
+def test_config_toml_is_saved_before_a_project_switch_is_written(repo, fake_runner, monkeypatch):
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    seen = []
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: seen.append(bk) or [])
+    cfg = paths.codex_home() / "config.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text('model = "x"\n')
+    _official(fake_runner, [])
+    codex_project.plugins(THESIS, dry_run=False)
+    assert any("config.toml" in s["label"] for s in seen[0].steps)
+
+
+def test_a_failed_install_leaves_the_repo_switch_out_and_exits_1(repo, fake_runner, monkeypatch, capsys):
+    if codex._tomllib() is None:
+        pytest.skip("config edits need tomllib")
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    monkeypatch.setattr(profiles, "load_profile", lambda name: THESIS)
+    monkeypatch.setattr(targets, "claude_enabled", lambda: False)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    _official(fake_runner, [])
+    fake_runner.responses[("codex", "plugin", "add")] = runner.Result(1, "", "network down")
+    assert project.add_profile(repo, "thesis", install=True) == 1
+    cfg = repo / ".codex" / "config.toml"
+    assert not cfg.exists() or "deepeval" not in cfg.read_text()

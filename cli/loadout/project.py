@@ -9,7 +9,9 @@ from . import detect, profiles, runner, scaffold, ui
 Ask = Callable[[str], str]
 
 
-def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> None:
+def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> bool:
+    """Returns whether every command succeeded."""
+    ok = True
     from . import targets
     for plugin_id in (profile.install if targets.claude_enabled() else []):  # Codex: codex_project.plugins
         cmd = ["claude", "plugin", "install", plugin_id, "--scope", "project"]
@@ -17,13 +19,16 @@ def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> None:
         if not dry_run:
             res = runner.run(cmd, cwd=str(project))
             if not res.ok:
+                ok = False
                 print(f"  failed: {res.stderr.strip()}")
     for cmd in profile.commands:
         print(("would run: " if dry_run else "running: ") + " ".join(cmd))
         if not dry_run:
             res = runner.run(cmd, cwd=str(project))
             if not res.ok:
+                ok = False
                 print(f"  failed: {res.stderr.strip()}")
+    return ok
 
 
 def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False) -> int:
@@ -35,15 +40,18 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             print(f"updated {path}")
     for line in profiles.copy_skills(prof, project, dry_run=dry_run):
         print(line)
-    if install:
-        _install(prof, project, dry_run)
+    ok = _install(prof, project, dry_run) if install else True
     from . import codex_project, targets
     if targets.codex_enabled():
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
             print(line)
+            if line.startswith("skipped") or ": failed" in line or "not installed" in line:
+                ok = False
     if prof.notes:
         print(f"note ({name}): {prof.notes}")
-    return 0
+    if not ok:
+        print(f"profile {name}: applied with problems (see the lines above)")
+    return 0 if ok else 1
 
 
 def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: bool, ask: Ask,

@@ -34,9 +34,9 @@ def _wanted(prof: profiles.Profile) -> tuple[dict[str, str], list[str], list[str
     return tables, plugins, skipped
 
 
-def config(prof: profiles.Profile, project: Path, dry_run: bool) -> list[str]:
+def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset = frozenset()) -> list[str]:
     """Add the profile's servers and plugin switches to the repo's .codex/config.toml. Only adds tables; a table of
-    the same name is the user's and stays."""
+    the same name is the user's and stays. skip: plugins that did not install, so the repo does not name them."""
     path = project / ".codex" / "config.toml"
     if not _inside(path.parent, project) or not _inside(path, project):
         return [f"skipped {path}: it points outside {project} (a symlinked .codex or config.toml)"]
@@ -44,6 +44,7 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool) -> list[str]:
     if tl is None:
         return [f"skipped {path}: editing it safely needs Python 3.11 or newer"]
     tables, plugins, lines = _wanted(prof)
+    plugins = [p for p in plugins if p not in skip]
     if not tables and not plugins:
         return lines
     old = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -120,8 +121,11 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
     if dry_run:
         return lines + [f"would install plugin {name} for Codex (from {src})" for src, names in routes.items() for name in names]
-    bk = backup.Backup(description=f"loadout profile {prof.name} (Codex)")
     listed = codex.installed_plugins()
+    if listed is None:  # without the list, loadout cannot tell your plugins from new ones: install nothing
+        return lines + [f"plugin {name}@?: not installed (could not list Codex plugins; run loadout profile again)"
+                        for names in routes.values() for name in names]
+    bk = backup.Backup(description=f"loadout profile {prof.name} (Codex)")
     out, installed = codex._install_routes(routes, bk, False, lambda line: None, listed)
     lines += out
     on = desired.get("enabledPlugins", {})
@@ -130,7 +134,10 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
             continue
         if pid in (listed or ()):  # installed by the user: their switch stays as it is
             lines.append(f"plugin {pid}: already installed in Codex, left on everywhere")
-        elif listed is not None and pid in installed:  # a failed list proves nothing: leave the switch alone
+        elif pid in installed:
+            cfg = paths.codex_home() / "config.toml"
+            if cfg.exists():  # the switch below goes into it; restore must take it out again
+                bk.save_copy(cfg, f"Codex config.toml before switching {pid} off outside its projects")
             record = codex.record_path()
             if record.exists():
                 bk.save_copy(record, "codex-config.json before recording a project plugin")
@@ -153,10 +160,17 @@ def _trusted(project: Path) -> bool:
     return isinstance(entry, dict) and entry.get("trust_level") == "trusted"
 
 
+def failed_plugins(prof: profiles.Profile, lines: list[str]) -> frozenset:
+    """The profile's plugins that a line reports as not installed."""
+    bad = (": failed", "not installed", "no Codex route")
+    return frozenset(pid for pid in _wanted(prof)[1]
+                     if any(l.startswith((f"plugin {pid}:", f"plugin {pid.split('@')[0]}@?:")) and any(b in l for b in bad)
+                            for l in lines))
+
+
 def apply(prof: profiles.Profile, project: Path, install: bool, dry_run: bool) -> list[str]:
-    lines = config(prof, project, dry_run) + skills(project, dry_run)
-    if install:
-        lines += plugins(prof, dry_run)
+    lines = plugins(prof, dry_run) if install else []
+    lines = config(prof, project, dry_run, skip=failed_plugins(prof, lines)) + skills(project, dry_run) + lines
     tables, plugins_, _ = _wanted(prof)
     has_codex_parts = bool(tables or plugins_) or any((project / ".agents" / "skills").glob("*"))
     if has_codex_parts and not dry_run and not _trusted(project):  # on every run until trusted, not only on changes

@@ -590,8 +590,8 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
                 print(f"  {repo.resolve()}: not a folder, skipped")
                 continue
             try:
-                project.add_profile(repo, name)
-                print(f"  {repo.resolve()}: profile {name} applied")
+                ok = project.add_profile(repo, name) == 0
+                print(f"  {repo.resolve()}: profile {name} " + ("applied" if ok else "applied with problems (see above)"))
             except (OSError, InvalidJSON, ValueError) as exc:
                 print(redact(f"  {repo.resolve()}: failed: {exc}"))
 

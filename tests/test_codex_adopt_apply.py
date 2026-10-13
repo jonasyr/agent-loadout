@@ -152,3 +152,11 @@ def test_codex_only_adoption_leaves_claude_code_alone(codex_on, fake_runner, mon
     adopt.apply_own([(_mcp({"type": "stdio", "command": "m"}), own.Choice("global"))], backup.Backup(description="t"))
     assert touched == []
     assert ["codex", "mcp", "remove", "mine"] in fake_runner.calls
+
+
+def test_failed_handoff_hint_names_a_command_that_reapplies(codex_on, fake_runner, monkeypatch):
+    fake_runner.responses[("codex", "mcp", "remove")] = runner.Result(1, "", "boom")
+    monkeypatch.setattr(codex, "desired_tables", lambda: ({"mine": "x"}, []))
+    rec = own.record_global(_mcp({"type": "stdio", "command": "m"}), backup.Backup(description="t"))
+    with pytest.raises(OSError, match="loadout bootstrap"):
+        rec.machine()
