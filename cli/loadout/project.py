@@ -26,6 +26,10 @@ def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> bool:
                 ok = False
                 print(secrets.redact(f"  failed: {res.stderr.strip()}"))
     for cmd in profile.commands:
+        if not (isinstance(cmd, list) and cmd and all(isinstance(part, str) for part in cmd)):
+            print(f"command {cmd!r}: not a list of words, skipped")
+            ok = False
+            continue
         print(secrets.redact(("would run: " if dry_run else "running: ") + " ".join(cmd)))
         if not dry_run:
             res = runner.run(cmd, cwd=str(project))

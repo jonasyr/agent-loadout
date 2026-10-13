@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from . import codex, paths, profiles
+from .jsonio import get_dict, get_list
 
 TRUST_NOTE = ("Codex reads the repo's .codex/config.toml only in a trusted project: start `codex` here once and "
               "accept the trust question")
@@ -12,10 +13,10 @@ TRUST_NOTE = ("Codex reads the repo's .codex/config.toml only in a trusted proje
 
 def _wanted(prof: profiles.Profile) -> tuple[dict[str, str], list[str], list[str]]:
     """(table text by name, plugin ids, skipped lines)."""
-    servers = prof.mcp.get("mcpServers", {}) if isinstance(prof.mcp, dict) else {}
-    off = set(prof.settings.get("disabledMcpjsonServers", []) or [])
+    servers = get_dict(prof.mcp, "mcpServers")
+    off = {n for n in get_list(prof.settings, "disabledMcpjsonServers") if isinstance(n, str)}
     tables, skipped = {}, []
-    for name, cfg in (servers if isinstance(servers, dict) else {}).items():
+    for name, cfg in servers.items():
         try:
             text = codex.table_text(name, codex.server(name, cfg))
         except codex.Refused as exc:
@@ -122,7 +123,7 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     if not wanted:
         return []
     desired = desired_settings()
-    markets = {**desired.get("extraKnownMarketplaces", {}), **prof.settings.get("extraKnownMarketplaces", {})}
+    markets = {**get_dict(desired, "extraKnownMarketplaces"), **get_dict(prof.settings, "extraKnownMarketplaces")}
     routes, missing = codex.plugin_routes({"enabledPlugins": {p: True for p in wanted}, "extraKnownMarketplaces": markets})
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
     if dry_run:
@@ -138,7 +139,7 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
         src = next(iter(codex.plugin_routes({"enabledPlugins": {pid: True}, "extraKnownMarketplaces": markets})[0]), None)
         if src is not None and f"marketplace {src}: failed:" in "\n".join(out):
             lines.append(f"plugin {pid}: not installed (its marketplace failed)")
-    on = desired.get("enabledPlugins", {})
+    on = get_dict(desired, "enabledPlugins")
     for pid in wanted:
         if on.get(pid) is True or pid in codex.project_plugins():
             continue

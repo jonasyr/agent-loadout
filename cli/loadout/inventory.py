@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass, field
 
 from . import catalog, paths, runner, settings_merge, versions
-from .jsonio import load_json
+from .jsonio import get_dict, load_json
 
 
 @dataclass(frozen=True)
@@ -124,8 +124,8 @@ def _codex_items() -> list[Item]:
     if not targets.codex_enabled():
         return []
     items = []
-    claude = load_json(paths.claude_json()).get("mcpServers", {}) if targets.claude_enabled() else {}
-    skip = codex._plugin_servers() | (set(claude) if isinstance(claude, dict) else set())
+    claude = get_dict(load_json(paths.claude_json()), "mcpServers") if targets.claude_enabled() else {}
+    skip = codex._plugin_servers() | set(claude)
     for name, table in codex.user_servers().items():
         if name in skip:
             continue
@@ -157,8 +157,8 @@ def classify(items: list[Item]) -> list[Verdict]:
     from . import own
 
     kit = load_json(paths.kit_root() / "settings.base.json")
-    kit_plugins = {p for p, on in kit.get("enabledPlugins", {}).items() if on}
-    kit_markets = set(kit.get("extraKnownMarketplaces", {})) | {"claude-plugins-official"}
+    kit_plugins = {p for p, on in get_dict(kit, "enabledPlugins").items() if on}
+    kit_markets = set(get_dict(kit, "extraKnownMarketplaces")) | {"claude-plugins-official"}
     index = own.personal_index()
     left = own.decisions()
     out = []

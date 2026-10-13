@@ -31,6 +31,26 @@ def load_json(path: Path) -> dict:
     return data
 
 
+def get_dict(data, key) -> dict:
+    """data[key] when it is a dict, else {} (a null, list or scalar written by hand or by another tool)."""
+    value = data.get(key) if isinstance(data, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
+def get_list(data, key) -> list:
+    """data[key] when it is a list, else []."""
+    value = data.get(key) if isinstance(data, dict) else None
+    return value if isinstance(value, list) else []
+
+
+def ensure(data: dict, key: str, kind: type = dict):
+    """data[key] as a `kind` container to write into: a value of another shape (null, scalar) is replaced by an
+    empty one, like setdefault but shape-safe."""
+    if not isinstance(data.get(key), kind):
+        data[key] = kind()
+    return data[key]
+
+
 def _default_mode() -> int:
     umask = os.umask(0)
     os.umask(umask)

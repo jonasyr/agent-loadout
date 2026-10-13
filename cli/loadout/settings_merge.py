@@ -275,9 +275,23 @@ def merge_settings(current: dict, desired: dict, previous: dict) -> dict:
     return _plan(current, desired, previous)[0]
 
 
+_DICT_KEYS = ("enabledPlugins", "extraKnownMarketplaces", "hooks")
+
+
+def _normalised(data: dict) -> dict:
+    """The container keys loadout reads as objects, made objects: a null, list or scalar written by hand is dropped
+    (treated as missing), and each marketplace is an object with an object `source`."""
+    out = {k: v for k, v in data.items() if k not in _DICT_KEYS or isinstance(v, dict)}
+    if "extraKnownMarketplaces" in out:
+        out["extraKnownMarketplaces"] = {
+            name: {**cfg, "source": cfg["source"] if isinstance(cfg.get("source"), dict) else {}}
+            for name, cfg in out["extraKnownMarketplaces"].items() if isinstance(cfg, dict)}
+    return out
+
+
 def desired_settings() -> dict:
-    base = load_json(paths.kit_root() / "settings.base.json")
-    personal = load_json(paths.personal_root() / "settings.json")
+    base = _normalised(load_json(paths.kit_root() / "settings.base.json"))
+    personal = _normalised(load_json(paths.personal_root() / "settings.json"))
     return deep_merge(base, personal)
 
 

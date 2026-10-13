@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 
 from . import catalog, link, paths, runner, settings_merge, wsl
-from .jsonio import InvalidJSON, load_json
+from .jsonio import InvalidJSON, get_dict, load_json
 
 
 @dataclass
@@ -61,7 +61,7 @@ def _settings() -> list[CheckResult]:
 
 def _plugins() -> list[CheckResult]:
     try:
-        wanted = [p for p, on in settings_merge.desired_settings().get("enabledPlugins", {}).items() if on]
+        wanted = [p for p, on in get_dict(settings_merge.desired_settings(), "enabledPlugins").items() if on]
         installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
         if not isinstance(installed, dict):
             raise InvalidJSON("installed_plugins.json: 'plugins' is not an object")
@@ -76,7 +76,7 @@ def _plugins() -> list[CheckResult]:
 def _connectors() -> list[CheckResult]:
     """A kit-known plugin enabled next to the claude.ai connector with the same tools."""
     try:
-        enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins", {})
+        enabled = get_dict(load_json(paths.claude_home() / "settings.json"), "enabledPlugins")
         connected = load_json(paths.claude_json()).get("claudeAiMcpEverConnected", [])
     except (InvalidJSON, OSError, UnicodeDecodeError):
         return []  # settings.json errors are reported by _settings; ~/.claude.json is Claude Code's

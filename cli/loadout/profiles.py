@@ -37,23 +37,36 @@ def list_profiles() -> list[str]:
     return sorted(names)
 
 
+def read_profile(path: Path, name: str) -> Profile:
+    """The profile in `path`. A field of the wrong type raises a ValueError naming the file and the field."""
+    data = load_json(path)
+
+    def field_of(key, kind, default):
+        value = data.get(key, default)
+        if not isinstance(value, kind):
+            word = {dict: "an object", list: "a list", str: "a string"}[kind]
+            raise ValueError(f"profile {path}: {key} must be {word}")
+        return value
+
+    return Profile(
+        name=name,
+        description=field_of("description", str, ""),
+        settings=field_of("settings", dict, {}),
+        mcp=field_of("mcp", dict, {}),
+        install=field_of("install", list, []),
+        commands=field_of("commands", list, []),
+        skills=field_of("skills", list, []),
+        notes=field_of("notes", str, ""),
+    )
+
+
 def load_profile(name: str) -> Profile:
     if not NAME.match(name):
         raise ValueError(f"profile name {name!r}: use lowercase letters, digits, - and _")
     for d in _dirs():
         path = d / f"{name}.json"
         if path.exists():
-            data = load_json(path)
-            return Profile(
-                name=name,
-                description=data.get("description", ""),
-                settings=data.get("settings", {}),
-                mcp=data.get("mcp", {}),
-                install=data.get("install", []),
-                commands=data.get("commands", []),
-                skills=data.get("skills", []),
-                notes=data.get("notes", ""),
-            )
+            return read_profile(path, name)
     raise ValueError(f"unknown profile '{name}' (available: {', '.join(list_profiles())})")
 
 
