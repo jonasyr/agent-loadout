@@ -198,7 +198,7 @@ def _register_configure(sub):
             print("\n".join(configure.own_lines(a.all)))
             return 0
         if a.action == "new":
-            if a.kind != "skill" or not a.name:
+            if a.kind != "skill" or not a.name or a.value is not None:  # a stray value: --description forgotten?
                 raise ValueError("usage: loadout configure new skill NAME [--to global|project:<profile>|repo] "
                                  "[--description TEXT]")
             import sys

@@ -65,6 +65,13 @@ def test_a_token_given_as_name_or_target_is_never_printed(fake_home, fake_runner
     assert token not in captured.err and token not in captured.out
 
 
+def test_a_stray_positional_value_is_refused_and_writes_nothing(fake_home, fake_runner, monkeypatch):
+    """`new skill notes "Use when ..."` forgot --description: say so instead of dropping the text."""
+    _on(monkeypatch)
+    assert main(["configure", "new", "skill", "notes", "Use when taking notes"]) == 1
+    assert not (paths.personal_root() / "skills" / "notes").exists()
+
+
 def test_set_skill_is_refused_and_writes_no_setting(fake_home, fake_runner, monkeypatch):
     """`skill` is a kind for `new` only: `set skill x on` must not fall through to `set pref`."""
     _on(monkeypatch)

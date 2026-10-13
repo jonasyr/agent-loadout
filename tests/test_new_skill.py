@@ -280,6 +280,16 @@ def test_a_skills_json_pointer_with_that_name_is_taken(fake_home, monkeypatch, t
     assert not (paths.personal_root() / "skills" / "notes").exists()
 
 
+@pytest.mark.parametrize("parent", [".agents", ".claude"])
+def test_repo_parent_folder_that_is_a_file_is_refused_before_writing(fake_home, monkeypatch, tmp_path, parent):
+    _agents(monkeypatch)
+    repo = _repo(tmp_path)
+    (repo / parent).write_text("not a folder")
+    with pytest.raises(new_skill.Refused, match="not a folder"):
+        new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
+    assert not (repo / ".claude" / "skills").exists()
+
+
 def test_repo_agents_skills_that_is_a_file_is_refused_before_writing(fake_home, monkeypatch, tmp_path):
     _agents(monkeypatch)
     repo = _repo(tmp_path)

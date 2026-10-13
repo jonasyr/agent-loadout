@@ -142,8 +142,9 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
     for folder in (src_root, dest_root):
         if folder is not None and not (paths.inside(folder.parent, root) and paths.inside(folder, root)):
             raise Refused(f"--to repo: {folder} points outside {root} (a symlinked folder); nothing written")
-        if folder is not None and (folder.exists() or folder.is_symlink()) and not folder.is_dir():
-            raise Refused(f"--to repo: {folder} is not a folder; nothing written")
+        for part in ((folder.parent, folder) if folder is not None else ()):  # .claude / .agents and skills/
+            if (part.exists() or part.is_symlink()) and not part.is_dir():
+                raise Refused(f"--to repo: {part} is not a folder; nothing written")
     _refuse_taken(name, [f for f in (src_root, dest_root) if f is not None])
     skill_md = _write(src_root, name, description, bk)
     out = [f"skill {name}: created {skill_md} (commit it to share it with this repo)"]
