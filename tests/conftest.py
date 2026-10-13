@@ -31,6 +31,17 @@ class FakeRunner:
         return self.paths.get(binary)
 
 
+@pytest.fixture(autouse=True)
+def never_the_real_home(tmp_path_factory, monkeypatch):
+    """Every test runs with a throwaway HOME, so one that forgets fake_home still cannot read or write the real
+    ~/.claude, ~/.codex or ~/.config/loadout (fake_home sets its own, like before)."""
+    home = tmp_path_factory.mktemp("isolated-home")  # outside tmp_path: tests list their own tmp_path
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.delenv("LOADOUT_PERSONAL", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+
+
 @pytest.fixture
 def fake_home(tmp_path, monkeypatch):
     home = tmp_path / "home"

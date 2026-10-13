@@ -298,3 +298,31 @@ def test_odd_projects_value_counts_as_untrusted(repo):
     cfg.parent.mkdir(parents=True)
     cfg.write_text("projects = 1\n")
     assert codex_project._trusted(repo) is False
+
+
+def test_a_failed_marketplace_counts_for_its_plugins(repo):
+    lines = [f"marketplace {codex.OFFICIAL}: failed: boom", "plugin deepeval@?: not installed (its marketplace failed)"]
+    assert codex_project.failed_plugins(THESIS, lines) == {"deepeval@claude-plugins-official"}
+
+
+@needs_tomllib
+def test_install_routes_reports_each_plugin_of_a_failed_marketplace(fake_home, fake_runner):
+    from loadout import backup
+    fake_runner.responses[("codex", "plugin", "marketplace", "add")] = runner.Result(1, "", "boom")
+    lines, _ = codex._install_routes({codex.OFFICIAL: ["deepeval"]}, backup.Backup(description="t"), False,
+                                     lambda l: None, set())
+    assert "plugin deepeval@?: not installed (its marketplace failed)" in lines
+
+
+def test_no_codex_route_makes_profile_exit_1(repo, fake_runner, monkeypatch):
+    monkeypatch.setattr(profiles, "load_profile", lambda name: THESIS)
+    monkeypatch.setattr(targets, "claude_enabled", lambda: False)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: ["plugin x@y: no Codex route (its marketplace is not on GitHub)"])
+    assert project.add_profile(repo, "thesis") == 1
+
+
+def test_init_exits_1_when_a_profile_failed(repo, monkeypatch):
+    monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
+    monkeypatch.setattr(project, "add_profile", lambda *a, **k: 1)
+    assert project.init(repo, ["web"], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False) == 1

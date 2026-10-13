@@ -45,7 +45,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     if targets.codex_enabled():
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
             print(line)
-            if line.startswith("skipped") or ": failed" in line or "not installed" in line:
+            if line.startswith("skipped") or any(s in line for s in (": failed", "not installed", "no Codex route")):
                 ok = False
     if prof.notes:
         print(f"note ({name}): {prof.notes}")
@@ -79,8 +79,9 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
             chosen = suggested if answer == "" else [] if answer == "-" else [a.strip() for a in answer.split(",") if a.strip()]
             for name in chosen:
                 profiles.load_profile(name)
+    rc = 0
     for name in chosen:
-        add_profile(project, name, install=install, dry_run=dry_run)
+        rc = add_profile(project, name, install=install, dry_run=dry_run) or rc
     created, notes = scaffold.scaffold(project, dry_run=dry_run)
     for path in created:
         print(("would create " if dry_run else "created ") + str(path.relative_to(project)))
@@ -93,4 +94,4 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         print("next: start Claude Code here and run /loadout:onboard")
     else:
         print("next: start Codex here and ask it to use the loadout:onboard skill")
-    return 0
+    return rc
