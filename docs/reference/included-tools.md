@@ -12,11 +12,13 @@ All are enabled by `settings.base.json`. Switch one off with `loadout configure 
 | `superpowers` | A disciplined workflow: brainstorm, plan, test-driven build, verify. | [obra/superpowers](https://github.com/obra/superpowers) |
 | `frontend-design`, `impeccable@impeccable` | Distinctive UI, then audit and polish it. Why both: [ADR 0009](../adr/0009-design-tooling-frontend-design-and-impeccable.md). | [frontend-design](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/frontend-design), [pbakaus/impeccable](https://github.com/pbakaus/impeccable) |
 | `security-guidance` | Warns about security mistakes while code is written, and reviews each `git commit`. Its per-turn diff review is off by default to save usage (`ENABLE_STOP_REVIEW=0`, see [Settings](#settings)). | [security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance) |
-| `pyright-lsp`, `typescript-lsp`, `rust-analyzer-lsp` | Claude sees type errors right after each edit. They need the language servers listed under [Command-line tools](#command-line-tools). | [Anthropic's official plugins](https://github.com/anthropics/claude-plugins-official) |
+| `pyright-lsp`, `typescript-lsp`, `rust-analyzer-lsp` | Claude sees type errors right after each edit. They need the language servers listed under [Command-line tools](#command-line-tools). Codex: a type-check hook instead, see [Hooks](hooks.md). | [Anthropic's official plugins](https://github.com/anthropics/claude-plugins-official) |
 | `context7`, `microsoft-docs` | Current library documentation instead of outdated training data. | [upstash/context7](https://github.com/upstash/context7), [MicrosoftDocs/mcp](https://github.com/MicrosoftDocs/mcp) |
 | `commit-commands`, `claude-md-management` | Commits and pull requests; keeping `CLAUDE.md` and `AGENTS.md` healthy. | [commit-commands](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/commit-commands), [claude-md-management](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management) |
 
 Plugins without a marketplace name come from `claude-plugins-official`.
+
+With Codex on, the plugins enabled here are installed in Codex too, from the same marketplaces (Codex reads Claude Code marketplaces), when their marketplace is on GitHub; one without such a route is listed by `loadout check` (`Codex plugins`).
 
 ## Marketplaces
 
@@ -38,11 +40,11 @@ How these keys are merged with yours: [Settings merge](settings-merge.md).
 
 `plugins/loadout/` provides:
 
-- **MCP servers:** Serena (symbolic code navigation and editing) and codebase-memory (a code graph for structure and call-chain questions), from `plugins/loadout/.mcp.json`. Both binaries are installed by bootstrap.
+- **MCP servers:** Serena (symbolic code navigation and editing) and codebase-memory (a code graph for structure and call-chain questions), from `plugins/loadout/.mcp.json`. Both binaries are installed by bootstrap. In Codex the same plugin and servers come from the same marketplace; Serena runs in its Codex mode.
 - **Skills:** `/loadout:onboard`, `/loadout:configure`, `/loadout:docs-audit`, `/loadout:docs-sync` and `/loadout:execution-advisor`. The documentation skills are described in [Documentation strategy](../explanation/documentation-strategy.md#how-the-kit-keeps-it-true), the advisor in [The execution advisor](../explanation/execution-advisor.md), configure in [Ask your agent about loadout](../how-to/ask-about-loadout.md).
-- **Hooks:** the session-start maintenance hook, tool hooks for rtk, Serena and codebase-memory, and the execution-advisor hooks. All are listed in [Hooks](hooks.md).
+- **Hooks:** the session-start maintenance hook, tool hooks for rtk, Serena and codebase-memory, and the execution-advisor hooks. Codex gets a variant of them plus a type-check hook. All are listed in [Hooks](hooks.md).
 
-The kit's `rules/` folder is linked to `~/.claude/rules/loadout` and loaded in every session: `tooling.md` (which tool for which question), `workflow.md` (process skills, review, UI checks), `docs-policy.md` and `memory-policy.md` (where facts and notes live) and `rtk.md`.
+The kit's `rules/` folder is loaded in every session. Claude Code reads it through the link `~/.claude/rules/loadout`; Codex reads it from the marked block that loadout keeps in `~/.codex/AGENTS.md` (`$CODEX_HOME/AGENTS.md`; see [Personal layer](personal-layer.md)). It holds `tooling.md` (which tool for which question), `workflow.md` (process skills, review, UI checks), `docs-policy.md` and `memory-policy.md` (where facts and notes live) and `rtk.md`.
 
 ## Command-line tools
 
@@ -50,12 +52,13 @@ From the `binary` entries in `catalog.json`. `loadout bootstrap --install` insta
 
 | Tool | Status | For | Project |
 |---|---|---|---|
-| `claude`, `git`, `uv`, `node`, `gh` | required | Claude Code itself, repo sync, Serena's installer, npm-based servers, GitHub access. | [uv](https://github.com/astral-sh/uv), [gh](https://github.com/cli/cli) |
+| `claude`, `git`, `uv`, `node`, `gh` | required | Claude Code itself, repo sync, Serena's installer, npm-based servers, GitHub access. `claude` is checked and installed only while Claude Code is on. | [uv](https://github.com/astral-sh/uv), [gh](https://github.com/cli/cli) |
+| `codex` | required while Codex is on | OpenAI's Codex CLI, installed through mise (`mise use -g codex`). Entries with a `target` in `catalog.json` count only while that agent is chosen in `targets.json`. loadout needs codex 0.161 or newer. | [openai/codex](https://github.com/openai/codex) |
 | `mise` | helper | Installs Node.js, gh and rust-analyzer (`mise use -g`) when they are missing. Not installed otherwise, and `loadout check` does not report it. | [jdx/mise](https://github.com/jdx/mise) |
 | `serena`, `codebase-memory-mcp` | required | The plugin's two MCP servers. | [oraios/serena](https://github.com/oraios/serena), [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) |
 | `playwright-cli` | required | Claude checks UIs in a real browser; snapshots stay on disk. Why not a browser MCP server: [ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md). | [microsoft/playwright-cli](https://github.com/microsoft/playwright-cli) |
 | `rtk` | recommended | Shrinks noisy command output to save tokens. | [rtk-ai/rtk](https://github.com/rtk-ai/rtk) |
-| `pyright`, `typescript-language-server`, `rust-analyzer` | recommended | Language servers for the LSP plugins. | [pyright](https://github.com/microsoft/pyright), [typescript-language-server](https://github.com/typescript-language-server/typescript-language-server), [rust-analyzer](https://github.com/rust-lang/rust-analyzer) |
+| `pyright`, `typescript-language-server`, `rust-analyzer` | recommended | Language servers for the LSP plugins. Codex has no LSP plugins; its [type-check hook](hooks.md) runs `pyright`, `tsc` or `cargo` instead, whichever is on `PATH`. | [pyright](https://github.com/microsoft/pyright), [typescript-language-server](https://github.com/typescript-language-server/typescript-language-server), [rust-analyzer](https://github.com/rust-lang/rust-analyzer) |
 
 codebase-memory-mcp is installed and updated with its install script and `--skip-config`, so it does not register a second MCP server next to the plugin's ([ADR 0019](../adr/0019-upstream-installers-without-agent-configuration.md)). On Windows, bootstrap uses `install.ps1`.
 

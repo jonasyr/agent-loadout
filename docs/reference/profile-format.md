@@ -6,12 +6,12 @@ A profile is one JSON file `NAME.json`. Kit profiles live in `profiles/` in the 
 
 ## Fields
 
-Only `description` is required. Missing fields are empty.
+Only `description` is required. Missing fields are empty. The table says what each field does in Claude Code; what it does in Codex is in [In Codex](#in-codex).
 
 | Field | Type | Meaning |
 |---|---|---|
 | `description` | string | One line. `loadout configure show` uses it as the reason for the plugins the profile installs. |
-| `install` | list of plugin ids | Plugins to install at project scope with `claude plugin install ID --scope project`. Each id is `name@marketplace`; anything else is skipped with a message and `loadout profile` exits 1. The marketplace of each id must be declared in `settings.base.json` for the kit's own profiles; a test checks this. |
+| `install` | list of plugin ids | Plugins to install at project scope with `claude plugin install ID --scope project`. Each id is `name@marketplace`; anything else is skipped with a message and `loadout profile` exits 1. With Claude Code off, this step is skipped. The marketplace of each id must be declared in `settings.base.json` for the kit's own profiles; a test checks this. |
 | `settings` | object | Merged into the repo's `.claude/settings.json`. |
 | `mcp` | object | Merged into the repo's `.mcp.json`. Usually `{"mcpServers": {...}}`. Pin versions: the kit's own profiles must not use `@latest`. |
 | `commands` | list of commands | Commands run in the repo after the plugins, each a list of arguments, for example `["playwright-cli", "install", "--skills"]`. |
@@ -59,6 +59,23 @@ Each name in `skills` is looked up in `<personal layer>/profiles/skills/<name>/`
 - A name that is found nowhere is reported and skipped.
 
 The copy is a snapshot. Later changes to the profile's skill do not reach the repo until you copy it again, and the copies in a repo can drift from the personal layer.
+
+## In Codex
+
+With Codex on ([Use loadout with Codex](../how-to/codex.md#switch-it-on)), `loadout init` and `loadout profile NAME` also set up Codex in the repo. Each field maps like this:
+
+| Field | In Codex |
+|---|---|
+| `description`, `notes` | Same as for Claude Code. |
+| `install` | Each plugin is installed with `codex plugin add` (not with `--no-install`; a plugin whose marketplace is not on GitHub has no Codex route and is reported). It is switched on for this repo only: `[plugins."NAME@MARKET"] enabled = true` in the repo's `.codex/config.toml`, and `enabled = false` in the user-level `~/.codex/config.toml`. loadout keeps that user-level switch off even after `codex plugin add` turns it on again. Two exceptions stay on everywhere: a plugin you had already installed in Codex, and one your merged settings enable globally (the kit's or your personal `enabledPlugins`). |
+| `mcp` | Each server becomes a section in the repo's `.codex/config.toml`. loadout only adds sections: one you already have under that name stays and is reported. A server the profile lists in `settings.disabledMcpjsonServers` gets `enabled = false`. A server with `${VAR}` in its `command`, `args` or `url` (the `db` profile's DBHub) is skipped for Codex with the reason, because Codex does not expand variables there. |
+| `settings` | Not used by Codex, except `disabledMcpjsonServers` (above) and `extraKnownMarketplaces` (where a plugin comes from). |
+| `commands` | Run once, for both agents. |
+| `skills` | Copied into `.claude/skills/` as above. Then every skill in the repo's `.claude/skills`, including ones a `commands` entry installed there, is linked into `.agents/skills` as `../../.claude/skills/NAME`. A different item already at that path stays and is reported. |
+
+Codex reads a repo's `.codex/config.toml` only in a trusted project. Until then, loadout prints the step on every run: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you. With Codex only, the Claude Code parts of a profile (the `settings` and `mcp` files, `.claude/skills`) are still written, because they are normal project files and the skills are what Codex links.
+
+What `init` and `profile` write per agent is tabled in [the CLI reference](cli.md#loadout-profile).
 
 ## Personal and kit profiles
 

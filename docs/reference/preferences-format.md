@@ -79,7 +79,11 @@ If a setting or a `me.md` line still contradicts an answer after it was written,
 | `automode_trust` | Draft the auto mode trust environment from your git repos? | `generate`, `skip` | `generate` | `autoMode.environment` |
 | `commit_doc_language` | Language of commit messages, code comments and docs? | `english`, `project` | `english` | `me.md` |
 
+With Codex on, `effort_level` also sets `model_reasoning_effort` and `agent_push_notifications` sets `tui.notifications` in `~/.codex/config.toml`. The preferences written to `me.md` reach Codex through the `AGENTS.md` block. The other settings (`extended_thinking`, `automode_trust`) apply to Claude Code only. See [personal-layer](personal-layer.md).
+
 `ai_attribution: off` writes `{"commit": "", "pr": "", "sessionUrl": false}` to the `attribution` setting and a "Never add Co-Authored-By" line to `me.md`. `on` removes both and leaves Claude Code's default.
+
+In Codex the `me.md` line reaches the agent through the instruction block, but there is no `attribution` key: Codex adds `Co-authored-by: Codex` to commits when your ChatGPT account has commit attribution turned on, an account setting that loadout cannot change. See [Use loadout with Codex](../how-to/codex.md#what-stays-different).
 
 ### The auto mode generator
 

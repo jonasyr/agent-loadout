@@ -21,19 +21,21 @@ The personal layer is your own folder of preferences. It is separate from the ki
 
 Every file is optional, and a missing file counts as empty. The one exception is `rules/`: `loadout check` reports `link rules/personal` as a failure while `<personal>/rules` does not exist, because loadout only creates that link when its target exists.
 
-| Path | Holds | What loadout does with it |
-|---|---|---|
-| `rules/me.md` | Who you are and how you like to work. May contain the managed preferences block, see [preferences-format](preferences-format.md#the-managed-block). | Linked into `~/.claude/rules/personal`. Claude Code loads it in every session. |
-| `settings.json` | Your overrides of the kit's settings, for example `"effortLevel": "high"` or `"enabledPlugins": {"impeccable@impeccable": false}`. Also the hooks you recorded as global. | Merged with the kit's `settings.base.json` and written into `~/.claude/settings.json`. See [settings-merge](settings-merge.md). |
-| `mcp.json` | `{"mcpServers": {...}}`: extra MCP servers you want everywhere. Secrets are written as `${VAR}`. | Applied as user-scope servers with `claude mcp add-json -s user`. |
-| `skills/<name>/` | Skill folders you recorded as global. | Each is linked to `~/.claude/skills/<name>`. |
-| `targets.json` | `{"claude": true, "codex": true}`: the coding agents loadout sets up (a missing `claude` means on). | Read by bootstrap, the daily sync and `loadout check`; set it with `loadout configure set target claude\|codex on\|off` or `bootstrap --agents`. See [Use loadout with Codex](../how-to/codex.md). |
-| `skills.json` | `{name: path}`: skills you recorded as a pointer to a shared source. | Each is linked to `~/.claude/skills/<name>` on machines where the path exists. `loadout check` warns if the file is not valid JSON. |
-| `hooks/` | Scripts of hooks you recorded as global. | Linked as `~/.claude/hooks/personal`. The recorded commands point to `$HOME/.claude/hooks/personal/<file>`. |
-| `profiles/NAME.json` | Your own project presets. See [profile-format](profile-format.md). | Applied to a repo by `loadout profile NAME`. |
-| `profiles/skills/<name>/` | Skills used by your profiles. | Copied into a repo by `loadout profile`. They are never linked into `~/.claude`. |
+| Path | Holds | In Claude Code | In Codex |
+|---|---|---|---|
+| `rules/me.md` | Who you are and how you like to work. May contain the managed preferences block, see [preferences-format](preferences-format.md#the-managed-block). | Linked into `~/.claude/rules/personal`. Claude Code loads it in every session. | Written, with the kit's rules, into a block between `<!-- loadout:start -->` and `<!-- loadout:end -->` in `~/.codex/AGENTS.md`. Your own text in that file stays as it is. If `AGENTS.override.md` exists there, Codex ignores the block and `loadout check` warns. |
+| `settings.json` | Your overrides of the kit's settings, for example `"effortLevel": "high"` or `"enabledPlugins": {"impeccable@impeccable": false}`. Also the hooks you recorded as global. | Merged with the kit's `settings.base.json` and written into `~/.claude/settings.json`. See [settings-merge](settings-merge.md). | Only two things reach Codex: the effort level (`model_reasoning_effort`) and push notifications (`tui.notifications`), both in `~/.codex/config.toml`. Its `enabledPlugins` also decide which plugins Codex gets. Thinking mode, auto mode, the permission list and hooks have no Codex equivalent and have no effect there. |
+| `mcp.json` | `{"mcpServers": {...}}`: extra MCP servers you want everywhere. Secrets are written as `${VAR}`. | Applied as user-scope servers with `claude mcp add-json -s user`. | One `[mcp_servers.NAME]` section each in `~/.codex/config.toml`. A secret becomes the variable's name in `env_vars`, never its value. A server that cannot be mapped (a plaintext secret, a `${…}` in `command`, `args` or `url`) is skipped and reported with the reason. |
+| `skills/<name>/` | Skill folders you recorded as global. | Each is linked to `~/.claude/skills/<name>`. | Each is linked to `~/.agents/skills/<name>`. |
+| `targets.json` | `{"claude": true, "codex": true}`: the coding agents loadout sets up (a missing `claude` means on; `codex` is off unless `true`). One agent must stay on. | Read by bootstrap, the daily sync and `loadout check`. Set it with `loadout configure set target claude\|codex on\|off` or `bootstrap --agents`. With `claude` off, loadout sets up no Claude Code links, settings or plugins (its own state still lives under `~/.claude`, see below). | Same file, same commands. With `codex` off, loadout does not read or change Codex files. See [Use loadout with Codex](../how-to/codex.md#switch-it-on). |
+| `skills.json` | `{name: path}`: skills you recorded as a pointer to a shared source. | Each is linked to `~/.claude/skills/<name>` on machines where the path exists. `loadout check` warns if the file is not valid JSON. | Not used. |
+| `hooks/` | Scripts of hooks you recorded as global. | Linked as `~/.claude/hooks/personal`. The recorded commands point to `$HOME/.claude/hooks/personal/<file>`. | Not used. |
+| `profiles/NAME.json` | Your own project presets. See [profile-format](profile-format.md). | Applied to a repo by `loadout profile NAME`. | Same command; the Codex side of a profile is described in [profile-format](profile-format.md#in-codex). |
+| `profiles/skills/<name>/` | Skills used by your profiles. | Copied into a repo's `.claude/skills` by `loadout profile`. They are never linked into `~/.claude`. | Linked from the repo's `.claude/skills` into its `.agents/skills`, see [profile-format](profile-format.md#in-codex). |
 
-The kit's own rules are linked the same way, to `~/.claude/rules/loadout`. `loadout` itself is a launcher script at `~/.local/bin/loadout` (on Windows, `loadout.cmd` and a Git Bash shim).
+The Codex folder is `$CODEX_HOME`, or `~/.codex` when that is not set. loadout writes there only the marked block in `AGENTS.md` and the entries it recorded in `config.toml` (see [Machine-local state](#machine-local-state)); text you wrote yourself stays byte for byte. Codex-only setups and the account-level differences are in [Use loadout with Codex](../how-to/codex.md#what-stays-different).
+
+The kit's own rules are linked the same way, to `~/.claude/rules/loadout` for Claude Code, and go into the same `AGENTS.md` block for Codex. `loadout` itself is a launcher script at `~/.local/bin/loadout` (on Windows, `loadout.cmd` and a Git Bash shim).
 
 ### Links and copies
 
@@ -66,7 +68,7 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 | `last-pull`, `last-update-check`, `pending-notice`, `refused-updates.json`, the maintenance lock | Bookkeeping of the daily and weekly maintenance. |
 | `advisor-pending.json`, `advisor-done.json` | State of the execution-advisor hook. See [hooks](hooks.md). |
 
-`~/.config/loadout/secrets.env` holds secrets in the form `NAME='value'`. It lives next to, not inside, the personal layer and is never committed. Backups are in `~/.claude/backups/`.
+`~/.config/loadout/secrets.env` holds secrets in the form `NAME='value'`. It lives next to, not inside, the personal layer and is never committed. Backups and this state folder are described in [loadout's own files](../explanation/architecture.md#loadouts-own-files).
 
 ## Sync
 

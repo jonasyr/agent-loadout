@@ -14,6 +14,7 @@ Every command returns 0 on success. These apply to all commands:
 |---|---|
 | 1 | A `ValueError` or invalid JSON (`InvalidJSON`) reached the top level. The message is printed to stderr as `loadout: ...`, with secrets redacted. |
 | 2 | Wrong command-line usage, reported by argparse. |
+| 130 | You pressed Ctrl+C. loadout prints `interrupted; run the same command again to continue` and stops. A re-run picks up where it stopped. |
 
 Some commands return their own codes. They are listed per command and add to the table above.
 
@@ -128,7 +129,7 @@ The preference ids and options are in [preferences-format](preferences-format.md
 
 ## loadout init
 
-Prepare the current project: `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries and profiles. It never overwrites an existing scaffold file. Profiles merge into the repo's `.claude/settings.json` and `.mcp.json` (the profile's value wins on the same key), without a backup.
+Prepare the current project (what it writes per agent is in the table under [loadout profile](#loadout-profile)): `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries and profiles. It never overwrites an existing scaffold file. Profiles merge into the repo's `.claude/settings.json` and `.mcp.json` (the profile's value wins on the same key), without a backup.
 
 ```
 loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
@@ -158,11 +159,23 @@ loadout profile [--no-install] NAME
 | `NAME` | Profile name, for example `thesis`, `web`, `db`, `sonar`, `android`, or one in `<personal>/profiles`. |
 | `--no-install` | Do not install the profile's plugins or run its commands. |
 
-With Codex on, `init` and `profile` also write the repo's `.codex/config.toml`, link `.claude/skills` into `.agents/skills` and install the profile's plugins in Codex for that repo only (see [Use loadout with Codex](../how-to/codex.md#projects)). The file format is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name or when a repo file was skipped because of a symlink out of the repo.
+What `init` and `profile` write in the repo, per agent:
+
+| | Claude Code | Codex (only when Codex is on) |
+|---|---|---|
+| Profile MCP servers | Merged into `.mcp.json`. | Added as sections to `.codex/config.toml`; `${VAR}` arguments are skipped with the reason. |
+| Profile settings | Merged into `.claude/settings.json`. | Not used, except which servers are switched off. |
+| Profile plugins (`install`) | `claude plugin install ID --scope project`. Skipped when Claude Code is off. | `codex plugin add`, switched on only in this repo (`enabled = true` in `.codex/config.toml`). |
+| Profile skills | Copied into `.claude/skills/`. | Every skill in `.claude/skills` is linked into `.agents/skills`. |
+| `commands` | Run once; they are not tied to an agent. | |
+| Scaffold (`init` only) | `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries: the same for both agents. | |
+| Next step printed (`init`) | Start Claude Code here and run `/loadout:onboard`. | Start Codex here and ask it to use the `loadout:onboard` skill (printed when Claude Code is off). |
+
+Codex reads `.codex/config.toml` only in a trusted project; loadout prints the step and never trusts one for you. Details per field: [In Codex](profile-format.md#in-codex). The format of a profile is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name or when a repo file was skipped because of a symlink out of the repo.
 
 ## loadout check
 
-Verify this machine. Read-only: it reports problems and names the fix, and never changes anything.
+Verify this machine. Read-only: it reports problems and names the fix, and never changes anything. With Claude Code switched off in `targets.json`, the Claude Code rows are skipped (the links under `~/.claude`, `settings.json` and its drift, the enabled-plugins check and the claude.ai connector check); with Codex off, the Codex rows are. See [personal-layer](personal-layer.md).
 
 ```
 loadout check [--verbose]
@@ -187,7 +200,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 | `gh auth status` | warn |
 | `secrets.env` exists and is readable only by you | warn |
 | The kit and personal git repos have no uncommitted changes | warn |
-| With Codex on: `codex` found and new enough (`Codex`), the loadout plugin installed (`Codex plugin`), the block in `~/.codex/AGENTS.md` current and not shadowed by `AGENTS.override.md` (`Codex instructions`), loadout's entries in `config.toml` current (`Codex config`), enabled plugins without a Codex route (`Codex plugins`), loadout's hooks approved in `/hooks` (`Codex hooks`), MCP servers waiting for a login (`Codex logins`), MCP servers and skills present in only one agent (`Codex drift`) | warn, except `Codex plugin` and `Codex instructions`: FAIL |
+| With Codex on (nothing is checked about Codex while it is off): `codex` found and new enough (`Codex`), the loadout plugin installed (`Codex plugin`), the block in `~/.codex/AGENTS.md` current and not shadowed by `AGENTS.override.md` (`Codex instructions`), loadout's entries in `config.toml` current (`Codex config`), enabled plugins without a Codex route (`Codex plugins`), loadout's hooks approved in `/hooks` (`Codex hooks`), MCP servers waiting for a login (`Codex logins`), MCP servers and skills present in only one agent (`Codex drift`) | warn, except `Codex plugin` and `Codex instructions`: FAIL |
 
 Exit codes: 0 when nothing failed (warnings do not count); 1 when at least one `FAIL` line was printed.
 
@@ -199,7 +212,7 @@ Merge the kit's and your personal settings into `~/.claude/settings.json`.
 loadout apply-settings
 ```
 
-It has no flags. It prints `settings updated` or `settings already up to date`. The merge rules are in [settings-merge](settings-merge.md). Exit codes: 0 on success; 1 if `settings.json` or the snapshot is not valid JSON (nothing is written).
+Claude Code only: Codex has no settings file that loadout merges. It has no flags. It prints `settings updated` or `settings already up to date`. The merge rules are in [settings-merge](settings-merge.md). Exit codes: 0 on success; 1 if `settings.json` or the snapshot is not valid JSON (nothing is written).
 
 ## loadout update
 
@@ -249,7 +262,7 @@ loadout restore [--list] [--force] [BACKUP_DIR]
 
 Without `BACKUP_DIR` it lists the backups, like `--list`.
 
-Restore only accepts folders under `~/.claude/backups` and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
+Backups are kept in `~/.claude/backups`, for every user, Codex-only setups included; see [loadout's own files](../explanation/architecture.md#loadouts-own-files). Restore only accepts folders under that location and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
 
 Exit codes: 0 when listing or when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed.
 
