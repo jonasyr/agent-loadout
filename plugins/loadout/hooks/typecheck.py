@@ -30,9 +30,22 @@ def _nearest(path: Path, marker: str):
     return next((d for d in path.parents if (d / marker).exists()), None)
 
 
+CMD_METACHARS = set('&|<>^%!"')  # cmd.exe interprets these even inside quotes when it runs a .cmd/.bat shim
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _safe(cmd: list) -> bool:
+    """False for a Windows .cmd/.bat shim whose arguments cmd.exe would interpret (a file named a&calc.py)."""
+    return not (_is_windows() and cmd[0].lower().endswith((".cmd", ".bat"))
+                and any(set(str(a)) & CMD_METACHARS for a in cmd[1:]))
+
+
 def _which(name: str):
     """shutil.which without the current folder (Windows searches it first); the absolute path or None."""
-    if os.name == "nt":
+    if _is_windows():
         os.environ["NoDefaultCurrentDirectoryInExePath"] = "1"
     exe = shutil.which(name)
     try:
@@ -55,7 +68,7 @@ def checks(files: list) -> list:
     for crate in dict.fromkeys(_nearest(f, "Cargo.toml") for f in files if f.suffix == ".rs"):
         if crate is not None and (cargo := _which("cargo")):
             found.append(([cargo, "check", "--quiet", "--message-format=short"], crate))
-    return found
+    return [(cmd, cwd) for cmd, cwd in found if _safe(cmd)]
 
 
 def _run(cmd: list, cwd: Path):

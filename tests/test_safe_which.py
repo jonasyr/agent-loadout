@@ -50,3 +50,17 @@ def test_typecheck_hook_uses_the_absolute_path(tmp_path, monkeypatch):
     assert tc.checks([tmp_path / "a.py"]) == []  # a pyright in the project folder is not used
     monkeypatch.setattr(tc.shutil, "which", lambda name, path=None: "/opt/bin/pyright")
     assert tc.checks([tmp_path / "a.py"])[0][0][0] == "/opt/bin/pyright"
+
+
+def test_typecheck_never_passes_cmd_metacharacters_to_a_windows_shim(tmp_path, monkeypatch):
+    import importlib.util
+    from loadout import paths
+    spec = importlib.util.spec_from_file_location("tc2", paths.kit_root() / "plugins/loadout/hooks/typecheck.py")
+    tc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tc)
+    monkeypatch.setattr(tc, "_is_windows", lambda: True)
+    monkeypatch.setattr(tc.shutil, "which", lambda name, path=None: "/opt/npm/pyright.cmd")
+    bad = tmp_path / "a&calc&.py"
+    good = tmp_path / "b.py"
+    assert tc.checks([bad]) == []          # cmd.exe would run "calc"
+    assert tc.checks([good])[0][0][0] == "/opt/npm/pyright.cmd"
