@@ -19,5 +19,6 @@ loadout kept its state (`~/.claude/.loadout`) and its undo backups (`~/.claude/b
 ## Consequences
 - A Codex-only machine has no `~/.claude`. An empty `~/.claude` is removed after the move, only when Claude Code is off.
 - A sync of `~/.config` never carries backups.
+- `~/.claude/backups` is shared with Claude Code (its `.claude.json` copies): only loadout's own `loadout-<timestamp>` folders with a manifest move; everything else stays where its owner keeps it.
 - An entry kept in `~/.claude` because of a name conflict is named by the migration and by `loadout check` (row `loadout state`) until you delete it by hand.
 - If the move does not finish, commands that change things stop with exit code 1 until the next run completes it.
