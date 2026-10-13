@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from . import detect, paths, profiles, runner, scaffold, ui
+from . import detect, paths, profiles, runner, scaffold, secrets, ui
 
 Ask = Callable[[str], str]
 
@@ -14,20 +14,24 @@ def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> bool:
     ok = True
     from . import targets
     for plugin_id in (profile.install if targets.claude_enabled() else []):  # Codex: codex_project.plugins
+        if not (isinstance(plugin_id, str) and profiles.PLUGIN_ID.match(plugin_id)):
+            print(f"plugin {plugin_id!r}: not a name@marketplace id, skipped")
+            ok = False
+            continue
         cmd = ["claude", "plugin", "install", plugin_id, "--scope", "project"]
-        print(("would run: " if dry_run else "running: ") + " ".join(cmd))
+        print(secrets.redact(("would run: " if dry_run else "running: ") + " ".join(cmd)))
         if not dry_run:
             res = runner.run(cmd, cwd=str(project))
             if not res.ok:
                 ok = False
-                print(f"  failed: {res.stderr.strip()}")
+                print(secrets.redact(f"  failed: {res.stderr.strip()}"))
     for cmd in profile.commands:
-        print(("would run: " if dry_run else "running: ") + " ".join(cmd))
+        print(secrets.redact(("would run: " if dry_run else "running: ") + " ".join(cmd)))
         if not dry_run:
             res = runner.run(cmd, cwd=str(project))
             if not res.ok:
                 ok = False
-                print(f"  failed: {res.stderr.strip()}")
+                print(secrets.redact(f"  failed: {res.stderr.strip()}"))
     return ok
 
 

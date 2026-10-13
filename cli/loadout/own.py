@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 from urllib.parse import parse_qsl, urlsplit
 
-from . import paths, personal_mcp, secrets, settings_merge
+from . import paths, personal_mcp, profiles, secrets, settings_merge
 from .jsonio import InvalidJSON, load_json, save_json
 from .secrets import redact
 
@@ -766,7 +766,7 @@ def options(item: Item) -> list[str]:
     return ["global", "project", "leave", "remove"]
 
 
-PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+PROFILE_NAME = profiles.NAME
 
 
 def _profile_path(name: str) -> Path:

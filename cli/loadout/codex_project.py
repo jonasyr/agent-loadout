@@ -22,7 +22,12 @@ def _wanted(prof: profiles.Profile) -> tuple[dict[str, str], list[str], list[str
             skipped.append(f"skipped {exc}")
             continue
         tables[name] = text + ("enabled = false\n" if name in off else "")
-    plugins = [p for p in prof.install if isinstance(p, str) and "@" in p]
+    plugins = []
+    for p in prof.install:
+        if isinstance(p, str) and profiles.PLUGIN_ID.match(p):
+            plugins.append(p)
+        else:
+            skipped.append(f"plugin {p!r}: not a name@marketplace id, skipped")
     return tables, plugins, skipped
 
 

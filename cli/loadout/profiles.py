@@ -1,12 +1,17 @@
 """Per-project profiles: settings/.mcp.json fragments plus plugins to install."""
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import paths
 from .jsonio import deep_merge, load_json, save_json
+
+
+NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+PLUGIN_ID = re.compile(r"^[A-Za-z0-9][\w.-]*@[A-Za-z0-9][\w.-]*$")
 
 
 @dataclass
@@ -33,6 +38,8 @@ def list_profiles() -> list[str]:
 
 
 def load_profile(name: str) -> Profile:
+    if not NAME.match(name):
+        raise ValueError(f"profile name {name!r}: use lowercase letters, digits, - and _")
     for d in _dirs():
         path = d / f"{name}.json"
         if path.exists():

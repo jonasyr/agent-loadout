@@ -30,6 +30,8 @@ def LINKS() -> list[tuple[Path, Path]]:
     except InvalidJSON:
         pointers = {}  # never crash linking; loadout check reports the broken file
     for name, target in sorted(pointers.items()):
+        if not (name == Path(name).name and name not in ("", ".", "..") and not name.startswith("-")):
+            continue  # a key becomes a folder name under skills/, never a path
         if isinstance(target, str) and Path(target).expanduser().is_dir():
             out.append((skills / name, Path(target).expanduser()))
     out.append((paths.claude_home() / "hooks" / "personal", personal / "hooks"))
