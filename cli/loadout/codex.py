@@ -96,6 +96,27 @@ def apply_instructions(bk) -> str:
     return f"instructions written to {_tilde(path)}"
 
 
+def refresh_instructions() -> str | None:
+    """At a session start: rewrite loadout's block in ~/.codex/AGENTS.md when a rule or me.md changed by hand.
+    Only an existing, balanced block, only with Codex on; never creates the file or a block (bootstrap does)."""
+    from . import targets
+    if not targets.codex_enabled():
+        return None
+    path = paths.codex_home() / "AGENTS.md"
+    try:
+        old = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if START not in old:
+        return None
+    new = splice(old, render_instructions())
+    if new is None or new == old:
+        return None
+    from .jsonio import write_atomic
+    write_atomic(path, new)
+    return f"refreshed loadout's block in {_tilde(path)}"
+
+
 SERENA = {"command": "serena", "args": ["start-mcp-server", "--context=codex", "--project-from-cwd"]}
 # the plugin's Context7 address (?client=claude-code-plugin) asks Codex for OAuth; the plain one answers anonymously
 CONTEXT7 = {"url": "https://mcp.context7.com/mcp"}
