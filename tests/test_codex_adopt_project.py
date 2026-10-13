@@ -77,6 +77,14 @@ def test_codex_server_already_in_the_profile_is_refused(codex_on, fake_runner):
     assert not rec.ok and "already exists" in rec.lines[0]
 
 
+@pytest.mark.parametrize("profile", ["mine\n", "sk-" + "a1b2c3d4" * 5])
+def test_a_bad_or_secret_looking_profile_name_is_refused_in_adopt(codex_on, fake_runner, profile):
+    with pytest.raises(ValueError) as exc:
+        own.record_project(_skill(), profile, backup.Backup(description="t"))
+    assert profile.strip() not in str(exc.value) or profile == "mine\n"
+    assert not (paths.personal_root() / "profiles").exists()
+
+
 def test_codex_server_whose_secret_would_be_renamed_is_refused_like_global(codex_on, fake_runner):
     """Codex forwards a variable only under its own name: API_KEY cannot become ${MINE_API_KEY}."""
     token = "ghp_" + "Z" * 36

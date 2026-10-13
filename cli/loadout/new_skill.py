@@ -85,6 +85,8 @@ def create(name: str, to: str = "global", description: str | None = None, cwd: P
     """Write the stub where `to` says (global, project:<profile>, repo) and link it for the agents that are on."""
     if secrets.redact(name or "") != (name or ""):  # it would become a folder name, a manifest label and output
         raise Refused("the skill name looks like a secret; choose a plain name")
+    if secrets.redact(to or "") != (to or ""):  # a profile name becomes a file name, a label and output too
+        raise Refused("--to looks like it contains a secret; choose a plain profile name")
     if not NAME.fullmatch(name or ""):  # fullmatch: `$` alone would let a trailing newline through
         raise BadInput(f"skill name '{name}': use lowercase letters, digits and -, starting with a letter or "
                        "digit, at most 64 characters")
@@ -108,7 +110,7 @@ def create(name: str, to: str = "global", description: str | None = None, cwd: P
 def _project(name: str, profile: str, description: str, bk: Backup) -> list[str]:
     from . import own
     from .jsonio import load_json
-    if not own.PROFILE_NAME.match(profile):
+    if not own.PROFILE_NAME.fullmatch(profile):
         raise BadInput(f"profile name '{profile}': use lowercase letters, digits, - and _")
     path = paths.personal_root() / "profiles" / f"{profile}.json"
     if path.exists():

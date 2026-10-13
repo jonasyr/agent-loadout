@@ -818,7 +818,9 @@ def _append_once(lst: list, value) -> None:
 def record_project(v: Verdict, profile: str, bk) -> Recorded:
     """Record an item in a personal profile (personal layer only; the machine step is the removal in adopt)."""
     item = v.item
-    if not PROFILE_NAME.match(profile):
+    if secrets.redact(profile) != profile:  # it would become a file name, a backup label and output
+        raise ValueError("the profile name looks like a secret; choose a plain name")
+    if not PROFILE_NAME.fullmatch(profile):
         raise ValueError(f"profile name '{profile}': use lowercase letters, digits, - and _")
     if "project" not in options(item):
         raise ValueError(f"{label(item)}: project is not available for this item")
@@ -877,7 +879,7 @@ def parse_choice(text: str) -> Choice:
     action, _, profile = text.strip().partition(":")
     if action not in CHOICES or (action == "project") != bool(profile):
         raise ValueError(f"choice '{text}': use global, project:<profile>, leave or remove")
-    if profile and not PROFILE_NAME.match(profile):
+    if profile and not PROFILE_NAME.fullmatch(profile):
         raise ValueError(f"profile name '{profile}': use lowercase letters, digits, - and _")
     return Choice(action, profile)
 
@@ -996,7 +998,7 @@ def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
                              ).strip().lower() or last_profile
                 if not answer:
                     break  # Enter with no previous profile: skip this item
-                if PROFILE_NAME.match(answer):
+                if PROFILE_NAME.fullmatch(answer):
                     profile = answer
                     break
                 print("    use lowercase letters, digits, - and _")

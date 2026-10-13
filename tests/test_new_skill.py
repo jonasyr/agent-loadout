@@ -207,6 +207,25 @@ def test_a_secret_looking_name_is_refused_before_anything_is_written(fake_home, 
     assert not (paths.personal_root() / "skills").exists() and bk.empty
 
 
+def test_a_secret_looking_profile_is_refused_before_anything_is_written(fake_home, monkeypatch):
+    from loadout import secrets
+    _agents(monkeypatch)
+    profile = "sk-" + "a1b2c3d4" * 5
+    assert secrets.redact(profile) != profile
+    bk = backup.Backup(description="t")
+    with pytest.raises(new_skill.Refused) as exc:
+        new_skill.create("notes", to=f"project:{profile}", bk=bk)
+    assert profile not in str(exc.value) and bk.empty
+    assert not (paths.personal_root() / "profiles").exists()
+
+
+def test_a_profile_name_with_a_trailing_newline_is_bad_input(fake_home, monkeypatch):
+    _agents(monkeypatch)
+    with pytest.raises(new_skill.BadInput):
+        new_skill.create("notes", to="project:mine\n", bk=backup.Backup(description="t"))
+    assert not (paths.personal_root() / "profiles").exists()
+
+
 def test_a_damaged_skills_json_is_refused(fake_home, monkeypatch):
     _agents(monkeypatch)
     pointers = paths.personal_root() / "skills.json"

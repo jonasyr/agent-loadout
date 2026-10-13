@@ -58,8 +58,9 @@ def test_a_token_given_as_name_or_target_is_never_printed(fake_home, fake_runner
     _on(monkeypatch)
     token = "ghp_" + "Z" * 36
     assert main(["configure", "new", "skill", token]) == 1  # refused as a secret before the format check
-    assert main(["configure", "new", "skill", "notes", "--to", token]) == 2
-    assert main(["configure", "new", "skill", "notes", "--to", f"project:{token}"]) == 2
+    assert main(["configure", "new", "skill", "notes", "--to", token]) == 1  # refused as a secret
+    assert main(["configure", "new", "skill", "notes", "--to", f"project:{token}"]) == 1
+    assert main(["configure", "new", "skill", "notes", "--to", "elsewhere"]) == 2  # plain bad input stays 2
     captured = capsys.readouterr()
     assert token not in captured.err and token not in captured.out
 
