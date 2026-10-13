@@ -21,7 +21,7 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 ### User files
 - loadout changes only what it recorded as its own in a user's files (`~/.claude/settings.json`, `~/.codex/config.toml`, `AGENTS.md`, shell startup files); text the user wrote stays byte for byte. Safe path: exact-text record, parse guard, atomic write. Treat a write that can change or lose user entries as P1.
 - Every destructive change is undoable: a backup step or an undo command before it acts, so `loadout restore` reverts it. A removal or overwrite without one is P1.
-- With an agent turned off (`targets.json`), nothing reads or changes that agent's files. P1.
+- With an agent turned off (`targets.json`), nothing reads or changes that agent's files. P1. loadout's own old state under `~/.claude` (`~/.claude/.loadout`, `~/.claude/backups/loadout-*`) is loadout's, not Claude Code's: the move out of it runs for every user (ADR 0025).
 
 ### Secrets
 - No plaintext secret is written to the personal layer, `mcp.json`, `config.toml`, the backup manifest or the output. Only variable names; values go to `secrets.env`. P1.

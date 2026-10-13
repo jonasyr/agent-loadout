@@ -443,3 +443,22 @@ def test_a_fresh_lock_taken_by_another_run_is_never_stolen(fake_home, monkeypatc
     monkeypatch.setattr(migrate, "WAIT", 0)
     assert migrate._lock(paths.state_dir(), 0) is None
     assert lock.read_text() == "other-run", "the other run's lock is left where it is"
+
+
+def test_an_old_entry_whose_copy_vanished_is_copied_again_not_retired(fake_home, clock):
+    old = _legacy(fake_home)
+    migrate.migrate_state()
+    (paths.state_dir() / "managed-settings.json").unlink()  # the copy is gone before the old one is retired
+    clock(migrate.RETIRE_AFTER + 1)
+    migrate.migrate_state()
+    assert (old / "managed-settings.json").read_text() == '{"a": 1}', "never delete the last copy"
+    migrate.migrate_state()
+    assert (paths.state_dir() / "managed-settings.json").read_text() == '{"a": 1}'
+
+
+def test_a_state_folder_inside_the_old_one_is_not_migrated_into_itself(fake_home, monkeypatch):
+    old = _legacy(fake_home)
+    monkeypatch.setenv("XDG_STATE_HOME", str(old))  # absolute, but inside ~/.claude/.loadout
+    migrate.migrate_state()
+    assert not migrate.pending(), "the destination is not one of the old entries"
+    assert (old / "loadout" / "managed-settings.json").exists()

@@ -276,6 +276,15 @@ def _legacy_roots() -> list[tuple[Path, Path]]:
     return [(paths.legacy_state_dir(), paths.state_dir()), (paths.legacy_backups_root(), paths.backups_root())]
 
 
+def _holds_destination(old: Path) -> bool:
+    """An old entry that is (or contains) the new state folder: XDG_STATE_HOME pointing inside ~/.claude."""
+    state = paths.state_dir()
+    try:
+        return state == old or state.is_relative_to(old)
+    except ValueError:
+        return False
+
+
 def _is_dir(path: Path) -> bool:
     """Like Path.is_dir, but a path that cannot be inspected raises instead of looking absent."""
     try:
@@ -337,6 +346,9 @@ def _step(entries: dict, key: str, entry: dict, now: float, busy: bool) -> None:
         return
     if entry.get("session") and now - old.stat().st_mtime < SESSION_IDLE:
         return  # an old session may still read and write it
+    if "new" in entry and _gone(Path(entry["new"])):
+        del entries[key]  # its copy is gone: never delete the last one; the next run copies it again
+        return
     if _sig(old) == entry["sig"]:
         result = _retire(old, entry["sig"])
         if result == "done":
@@ -382,7 +394,7 @@ def migrate_state(wait: float | None = None) -> list[str]:
             new_root.mkdir(parents=True, exist_ok=True, mode=0o700)
             for old in sorted(old_root.iterdir()):
                 key = str(old)
-                if not _ours(old) or key in entries:
+                if not _ours(old) or key in entries or _holds_destination(old):
                     continue
                 new = new_root / old.name
                 session = old.name in SESSION_FILES
@@ -463,7 +475,8 @@ def pending() -> bool:
             if not _is_dir(old_root):
                 continue
             for old in old_root.iterdir():
-                if _ours(old) and old.name not in SESSION_FILES and str(old) not in entries:
+                if _ours(old) and old.name not in SESSION_FILES and str(old) not in entries \
+                        and not _holds_destination(old):
                     return True
     except OSError:
         return True
