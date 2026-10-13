@@ -177,12 +177,20 @@ def test_every_diagram_is_embedded():
     assert not missing, f"diagrams no page shows (embed or delete them): {missing}"
 
 
-@pytest.mark.skipif(os.name == "nt", reason="git checks symlinks out as files on Windows runners")
+def _front(path):
+    front = re.match(r"---\n(.*?)\n---\n(.*)", path.read_text(encoding="utf-8"), re.S)
+    assert front, f"{path} needs YAML frontmatter"
+    return dict(re.findall(r"^(name|description): (.+)$", front.group(1), re.M)), front.group(2)
+
+
 def test_diagram_skill_reaches_both_agents():
-    skill = ROOT / ".claude" / "skills" / "diagrams" / "SKILL.md"
-    front = re.match(r"---\n(.*?)\n---\n", skill.read_text(encoding="utf-8"), re.S)
-    assert front, "SKILL.md needs YAML frontmatter"
-    assert re.search(r"^name: diagrams$", front.group(1), re.M)
-    assert re.search(r"^description: \S", front.group(1), re.M)
-    link = ROOT / ".agents" / "skills" / "diagrams"
-    assert link.is_symlink() and os.readlink(link) == "../../.claude/skills/diagrams"
+    """Claude Code reads .claude/skills; Codex reads .agents/skills. A real file there (no symlink) works on every
+    checkout, Windows without symlinks included, and only points to the one source."""
+    source = ROOT / ".claude" / "skills" / "diagrams" / "SKILL.md"
+    pointer = ROOT / ".agents" / "skills" / "diagrams" / "SKILL.md"
+    meta, _ = _front(source)
+    assert meta.get("name") == "diagrams" and meta.get("description")
+    assert not (ROOT / ".agents" / "skills" / "diagrams").is_symlink() and pointer.is_file()
+    pointer_meta, body = _front(pointer)
+    assert pointer_meta == meta  # Codex picks the skill by the same name and description
+    assert ".claude/skills/diagrams/SKILL.md" in body and len(body.splitlines()) < 10

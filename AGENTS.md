@@ -50,7 +50,7 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 Other kit parts:
 
 - `plugins/loadout/`: the plugin (`.claude-plugin/` and `.codex-plugin/` manifests, `skills/`, `hooks/` with `hooks.json` for Claude Code and `codex.json` for Codex, `evals/`, `evals-browser/`, `.mcp.json`)
-- `.claude/skills/diagrams`: repo-local skill for editing the docs diagrams (linked for Codex in `.agents/skills`)
+- `.claude/skills/diagrams`: repo-local skill for editing the docs diagrams (Codex finds it through a short pointer in `.agents/skills/diagrams`)
 - `.github/`: CI workflows, issue forms and the PR template (see CONTRIBUTING.md)
 - `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
