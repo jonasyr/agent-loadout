@@ -16,6 +16,7 @@ append_system_prompt: |
   | Text, config files, docs, non-code | Grep / Glob / Read |
   | Library or framework documentation | Context7 first; Microsoft Learn for .NET/Azure/Windows/Microsoft APIs; web search last |
   | UI verification and browser checks | `playwright-cli` (read `playwright-cli --help` first); screenshots and snapshots go to disk, open only what you need |
+  | Questions about loadout, or changes to the loadout setup (tools, preferences, agents, profiles, undo) | The `loadout:configure` skill, even when the user does not name it; never edit `~/.claude` or `~/.codex` settings by hand |
   | Shell commands | rtk rewrites them automatically when installed; use `rtk proxy <cmd>` when you need raw output |
 
   Before ending a task that touched UI, verify it in a browser with playwright-cli. Never claim it "looks right" without having looked. If playwright-cli is missing or fails, say so (and suggest `loadout check`) instead of launching a browser binary yourself.

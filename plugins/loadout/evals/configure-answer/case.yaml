@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: configure-answer
+description: >-
+  A plain question about loadout that does not name any skill. The configure skill must fire,
+  find the docs with `loadout kit-path`, answer from the undo page (`loadout restore`), and run
+  no restore without a yes.
+tags: [configure, routing]
+context:
+  scaffold_script: scaffold.sh

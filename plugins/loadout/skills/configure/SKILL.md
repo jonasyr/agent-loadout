@@ -1,9 +1,34 @@
 ---
 name: configure
-description: Conversationally adjust the user's loadout setup — working preferences (answer language, commit style, AI attribution, effort, thinking, ...), global add-ons (plugins, MCP servers) and opt-outs of kit defaults — stored in their personal layer. Use when the user wants to add, remove or change tools or preferences globally (not for a single project; use `loadout profile` there).
+description: Answer any question about loadout (agent-loadout) from its docs, and make changes to the user's loadout setup through the `loadout` CLI - preferences, plugins, MCP servers, own tools, agents (Claude Code, Codex), project profiles, checks, updates, restore. Use whenever the user asks how loadout works or wants their setup changed.
 ---
 
 # Configure loadout
+
+The one place for loadout questions and changes. Never edit `~/.claude/settings.json`, `~/.claude.json`, `~/.codex/config.toml` or the personal layer's files by hand: the `loadout` commands keep kit and personal values apart and record undo steps.
+
+## Answer a question
+
+1. Find the docs: `loadout kit-path` prints the kit's folder; open its `docs/README.md` (the map: which page answers which question), then read only the page that answers this question. Without loadout, read the same paths in https://github.com/jonasyr/agent-loadout.
+2. Answer from that page, in short, and name the page so the user can read on. When the user's own state matters ("is X on for me?"), run `loadout configure show`, `loadout configure own` or `loadout check` first, all read-only.
+3. If the docs do not answer it, say so; do not guess how loadout behaves.
+
+## Other changes
+
+Map the request to a command, show the planned commands as a short list, and run them only after a yes:
+
+| Request | Command |
+|---|---|
+| Turn an agent on or off | `loadout configure set target <claude or codex> <on or off>` |
+| Tools for one repo | `loadout profile <name>` in that repo (`loadout init` for a new one) |
+| Is everything working? | `loadout check` |
+| Review the existing setup | `loadout adopt` (a dry run; `--apply` only after a yes) |
+| Update tools | `loadout update` |
+| Undo a change | `loadout restore --list`, then `loadout restore <dir>` after a yes |
+
+When no command covers the request, say which doc page describes the manual way and let the user decide; never edit the files yourself.
+
+## Preferences, add-ons and your own tools
 
 The kit's defaults stay untouched; every choice goes into the user's personal layer through the `loadout configure` engine.
 
@@ -18,4 +43,4 @@ The kit's defaults stay untouched; every choice goes into the user's personal la
    - `automode_trust generate` drafts the auto mode environment from the user's git repos and needs their confirmation in a terminal: tell them to run `loadout configure prefs` themselves.
 6. Tell the user to restart Claude Code or run `/reload-plugins`. The engine does not commit, and global and project choices reach other machines only once the personal layer is committed and pushed: remind the user of this. If `~/.config/loadout/personal` is a git repo and the user agrees, run `git status --short`, then `git add -A`, `git commit` and `git push` there yourself.
 
-Never edit `~/.claude/settings.json` or `~/.claude.json` directly; the engine keeps kit-managed and personal values apart.
+The engine keeps kit-managed and personal values apart; the same applies to Codex, where `loadout configure` writes `~/.codex/config.toml` itself.

@@ -48,6 +48,7 @@ off (default)  [data] sentry@claude-plugins-official  — id: plugin sentry@clau
       Read Sentry issues and traces while debugging production errors.
 off (default)  [data] dbhub  — id: mcp addon-dbhub-global
       DBHub for one database you use from every repo (otherwise use the db profile per project).
+Agents: Claude Code, Codex (change with: loadout configure set target claude|codex on|off)
 Preferences (change one with: loadout configure set pref-choice <id> <value>)
 match (me.md)  Which language should Claude answer in?  — id: pref-choice answer_language
       options: match | english | german | other:<text> (default match)
@@ -76,6 +77,9 @@ EOF2
         [ "${3} ${4} ${5}" = "mcp dbhub on" ] || [ "${3} ${4} ${5}" = "mcp addon-dbhub-global on" ] &&
           echo "note: DSN is not set: add it to ~/.config/loadout/secrets.env"
         echo "Restart Claude Code (or run /reload-plugins) to load the changes." ;;
+      target)
+        case "${4:-} ${5:-}" in claude\ on|claude\ off|codex\ on|codex\ off) echo "${4}: ${5}" ;;
+          *) echo "usage: loadout configure set target claude|codex on|off" >&2; exit 2 ;; esac ;;
       pref) echo "pref ${4} = ${5:-}" ;;
       pref-choice) echo "${4}: ${5:-}" ;;
       own)
@@ -109,6 +113,9 @@ EOF2
   "kit-path "*) printf '%s\n' "$(cd "$(dirname "$0")" && pwd)/kit" ;;  # run.sh copies the kit's rules and guide there
   "advisor-mark "*) [ -f "${2:-}" ] || { echo "loadout: no such plan: ${2:-}" >&2; exit 1; }
     echo "marked ${2} as evaluated (0123456789ab)" ;;
+  "restore "*) case "${2:-}" in --list|"") echo "~/.claude/backups/loadout-20261012-185909  configure: set up Codex"
+      echo "~/.claude/backups/loadout-20261009-121111  adopt" ;; *) echo "restored: ${2}" ;; esac ;;
+  "check "*) echo "31 of 32 checks OK"; echo "! Context7: also connected as a claude.ai connector" ;;
   "profile "*) echo "added profile ${2:-}: plugins installed with --scope project" ;;
   "init "*) echo "scaffolded AGENTS.md, CLAUDE.md, docs/README.md, docs/adr/README.md" ;;
   *) echo "usage: loadout {init,profile,configure,check,...}" ;;

@@ -97,11 +97,15 @@ def test_no_case_that_can_open_a_browser_runs_by_default():
 
 def test_routing_case_carries_the_current_tooling_rule():
     """Eval runs don't load ~/.claude/rules, so the case appends rules/tooling.md as a YAML block."""
-    text = (BROWSER_EVALS / "rules-ui-verification/prompt.md").read_text(encoding="utf-8")
-    block = re.search(r"^append_system_prompt: \|\n((?:  .*\n|\n)+)", text, re.M).group(1)
-    appended = "".join(line[2:] if line.strip() else "\n" for line in block.splitlines(keepends=True))
     rule = (paths.kit_root() / "rules/tooling.md").read_text(encoding="utf-8")
-    assert appended == rule, "regenerate the case's append_system_prompt from rules/tooling.md"
+    def appended(prompt):
+        text = prompt.read_text(encoding="utf-8")
+        block = re.search(r"^append_system_prompt: \|\n((?:  .*\n|\n)+)", text, re.M).group(1)
+        return "".join(line[2:] if line.strip() else "\n" for line in block.splitlines(keepends=True))
+    assert appended(BROWSER_EVALS / "rules-ui-verification/prompt.md") == rule, "regenerate it from rules/tooling.md"
+    row = next(line for line in rule.splitlines() if "loadout:configure" in line)
+    for case in ("configure-answer", "configure-target"):  # only the loadout row: browser rows stay out of evals/
+        assert row in appended(EVALS / case / "prompt.md").splitlines(), f"copy the loadout row into {case}"
 
 
 def test_every_scaffold_goes_through_the_guard():
