@@ -15,5 +15,5 @@ We will require Python 3.11. The launcher, `bin/loadout`, the plugin's `run.sh`,
 - Keep the 3.10 skip paths: untested edge cases and a weaker Codex target on older machines.
 
 ## Consequences
-- A machine with only Python 3.10 downloads one uv-managed Python 3.11 the first time; nothing else changes for it.
+- A machine with only Python 3.10 runs loadout on the newest Python 3.11 or later that uv provides: bootstrap installs it, and an older launcher that still starts Python 3.10 continues under it (`bin/loadout` asks uv). Without uv, loadout asks to re-run bootstrap.
 - No TOML special cases remain in `codex.py`, `codex_project.py` and `own.py`.

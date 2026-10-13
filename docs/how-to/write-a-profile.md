@@ -4,7 +4,7 @@ Use this page to make a preset of plugins, MCP servers, settings and commands th
 
 The kit ships `thesis`, `web`, `db`, `sonar` and `android`. Yours live in `<personal layer>/profiles/`, by default `~/.config/loadout/personal/profiles/`. The format is in [profile format](../reference/profile-format.md).
 
-1. **Create the file.** `<personal layer>/profiles/NAME.json`. Only `description` is required:
+1. **Create the file.** `<personal layer>/profiles/NAME.json`, where NAME uses lowercase letters, digits, `-` and `_`. Only `description` is required:
 
    ```json
    {
