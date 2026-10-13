@@ -70,3 +70,15 @@ def test_codex_only_adopt_ignores_a_broken_claude_settings_file(fake_home, monke
     (paths.agents_skills() / "solo").mkdir(parents=True)
     verdicts = inventory.classify(inventory.collect(with_versions=False))
     assert any(v.item.name == "solo" for v in verdicts)
+
+
+def test_groups_secrets_moves_secrets_without_yes(fake_home, fake_runner, monkeypatch):
+    from loadout import adopt, secrets
+    targets.set_agents({"claude": True, "codex": False})
+    finding = secrets.Finding("s", "env", "TOKEN", "v", "~/.claude.json", True)
+    monkeypatch.setattr(secrets, "scan_all", lambda: [finding])
+    moved = []
+    monkeypatch.setattr(adopt, "fix_secrets", lambda found, bk: moved.append(found) or [])
+    adopt.run(apply_changes=True, groups={"secrets"}, skip=set(), yes=False, ask=lambda q: "",
+              with_versions=False, interactive=False)
+    assert moved  # naming the group is the consent, as for the other groups

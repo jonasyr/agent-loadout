@@ -8,7 +8,7 @@ from typing import Callable
 
 from . import catalog, out, paths, preferences, profiles, runner, scaffold, secrets, ui
 from .backup import Backup
-from .jsonio import ensure, get_dict, load_json, save_json
+from .jsonio import WrongShape, ensure, get_dict, load_json, save_json
 from .secrets import redact
 
 Ask = Callable[[str], str]
@@ -71,9 +71,10 @@ def is_on(addon: Addon) -> bool:
 
 def _writable(data: dict, key: str, path) -> dict:
     """data[key] to write into; a hand-damaged value is refused, never replaced (it may be the user's only copy)."""
-    if data.get(key) is not None and not isinstance(data[key], dict):
-        raise ValueError(f"{path}: {key} is not an object; fix it, then run this again")
-    return ensure(data, key)
+    try:
+        return ensure(data, key)
+    except WrongShape as exc:
+        raise ValueError(f"{path}: {exc}") from None
 
 
 def set_plugin(plugin_id: str, on: bool) -> None:

@@ -550,7 +550,8 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         by_hand = [f for f in findings if not f.fixable]
         if asks_each_group and (remaining or by_hand):
             print(calm_secrets(remaining + by_hand))
-        if remaining and secrets_ok and (yes or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
+        named = groups is not None and "secrets" in groups  # naming the group is the consent, as for the others
+        if remaining and secrets_ok and (yes or named or (interactive and ui.confirm(ask, "move detected plaintext secrets to secrets.env? [y/N] "))):
             for line in fix_secrets(remaining, bk):
                 print(redact(line))
         elif remaining and not secrets_ok:

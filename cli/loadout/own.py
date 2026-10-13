@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Callable
 from urllib.parse import parse_qsl, urlsplit
 
 from . import paths, personal_mcp, profiles, secrets, settings_merge
-from .jsonio import InvalidJSON, ensure, get_dict, get_list, load_json, save_json
+from .jsonio import InvalidJSON, WrongShape, ensure, get_dict, get_list, load_json, save_json
 from .secrets import redact
 
 if TYPE_CHECKING:
@@ -217,7 +217,10 @@ def _edit_json(path: Path, bk, label: str, change: Callable[[dict], None], seed:
     exists = path.exists()
     data = load_json(path) if exists else json.loads(json.dumps(seed or {}))
     before = json.dumps(data, sort_keys=True)
-    change(data)
+    try:
+        change(data)
+    except WrongShape as exc:
+        raise Collision(f"{path}: {exc}") from None
     if json.dumps(data, sort_keys=True) == before and exists:
         return
     if exists:

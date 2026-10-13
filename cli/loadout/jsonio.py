@@ -43,11 +43,17 @@ def get_list(data, key) -> list:
     return value if isinstance(value, list) else []
 
 
+class WrongShape(InvalidJSON):
+    """A container a write needs holds another shape; it may be the user's only copy, so it is never replaced."""
+
+
 def ensure(data: dict, key: str, kind: type = dict):
-    """data[key] as a `kind` container to write into: a value of another shape (null, scalar) is replaced by an
-    empty one, like setdefault but shape-safe."""
-    if not isinstance(data.get(key), kind):
+    """data[key] as a `kind` container to write into, like setdefault. A missing or null value becomes an empty
+    one; any other shape raises WrongShape instead of being wiped."""
+    if data.get(key) is None:
         data[key] = kind()
+    elif not isinstance(data[key], kind):
+        raise WrongShape(f"{key} is not {'an object' if kind is dict else 'a list'}; fix it, then run this again")
     return data[key]
 
 

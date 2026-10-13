@@ -333,3 +333,25 @@ def test_a_marketplace_without_source_gets_no_empty_source(fake_home):
     s.parent.mkdir(parents=True, exist_ok=True)
     s.write_text(json.dumps({"extraKnownMarketplaces": {"mine": {"autoUpdate": True}}}))
     assert "source" not in settings_merge.desired_settings()["extraKnownMarketplaces"]["mine"]
+
+
+def test_recording_into_a_damaged_personal_section_is_refused_not_wiped(fake_home):
+    import json
+    from loadout import backup, own
+    from loadout.inventory import Item, Verdict
+    f = paths.personal_root() / "mcp.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"mcpServers": ["mine"]}))
+    item = Item("mcp", "new", "x", "~/.claude.json", {"config": {"command": "x"}})
+    rec = own.record_global(Verdict(item, "own", ""), backup.Backup(description="t"))
+    assert not rec.ok and "mcp.json" in rec.lines[0]
+    assert json.loads(f.read_text()) == {"mcpServers": ["mine"]}
+
+
+def test_ensure_refuses_a_wrong_shape_but_fills_null():
+    import pytest
+    from loadout.jsonio import WrongShape, ensure
+    d = {"a": None}
+    assert ensure(d, "a") == {} and ensure(d, "b", list) == []
+    with pytest.raises(WrongShape):
+        ensure({"a": [1]}, "a")
