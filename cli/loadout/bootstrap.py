@@ -561,6 +561,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
+    if agents is not None:
+        targets.parse_agents(agents)  # a typo in --agents stops here, before any question or clone (ValueError)
     print(INTRO)
     if not out.VERBOSE:
         print()

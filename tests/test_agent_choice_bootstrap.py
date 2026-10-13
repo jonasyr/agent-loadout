@@ -107,3 +107,10 @@ def test_a_starter_layer_asks_the_agents_before_its_own_questions(fake_home, fak
     assert url < agents < name
     assert seen == [False], "a Codex-only starter never reads Claude Code's settings"
     assert json.loads(targets.path().read_text()) == {"claude": False, "codex": True}
+
+
+def test_an_invalid_agents_flag_stops_before_anything_is_asked(fake_home, fake_runner):
+    asked = []
+    with pytest.raises(ValueError):
+        _run(agents="nope", yes=False, interactive=True, ask=lambda q: asked.append(q) or "")
+    assert asked == [] and not paths.personal_root().exists()
