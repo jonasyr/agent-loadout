@@ -194,18 +194,22 @@ def _codex() -> list[CheckResult]:
 
 
 def _legacy_state() -> list[CheckResult]:
-    """Files the migration kept in ~/.claude because the new location already had them (ADR 0025)."""
-    from .migrate import SESSION_FILES, _ours
+    """What the move out of ~/.claude (ADR 0025) could not settle: old entries kept because both places have them,
+    or old entries not copied yet. Old copies waiting to be retired are normal and not listed."""
+    from . import migrate
     try:
-        left = [p for root in (paths.legacy_state_dir(), paths.legacy_backups_root()) if root.is_dir()
-                for p in sorted(root.iterdir()) if p.name not in SESSION_FILES and _ours(p)]
+        left = migrate.leftovers()
+        waiting = migrate.pending()
     except OSError as exc:
         return [CheckResult("loadout state", False, f"cannot read the old folder in ~/.claude ({exc})",
-                            "check its permissions, then move its entries by hand", "warn")]
+                            "check its permissions, then run loadout again", "warn")]
+    if waiting:
+        return [CheckResult("loadout state", False, "not everything was copied out of ~/.claude yet",
+                            "run any loadout command; if this stays, move the entry it names by hand", "warn")]
     if not left:
         return [CheckResult("loadout state", True)]
     names = ", ".join(str(p) for p in left[:5]) + (" …" if len(left) > 5 else "")
-    return [CheckResult("loadout state", False, f"left in ~/.claude: {names}",
+    return [CheckResult("loadout state", False, f"kept in ~/.claude because both places have it: {names}",
                         f"compare with {paths.state_dir()} and delete them by hand", "warn")]
 
 

@@ -64,7 +64,7 @@ You can then delete the clone: the folder `loadout kit-path` printed at the star
 - **The shell startup file** keeps the "# loadout secrets" block that bootstrap added. Delete it if you want.
 - **Your personal layer and `secrets.env`** under `~/.config/loadout/` are never touched. Delete them yourself if you want them gone.
 - **Backups** in `~/.local/state/loadout/backups/` stay unless you deleted the whole state folder above. They can hold old configs with secrets, so delete them when you no longer need them.
-- **Old state in `~/.claude`.** `~/.claude/.loadout`, and `loadout-<timestamp>` folders in `~/.claude/backups`, exist only if the one-time move kept something (the new place already had an entry of that name); `loadout check` names them. Delete those by hand if you do not need them. Leave the rest of `~/.claude/backups` alone: Claude Code keeps its own `.claude.json` copies there.
+- **Old state in `~/.claude`.** `~/.claude/.loadout`, and `loadout-<timestamp>` folders in `~/.claude/backups`, are old copies: they go by themselves about ten minutes after loadout copied them, unless both places changed, in which case `loadout check` names them. When you uninstall, delete them by hand. Leave the rest of `~/.claude/backups` alone: Claude Code keeps its own `.claude.json` copies there.
 - **Profiles applied to repos** stay: they are normal files in the repo's `.claude/settings.json` and `.mcp.json`, and with Codex on also `.codex/config.toml` and `.agents/skills`.
 
 ## If you recorded own tools as global

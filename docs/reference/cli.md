@@ -206,7 +206,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 |---|---|
 | The Python version that runs loadout (an `ok` line; loadout needs 3.11 or newer and stops before this on older versions) | — |
 | Inside WSL: the WSL version (an ok line), then one warning per problem from [WSL 2](../how-to/wsl.md) | warn |
-| `loadout state`: nothing of loadout's was left in `~/.claude/.loadout` or as a `loadout-<timestamp>` folder in `~/.claude/backups` by the one-time move (an entry stays there when the new place already had one of that name; compare and delete it by hand). Claude Code's own files in `~/.claude/backups` are not loadout's and are never counted | warn |
+| `loadout state`: everything of loadout's in `~/.claude/.loadout` and its `loadout-<timestamp>` folders in `~/.claude/backups` was copied to the new place, and no old entry was kept because both places have it (compare and delete it by hand). Old copies waiting to be retired, and Claude Code's own files in `~/.claude/backups`, are not counted | warn |
 | The links under `~/.claude` (rules, global skills, `hooks/personal`) | FAIL |
 | `settings.json` is valid JSON | FAIL |
 | A required binary is on `PATH` | FAIL |

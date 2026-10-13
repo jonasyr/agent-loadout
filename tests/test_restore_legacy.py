@@ -25,7 +25,8 @@ def _old_backup(fake_home):
     return root
 
 
-def test_old_backup_restores_into_the_new_state_dir(fake_home):
+def test_old_backup_restores_into_the_new_state_dir(fake_home, monkeypatch):
+    monkeypatch.setattr(migrate, "RETIRE_AFTER", 0.0)  # old copies retired in the same run
     old_root = _old_backup(fake_home)
     migrate.migrate_state()
     lines, ok, _ = backup.restore(paths.backups_root() / old_root.name)
@@ -82,3 +83,12 @@ def test_an_old_backup_not_yet_moved_says_so(fake_home):
     (root / "manifest.json").write_text('{"steps": []}')
     lines, ok, _ = backup.restore(root)
     assert not ok and any("has not moved" in line for line in lines)
+
+
+def test_an_old_backup_still_waiting_to_be_retired_restores_from_its_copy(fake_home):
+    old_root = _old_backup(fake_home)
+    migrate.migrate_state()  # copied; the old copy stays until it is retired
+    assert old_root.exists()
+    lines, ok, _ = backup.restore(old_root)
+    assert ok, lines
+    assert json.loads((paths.backups_root() / old_root.name / "manifest.json").read_text()).get("restored_at")

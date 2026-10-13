@@ -9,7 +9,7 @@ loadout kept its state (`~/.claude/.loadout`) and its undo backups (`~/.claude/b
 
 ## Decision
 - State lives in `$XDG_STATE_HOME/loadout` (absolute paths only), or `~/.local/state/loadout` when that is not set. Backups live in its `backups/` folder. The rule is the same on every OS.
-- At the start of every loadout run, a one-time migration moves the old folders, under a lock. Where the new place already holds an entry of the same name, the new one wins.
+- The old folders move in two steps, because older loadout processes and hooks cannot be stopped from writing them meanwhile: every loadout run copies what is new (under a lock, never overwriting), and a later run, at least ten minutes after the copy and with no older run busy, deletes each old copy that is still exactly what was copied. An old copy changed after its copy replaces an untouched new copy; when both changed, both stay and are named.
 - `loadout restore` maps old paths: backups taken before the move restore from the new place, and an old printed `~/.claude/backups/...` command still works.
 
 ## Alternatives considered
@@ -20,5 +20,6 @@ loadout kept its state (`~/.claude/.loadout`) and its undo backups (`~/.claude/b
 - A Codex-only machine has no `~/.claude`. An empty `~/.claude` is removed after the move, only when Claude Code is off.
 - A sync of `~/.config` never carries backups.
 - `~/.claude/backups` is shared with Claude Code (its `.claude.json` copies): only loadout's own `loadout-<timestamp>` folders with a manifest move; everything else stays where its owner keeps it.
-- An entry kept in `~/.claude` because of a name conflict is named by the migration and by `loadout check` (row `loadout state`) until you delete it by hand.
-- If the move does not finish, commands that change things stop with exit code 1 until the next run completes it.
+- An entry kept in `~/.claude` because both places have it is named by the migration and by `loadout check` (row `loadout state`) until you delete it by hand.
+- Until everything is copied, commands that change things stop with exit code 1; old copies wait about ten minutes (on a Codex-only machine, `~/.claude` disappears with them).
+- No step deletes an old entry that changed after it was copied, so neither an ownership record nor a backup can be lost to an older process writing at the same time.
