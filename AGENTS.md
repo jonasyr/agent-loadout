@@ -1,6 +1,6 @@
 # agent-loadout
 
-A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI that links rules, merges settings and manages per-project profiles. Personal preferences live in a separate personal repo, never here.
+A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the `loadout` CLI that links rules, merges settings, configures Codex and manages per-project profiles. Personal preferences live in a separate personal repo, never here.
 
 ## Commands
 
@@ -11,8 +11,8 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 ## Hard conventions
 
 - Python 3.11+, standard library only in `cli/loadout/`.
-- Tests use the `fake_home` and `fake_runner` fixtures. Never touch the real `~/.claude`, `~/.claude.json` or `~/.config/loadout`.
-- Agents never run real installers or mutating `claude` commands.
+- Tests use the `fake_home` and `fake_runner` fixtures. Never touch the real `~/.claude`, `~/.claude.json`, `~/.codex` or `~/.config/loadout`.
+- Agents never run real installers or mutating `claude` or `codex` commands.
 - Conventional Commits (`type(scope): subject`); no `Co-Authored-By` or other AI attribution.
 - One home per fact: edit `docs/`, link from here (see `docs/explanation/documentation-strategy.md`).
 
@@ -50,10 +50,11 @@ A shareable Claude Code setup: a plugin marketplace (kit) plus the `loadout` CLI
 Other kit parts:
 
 - `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`, `.mcp.json`)
+- `.claude/skills/diagrams`: repo-local skill for editing the docs diagrams (linked for Codex in `.agents/skills`)
 - `.github/`: CI workflows, issue forms and the PR template (see CONTRIBUTING.md)
 - `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
 
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0023), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0024), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).

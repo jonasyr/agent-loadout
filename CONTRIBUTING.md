@@ -27,7 +27,7 @@ The tests include static checks of the repo: JSON files parse, catalog entries a
 ## Test rules
 
 - **Standard library only.** The CLI and the hook scripts import nothing outside the standard library. Tests use pytest and nothing else.
-- **Never the real home.** Tests use the `fake_home` fixture (a temporary `HOME` and `USERPROFILE`, `LOADOUT_PERSONAL` unset) and the `fake_runner` fixture (records commands instead of running `claude`, `git`, `npm` and other tools). Both are in `tests/conftest.py`. A test must never read or write the real `~/.claude`, `~/.claude.json` or `~/.config/loadout`, and never run a real installer.
+- **Never the real home.** Tests use the `fake_home` fixture (a temporary `HOME` and `USERPROFILE`, `LOADOUT_PERSONAL` unset) and the `fake_runner` fixture (records commands instead of running `claude`, `git`, `npm` and other tools). Both are in `tests/conftest.py`. A test must never read or write the real `~/.claude`, `~/.claude.json`, `~/.codex` or `~/.config/loadout`, and never run a real installer.
 - **Both platforms.** CI runs the suite on Linux and Windows. Mark a test that only makes sense on one platform with a skip that names the reason.
 
 ## Skill evals
@@ -50,6 +50,8 @@ When you change behaviour, update the page in `docs/` that owns the fact, and li
 
 ## Diagrams
 
+Agents: use the `diagrams` skill (`.claude/skills/diagrams`).
+
 The diagrams in `docs/` are Mermaid sources in [`docs/diagrams/`](docs/diagrams/README.md), rendered to one light and one dark SVG each, so they show on every viewer (phone apps, editor previews, other forges) and fit both colour schemes. To change one:
 
 1. Edit `docs/diagrams/<name>.mmd`. Flowcharts take their colours from classes (`class nodeId kit`, `class SUBGRAPH kitGroup`, `class e4 emph` for an edge written `a e4@--> b`); the colours are in `palette.light.mmd` and `palette.dark.mmd`, the fonts and base colours in `theme.light.json` and `theme.dark.json`. A flowchart ends with the line `%% palette`.
@@ -69,7 +71,7 @@ Each SVG records a hash of its source, palette, theme, `render.sh` and the pinne
 
 ## The README demo
 
-`docs/assets/demo.gif` follows the README Quick start: an existing Claude Code setup, the one-liner, `loadout check`, `loadout init`, then real Claude Code running `/loadout:onboard`. It has two parts:
+`docs/assets/demo.gif` follows the README Quick start: an existing Claude Code setup (the demo shows Claude Code), the one-liner, `loadout check`, `loadout init`, then real Claude Code running `/loadout:onboard`. It has two parts:
 
 - **The terminal part** is recorded from [`demo/loadout.tape`](demo/loadout.tape) with [VHS](https://github.com/charmbracelet/vhs). `demo/render.sh` runs it in a container without network access (podman, or `DEMO_ENGINE=docker`), so nothing is installed on your machine. The recording runs the real `loadout` and the real `bootstrap.sh` in a new sandbox HOME that `demo/sandbox.sh` fills with fake data and stand-in binaries (`demo/bin/`: `claude`, `curl` and `uv` refuse to run outside the sandbox).
 - **The Claude Code part** (`demo/claude-clip.mp4`) is recorded by the maintainer with `demo/record-claude.sh`, because it needs a real Claude Code login. It works in a throwaway project in `/tmp` and uses a little plan usage. Watch the clip before committing it: it shows the recording machine's plugins and paths. It always uses the folder `/tmp/loadout-demo/my-app`, so Claude Code asks only once whether to trust it; that answer is stored in your real `~/.claude.json` (under `projects`), where you can remove it after recording. `render.sh` appends it when it exists.
@@ -84,7 +86,7 @@ Open an issue with one of the forms on the [New issue](https://github.com/jonasy
 
 | Form | Use it for | Asks for |
 |---|---|---|
-| Bug report | Something does not work as documented | What happened, steps, platform, `loadout --version` and `claude --version`, the output of `loadout check --verbose` |
+| Bug report | Something does not work as documented | What happened, steps, platform, `loadout --version`, `claude --version` and (when Codex is on) `codex --version`, the output of `loadout check --verbose` |
 | Feature request | An idea for the CLI, bootstrap or the plugin | The problem or use case; optionally a solution and alternatives |
 | Propose a tool for the catalog | Adding, replacing or dropping a tool | Kind, why, what it overlaps, license, install method, maintenance (what a [catalog](docs/how-to/add-to-catalog.md) decision needs) |
 | Docs problem | A wrong, missing or unclear page | The page and the problem |
