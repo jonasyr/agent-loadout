@@ -85,8 +85,9 @@ def _kit_settings() -> dict:
 
 
 def _own_settings() -> dict:
+    from . import targets
     from .adopt import prefill_settings
-    return prefill_settings()
+    return prefill_settings() if targets.claude_enabled() else {}  # Claude Code off: its file is not read
 
 
 def _key(dotted: str) -> tuple:
@@ -341,8 +342,11 @@ def _blockers(pref: dict, value: str) -> list[tuple[Path, str, str]]:
     target = pref["target"]["setting"]
     legacy = [r["key"] for r in pref.get("detect", {}).get("settings", []) if r["key"] != target]
     found = []
-    for path, data, keys in ((_settings_path(), load_json(_settings_path()), legacy),
-                             (_claude_settings_path(), _own_settings(), [target, *legacy])):
+    from . import targets
+    sources = [(_settings_path(), load_json(_settings_path()), legacy)]
+    if targets.claude_enabled():
+        sources.append((_claude_settings_path(), _own_settings(), [target, *legacy]))
+    for path, data, keys in sources:
         for dotted in dict.fromkeys(keys):
             top = _key(dotted)[0]
             if get_path(data, _key(dotted)) is MISSING:

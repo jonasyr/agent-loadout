@@ -69,7 +69,7 @@ def test_check_without_claude_has_no_claude_groups(fake_home, fake_runner, monke
     monkeypatch.setattr(codex, "checks", lambda: [])
     fake_runner.missing.add("claude")
     names = [r.name for r in check.run_checks()]
-    assert not any(n.startswith(("link ", "settings", "plugin", "duplicate", "own")) for n in names), names
+    assert not any(n.startswith(("link ", "settings", "plugin", "duplicate")) for n in names), names
     assert not any(n == "claude" for n in names)
 
 

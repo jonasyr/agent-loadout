@@ -633,6 +633,12 @@ def _regroup_machine_hook(v: Verdict, event: str, group: dict, bk) -> list[str]:
             f"removes it here too)"]
 
 
+def next_start_hint() -> str:
+    from . import targets
+    names = [n for n, on in (("Claude Code", targets.claude_enabled()), ("Codex", targets.codex_enabled())) if on]
+    return f"other machines install it at the next {' and '.join(names)} start"
+
+
 def record_global(v: Verdict, bk) -> Recorded:
     item = v.item
     try:
@@ -641,7 +647,7 @@ def record_global(v: Verdict, bk) -> Recorded:
                 ensure(data, "enabledPlugins")[item.name] = True
                 _add_market(data, item.name.split("@", 1)[1] if "@" in item.name else "")
             _edit_json(_personal_settings(), bk, f"personal settings.json before recording {item.name}", change)
-            return Recorded(True, [f"plugin {item.name}: recorded in {_personal_settings()} (other machines install it at the next Claude Code start)"])
+            return Recorded(True, [f"plugin {item.name}: recorded in {_personal_settings()} ({next_start_hint()})"])
         if item.kind == "marketplace":
             _edit_json(_personal_settings(), bk, f"personal settings.json before recording {item.name}",
                        lambda data: _add_market(data, item.name))

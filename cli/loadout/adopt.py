@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, inventory, out, own, paths, pkgmgr, runner, secrets, ui
+from . import catalog, inventory, out, own, paths, pkgmgr, runner, secrets, targets, ui
 from .backup import Backup
 from .inventory import Verdict
 from .jsonio import InvalidJSON, load_json, save_json
@@ -30,7 +30,11 @@ VERB = {"remove": "remove", "migrate": "remove", "scope-down": "disable globally
         "install": "install", "review": "remove", "own": "remove"}
 MIGRATED_MARKER = "<!-- Global instructions live in"
 Ask = Callable[[str], str]
-RESTART_NOTE = "Restart Claude Code (or run /reload-plugins) to load the changes."
+RESTART_NOTE = "Restart Claude Code (or run /reload-plugins) to load the changes."  # the Claude-only text
+
+
+def restart_note() -> str:
+    return targets.restart_hint()
 # calm view: plain-language heading, the question asked under it, and the summary verb after applying
 CALM = {
     "remove": ("Remove: superseded by something better", "Remove them?"),
@@ -538,7 +542,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         # --own is for scripts: an item that was skipped or failed must not look like success
         not_recorded = own_spec is not None and bool(not_done)
         if changed and not (embedded and calm):
-            print(RESTART_NOTE)
+            print(restart_note())
         done = {v.item.name for v in chosen if v.item.kind == "mcp"} | {v.item.name for v, c in acting if v.item.kind == "mcp"}
         remaining = [f for f in findings if f.fixable and f.server not in done]
         by_hand = [f for f in findings if not f.fixable]

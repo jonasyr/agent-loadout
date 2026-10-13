@@ -37,7 +37,7 @@ POLICY_NOTE = ("PowerShell's execution policy is Restricted, so profiles (and th
                "To allow them: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned")
 
 
-INTRO = "loadout sets up Claude Code with a reviewed kit of plugins, rules and tools."
+INTRO = "loadout sets up your coding agent with a reviewed kit of plugins, rules and tools."
 PROBLEM = out.PROBLEM
 
 

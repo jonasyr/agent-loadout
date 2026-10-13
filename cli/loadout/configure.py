@@ -348,7 +348,7 @@ def set_own(name: str, choice: str) -> int:
     for line in lines:
         print(redact(line))
     if changed:
-        print(adopt.RESTART_NOTE)
+        print(adopt.restart_note())
     for profile in profiles_changed:
         print(f"apply it in a repo: cd <repo> && loadout profile {profile}")
     if not bk.empty:
