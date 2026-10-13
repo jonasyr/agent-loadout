@@ -19,7 +19,7 @@ def reexec_with_uv(argv):
     if uv is None:
         return
     try:
-        out = subprocess.Popen([uv, "python", "find", "--no-config", "--no-project", ">=3.11"], cwd=os.sep,
+        out = subprocess.Popen([uv, "python", "find", "--system", "--no-config", "--no-project", ">=3.11"], cwd=os.sep,
                                stdout=subprocess.PIPE, stderr=open(os.devnull, "w")).communicate()[0]
     except OSError:
         return

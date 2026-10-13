@@ -85,3 +85,8 @@ def test_on_windows_the_newer_python_runs_as_a_child_and_its_exit_code_is_kept(t
     except SystemExit as exc:
         assert exc.code == 3
     assert calls and calls[0][0] == str(newer) and calls[0][-1] == "a b"
+
+
+def test_the_uv_lookup_ignores_an_active_virtualenv():
+    text = (KIT / "bin/loadout").read_text(encoding="utf-8")
+    assert '"python", "find", "--system", "--no-config", "--no-project"' in text  # like link.UV_FIND
