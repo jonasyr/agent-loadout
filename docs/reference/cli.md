@@ -2,7 +2,7 @@
 
 `loadout` is the command-line tool of the kit. Run `loadout --help` or `loadout <command> --help` for the built-in help. The flag tables below match that help.
 
-The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update`, `restore` and `kit-path`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They have no `--help` entry and are not meant to be run by hand.
+The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update`, `restore` and `kit-path`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They are not listed in `loadout --help` and are not meant to be run by hand.
 
 `loadout --version` prints the release and the kit's commit, for example `loadout 0.1.0 (54af5b7)`; the commit is left out when the kit is not a git clone. Bug reports ask for it.
 
@@ -17,6 +17,19 @@ Every command returns 0 on success. These apply to all commands:
 | 130 | You pressed Ctrl+C. loadout prints `interrupted; run the same command again to continue` and stops. A re-run picks up where it stopped. |
 
 Some commands return their own codes. They are listed per command and add to the table above.
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `HOME` (Windows: `USERPROFILE` when `HOME` is not set) | Every path loadout uses derives from it. |
+| `LOADOUT_PERSONAL` | The personal layer's folder, instead of `~/.config/loadout/personal`. See [personal-layer](personal-layer.md). |
+| `LOADOUT_ROOT` | The kit's folder, instead of the clone the `loadout` launcher lives in. `loadout kit-path` prints it. |
+| `CODEX_HOME` | Codex's folder, instead of `~/.codex`. |
+| `LOADOUT_NO_AUTO_PULL=1` | Turns off the daily pull and what follows it; see [The daily sync](../explanation/architecture.md#the-daily-sync). |
+| `NO_COLOR` (any value), `TERM=dumb` | No colour in the output. |
+| `LOADOUT_REPO_URL`, `LOADOUT_REF` | Read by the one-liner scripts `bootstrap.sh` and `bootstrap.ps1`, not by `loadout`: the repo and the branch or tag to clone (default: this repo's `main`). For forks and tests. |
+| `LOADOUT_PROPERTY_SEEDS`, `LOADOUT_PROPERTY_FIRST_SEED` | Tests only: how many seeds the hook-merge property test tries (default 2000), and the first one (default 0). |
 
 ## loadout bootstrap
 
@@ -35,11 +48,13 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [-
 | `--agents LIST` | `claude`, `codex` or `claude,codex`: the coding agents to set up, without asking. Stored in `<personal>/targets.json`; it wins over the personal layer's choice. |
 | `--verbose` | Print every detail of every step (links, commands, the full check list, the backup path). |
 
-By default bootstrap prints one status line per step (`✓`, `!` for a warning, `✗` for a failure), the adopt questions, and at the end the health-check count, `Undo any time: loadout restore --list` when it made a backup, and the next step. Problem lines (a failed install or plugin, a check that failed) are always printed in full. Without a terminal, colour is off; where the console cannot show `✓`, ASCII stands in.
+By default bootstrap prints one status line per step (`✓`, `!` for a warning, `✗` for a failure), the adopt questions, and at the end the health-check count, `Undo any time: loadout restore --list` when it made a backup, and the next step. Problem lines (a failed install or plugin, a check that failed) are always printed in full. Without a terminal, colour is off (also with `NO_COLOR` or `TERM=dumb`, see [Environment variables](#environment-variables)); where the console cannot show `✓`, ASCII stands in.
 
 Without a terminal and without `--yes`, bootstrap skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates a starter personal layer with default preferences if none exists, merges settings, applies personal MCP servers and sets up plugins.
 
 `--install` runs the catalog's install commands without a further prompt, including `curl … | sh` installers. See [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
+
+The one-liner scripts that clone the kit and then run bootstrap can clone a fork instead: see `LOADOUT_REPO_URL` and `LOADOUT_REF` under [Environment variables](#environment-variables).
 
 Exit codes:
 
@@ -51,6 +66,7 @@ Exit codes:
 ## loadout adopt
 
 Review an existing Claude Code setup and migrate it. It is a dry run unless `--apply` is given.
+It reads Claude Code's `~/.claude/plugins/installed_plugins.json` and `known_marketplaces.json` to see what is installed; loadout never writes them itself (`check`, bootstrap and `update` read `installed_plugins.json` too).
 With Codex on, it also lists the MCP servers and skills that only Codex has; their choices are `global`, `leave` and `remove` (see [Handle your own tools](../how-to/your-own-tools.md#tools-only-one-agent-has)).
 
 ```
@@ -104,7 +120,7 @@ loadout configure [--all] [--first-run] [show | prefs | own | set KIND NAME VALU
 | `--all` | With `own`: also list the tools you left on this machine. |
 | `--first-run` | Also ask the "about you" questions again. Keeps your `me.md` unless you agree to replace it. |
 
-`set plugin`, `set mcp`, `set pref-choice` and `set pref` afterwards merge the settings, set up plugins and apply your personal MCP servers. They list pending changes of a personal-layer git repo but never commit them. `set pref-choice` for the auto mode preference needs a terminal, because it shows a draft that you must confirm.
+`set plugin`, `set mcp`, `set pref-choice` and `set pref` afterwards apply the change: with Claude Code on they merge the settings, set up plugins and apply your personal MCP servers; with Codex on (and usable) the same choices are applied to Codex. They list pending changes of a personal-layer git repo but never commit them. `set pref-choice` for the auto mode preference needs a terminal, because it shows a draft that you must confirm.
 
 Examples:
 
@@ -122,14 +138,14 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | 0 | Done. |
-| 1 | `set own`: at least one named item was not recorded, or recorded but not active on this machine (see the `skipped:` or `failed:` line). `set pref-choice`: the answer is written but another setting or `me.md` line still contradicts it ("not effective"). Also: a missing argument, or a value that is not `on` or `off`. |
+| 1 | `set own`: at least one named item was not recorded, or recorded but not active on this machine (see the `skipped:` or `failed:` line). `set pref-choice`: the answer is written but another setting or `me.md` line still contradicts it ("not effective"). `set target codex on` when Codex is not found or too old: the choice is stored, and Codex is set up once that is fixed (`loadout bootstrap`). Also: a missing argument, a value that is not `on` or `off`, an unknown agent, turning the last agent off, an unknown MCP add-on, preference or option, and `set pref-choice` for the auto mode draft without a terminal. |
 | 2 | `set own` with bad input (unknown or duplicate name, bad choice, a name that needs `<kind>:` or `#n`). Nothing changed. |
 
 The preference ids and options are in [preferences-format](preferences-format.md). The files this command writes are in [personal-layer](personal-layer.md).
 
 ## loadout init
 
-Prepare the current project (what it writes per agent is in the table under [loadout profile](#loadout-profile)): `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries and profiles. It never overwrites an existing scaffold file. Profiles merge into the repo's `.claude/settings.json` and `.mcp.json` (the profile's value wins on the same key), without a backup.
+Prepare the current project (what it writes per agent is in the table under [loadout profile](#loadout-profile)): `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries and profiles. It never overwrites an existing scaffold file. How profiles merge into the repo's files, and why there is no backup, is in [Applying a profile](profile-format.md#what-applying-a-profile-does).
 
 ```
 loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
@@ -140,11 +156,11 @@ loadout init [--yes] [--no-install] [--dry-run] [PROFILE ...]
 | `PROFILE ...` | Profiles to apply. Default: suggest profiles from the project and ask. |
 | `--yes` | No questions: run `git init` if needed and apply the suggested profiles. |
 | `--no-install` | Do not install the profiles' plugins or run their commands. |
-| `--dry-run` | Change nothing. Print the profile's description, the skills it would copy, the plugins and commands it would run and the files and `.gitignore` entries `init` would create. It does not show the settings or `.mcp.json` diff. |
+| `--dry-run` | Change nothing. Print what would happen (see [Applying a profile](profile-format.md#what-applying-a-profile-does)) and the files and `.gitignore` entries `init` would create. |
 
 Without a terminal, no `PROFILE` and no `--yes`, no profile is applied. If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
 
-Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes) or when a repo file was skipped because it is, or lies behind, a symlink out of the repo.
+Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes), or when a profile was applied with problems (the run goes on and prints `profile NAME: applied with problems`). Problems are: a repo file skipped because it is, or lies behind, a symlink out of the repo; skills not copied; a plugin install or command that failed, a plugin id that is not `name@marketplace`, or a command that is not a list of words; with Codex on, a Codex step that failed or was skipped. `init` also returns 1 when it skipped `git init` because `.git` points out of the repo.
 
 ## loadout profile
 
@@ -171,7 +187,7 @@ What `init` and `profile` write in the repo, per agent:
 | Scaffold (`init` only) | `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries: the same for both agents. | |
 | Next step printed (`init`) | Start Claude Code here and run `/loadout:onboard`. | Start Codex here and ask it to use the `loadout:onboard` skill (printed when Claude Code is off). |
 
-Codex reads `.codex/config.toml` only in a trusted project; loadout prints the step and never trusts one for you. Details per field: [In Codex](profile-format.md#in-codex). The format of a profile is in [profile-format](profile-format.md). Exit codes: 0 on success; 1 for an unknown profile name or when a repo file was skipped because of a symlink out of the repo.
+Codex reads `.codex/config.toml` only in a trusted project; loadout prints the step and never trusts one for you. Details per field: [In Codex](profile-format.md#in-codex). The format of a profile is in [profile-format](profile-format.md). Exit codes: as for [init](#loadout-init): 0 on success; 1 for an unknown profile name or when the profile was applied with problems.
 
 ## loadout check
 
@@ -200,7 +216,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 | `gh auth status` | warn |
 | `secrets.env` exists and is readable only by you | warn |
 | The kit and personal git repos have no uncommitted changes | warn |
-| With Codex on (nothing is checked about Codex while it is off): `codex` found and new enough (`Codex`), the loadout plugin installed (`Codex plugin`), the block in `~/.codex/AGENTS.md` current and not shadowed by `AGENTS.override.md` (`Codex instructions`), loadout's entries in `config.toml` current (`Codex config`), enabled plugins without a Codex route (`Codex plugins`), loadout's hooks approved in `/hooks` (`Codex hooks`), MCP servers waiting for a login (`Codex logins`), MCP servers and skills present in only one agent (`Codex drift`) | warn, except `Codex plugin` and `Codex instructions`: FAIL |
+| With Codex on (nothing is checked about Codex while it is off): `codex` found and new enough (`Codex`), the loadout plugin installed (`Codex plugin`), the block in `~/.codex/AGENTS.md` current (`Codex instructions`; an `AGENTS.override.md` that shadows it adds a second `Codex instructions` line, a warning), loadout's entries in `config.toml` current (`Codex config`), enabled plugins without a Codex route (`Codex plugins`), loadout's hooks approved in `/hooks` (`Codex hooks`), MCP servers waiting for a login (`Codex logins`), MCP servers and skills present in only one agent (`Codex drift`) | warn, except `Codex plugin` and `Codex instructions`: FAIL |
 
 Exit codes: 0 when nothing failed (warnings do not count); 1 when at least one `FAIL` line was printed.
 
@@ -212,7 +228,7 @@ Merge the kit's and your personal settings into `~/.claude/settings.json`.
 loadout apply-settings
 ```
 
-Claude Code only: Codex has no settings file that loadout merges. It has no flags. It prints `settings updated` or `settings already up to date`. The merge rules are in [settings-merge](settings-merge.md). Exit codes: 0 on success; 1 if `settings.json` or the snapshot is not valid JSON (nothing is written).
+Claude Code only: Codex has no settings file that loadout merges. With Claude Code turned off in `targets.json`, it prints `Claude Code is turned off (loadout configure set target claude on); nothing to merge` and changes nothing. It has no flags. It prints `settings updated` or `settings already up to date`. The merge rules are in [settings-merge](settings-merge.md). Exit codes: 0 on success, and when Claude Code is off; 1 if `settings.json`, the snapshot, or the kit's or your personal `settings.json` is not valid JSON (nothing is written).
 
 ## loadout update
 
@@ -226,7 +242,7 @@ loadout update [--yes]
 |---|---|
 | `--yes` | Run every update command without asking. Each is still printed. |
 
-It first refreshes the plugin marketplaces (`claude plugin marketplace update`). Then, with Claude Code on, it runs `claude plugin update <id> --scope user` for each plugin that is enabled in the merged settings and installed with user scope, and with Codex on it upgrades the Codex marketplaces and adds each routed plugin again (`codex plugin add`). It names the plugins first and asks once before it touches them (`--yes` answers for you; without a terminal and without `--yes` they stay as they are). It prints one line per plugin that changed (`plugin <id>: updated`) or failed (`plugin <id>: failed: ...`; the others still run), and a closing line to run `/reload-plugins` or restart the agent when something changed. Plugins already at the latest version print nothing. The daily background sync does not run `claude plugin update`; Claude Code updates the marketplaces in `settings.base.json` by itself, and the sync refreshes the Codex plugins after it pulls a new kit (see [the daily sync](../explanation/architecture.md#the-daily-sync)). Then, for each outdated tool, it picks the package manager that installed it (`pkgmgr.update_plan`):
+With Claude Code on, it first refreshes the plugin marketplaces (`claude plugin marketplace update`). Then, with Claude Code on, it runs `claude plugin update <id> --scope user` for each plugin that is enabled in the merged settings and installed with user scope, and with Codex on it upgrades the Codex marketplaces and adds each routed plugin again (`codex plugin add`). It names the plugins first and asks once before it touches them (`--yes` answers for you; without a terminal and without `--yes` they stay as they are). It prints one line per plugin that changed (`plugin <id>: updated`) or failed (`plugin <id>: failed: ...`; the others still run), and a closing line to run `/reload-plugins` or restart the agent when something changed. Plugins already at the latest version print nothing. The daily background sync does not run `claude plugin update`; Claude Code updates the marketplaces in `settings.base.json` by itself, and the sync refreshes the Codex plugins after it pulls a new kit (see [the daily sync](../explanation/architecture.md#the-daily-sync)). Then, for each outdated tool, it picks the package manager that installed it (`pkgmgr.update_plan`):
 
 - `mise upgrade <tool>` when the binary lives under mise's `installs` directory, also behind a mise shim. The mise tool name is the catalog id, or `npm:<package>` for mise's npm backend; a catalog entry can override it with `"mise": "<name>"`. For these tools mise itself decides what is outdated (`mise outdated`), so its `minimum_release_age` and pins are respected.
 - `brew upgrade <formula>` when the binary resolves into Homebrew's `Cellar/<formula>/`. Casks and npm packages installed with Homebrew's node are not formulae and keep their own updater.

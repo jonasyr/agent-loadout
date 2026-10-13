@@ -54,7 +54,7 @@ From the `binary` entries in `catalog.json`. `loadout bootstrap --install` insta
 |---|---|---|---|
 | `claude`, `git`, `uv`, `node`, `gh` | required | Claude Code itself, repo sync, Serena's installer, npm-based servers, GitHub access. `claude` is checked and installed only while Claude Code is on. | [uv](https://github.com/astral-sh/uv), [gh](https://github.com/cli/cli) |
 | `codex` | required while Codex is on | OpenAI's Codex CLI, installed through mise (`mise use -g codex`). Entries with a `target` in `catalog.json` count only while that agent is chosen in `targets.json`. loadout needs codex 0.161 or newer. | [openai/codex](https://github.com/openai/codex) |
-| `mise` | helper | Installs Node.js, gh and rust-analyzer (`mise use -g`) when they are missing. Not installed otherwise, and `loadout check` does not report it. | [jdx/mise](https://github.com/jdx/mise) |
+| `mise` | helper | Installs Node.js, gh, rust-analyzer and codex (`mise use -g`) when they are missing. Not installed otherwise, and `loadout check` does not report it. | [jdx/mise](https://github.com/jdx/mise) |
 | `serena`, `codebase-memory-mcp` | required | The plugin's two MCP servers. | [oraios/serena](https://github.com/oraios/serena), [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) |
 | `playwright-cli` | required | Claude checks UIs in a real browser; snapshots stay on disk. Why not a browser MCP server: [ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md). | [microsoft/playwright-cli](https://github.com/microsoft/playwright-cli) |
 | `rtk` | recommended | Shrinks noisy command output to save tokens. | [rtk-ai/rtk](https://github.com/rtk-ai/rtk) |

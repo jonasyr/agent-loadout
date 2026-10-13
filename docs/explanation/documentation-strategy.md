@@ -33,7 +33,7 @@ The fix is old and boring: treat documentation like code. Write it in plain text
 
 <sub>[Source](../diagrams/documentation-layers.mmd)</sub>
 
-Which layer holds what, and the rule for each, is defined in one place: the kit's [docs policy](../../rules/docs-policy.md) (the layers) and [memory policy](../../rules/memory-policy.md) (where agents store what they learn). Both are loaded into every Claude Code session on a machine set up with loadout.
+Which layer holds what, and the rule for each, is defined in one place: the kit's [docs policy](../../rules/docs-policy.md) (the layers) and [memory policy](../../rules/memory-policy.md) (where agents store what they learn). Both are loaded into every Claude Code session on a machine set up with loadout, and, with Codex on, copied into the loadout block of `~/.codex/AGENTS.md` that every Codex session reads.
 
 Two details matter:
 
@@ -183,7 +183,7 @@ The copy had already drifted: the code says `MAX_TITLE_LEN = 120`.
 
 | Situation | Steps |
 |---|---|
-| New project | `loadout init`, then the onboard skill (`/loadout:onboard` in Claude Code, `$loadout:onboard` in Codex) |
+| New project | `loadout init`, then the onboard skill (`/loadout:onboard` in Claude Code, `$loadout:onboard` in Codex, or ask Codex to use the `loadout:onboard` skill) |
 | Existing repo | `loadout init` (never overwrites a scaffold file; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then the onboard skill |
 | Existing repo with messy docs | Then `/loadout:docs-audit` |
 | Every feature | `/loadout:docs-sync` before merging |

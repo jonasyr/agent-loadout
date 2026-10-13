@@ -25,7 +25,7 @@ WSL 1 has a regression where Claude Code's native binary fails with `Exec format
 
 Open the WSL terminal, not PowerShell. Run `cd ~`, then follow [Step 1 of the tutorial](../tutorials/getting-started.md#step-1-run-bootstrap) inside WSL.
 
-Keep the clone in the Linux home: the installed links point into it. Choose Claude Code, Codex or both when bootstrap asks. Then restart your agent (what to restart: [Use loadout with Codex](codex.md#switch-it-on)) and run `loadout check`.
+Keep the clone in the Linux home: the installed links point into it. Choose Claude Code, Codex or both when bootstrap asks. Then restart Claude Code and/or Codex, whichever you chose (in Codex, approve loadout's hooks once with `/hooks`, see [Use loadout with Codex](codex.md#switch-it-on)), and run `loadout check`.
 
 ## 3. Know which install loadout configures
 

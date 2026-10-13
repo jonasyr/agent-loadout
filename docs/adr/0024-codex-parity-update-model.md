@@ -9,6 +9,7 @@ Codex became a second target in [ADR 0022](0022-codex-as-a-second-target.md), bu
 
 ## Decision
 - **Plugins.** For Codex, loadout itself installs and refreshes plugins and their marketplaces, because Codex has no marketplace auto-update. It does so after a pull that brought commits (when Codex is on and usable) and on `loadout update`.
+- **Plugin updates in both agents.** `loadout update` is the one deliberate way to refresh plugins. With Claude Code on, it runs `claude plugin marketplace update`, then, after a yes (or with `--yes`), `claude plugin update <id> --scope user` for each plugin the kit enables that is installed at user scope. Claude Code's marketplace auto-update ([ADR 0002](0002-kit-is-a-plugin-marketplace.md)) still runs on its own; the command only takes an update now instead of waiting. With Codex on and usable, the same command refreshes the Codex plugins as above. An agent that is off is left alone.
 - **Secrets.** Secrets reach Codex as the names of environment variables (`env_vars` in `config.toml`), because Codex does not expand `${VAR}`. Values stay in `secrets.env`.
 - **Type errors.** Codex gets type errors from the plugin's type-check hook after each edit, because it has no LSP plugins.
 - **Bootstrap.** Bootstrap asks which agents to set up and installs and configures only the chosen ones.
@@ -22,3 +23,4 @@ Codex became a second target in [ADR 0022](0022-codex-as-a-second-target.md), bu
 - `loadout restore` removes the Codex plugins and marketplaces loadout installed.
 - A plugin whose marketplace is not on GitHub has no Codex route; loadout says so.
 - Type checks run once per edit, with a limit of 20 seconds per check.
+- Tool binaries keep their weekly notice ([ADR 0011](0011-tool-binaries-notice-and-deliberate-update.md)); `loadout update` now refreshes plugins in the same run, and says which ones changed.

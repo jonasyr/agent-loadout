@@ -16,7 +16,7 @@ Undo any time: loadout restore --list
 backup: ~/.claude/backups/loadout-20261010-093000  (undo: loadout restore ~/.claude/backups/loadout-20261010-093000)
 ```
 
-Backups can hold old configs and undo commands with secrets in them. On Linux and macOS the folder is private (0700); saved copies and the manifest are 0600, and moved items keep their own mode (`backup.PRIVATE_DIR`, `PRIVATE_FILE`). Delete old ones when you no longer need them.
+Backups can hold old configs and undo commands with secrets in them. On Linux and macOS the folder is private (0700); saved copies and the manifest are 0600, and moved items keep their own mode. Delete old ones when you no longer need them.
 
 ## List and restore
 
@@ -47,8 +47,8 @@ Whatever restore replaces goes into a new `pre-restore` backup, so a restore can
 - The "# loadout secrets" line that bootstrap appended to an existing shell startup file on Linux and macOS. A startup file that bootstrap created, and a Windows PowerShell profile (a copy is saved first), are covered.
 - Claude Code plugins and marketplaces that bootstrap or `configure` installed. They stay; uninstall them with `claude plugin uninstall ID`. (Restore does remove the Codex plugins and marketplaces loadout installed; see [Codex](#codex).)
 - What a profile writes into a repo with `loadout profile` or `loadout init`: `.claude/settings.json`, `.mcp.json` and, with Codex on, `.codex/config.toml` and the `.agents/skills` links. These are committed repo files; use git there. (The Codex plugins a profile installs, and the switch it sets in `~/.codex/config.toml`, are in a backup and restore removes them.)
-- The routine settings merge. `loadout configure`, `apply-settings` and the daily maintenance write `~/.claude/settings.json` and the managed-settings snapshot `~/.claude/.loadout/managed-settings.json` without a backup, and `apply_mcp` re-adds or removes your personal MCP servers without a backup. They change only what the kit manages (see [Settings merge](../reference/settings-merge.md)); bootstrap and adopt do save `settings.json` and the snapshot before their merge. Your personal layer's git history is the record of what you asked for.
-- The git credential helper that bootstrap sets with `gh auth setup-git` when `gh` is logged in. Bootstrap prints the undo command: `git config --global --unset-all credential.https://github.com.helper`.
+- The routine settings merge. `loadout configure`, `apply-settings` and the daily maintenance write `~/.claude/settings.json` and the managed-settings snapshot `~/.claude/.loadout/managed-settings.json` without a backup, and `configure` and the daily maintenance re-add or remove your personal MCP servers without a backup. They change only what the kit manages (see [Settings merge](../reference/settings-merge.md)); bootstrap and adopt do save `settings.json` and the snapshot before their merge. Your personal layer's git history is the record of what you asked for.
+- The git credential helper that bootstrap sets with `gh auth setup-git` when `gh` is logged in. Bootstrap prints the undo command; see also [Uninstall](uninstall.md#what-stays).
 
 ## Codex
 
@@ -62,7 +62,7 @@ Bootstrap and adopt save the snapshot in the backup, so restoring `settings.json
 
 | I want to | Do |
 |---|---|
-| Undo the last adopt | `loadout restore <path adopt printed>` |
+| Undo the last adopt | `loadout restore --list` (newest first), then `loadout restore <that path>` |
 | Bring back one tool I removed | Restore replays a whole backup; it cannot pick single items. Reinstall one tool with its own command if you do not want the rest back |
 | Undo a restore | `loadout restore <pre-restore backup path>` (it is printed, and listed by `--list`) |
 | See what a backup holds | Open `~/.claude/backups/loadout-<timestamp>/manifest.json`. Do not share it: it can contain secrets |

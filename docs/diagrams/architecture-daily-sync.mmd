@@ -9,7 +9,7 @@ sequenceDiagram
   end
   box rgba(22, 163, 74, 0.10) Your machine
     participant G as Kit and personal repos
-    participant C as ~/.claude
+    participant C as ~/.claude, ~/.claude.json
     participant X as ~/.codex
   end
 
@@ -22,7 +22,7 @@ sequenceDiagram
     Note over M: one run at a time
     opt daily, unless LOADOUT_NO_AUTO_PULL=1
       M->>G: git pull --ff-only
-      Note over G: skips a checkout with<br/>uncommitted changes
+      Note over G: skips a checkout with<br/>uncommitted or untracked files
       G-->>M: new commits, or none
       opt new commits arrived
         opt Claude Code on

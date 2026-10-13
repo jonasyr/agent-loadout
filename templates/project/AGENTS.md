@@ -1,6 +1,6 @@
 # {{PROJECT_NAME}}
 
-> Agent entry point. Keep it short: facts live in `docs/`; this file maps them. Run `/loadout:onboard` to fill it in.
+> Agent entry point. Keep it short: facts live in `docs/`; this file maps them. Run the `loadout:onboard` skill to fill it in (`/loadout:onboard` in Claude Code, `$loadout:onboard` in Codex).
 
 ## Purpose
 

@@ -4,7 +4,7 @@ loadout has three parts: the kit repo (shared), your personal layer (yours) and 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-overview.dark.svg">
-  <img alt="For Claude Code: Claude Code installs the kit's plugin and the kit's rules are linked into ~/.claude/rules/loadout. Your personal layer's rules, skills and hooks are linked into ~/.claude, and its mcp.json is added with claude mcp add-json. settings.base.json and your settings.json go through a three-way merge, which reads and rewrites a snapshot and writes ~/.claude/settings.json. For Codex: loadout installs and refreshes the same plugins, copies the kit's rules and your me.md into its block in ~/.codex/AGENTS.md, links your skills into ~/.agents/skills, and writes your MCP servers, effort and notifications as owned sections of ~/.codex/config.toml." src="../diagrams/architecture-overview.light.svg">
+  <img alt="For Claude Code: Claude Code installs the kit's plugin and the kit's rules are linked into ~/.claude/rules/loadout. Your personal layer's rules, skills and hooks are linked into ~/.claude, and its mcp.json is added with claude mcp add-json. settings.base.json and your settings.json go through a three-way merge, which reads and rewrites a snapshot and writes ~/.claude/settings.json. For Codex: loadout installs and refreshes the same plugins, copies the kit's rules and your personal rules (rules/*.md, such as me.md) into its block in ~/.codex/AGENTS.md, links your skills into ~/.agents/skills, and writes your MCP servers, the kit's Serena (and Context7) servers, effort and notifications as owned sections of ~/.codex/config.toml." src="../diagrams/architecture-overview.light.svg">
 </picture>
 
 <sub>[Source](../diagrams/architecture-overview.mmd)</sub>
@@ -28,11 +28,11 @@ loadout has three parts: the kit repo (shared), your personal layer (yours) and 
 |---|---|---|
 | Folder | `~/.claude` | `$CODEX_HOME`, else `~/.codex`; skills in `~/.agents/skills` |
 | Kit rules | `~/.claude/rules/loadout` is a link to `rules/` | a marked block in `AGENTS.md` (`<!-- loadout:start -->` ... `<!-- loadout:end -->`) |
-| Your `me.md` | linked as `~/.claude/rules/personal` | in the same block |
+| Your personal rules (`rules/*.md`, such as `me.md`) | the folder is linked as `~/.claude/rules/personal` | copied into the same block |
 | Your skills | linked into `~/.claude/skills` | linked into `~/.agents/skills` |
 | Your hooks | linked into `~/.claude/hooks/personal` | not linked |
-| Your MCP servers | `claude mcp add-json` (user scope) | owned `[mcp_servers.*]` sections in `config.toml`, secrets as `env_vars` names |
-| Settings | three-way merge into `settings.json` | effort and notifications as `model_reasoning_effort` and `tui.notifications` in `config.toml` |
+| Your MCP servers | `claude mcp add-json` (user scope) | owned `[mcp_servers.*]` sections in `config.toml`, secrets as `env_vars` names; loadout also owns a `serena` section, and a `context7` section when the Context7 plugin is on |
+| Settings | three-way merge into `settings.json` | effort and notifications as `model_reasoning_effort` and `tui.notifications` in `config.toml`; for plugins a project profile installed, a `plugins.<id>.enabled` switch that keeps them off at user level |
 | Plugins | the kit marketplace; Claude Code installs and updates them | loadout installs and refreshes the same plugins through the `codex` CLI |
 | Your own text | `~/.claude/CLAUDE.md` is not edited, unless you ask adopt to move its content into your personal layer | the rest of `AGENTS.md` is not edited; `AGENTS.override.md` would shadow the block (`loadout check` warns) |
 
@@ -55,21 +55,21 @@ At each session start the plugin runs `loadout hook-session-start`. It prints qu
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-daily-sync.dark.svg">
-  <img alt="When a session starts, hook-session-start returns queued notices at once and, when due, starts maintenance in the background without making the session wait. Maintenance runs one at a time: daily it runs git pull --ff-only on the kit and personal repos (skipping a checkout with uncommitted changes) and, after new commits, merges settings and relinks skills and hooks for Claude Code and refreshes plugins, config and skills for Codex (each only when that agent is on, Codex also only when it is usable); weekly it checks tool versions without installing anything. It queues notices for the next session." src="../diagrams/architecture-daily-sync.light.svg">
+  <img alt="When a session starts, hook-session-start returns queued notices at once and, when due, starts maintenance in the background without making the session wait. Maintenance runs one at a time: daily it runs git pull --ff-only on the kit and personal repos (skipping a checkout with uncommitted changes or untracked files) and, after new commits, merges settings and relinks skills and hooks for Claude Code and refreshes plugins, config and skills for Codex (each only when that agent is on, Codex also only when it is usable); weekly it checks tool versions without installing anything. It queues notices for the next session." src="../diagrams/architecture-daily-sync.light.svg">
 </picture>
 
 <sub>[Source](../diagrams/architecture-daily-sync.mmd)</sub>
 
-**Plugin updates.** In Claude Code the sync does not run `claude plugin update`. `settings.base.json` sets `"autoUpdate": true` on the marketplaces it declares, so Claude Code updates those plugins itself (after a random delay in a running session; then `/reload-plugins`). For Codex, loadout refreshes the plugins in the Codex step below, after a pull that brought commits. `loadout update` updates the enabled plugins at once, in Claude Code and Codex, after a yes.
+**Plugin updates.** In Claude Code the sync does not run `claude plugin update`. `settings.base.json` sets `"autoUpdate": true` on the marketplaces it declares, so Claude Code updates those plugins itself (after a random delay in a running session; then `/reload-plugins`). For Codex, loadout refreshes the plugins in the Codex step below, after a pull that brought commits. `loadout update` updates the enabled plugins at once, in Claude Code and Codex, after a yes. How both agents' plugins are updated is decided in [0024](../adr/0024-codex-parity-update-model.md).
 
 Details, from `maintenance._maintain`:
 
 - One maintenance run at a time: a lock file in the state folder, taken over only after an hour.
-- The pull is `git pull --ff-only` on the kit and on the personal layer (when each is a git checkout), at most once a day, with git's terminal and credential prompts turned off (`maintenance.pull_if_clean`). It is skipped for a checkout with uncommitted changes.
+- The pull is `git pull --ff-only` on the kit and on the personal layer (when each is a git checkout), at most once a day, with git's terminal and credential prompts turned off (`maintenance.pull_if_clean`). It is skipped for a checkout with uncommitted changes or untracked files.
 - With `LOADOUT_NO_AUTO_PULL=1` the pull and the re-apply are skipped; the weekly version check still runs.
 - Only when a pull brought new commits does the sync re-apply anything (`maintenance._maintain`). Errors become a notice for the next session instead of a crash.
   - **Claude Code** (when it is on): settings, personal MCP servers and links (skills, hook scripts, and copies in copy mode).
-  - **Codex** (when it is on and usable, meaning a supported `codex` is on `PATH`): `codex.apply_all(refresh=True)` refreshes the plugins, the `AGENTS.md` block, `config.toml` entries and skill links, then the drift check queues a notice for anything that no longer matches. Replaced or edited files go to a backup first.
+  - **Codex** (when it is on and usable, meaning a supported `codex` is on `PATH`): `codex.apply_all(refresh=True)` refreshes the plugins, the `AGENTS.md` block, `config.toml` entries and skill links, then the drift check (when both agents are on, since it compares them) queues a notice for anything that no longer matches. Replaced or edited files go to a backup first.
 - The next session runs the pulled `loadout` code and the plugin's hooks. Whoever can push to the kit or your personal layer reaches every machine that follows it; see [the trust boundary](security-and-trust.md#the-trust-boundary).
 - Plugins newly enabled through the personal layer are installed by Claude Code at its next start, not by this job ([0015](../adr/0015-claude-code-installs-synced-plugins.md)).
 - The weekly check compares installed and latest versions (through mise when it manages the tool, so its pins and release-age rules count). It queues "updates available, run `loadout update`". It never installs.
@@ -83,7 +83,7 @@ The main decisions, in short. Each has a decision record in [`docs/adr/`](../adr
 - **Three-way settings merge** ([0003](../adr/0003-three-way-settings-merge.md)). A plain overwrite would destroy your own settings. A plain merge cannot tell whether you or the kit changed a value. The snapshot makes both safe and lets you delete a kit hook without it coming back.
 - **Rules are linked as folders** ([0004](../adr/0004-rules-linked-as-directories.md)). Linking `rules/` leaves `~/.claude/CLAUDE.md` yours, and a pull updates the rules without touching a file you own.
 
-See the [decision records](../adr/README.md) for these and for the others: catalog ([0005](../adr/0005-catalog-as-source-of-tool-knowledge.md)), secrets ([0006](../adr/0006-secrets-in-secrets-env.md)), scoping ([0007](../adr/0007-tiered-scoping-with-profiles.md)), code intelligence ([0008](../adr/0008-code-intelligence-routed-by-rule.md)), design tooling ([0009](../adr/0009-design-tooling-frontend-design-and-impeccable.md)), documentation ([0010](../adr/0010-docs-as-single-source-of-truth.md)), binary updates ([0011](../adr/0011-tool-binaries-notice-and-deliberate-update.md)) and backups ([0012](../adr/0012-destructive-actions-dry-run-confirm-backup.md)).
+All decisions, including the ones not summarised here, are in the [ADR index](../adr/README.md).
 
 ## Other agents
 

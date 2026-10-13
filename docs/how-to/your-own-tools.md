@@ -106,7 +106,7 @@ How recorded hooks are merged into `settings.json` (identity, deleted hooks, hoo
 
 - Windows: Claude Code runs hook commands through Git Bash, so a hook's script path must use forward slashes (`C:/Users/me/x.sh`) or quotes for loadout to recognise and copy the script. An unquoted backslash path is recorded as is (Git Bash would misread it too). Script detection is tested on Linux (CI).
 - An MCP server is managed by loadout only if it is in `managed-mcp.json` or its config in `~/.claude.json` is identical to the personal one; otherwise loadout leaves your server alone. Recording through adopt seeds `managed-mcp.json`.
-- A profile is copied into a repo when applied. Later changes to the personal profile do not reach repos until you apply it again, and skill copies in a repo can drift from your personal layer.
+- A profile in a repo is a copy: see [Changes later](write-a-profile.md#changes-later).
 - A skill recorded as a pointer to a shared source is linked only on machines where that source exists.
 - If removing an item from this machine fails (a `failed:` line), it shows up under your own tools again next time. Fix the cause and choose again.
 - An older loadout stored a leave decision for a `~/.claude/.mcp.json` server under the plain server name, so it also hides a user-scope server of the same name. Deciding the `.mcp.json` server again replaces it, and the user-scope one is then asked about again.

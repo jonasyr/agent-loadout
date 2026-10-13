@@ -13,7 +13,7 @@ Answers go only into your [personal layer](personal-layer.md): as lines in a man
 | `id` | Used on the command line: `loadout configure set pref-choice <id> <option>`. |
 | `question` | The text of the prompt. |
 | `options` | List of `{value, label}`. `value` is what you type; matching is case-insensitive, and a number picks an option by position in the prompt. An option with `"free_text": true` takes text after a colon, for example `other:French`. |
-| `default` | The recommended option. A first run (bootstrap's starter layer, `configure --first-run`) starts unanswered questions at this value; without a terminal it takes them silently. |
+| `default` | The recommended option. When a new `me.md` is written (bootstrap's starter layer, or the "about you" questions of `configure`, also with `--first-run`), unanswered questions start at this value; without a terminal it takes them silently. |
 | `target` | Where the answer is written. See below. |
 | `detect` | How an existing answer is recognised. See below. Optional. |
 | `generator` | Special handling. The only value is `automode`. Optional. |
@@ -40,7 +40,7 @@ Existing answers are read so that re-running changes nothing you already decided
 | `me_md_report` | Rules like `me_md` that never set an answer. They only name a free-text line that also states one, so that loadout can tell you about it. |
 | `settings` | Rules `{key, value}` plus one of `equals`, `contains` or `present`. They recognise legacy settings keys, for example `includeCoAuthoredBy`. |
 
-Where an answer is looked for, in order: the managed block, free text in `me.md`, your personal `settings.json`, the kit defaults, then your existing `~/.claude/settings.json`.
+Where an answer is looked for: for a preference with a `setting` target, the settings come first, in order your personal `settings.json`, the kit defaults, then your existing `~/.claude/settings.json`; a value set there wins over `me.md`. Otherwise (and when no setting is set) the answer comes from the managed block, then free text in `me.md`.
 
 ## The managed block
 
@@ -70,7 +70,7 @@ If a setting or a `me.md` line still contradicts an answer after it was written,
 |---|---|---|---|---|
 | `answer_language` | Which language should Claude answer in? | `match`, `english`, `german`, `other:<text>` | `match` | `me.md` |
 | `commit_style` | Which commit message style? | `conventional`, `free` | `conventional` | `me.md` |
-| `ai_attribution` | Add AI attribution to commits and PRs? | `off`, `on` | `off` | `me.md` (for `off`) and the `attribution` setting |
+| `ai_attribution` | Add AI attribution (Co-Authored-By, PR footer) to commits and PRs? | `off`, `on` | `off` | `me.md` (for `off`) and the `attribution` setting |
 | `answer_style` | How should answers be? | `concise`, `detailed` | `concise` | `me.md` |
 | `destructive_actions` | Before deleting, overwriting or removing things? | `ask`, `backup` | `ask` | `me.md` |
 | `effort_level` | Default effort level? | `low`, `medium`, `high` | `medium` | `effortLevel` |

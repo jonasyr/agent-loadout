@@ -2,7 +2,7 @@
 
 Use this page to sync your preferences, own tools and profiles across machines. Your personal layer is the folder that holds everything that is yours rather than the kit's: `rules/me.md`, your `settings.json` overrides, your MCP servers, skills, hooks, profiles and the agent choice (`targets.json`). It lives in `~/.config/loadout/personal`; if you set `LOADOUT_PERSONAL`, use that folder in the commands below. Which file does what: [Personal layer](../reference/personal-layer.md).
 
-Bootstrap creates a starter layer when you press Enter at its first question. A starter stays on that machine until you make it a git repo. Make it **private**: it describes how you work and which tools you use. Your secrets are not in it; they live in `~/.config/loadout/secrets.env`.
+Bootstrap creates a starter layer when you press Enter at its personal-layer question (an empty URL). A starter stays on that machine until you make it a git repo. Make it **private**: it describes how you work and which tools you use. Your secrets are not in it; they live in `~/.config/loadout/secrets.env`.
 
 ## On your first machine
 
@@ -41,7 +41,7 @@ git push -u origin main
 
 ## On every further machine
 
-Bootstrap asks for your personal layer first. Paste your repo's URL there, and bootstrap clones it to `~/.config/loadout/personal` instead of creating a starter.
+Bootstrap asks which agents to set up, then for your personal layer. Paste your repo's URL there, and bootstrap clones it to `~/.config/loadout/personal` instead of creating a starter. If the cloned layer already holds an agent choice (`targets.json`), that choice wins over the answer you just gave, and bootstrap says so ("using your personal layer's agents: …").
 
 A private repo needs access:
 
@@ -55,7 +55,7 @@ A private repo needs access:
   loadout bootstrap
   ```
 
-Or clone it yourself before you run bootstrap; bootstrap then uses that folder and asks nothing:
+Or clone it yourself before you run bootstrap; bootstrap then uses that folder and does not ask for a URL:
 
 ```bash
 git clone git@github.com:YOU/loadout-personal.git ~/.config/loadout/personal

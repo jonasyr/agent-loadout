@@ -1,6 +1,6 @@
 # Personal layer
 
-The personal layer is your own folder of preferences. It is separate from the kit, so the kit can update without touching it. By default it is `~/.config/loadout/personal`. Set `LOADOUT_PERSONAL` to use another folder. The code is `cli/loadout/paths.py`, `link.py`, `settings_merge.py`, `personal_mcp.py` and `own.py`.
+The personal layer is your own folder of preferences. It is separate from the kit, so the kit can update without touching it. By default it is `~/.config/loadout/personal`. Set `LOADOUT_PERSONAL` to use another folder (all variables: [Environment variables](cli.md#environment-variables)). The code is `cli/loadout/paths.py`, `link.py`, `settings_merge.py`, `personal_mcp.py` and `own.py`.
 
 `loadout bootstrap` clones it from a git URL you give, or creates a starter layer: `settings.json` containing `{}`, plus a `rules/me.md` written from the "about you" questions and the working preferences. Make the folder a private git repo to sync it across machines: [Keep your personal layer in a private git repo](../how-to/personal-repo.md).
 
@@ -13,6 +13,7 @@ The personal layer is your own folder of preferences. It is separate from the ki
 ├── mcp.json
 ├── skills/<name>/
 ├── skills.json
+├── targets.json
 ├── hooks/
 └── profiles/
     ├── NAME.json
@@ -64,8 +65,12 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 | `codex-config.json` | `{"tables": {...}, "keys": {...}, "project_plugins": [...]}`: the exact text loadout wrote into `~/.codex/config.toml`, and the plugins a profile installed for single repos (their user-level `enabled` switch is kept off unless your personal layer enables them). loadout changes only entries that still match it, apart from those switches. |
 | `managed-mcp.json` | `{"mcpServers": {...}}`: the personal MCP servers loadout added successfully. A same-named server that is not in this file and differs from the personal one is left alone. |
 | `own-decisions.json` | Your `leave` decisions for own tools. Hooks are keyed by a hash of the command, so a command line is never stored. |
+| `codex-hooks.json` | `{"digest": ..., "hashes": {...}}`: a hash of loadout's Codex hooks file and Codex's approvals, as last seen approved. It lets `loadout check` tell hooks that changed since you approved them in `/hooks` from hooks never approved. |
+| `manual-commands.txt` | Private (readable only by you), and may hold secret values. The exact `claude mcp` commands loadout could not run itself, because a Windows `claude.cmd` shim cannot take JSON arguments; you run them by hand (see [Troubleshooting](../how-to/troubleshooting.md)). Some runs (adopt, restore, a personal MCP server change) write the same file into their backup folder instead. |
 | `copy-mode` | Marker for copy instead of link mode. |
 | `last-pull`, `last-update-check`, `pending-notice`, `refused-updates.json`, the maintenance lock | Bookkeeping of the daily and weekly maintenance. |
+| `codex.lock` | Lets one Codex setup run at a time (bootstrap, configure, the daily sync). A lock older than an hour counts as left over from a crash. |
+| `reload-notified.json` | The sessions already told to run `/reload-plugins`. See [hooks](hooks.md#hooks-of-the-loadout-plugin). |
 | `advisor-pending.json`, `advisor-done.json` | State of the execution-advisor hook. See [hooks](hooks.md). |
 
 `~/.config/loadout/secrets.env` holds secrets in the form `NAME='value'`. It lives next to, not inside, the personal layer and is never committed. Backups and this state folder are described in [loadout's own files](../explanation/architecture.md#loadouts-own-files).

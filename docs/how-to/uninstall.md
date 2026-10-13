@@ -2,7 +2,34 @@
 
 Use this page to remove loadout from a machine. To undo a single change instead, see [Undo what loadout changed](undo-and-restore.md).
 
-If you recorded own tools as global, do the last section first. If Codex is on, do the [Codex section](#codex) before you delete `~/.claude/.loadout`: it needs a file from there. Steps that use the `claude` command or `~/.claude/settings.json` do not apply if you only use Codex.
+If you recorded own tools as global, do the last section first. Then work through the page from top to bottom: the [Codex section](#codex) comes before [Remove the kit](#remove-the-kit) because it needs a file in `~/.claude/.loadout`, which that section deletes. Steps that use the `claude` command or `~/.claude/settings.json` do not apply if you only use Codex.
+
+First note where the kit's clone is, since you delete it at the end:
+
+```bash
+loadout kit-path
+```
+
+This stops working once the launcher is removed. If it is already gone: bootstrap's one-liner cloned into `agent-loadout` inside the folder you ran it from (or the folder you gave with `--dir`); when you ran `bootstrap.sh` from a clone, that clone is the kit.
+
+## Codex
+
+Only if Codex was on. `$CODEX_HOME` replaces `~/.codex` below if you set it. Turning Codex off (`loadout configure set target codex off`) removes nothing.
+
+1. In `~/.codex/AGENTS.md`, delete the block from `<!-- loadout:start -->` to `<!-- loadout:end -->`. If loadout created the file, it holds only that block. Your own text stays.
+2. In `~/.codex/config.toml`, remove the `[mcp_servers.NAME]` sections loadout wrote: `serena`, `context7`, and the sections for your personal `mcp.json` servers unless you want to keep them in Codex (as in Claude Code, see [What stays](#what-stays)). The list of names is the `tables` entry in `~/.claude/.loadout/codex-config.json`; the same file's `keys` entry lists the lines loadout added (`model_reasoning_effort`, `tui.notifications` and, for plugins installed for a single repo, `plugins."NAME@MARKET".enabled`). A section you changed yourself is not in the list. Also remove the `[plugins."NAME@MARKET"]` sections of plugins that loadout installed for a single repo (`enabled = false` there), if you have any.
+3. Remove the links in `~/.agents/skills` that point into your personal layer's `skills/`, at `~/.claude/skills`, or at the paths in your personal `skills.json`. To keep your own skills, copy them first, as for Claude Code ([If you recorded own tools as global](#if-you-recorded-own-tools-as-global)). Skills you put there yourself stay.
+4. Remove the plugins and marketplaces loadout added. `codex plugin list` shows their ids:
+
+   ```bash
+   codex plugin remove loadout@agent-loadout
+   codex plugin marketplace remove agent-loadout
+   ```
+
+   Plugins you enabled for Claude Code were installed in Codex from their marketplaces too. Remove each the same way if you want: `codex plugin remove NAME@MARKET`, then `codex plugin marketplace remove MARKET`.
+5. In each repo where you ran `loadout init` or `loadout profile`: remove the sections loadout added to `.codex/config.toml` and the links in `.agents/skills` that point to `../../.claude/skills/NAME`. Use git there.
+
+Then continue with [Remove the kit](#remove-the-kit), which deletes `~/.claude/.loadout`. If you restore from a backup instead, `loadout restore` removes the plugins and marketplaces it recorded and puts back the saved `AGENTS.md` and `config.toml` ([Undo](undo-and-restore.md#codex)).
 
 ## Remove the kit
 
@@ -22,26 +49,7 @@ Remove the block between `# loadout PATH` and `# loadout PATH end` from `~/.bash
 
 On Windows, delete `loadout` and `loadout.cmd` in `%USERPROFILE%\.local\bin`, remove the folders bootstrap added from your user PATH (Settings, Environment Variables), and delete the folders `%USERPROFILE%\.claude\rules\loadout`, `%USERPROFILE%\.claude\rules\personal` and `%USERPROFILE%\.claude\.loadout`. If loadout copied instead of linking (see [Links and copies](../reference/personal-layer.md#links-and-copies)), these are folders, not links.
 
-You can then delete the clone (`agent-loadout` in the folder you ran bootstrap from, usually your home).
-
-## Codex
-
-Only if Codex was on. `$CODEX_HOME` replaces `~/.codex` below if you set it. Turning Codex off (`loadout configure set target codex off`) removes nothing.
-
-1. In `~/.codex/AGENTS.md`, delete the block from `<!-- loadout:start -->` to `<!-- loadout:end -->`. If loadout created the file, it holds only that block. Your own text stays.
-2. In `~/.codex/config.toml`, remove the `[mcp_servers.NAME]` sections loadout wrote: `serena`, `context7`, and the sections for your personal `mcp.json` servers unless you want to keep them in Codex (as in Claude Code, see [What stays](#what-stays)). The list of names is the `tables` entry in `~/.claude/.loadout/codex-config.json`; the same file's `keys` entry lists the lines loadout added (`model_reasoning_effort`, `tui.notifications`). A section you changed yourself is not in the list. Also remove the `[plugins."NAME@MARKET"]` sections of plugins that loadout installed for a single repo (`enabled = false` there), if you have any.
-3. Remove the links in `~/.agents/skills` that point into your personal layer's `skills/`, at `~/.claude/skills`, or at the paths in your personal `skills.json`. To keep your own skills, copy them first, as for Claude Code ([If you recorded own tools as global](#if-you-recorded-own-tools-as-global)). Skills you put there yourself stay.
-4. Remove the plugins and marketplaces loadout added. `codex plugin list` shows their ids:
-
-   ```bash
-   codex plugin remove loadout@agent-loadout
-   codex plugin marketplace remove agent-loadout
-   ```
-
-   Plugins you enabled for Claude Code were installed in Codex from their marketplaces too. Remove each the same way if you want: `codex plugin remove NAME@MARKET`, then `codex plugin marketplace remove MARKET`.
-5. In each repo where you ran `loadout init` or `loadout profile`: remove the sections loadout added to `.codex/config.toml` and the links in `.agents/skills` that point to `../../.claude/skills/NAME`. Use git there.
-
-Then delete `~/.claude/.loadout` as in [Remove the kit](#remove-the-kit). If you restore from a backup instead, `loadout restore` removes the plugins and marketplaces it recorded and puts back the saved `AGENTS.md` and `config.toml` ([Undo](undo-and-restore.md#codex)).
+You can then delete the clone: the folder `loadout kit-path` printed at the start.
 
 ## What stays
 

@@ -6,7 +6,7 @@ A profile is one JSON file `NAME.json`. Kit profiles live in `profiles/` in the 
 
 ## Fields
 
-Only `description` is required. Missing fields are empty. The table says what each field does in Claude Code; what it does in Codex is in [In Codex](#in-codex).
+Every field is optional; a missing field is empty. Kit profiles must have a `description` (a test checks it). The table says what each field does in Claude Code; what it does in Codex is in [In Codex](#in-codex).
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -43,11 +43,14 @@ In this order:
 1. `settings` is merged into `<repo>/.claude/settings.json`, and `mcp` into `<repo>/.mcp.json`. Dicts merge recursively, lists are joined without duplicates, and for any other value the profile wins. A file is written only when the result differs. A profile with an empty `settings` or `mcp` does not touch that file.
 2. `skills` are copied. See below.
 3. `install` and `commands` run, unless `--no-install` was given. A failing command prints `failed: ...` and the rest continues.
-4. `notes` is printed.
+4. With Codex on, the Codex side is set up (see [In Codex](#in-codex)).
+5. `notes` is printed.
 
-The repo's `.claude/settings.json` and `.mcp.json` are normal project files that you commit. `loadout restore` does not undo them.
+The repo's `.claude/settings.json` and `.mcp.json` are normal project files that you commit. loadout makes no backup of them, and `loadout restore` does not undo them.
 
-`loadout init --dry-run` prints the profile's description, the skills it would copy, the plugins and commands it would run and the files `init` would create, and changes nothing. It does not show the settings diff.
+`loadout init --dry-run` prints the profile's description, the skills it would copy, the plugins and commands it would run and the files `init` would create, and changes nothing. It does not show the settings or `.mcp.json` diff.
+
+When a step has a problem, the rest still runs, and the command ends with `profile NAME: applied with problems` and exit code 1 (the causes are listed under [loadout init](cli.md#loadout-init)).
 
 ### Skills
 
