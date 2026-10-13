@@ -155,7 +155,10 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
             else:
                 bk.record_created(record, "codex-config.json")
             codex.add_project_plugin(pid)
-    return lines + codex.apply_config(bk)
+    lines += codex.apply_config(bk)
+    if not bk.empty:
+        lines.append(f"backup: {bk.root} (undo: loadout restore {bk.root})")
+    return lines
 
 
 def _trusted(project: Path) -> bool:

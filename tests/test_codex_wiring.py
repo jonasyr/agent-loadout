@@ -72,3 +72,28 @@ def test_sync_reapplies_codex_after_a_pull(fake_home, fake_runner, monkeypatch):
     maintenance._maintain(0)
     notice = (paths.state_dir() / "pending-notice").read_text(encoding="utf-8")
     assert seen == [True] and "skipped mcp x" in notice and 'skill "y" only in Codex' in notice
+
+
+def test_sync_names_the_codex_backup_folder_when_it_made_one(fake_home, fake_runner, monkeypatch):
+    codex.set_enabled(True)
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    victim = fake_home / "victim.txt"
+    victim.write_text("x")
+    folders = []
+
+    def fake_apply(bk, refresh=False, **kw):
+        bk.save_copy(victim, "victim")
+        folders.append(bk.root)
+        return []
+    monkeypatch.setattr(codex, "apply_all", fake_apply)
+    monkeypatch.setattr(codex, "drift", lambda: [])
+    monkeypatch.setattr(maintenance, "pull_if_clean", lambda root: True)
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
+    from loadout import link, personal_mcp, settings_merge
+    monkeypatch.setattr(settings_merge, "apply_settings", lambda: (None, None))
+    monkeypatch.setattr(personal_mcp, "apply_mcp", lambda: [])
+    monkeypatch.setattr(link, "link_all", lambda bk, retry_symlinks=False: [])
+    (paths.personal_root() / ".git").mkdir(parents=True)
+    maintenance._maintain(0)
+    notice = (paths.state_dir() / "pending-notice").read_text(encoding="utf-8")
+    assert str(folders[0]) in notice

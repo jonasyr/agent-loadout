@@ -253,6 +253,9 @@ def _maintain(now: float) -> None:
                     for line in codex.apply_all(bk, refresh=True):
                         if codex_notice(line):
                             notify(f"loadout (Codex): {line}")
+                    if not bk.empty:
+                        notify(f"loadout (Codex): refreshed; replaced or edited files are in {bk.root} "
+                               f"(undo: loadout restore {bk.root})")
                     for line in codex.drift():
                         notify(f"loadout: {line}")
             except Exception as exc:  # never crash in the background; surface next session

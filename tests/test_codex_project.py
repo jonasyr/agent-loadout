@@ -332,3 +332,24 @@ def test_a_repo_switch_that_is_off_is_reported_as_a_problem(repo):
     cfg.write_text('[plugins."deepeval@claude-plugins-official"]\nenabled = false\n')
     lines = codex_project.config(THESIS, repo, dry_run=False)
     assert any("deepeval" in l and "switched off" in l for l in lines)
+
+
+def test_profile_plugins_name_the_backup_folder(repo, fake_runner, monkeypatch):
+    import json
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(0, json.dumps({"installed": []}), "")
+    fake_runner.responses[("codex", "plugin", "marketplace", "add", codex.OFFICIAL)] = runner.Result(
+        0, json.dumps({"marketplaceName": "claude-plugins-official", "alreadyAdded": True}), "")
+    seen = []
+    from loadout import backup as backup_mod
+    real = backup_mod.Backup
+
+    class Spy(real):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            seen.append(self)
+    monkeypatch.setattr(backup_mod, "Backup", Spy)
+    lines = codex_project.plugins(THESIS, dry_run=False)
+    assert not seen[0].empty
+    assert any(str(seen[0].root) in line for line in lines)
