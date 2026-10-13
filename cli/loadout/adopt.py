@@ -257,6 +257,10 @@ def _manual(bk: Backup, title: str, cmds: list[list[str]], undo: list[list[str]]
 
 
 def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> str:
+    from . import codex, own
+    if own.is_codex(v.item):
+        line = codex.remove_server(v.item.name, bk)
+        return NotDone(line) if ": failed:" in line else line
     if v.item.location == "~/.claude/.mcp.json":
         path = paths.claude_home() / ".mcp.json"
         if str(path) in moved or not path.exists():
@@ -305,7 +309,7 @@ def _apply_marketplace(v: Verdict, bk: Backup) -> str:
 
 
 def _apply_skill(v: Verdict, bk: Backup) -> str:
-    # only the ~/.claude/skills entry: a shared ~/.agents/skills source also serves Codex and other agents
+    # only the listed entry (~/.claude/skills/NAME, or ~/.agents/skills/NAME for a Codex-only skill)
     bk.move(Path(v.item.location), f"skill {v.item.name}")
     return f"skill {v.item.name} moved to backup"
 
@@ -474,7 +478,8 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     if interactive is None:
         interactive = ui.is_interactive()
     verdicts = inventory.classify(inventory.collect(with_versions=with_versions))
-    findings = secrets.scan_all()
+    from . import targets
+    findings = secrets.scan_all() if targets.claude_enabled() else []  # it scans Claude Code's files
     try:
         own_pairs = own.resolve(own.parse_spec(own_spec), verdicts) if own_spec is not None else None
     except ValueError as exc:
@@ -586,8 +591,8 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
                 print(f"  {repo.resolve()}: not a folder, skipped")
                 continue
             try:
-                project.add_profile(repo, name)
-                print(f"  {repo.resolve()}: profile {name} applied")
+                ok = project.add_profile(repo, name) == 0
+                print(f"  {repo.resolve()}: profile {name} " + ("applied" if ok else "applied with problems (see above)"))
             except (OSError, InvalidJSON, ValueError) as exc:
                 print(redact(f"  {repo.resolve()}: failed: {exc}"))
 
@@ -691,7 +696,8 @@ def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = la
             out += step()
         except (OSError, InvalidJSON) as exc:
             fail(v, exc)
-    if personal_changed:
+    from . import targets
+    if personal_changed and targets.claude_enabled():  # Codex-only: its own steps already applied the change
         try:
             out += link.link_all(bk)
             settings_path = paths.claude_home() / "settings.json"

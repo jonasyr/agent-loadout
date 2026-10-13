@@ -45,6 +45,14 @@ def label(item: Item) -> str:
     return f"{item.kind} {display_name(item)}"
 
 
+def is_codex(item: Item) -> bool:
+    """An item found in Codex's config (~/.codex/config.toml or ~/.agents/skills), not in Claude Code's."""
+    from . import codex
+    if item.kind == "mcp":
+        return item.location == codex.CONFIG_LOCATION
+    return item.kind == "skill" and bool(item.location) and Path(item.location).parent == paths.agents_skills()
+
+
 def decision_key(item: Item) -> str:
     """Hooks are keyed by a hash of their command, so the decisions file never holds a command line."""
     if item.kind == "hook":
@@ -52,6 +60,8 @@ def decision_key(item: Item) -> str:
         return f"hook:{item.name}:{digest}"
     if item.kind == "mcp" and item.location == "~/.claude/.mcp.json":
         return f"mcp:.mcp.json:{item.name}"  # same name as a user-scope server is a different item
+    if is_codex(item):
+        return f"{item.kind}:codex:{item.name}"
     return f"{item.kind}:{item.name}"
 
 
@@ -130,7 +140,8 @@ def personal_index() -> dict[str, dict]:
     settings = load_json(root / "settings.json")
     index = {k: {} for k in KINDS}
     index["_profile"] = {k: {} for k in KINDS}
-    enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins")
+    from . import targets
+    enabled = load_json(paths.claude_home() / "settings.json").get("enabledPlugins") if targets.claude_enabled() else {}
     index["_disabled"] = {pid for pid, on in (enabled if isinstance(enabled, dict) else {}).items() if on is False}
     for pid, on in (settings.get("enabledPlugins") or {}).items():
         if on:
@@ -655,10 +666,22 @@ def record_global(v: Verdict, bk) -> Recorded:
 
 def _global_mcp(v: Verdict, bk) -> Recorded:
     name, original = v.item.name, v.item.extra.get("config", {})
-    if v.item.location != "~/.claude.json":
+    if is_codex(v.item):
+        if original is None:
+            raise Collision(v.item.extra.get("problem") or f"mcp {name}: cannot be recorded")
+    elif v.item.location != "~/.claude.json":
         raise Collision(f"mcp {name}: only user-scope servers in ~/.claude.json can be recorded")
     new, lines = _secret_free(name, original)
     _refuse_if_secret(f"mcp {name}", json.dumps(new))
+    if is_codex(v.item):  # loadout must be able to write it back to Codex before the user's section goes
+        from . import codex
+        if codex._tomllib() is None:
+            raise Collision(f"mcp {name}: handing it to loadout needs Python 3.11 or newer (to write config.toml); "
+                            "leave it for now")
+        try:
+            codex.server(name, new)
+        except codex.Refused as exc:
+            raise Collision(f"{exc} (record it by hand, or leave it)") from None
     path = paths.personal_root() / "mcp.json"
 
     def change(data):
@@ -681,7 +704,25 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
                    lambda d: d.setdefault("mcpServers", {}).__setitem__(name, new))
         return out
 
-    return Recorded(True, [f"mcp {name}: recorded in {path}" + (" (secrets in secrets.env)" if lines else "")], machine)
+    def codex_machine() -> list[str]:
+        from . import codex, targets
+        if name not in codex.desired_tables()[0]:
+            return [f"mcp {name}: left in Codex as is (loadout cannot write it from the personal layer)"]
+        record = codex.record_path()  # restore must also give the section back to the user
+        if record.exists():
+            bk.save_copy(record, "codex-config.json before recording a Codex server")
+        else:
+            bk.record_created(record, "codex-config.json")
+        out = [codex.remove_server(name, bk)]  # loadout writes its own table from the personal layer next
+        if ": failed:" in out[0]:  # adopt counts it as not done; the section stays the user's until removed
+            raise OSError(f"{out[0]}; run `codex mcp remove {name}`, then `loadout bootstrap` (it re-applies the setup)")
+        out += codex.apply_config(bk)
+        if targets.claude_enabled():
+            out += personal_mcp.apply_mcp()
+        return out
+
+    return Recorded(True, [f"mcp {name}: recorded in {path}" + (" (secrets in secrets.env)" if lines else "")],
+                    codex_machine if is_codex(v.item) else machine)
 
 
 def _plain_link_target(target: str) -> str:
@@ -706,14 +747,21 @@ def _global_skill(v: Verdict, bk) -> Recorded:
     _copy_tree(src, dest, bk, f"skill {name} copied into the personal layer")
 
     def machine() -> list[str]:
+        from . import codex, targets
+        where = "~/.agents/skills" if is_codex(v.item) else "~/.claude/skills"
         bk.move(src, f"skill {name} (replaced by a link to your personal layer)", replace=True)
-        return [f"skill {name}: moved to {dest}; ~/.claude/skills/{name} links to it"]
+        out = [f"skill {name}: moved to {dest}; {where}/{name} links to it"]
+        if targets.codex_enabled():
+            out += codex.apply_skills(bk)  # adopt runs link.link_all for Claude Code after the machine steps
+        return out
 
     return Recorded(True, [f"skill {name}: recorded in {dest}"], machine)
 
 
 def options(item: Item) -> list[str]:
     """Choices that apply to this item, in prompt order."""
+    if is_codex(item):
+        return ["global", "leave", "remove"]
     if item.kind == "mcp" and item.location != "~/.claude.json":
         return ["leave", "remove"]
     if item.kind == "marketplace" or (item.kind == "skill" and Path(item.location).is_symlink()):

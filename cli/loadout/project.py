@@ -9,20 +9,26 @@ from . import detect, profiles, runner, scaffold, ui
 Ask = Callable[[str], str]
 
 
-def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> None:
-    for plugin_id in profile.install:
+def _install(profile: profiles.Profile, project: Path, dry_run: bool) -> bool:
+    """Returns whether every command succeeded."""
+    ok = True
+    from . import targets
+    for plugin_id in (profile.install if targets.claude_enabled() else []):  # Codex: codex_project.plugins
         cmd = ["claude", "plugin", "install", plugin_id, "--scope", "project"]
         print(("would run: " if dry_run else "running: ") + " ".join(cmd))
         if not dry_run:
             res = runner.run(cmd, cwd=str(project))
             if not res.ok:
+                ok = False
                 print(f"  failed: {res.stderr.strip()}")
     for cmd in profile.commands:
         print(("would run: " if dry_run else "running: ") + " ".join(cmd))
         if not dry_run:
             res = runner.run(cmd, cwd=str(project))
             if not res.ok:
+                ok = False
                 print(f"  failed: {res.stderr.strip()}")
+    return ok
 
 
 def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False) -> int:
@@ -34,11 +40,19 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             print(f"updated {path}")
     for line in profiles.copy_skills(prof, project, dry_run=dry_run):
         print(line)
-    if install:
-        _install(prof, project, dry_run)
+    ok = _install(prof, project, dry_run) if install else True
+    from . import codex_project, targets
+    if targets.codex_enabled():
+        for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
+            print(line)
+            if line.startswith("skipped") or any(s in line for s in (": failed", "not installed", "no Codex route", "not linked",
+                                                                  "switched off", "left as is")):
+                ok = False
     if prof.notes:
         print(f"note ({name}): {prof.notes}")
-    return 0
+    if not ok:
+        print(f"profile {name}: applied with problems (see the lines above)")
+    return 0 if ok else 1
 
 
 def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: bool, ask: Ask,
@@ -66,8 +80,9 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
             chosen = suggested if answer == "" else [] if answer == "-" else [a.strip() for a in answer.split(",") if a.strip()]
             for name in chosen:
                 profiles.load_profile(name)
+    rc = 0
     for name in chosen:
-        add_profile(project, name, install=install, dry_run=dry_run)
+        rc = add_profile(project, name, install=install, dry_run=dry_run) or rc
     created, notes = scaffold.scaffold(project, dry_run=dry_run)
     for path in created:
         print(("would create " if dry_run else "created ") + str(path.relative_to(project)))
@@ -75,5 +90,9 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         print(("would add to .gitignore: " if dry_run else "added to .gitignore: ") + line)
     for note in notes:
         print(f"note: {note}")
-    print("next: start Claude Code here and run /loadout:onboard")
-    return 0
+    from . import targets
+    if targets.claude_enabled():
+        print("next: start Claude Code here and run /loadout:onboard")
+    else:
+        print("next: start Codex here and ask it to use the loadout:onboard skill")
+    return rc

@@ -41,7 +41,7 @@ def test_a_users_matching_key_stays_the_users(fake_home, monkeypatch):
     path.write_text('model_reasoning_effort = "medium"\n', encoding="utf-8")
     _apply()
     assert "model_reasoning_effort" not in json.loads(codex.record_path().read_text())["keys"]
-    monkeypatch.setattr(codex, "desired_keys", lambda: [("", "model_reasoning_effort", "high")])
+    monkeypatch.setattr(codex, "desired_keys", lambda: [((), "model_reasoning_effort", "high", False)])
     _apply()
     assert 'model_reasoning_effort = "medium"' in path.read_text(encoding="utf-8")
 

@@ -293,9 +293,9 @@ def _stray_hook_scripts(bk: Backup) -> list[str]:
 
 def undo_reregistered(bk: Backup) -> tuple[list[str], list[str]]:
     """(removed, reported). Removes only exact duplicates of MCP servers/hooks the enabled loadout plugin ships."""
-    from . import adopt, duplicates, inventory
-    try:
-        items = [i for i in inventory.collect(with_versions=False) if i.kind in ("mcp", "hook")]
+    from . import adopt, duplicates, inventory, own
+    try:  # Claude Code's entries only: a Codex server is never a duplicate of the Claude plugin
+        items = [i for i in inventory.collect(with_versions=False) if i.kind in ("mcp", "hook") and not own.is_codex(i)]
         enabled = duplicates.plugin_enabled()
         verdicts = {(v.item.kind, v.item.name, v.item.location, v.item.detail): v.action
                     for v in inventory.classify(items)}
@@ -332,8 +332,9 @@ def _update(yes: bool, ask: Callable[[str], str]) -> int:
     from . import targets
     if targets.claude_enabled():  # Codex only: no Claude Code marketplaces to refresh
         runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
+    claude_on = targets.claude_enabled()
     settings_path = paths.claude_home() / "settings.json"
-    before = load_json(settings_path)
+    before = load_json(settings_path) if claude_on else {}  # Codex only: Claude Code's file is not read at all
     outdated = find_outdated()
     ran = False
     if not outdated:
@@ -370,6 +371,8 @@ def _update(yes: bool, ask: Callable[[str], str]) -> int:
         else:
             _remember_refused(entry["id"], None)
             print(f"  updated to {versions.fmt(now)}; {versions.fmt(latest)} was not installed (held back by the package manager?)")
+    if not claude_on:  # Codex only: Claude Code's settings and servers are not loadout's to fix
+        return 0
     after = load_json(settings_path)
     if after != before:
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))

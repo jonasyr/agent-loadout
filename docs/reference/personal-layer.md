@@ -59,7 +59,7 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 | File | Holds |
 |---|---|
 | `managed-settings.json` | The snapshot of what the settings merge last applied. Under `hooks` it records exactly the hooks loadout applied. Under `loadoutDeletedHooks` it records hooks you deleted, so they are not added back. Written by every settings merge; which runs back it up is in [Undo](../how-to/undo-and-restore.md#what-restore-does-not-undo). |
-| `codex-config.json` | `{"tables": {...}, "keys": {...}}`: the exact text loadout wrote into `~/.codex/config.toml`. loadout changes only entries that still match it. |
+| `codex-config.json` | `{"tables": {...}, "keys": {...}, "project_plugins": [...]}`: the exact text loadout wrote into `~/.codex/config.toml`, and the plugins a profile installed for single repos (their user-level `enabled` switch is kept off unless your personal layer enables them). loadout changes only entries that still match it, apart from those switches. |
 | `managed-mcp.json` | `{"mcpServers": {...}}`: the personal MCP servers loadout added successfully. A same-named server that is not in this file and differs from the personal one is left alone. |
 | `own-decisions.json` | Your `leave` decisions for own tools. Hooks are keyed by a hash of the command, so a command line is never stored. |
 | `copy-mode` | Marker for copy instead of link mode. |

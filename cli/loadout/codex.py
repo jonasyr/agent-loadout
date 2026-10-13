@@ -243,15 +243,50 @@ def desired_tables() -> tuple[dict[str, str], list[str]]:
     return tables, problems
 
 
-def desired_keys() -> list[tuple[str, str, object]]:
-    """(table, key, value); table "" is the top level. Only preferences with a Codex equivalent."""
+def project_plugins() -> list[str]:
+    """Plugins loadout installed for a project profile only: kept off at user level, on in that project."""
+    value = load_json(record_path()).get("project_plugins", [])
+    return [p for p in value if isinstance(p, str)] if isinstance(value, list) else []
+
+
+def add_project_plugin(pid: str) -> None:
+    data = load_json(record_path())
+    plugins = project_plugins()
+    if pid not in plugins:
+        data["project_plugins"] = plugins + [pid]
+        record_path().parent.mkdir(parents=True, exist_ok=True)
+        save_json(record_path(), data)
+
+
+def desired_keys() -> list[tuple[tuple, str, object, bool]]:
+    """(table path, key, value, force); path () is the top level. force: loadout's value wins even over a changed
+    line, used for project-only plugins because `codex plugin add` switches them back on."""
     from . import preferences
+    from .settings_merge import desired_settings
     state = preferences.detect()
 
     def answer(pid):
         return state[pid].value or preferences.by_id(pid)["default"]
-    return [("", "model_reasoning_effort", answer("effort_level")),
-            ("tui", "notifications", answer("agent_push_notifications") == "yes")]
+    keys = [((), "model_reasoning_effort", answer("effort_level"), False),
+            (("tui",), "notifications", answer("agent_push_notifications") == "yes", False)]
+    plugins = project_plugins()
+    if plugins:
+        on = desired_settings().get("enabledPlugins", {})
+        keys += [(("plugins", pid), "enabled", on.get(pid) is True, True) for pid in plugins]
+    return keys
+
+
+def _dotted(path: tuple, key: str) -> str:
+    return ".".join(toml_key(p) for p in (*path, key))
+
+
+def _key_path(dotted: str, tl) -> tuple:
+    """`plugins."x@m".enabled` -> ("plugins", "x@m", "enabled"), as TOML reads it."""
+    data, out = tl.loads(f"{dotted} = 0\n"), []
+    while isinstance(data, dict):
+        key, data = next(iter(data.items()))
+        out.append(key)
+    return tuple(out)
 
 
 def _top_lines(lines: list[str]) -> list[bool]:
@@ -335,14 +370,17 @@ def _prune(value):
     return value
 
 
-def _without_owned(data: dict, tables, keys) -> dict:
+def _without_owned(data: dict, tables, keys, tl) -> dict:
     data = json.loads(json.dumps(data, default=str))  # a deep copy; dates become strings on both sides alike
     servers = data.get("mcp_servers")
     if isinstance(servers, dict):
         for name in tables:
             servers.pop(name, None)
     for dotted in keys:
-        *parents, last = dotted.split(".")
+        try:
+            *parents, last = _key_path(dotted, tl)
+        except Exception:  # a hand-edited record entry that is not a TOML key: nothing to leave out
+            continue
         cur = data
         for part in parents:
             cur = cur.get(part) if isinstance(cur, dict) else None
@@ -395,12 +433,13 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         owned_tables[name] = text
 
     # keys: one line each, in their table, only on lines that start outside strings and arrays
-    for table, key, value in desired_keys():
-        dotted = f"{table}.{key}" if table else key
+    for table, key, value, force in desired_keys():
+        dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
-        target = sections[0] if not table else find((table,))
+        target = sections[0] if not table else find(table)
         if target is None:
-            sections.append([(table,), [f"[{table}]", line], []])
+            header = "[" + ".".join(toml_key(p) for p in table) + "]"
+            sections.append([table, [header, line], []])
             owned_keys[dotted] = line
             continue
         flags = [True] + target[2] if target[0] is not None else target[2]
@@ -415,7 +454,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             owned_keys[dotted] = line
         elif target[1][found].strip() == line:
             pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
-        elif owned_keys.get(dotted) == target[1][found].strip():
+        elif force or owned_keys.get(dotted) == target[1][found].strip():
             target[1][found] = line
             owned_keys[dotted] = line
         else:
@@ -425,9 +464,9 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     parts = ["\n".join(sections[0][1]).strip("\n")] if any(l.strip() for l in sections[0][1]) else []
     parts += ["\n".join(s[1]).strip("\n") for s in sections[1:]]
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
-    new_record = {"tables": owned_tables, "keys": owned_keys}
+    new_record = {**record, "tables": owned_tables, "keys": owned_keys}  # keeps project_plugins
     if new == old or (not old.strip() and not new.strip()):
-        if new_record != {"tables": record.get("tables", {}), "keys": record.get("keys", {})} and not dry_run:
+        if new_record != {**record, "tables": record.get("tables", {}), "keys": record.get("keys", {})} and not dry_run:
             save_json(record_path(), new_record)
         return lines
     try:
@@ -435,11 +474,11 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     except Exception as exc:
         return lines + [f"skipped {path}: the result would not parse ({exc}); nothing written, fix the file by hand"]
     ours_tables, ours_keys = was_tables | set(owned_tables), was_keys | set(owned_keys)
-    if _without_owned(before, ours_tables, ours_keys) != _without_owned(after, ours_tables, ours_keys):
+    if _without_owned(before, ours_tables, ours_keys, tl) != _without_owned(after, ours_tables, ours_keys, tl):
         return lines + [f"skipped {path}: the edit would change entries loadout does not own; nothing written"]
     if dry_run:
         return lines + ["config.toml: changes pending"]
-    if path.exists() and not record:
+    if path.exists() and not (record.get("tables") or record.get("keys")):  # project_plugins alone wrote nothing
         bk.save_copy(path, "Codex config.toml before loadout's first change")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")
@@ -490,14 +529,10 @@ def installed_plugins() -> set[str] | None:
     return {p.get("pluginId") for p in data.get("installed", [])} if isinstance(data, dict) else None
 
 
-def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
-    """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs)."""
-    say = say or (lambda line: None)
-    from .settings_merge import desired_settings
-    routes, missing = plugin_routes(desired_settings())
-    lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
-    listed = installed_plugins()
-    installed = listed or set()  # unknown when the list failed: then nothing counts as installed by loadout
+def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None
+                    ) -> tuple[list[str], set[str]]:
+    """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards."""
+    lines, installed = [], set(listed or ())
     for src, plugins in routes.items():
         say(f"  marketplace {src} (a git clone the first time; can take a few minutes)…")
         res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
@@ -518,10 +553,21 @@ def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
             res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
-            elif pid not in installed and listed is not None:
+                continue
+            if pid not in installed and listed is not None:
                 bk.record_command(f"codex plugin {pid}", ["codex", "plugin", "remove", pid])
                 lines.append(f"plugin {pid}: installed")
-    return lines
+            installed.add(pid)
+    return lines, installed
+
+
+def apply_plugins(bk, refresh: bool = False, say=None) -> list[str]:
+    """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs)."""
+    say = say or (lambda line: None)
+    from .settings_merge import desired_settings
+    routes, missing = plugin_routes(desired_settings())
+    lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
+    return lines + _install_routes(routes, bk, refresh, say, installed_plugins())[0]
 
 
 def skill_links() -> list[tuple[Path, Path]]:
@@ -546,13 +592,89 @@ def apply_skills(bk) -> list[str]:
 
 
 def mcp_names() -> set[str] | None:
-    res = runner.run(["codex", "mcp", "list", "--json"], timeout=120)
+    res = runner.run(["codex", "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
     data = _json(res.stdout) if res.ok else None
     return {s.get("name") for s in data if isinstance(s, dict)} if isinstance(data, list) else None
 
 
 def _skill_names(folder: Path) -> set[str]:
     return {p.name for p in folder.iterdir() if not p.name.startswith(".") and p.name != "synced"} if folder.is_dir() else set()
+
+
+CONFIG_LOCATION = "~/.codex/config.toml"
+_CODEX_KEYS = {"command", "args", "env", "env_vars", "url", "bearer_token_env_var", "http_headers", "env_http_headers"}
+
+
+def user_servers() -> dict[str, dict]:
+    """The user's [mcp_servers.*] tables in ~/.codex/config.toml, without the ones loadout wrote."""
+    tl = _tomllib()
+    path = paths.codex_home() / "config.toml"
+    if tl is None or not path.exists():
+        return {}
+    try:
+        servers = tl.loads(path.read_text(encoding="utf-8")).get("mcp_servers", {})
+    except Exception:
+        return {}
+    if not isinstance(servers, dict):
+        return {}
+    owned = set(load_json(record_path()).get("tables", {}))
+    return {n: t for n, t in servers.items() if isinstance(t, dict) and n not in owned}
+
+
+def _strs(value, kind) -> bool:
+    if kind is list:
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    return isinstance(value, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in value.items())
+
+
+def to_claude(name: str, table: dict) -> dict:
+    """A Codex server table in the Claude Code format of the personal mcp.json; variables stay variables."""
+    extra = sorted(set(table) - _CODEX_KEYS)
+    if extra:
+        raise Refused(f"mcp {name}: {', '.join(extra)} has no Claude Code equivalent; leave it in Codex or remove it")
+    shapes = {"command": str, "url": str, "bearer_token_env_var": str, "args": list, "env_vars": list,
+              "env": dict, "http_headers": dict, "env_http_headers": dict}
+    for key, kind in shapes.items():
+        if key in table and not (isinstance(table[key], str) if kind is str else _strs(table[key], kind)):
+            raise Refused(f"mcp {name}: {key} has an unexpected shape; leave it in Codex or remove it")
+    if "url" in table:
+        headers = dict(table.get("http_headers") or {})
+        if table.get("bearer_token_env_var"):
+            headers["Authorization"] = f"Bearer ${{{table['bearer_token_env_var']}}}"
+        headers.update({k: f"${{{v}}}" for k, v in (table.get("env_http_headers") or {}).items()})
+        return {"type": "http", "url": table["url"], **({"headers": headers} if headers else {})}
+    if not isinstance(table.get("command"), str):
+        raise Refused(f"mcp {name}: neither a command nor a url")
+    out = {"type": "stdio", "command": table["command"]}
+    if table.get("args"):
+        out["args"] = list(table["args"])
+    env = dict(table.get("env") or {})
+    env.update({k: f"${{{k}}}" for k in table.get("env_vars") or []})
+    if env:
+        out["env"] = env
+    return out
+
+
+def codex_only_skills() -> list[Path]:
+    """Skills in ~/.agents/skills that neither loadout linked nor Claude Code has."""
+    root = paths.agents_skills()
+    if not root.is_dir():
+        return []
+    from . import targets
+    ours = {dest.name for dest, _ in skill_links()}
+    claude = _skill_names(paths.claude_home() / "skills") if targets.claude_enabled() else set()
+    return [p for p in sorted(root.iterdir())
+            if not p.name.startswith(".") and p.name != "synced" and p.name not in ours | claude]
+
+
+def remove_server(name: str, bk) -> str:
+    """Remove a user's server from ~/.codex/config.toml through Codex itself; the file is saved first (restore
+    puts it back)."""
+    path = paths.codex_home() / "config.toml"
+    if path.exists():
+        bk.save_copy(path, f"Codex config.toml before removing mcp {name}")
+    res = runner.run(["codex", "mcp", "remove", name], cwd=str(paths.home()), timeout=120)
+    return f"mcp {name}: removed from Codex" if res.ok else f"mcp {name}: failed: {_tail(res)}"
 
 
 def drift() -> list[str]:
@@ -570,13 +692,13 @@ def drift() -> list[str]:
     accounted = left | personal | owned
     out = [f'MCP server "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
            for n in sorted(in_claude - in_codex - accounted)]
-    out += [f'MCP server "{n}" only in Codex (add it to your personal layer\'s mcp.json, see docs/how-to/codex.md)'
+    out += [f'MCP server "{n}" only in Codex (record it with loadout adopt, then both get it)'
             for n in sorted(in_codex - in_claude - accounted - _plugin_servers())]
     claude_skills, codex_skills = _skill_names(paths.claude_home() / "skills"), _skill_names(paths.agents_skills())
     personal_skills = {dest.name for dest, _ in skill_links()}
     out += [f'skill "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
             for n in sorted(claude_skills - codex_skills - personal_skills - left)]
-    out += [f'skill "{n}" only in Codex (copy it into your personal layer\'s skills/, see docs/how-to/codex.md)'
+    out += [f'skill "{n}" only in Codex (record it with loadout adopt, then both get it)'
             for n in sorted(codex_skills - claude_skills - personal_skills - left)]
     return out
 
@@ -728,7 +850,7 @@ def hooks_status(remember: bool = False) -> str | None:
 
 
 def _not_logged_in() -> list[str]:
-    res = runner.run(["codex", "mcp", "list", "--json"], timeout=120)
+    res = runner.run(["codex", "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
     data = _json(res.stdout) if res.ok else None
     return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"] \
         if isinstance(data, list) else []
@@ -742,7 +864,7 @@ def logins_optional() -> list[str]:
 
 def logins_needed() -> list[str]:
     """Codex MCP servers that wait for an OAuth login (`codex mcp login NAME`)."""
-    res = runner.run(["codex", "mcp", "list", "--json"], timeout=120)
+    res = runner.run(["codex", "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
     data = _json(res.stdout) if res.ok else None
     # Codex says not_logged_in for every server that offers OAuth, also when it answers anonymously; the servers
     # loadout writes itself are chosen to work without a login (Context7's plain address, verified live)

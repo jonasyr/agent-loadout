@@ -9,6 +9,7 @@ class FakeRunner:
     def __init__(self):
         self.calls = []
         self.envs = []
+        self.cwds = []
         self.responses = {}
         self.missing = set()
         self.paths = {}  # binary -> resolved path (runner.which); default: not found, so no package manager
@@ -17,6 +18,7 @@ class FakeRunner:
     def __call__(self, cmd, cwd=None, timeout=300, env=None):
         self.calls.append(list(cmd))
         self.envs.append(env)
+        self.cwds.append(cwd)
         for prefix, result in self.responses.items():
             if tuple(cmd[: len(prefix)]) == prefix:
                 return result
@@ -27,6 +29,17 @@ class FakeRunner:
 
     def which(self, binary):
         return self.paths.get(binary)
+
+
+@pytest.fixture(autouse=True)
+def never_the_real_home(tmp_path_factory, monkeypatch):
+    """Every test runs with a throwaway HOME, so one that forgets fake_home still cannot read or write the real
+    ~/.claude, ~/.codex or ~/.config/loadout (fake_home sets its own, like before)."""
+    home = tmp_path_factory.mktemp("isolated-home")  # outside tmp_path: tests list their own tmp_path
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.delenv("LOADOUT_PERSONAL", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
 
 
 @pytest.fixture
