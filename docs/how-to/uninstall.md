@@ -29,7 +29,7 @@ First run `loadout configure set target codex on` once. It brings loadout's reco
    ```
 
    Plugins you enabled for Claude Code were installed in Codex from their marketplaces too. Remove each the same way if you want: `codex plugin remove NAME@MARKET`, then `codex plugin marketplace remove MARKET`.
-5. In each repo where you ran `loadout init` or `loadout profile`: remove the sections loadout added to `.codex/config.toml` and the links in `.agents/skills` that point to `../../.claude/skills/NAME`. Use git there.
+5. In each repo where you ran `loadout init` or `loadout profile`: remove the sections loadout added to `.codex/config.toml` and the links in `.agents/skills` that point to `../../.claude/skills/NAME` (and in `.claude/skills` the links to `../../.agents/skills/NAME`). Use git there.
 
 Then continue with [Remove the kit](#remove-the-kit), which deletes `~/.local/state/loadout`. If you restore from a backup instead, `loadout restore` removes the plugins and marketplaces it recorded and puts back the saved `AGENTS.md` and `config.toml` ([Undo](undo-and-restore.md#codex)).
 

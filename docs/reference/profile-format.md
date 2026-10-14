@@ -54,11 +54,12 @@ When a step has a problem, the rest still runs, and the command ends with `profi
 
 ### Skills
 
-Each name in `skills` is looked up in `<personal layer>/profiles/skills/<name>/` first, then in `profiles/skills/<name>/` of the kit, and copied to `<repo>/.claude/skills/<name>/`. The copy follows these rules:
+Each name in `skills` is looked up in `<personal layer>/profiles/skills/<name>/` first, then in `profiles/skills/<name>/` of the kit, and copied to `<repo>/.claude/skills/<name>/`, or with Codex only to `<repo>/.agents/skills/<name>/` ([ADR 0027](../adr/0027-repo-files-follow-the-agents.md)). The copy follows these rules:
 
-- An existing folder or link of that name is never overwritten. The output says `exists, left as is`.
+- An existing folder or link of that name, in `.claude/skills` or `.agents/skills`, is never overwritten. The output says `exists, left as is`.
 - A name that is not a plain folder name (it has a path separator, or is `.` or `..`) is skipped.
-- If `.claude` or `.claude/skills` is a link that leads outside the repo, nothing is copied.
+- If the folder it copies into (`.claude` or `.claude/skills`; with Codex only `.agents` or `.agents/skills`) is a link that leads outside the repo, nothing is copied.
+- After the copy and the `commands`, every real skill folder is linked into the skill folder of each other agent that is on: `.agents/skills/NAME -> ../../.claude/skills/NAME` for Codex, `.claude/skills/NAME -> ../../.agents/skills/NAME` for Claude Code. So a repo that started with Codex only gets its skills linked for Claude Code on the first `loadout profile` after you turn Claude Code on.
 - A name that is found nowhere is reported and skipped.
 
 The copy is a snapshot. Later changes to the profile's skill do not reach the repo until you copy it again, and the copies in a repo can drift from the personal layer.
@@ -74,9 +75,9 @@ With Codex on ([Use loadout with Codex](../how-to/codex.md#switch-it-on)), `load
 | `mcp` | Each server becomes a section in the repo's `.codex/config.toml`. loadout only adds sections: one you already have under that name stays and is reported. A server the profile lists in `settings.disabledMcpjsonServers` gets `enabled = false`. A server with `${VAR}` in its `command`, `args` or `url` (the `db` profile's DBHub) is skipped for Codex with the reason, because Codex does not expand variables there. |
 | `settings` | Not used by Codex, except `disabledMcpjsonServers` (above) and `extraKnownMarketplaces` (where a plugin comes from). |
 | `commands` | Run once, for both agents. |
-| `skills` | Copied into `.claude/skills/` as above. Then every skill in the repo's `.claude/skills`, including ones a `commands` entry installed there, is linked into `.agents/skills` as `../../.claude/skills/NAME`. A different item already at that path stays and is reported. |
+| `skills` | Copied as above (into `.agents/skills/` with Codex only). With Codex on, every skill in the repo's `.claude/skills`, including ones a `commands` entry installed there, is linked into `.agents/skills` as `../../.claude/skills/NAME`. A different item already at that path stays and is reported. |
 
-Codex reads a repo's `.codex/config.toml` only in a trusted project. Until then, loadout prints the step on every run: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you. With Codex only, the Claude Code parts of a profile (the `settings` and `mcp` files, `.claude/skills`) are still written, because they are normal project files and the skills are what Codex links.
+Codex reads a repo's `.codex/config.toml` only in a trusted project. Until then, loadout prints the step on every run: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you. With Codex only, the Claude Code parts of a profile are not written: no `.claude/settings.json`, no `.mcp.json`, nothing in `.claude/skills`. loadout prints `Claude Code is off: FILE not written` for each file the profile would have written; turn Claude Code on and run `loadout profile NAME` again to add them ([ADR 0027](../adr/0027-repo-files-follow-the-agents.md)).
 
 What `init` and `profile` write per agent is tabled in [the CLI reference](cli.md#loadout-profile).
 

@@ -50,3 +50,4 @@ Template:
 | [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted |
 | [0025](0025-state-in-xdg-state-home.md) | loadout's own files live in XDG state, not in `~/.claude` | Accepted |
 | [0026](0026-tool-hints-never-block.md) | Tool hints add context, never block | Accepted |
+| [0027](0027-repo-files-follow-the-agents.md) | Repo files follow the agents that are on | Accepted |
