@@ -254,3 +254,17 @@ def test_calm_codex_only_notes_are_steps_not_warnings(repo, fake_runner, monkeyp
     assert project.add_profile(repo, "web", install=False) == 0
     text = capsys.readouterr().out
     assert "applied with problems" not in text and "Claude Code is off: .mcp.json not written" in text
+
+
+@pytest.mark.parametrize("agents, blocker", [
+    ({"claude": False, "codex": True}, ".agents"),
+    ({"claude": False, "codex": True}, ".agents/skills"),
+    ({"claude": True, "codex": False}, ".claude"),
+    ({"claude": True, "codex": False}, ".claude/skills"),
+])
+def test_a_copy_target_that_is_a_file_gives_one_line_not_a_crash(repo, kit_skill, agents, blocker):
+    targets.set_agents(agents)
+    (repo / blocker).parent.mkdir(parents=True, exist_ok=True)
+    (repo / blocker).write_text("")
+    lines = profiles.copy_skills(kit_skill, repo)
+    assert len(lines) == 1 and lines[0].startswith("skills not copied:") and "not a folder" in lines[0]

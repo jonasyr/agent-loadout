@@ -134,6 +134,9 @@ def copy_skills(profile: Profile, project: Path, dry_run: bool = False) -> list[
     if not paths.inside(skills_dir, project):
         top = skills_dir.parent.name
         return [f"skills not copied: {skills_dir} points outside {project} (a symlinked {top} or {top}/skills)"]
+    for part in (skills_dir.parent, skills_dir):
+        if profile.skills and (part.exists() or part.is_symlink()) and not part.is_dir():
+            return [f"skills not copied: {part} is not a folder"]
     for name in profile.skills:
         if not isinstance(name, str) or not name or Path(name).name != name or name in (".", ".."):
             out.append(f"skill {name}: not a plain name, skipped")
