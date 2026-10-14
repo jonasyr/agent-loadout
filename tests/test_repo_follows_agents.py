@@ -270,6 +270,36 @@ def test_a_skill_entry_that_leads_outside_the_repo_is_not_linked(repo, tmp_path,
     assert not (repo / dest / "evil").exists() and not (repo / dest / "evil").is_symlink()
 
 
+@pytest.mark.parametrize("linked", [".claude", ".claude/skills"])
+def test_a_link_folder_that_is_itself_a_link_inside_the_repo_is_refused(repo, linked):
+    # ../../.agents/skills/NAME would resolve from the link's real folder and dangle
+    targets.set_agents({"claude": True, "codex": False})
+    _real(repo, ".agents/skills", "foo")
+    (repo / "alt" / "claude" / "skills").mkdir(parents=True)
+    if linked == ".claude":
+        (repo / ".claude").symlink_to(repo / "alt" / "claude")
+    else:
+        (repo / ".claude").mkdir()
+        (repo / ".claude" / "skills").symlink_to(repo / "alt" / "claude" / "skills")
+    lines = profiles.link_skills(repo, dry_run=False)
+    assert len(lines) == 1 and lines[0].startswith("skills not linked:") and "is a link" in lines[0]
+    assert list((repo / "alt" / "claude" / "skills").iterdir()) == []
+
+
+@pytest.mark.parametrize("agents, src, dest, agent", [
+    ({"claude": False, "codex": True}, ".claude/skills", ".agents/skills", "Codex"),
+    ({"claude": True, "codex": False}, ".agents/skills", ".claude/skills", "Claude Code"),
+])
+def test_an_absolute_link_to_the_skill_is_reported(repo, agents, src, dest, agent):
+    # it works in this checkout only; every other clone gets a dangling link
+    targets.set_agents(agents)
+    _real(repo, src, "pw")
+    (repo / dest).mkdir(parents=True)
+    (repo / dest / "pw").symlink_to(repo / src / "pw")
+    assert profiles.link_skills(repo, dry_run=False) == [
+        f"skill pw: {dest}/pw is not a link to {src}/pw, left as is ({agent} uses that one)"]
+
+
 def test_two_real_folders_are_reported_with_claude_code_only(repo):
     targets.set_agents({"claude": True, "codex": False})
     _real(repo, ".claude/skills", "pw")

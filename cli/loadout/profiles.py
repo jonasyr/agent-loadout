@@ -183,7 +183,9 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
             top = root.parent.name
             return [f"skills not linked: {root} points outside {project} (a symlinked {top} or {top}/skills)"]
     for part in (dest_root.parent, dest_root):
-        if (part.exists() or part.is_symlink()) and not part.is_dir():
+        if part.is_symlink():  # ../../SRC/NAME would resolve from the link's real folder and dangle
+            return [f"skills not linked: {part} is a link; make it a plain folder, then run this again"]
+        if part.exists() and not part.is_dir():
             return [f"skills not linked: {part} is not a folder"]
     out = []
     for entry in sorted(src_root.iterdir()):
@@ -193,9 +195,12 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
         if not paths.inside(entry, project):  # a link to a skill elsewhere: dangling in every other clone
             out.append(f"skill {name}: {src_rel}/{name} leads outside {project}, not linked for {agent}")
             continue
+        want = f"../../{src_rel}/{name}"
         if dest.exists() or dest.is_symlink():
-            if os.path.realpath(dest) == os.path.realpath(entry):
-                continue  # our link, or the other agent's link to this folder
+            ours = dest.is_symlink() and Path(os.readlink(dest)) == Path(want)
+            reverse = not dest.is_symlink() and os.path.realpath(dest) == os.path.realpath(entry)
+            if ours or reverse:
+                continue  # our link, or the entry is the other agent's link to this real folder
             if report:
                 out.append(f"skill {name}: {dest_rel}/{name} is not a link to {src_rel}/{name}, "
                            f"left as is ({agent} uses that one)")
@@ -205,7 +210,7 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
             continue
         dest_root.mkdir(parents=True, exist_ok=True)
         try:
-            os.symlink(f"../../{src_rel}/{name}", dest, target_is_directory=True)
+            os.symlink(want, dest, target_is_directory=True)
         except OSError as exc:  # e.g. Windows without symlink rights
             out.append(f"skill {name}: not linked for {agent} ({exc.strerror or exc})")
             continue
