@@ -182,3 +182,32 @@ def test_old_state_files_are_cleaned(home, repo):
     os.utime(old, (time.time() - 8 * 86400,) * 2)
     _run(home, _grep(repo, "record_project", session="new"))
     assert not old.exists() and (state / "new.json").exists()
+
+
+def _web(repo, tool, tool_input, session="s1"):
+    return {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input, "session_id": session,
+            "cwd": str(repo)}
+
+
+@pytest.mark.parametrize("tool,tool_input", [
+    ("WebSearch", {"query": "pydantic v2 docs field validators"}),
+    ("WebFetch", {"url": "https://docs.python.org/3/library/shlex.html", "prompt": "split rules"}),
+    ("WebFetch", {"url": "https://learn.microsoft.com/en-us/dotnet/api/system.text.json"}),
+    ("WebSearch", {"query": "react useEffect cleanup api reference"}),
+])
+def test_a_library_docs_lookup_gets_the_context7_fact(home, repo, tool, tool_input):
+    text = _context(_run(home, _web(repo, tool, tool_input)))
+    assert "Context7" in text and "Microsoft Learn" in text and len(text) <= 300
+
+
+def test_other_web_lookups_get_nothing(home, repo):
+    assert _run(home, _web(repo, "WebSearch", {"query": "weather berlin tomorrow"})) is None
+    assert _run(home, _web(repo, "WebFetch", {"url": "https://news.ycombinator.com/item?id=1"})) is None
+
+
+def test_the_docs_hint_is_spaced_and_needs_no_code_repo(home, tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    shown = [_run(home, _web(plain, "WebSearch", {"query": "fastapi docs dependencies"})) is not None
+             for _ in range(11)]
+    assert shown[0] and shown[1:10].count(True) == 0 and shown[10]

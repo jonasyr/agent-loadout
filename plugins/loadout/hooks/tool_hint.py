@@ -4,6 +4,8 @@
 PreToolUse Grep|Glob|Bash (Claude Code) or Bash (Codex): on the SEARCHES-th symbol search since Serena or the code
 graph was last used, add one short fact naming those tools. PostToolUse on a Serena or codebase-memory tool resets
 the count. At most one hint per SPACING matched calls; never silenced for the rest of a session.
+PreToolUse WebSearch|WebFetch on library docs: one fact naming Context7 and Microsoft Learn, at most once per
+SPACING calls.
 State: <state_dir>/tool-hint/<session_id>.json. See docs/reference/hooks.md."""
 from __future__ import annotations
 
@@ -42,6 +44,14 @@ MCP = re.compile(r"^mcp__(?:plugin_loadout_)?(?:serena|codebase-memory-mcp|codeb
 SHELL_TOOLS = frozenset({"Bash", "shell", "local_shell", "exec_command", "shell_command"})
 SESSION = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 FIND = ["<find of code files>"]  # shell_search's paths for a `find -name '*.py'`: a search without a symbol
+
+DOCS_HOST = re.compile(r"(^|\.)(docs|developer|learn|api|reference)\.|readthedocs\.io|docs\.rs|pkg\.go\.dev|"
+                       r"pypi\.org|npmjs\.com|developer\.mozilla\.org|docs\.python\.org|learn\.microsoft\.com",
+                       re.I)
+DOCS_WORDS = re.compile(r"\b(docs?|documentation|api|reference|sdk|library|package|framework|changelog|"
+                        r"migration guide|usage example)\b", re.I)
+DOCS_HINT = ("Library or API docs: Context7 first (`resolve-library-id`, then `query-docs`); Microsoft Learn for "
+             ".NET, Azure and Windows; web search last.")
 
 SEARCH_HINT = ("`{name}` looks like a symbol. codebase-memory `search_graph` and `trace_path` give its definition "
                "and callers; Serena `find_symbol` and `find_referencing_symbols` give the exact place to edit.")
@@ -223,9 +233,10 @@ def handle(payload: dict) -> None:
     if event != "PreToolUse":
         return
     hit, name = search_event(tool, tool_input)
-    if not hit and not extra_event(tool, tool_input, state):  # Task 2 adds docs hints here
+    docs = not hit and docs_event(tool, tool_input)
+    if not hit and not docs:
         return
-    if not code_repo(payload.get("cwd")) and hit:
+    if hit and not code_repo(payload.get("cwd")):
         return
     calls = _int(state, "calls", 0) + 1
     state["calls"] = calls
@@ -236,6 +247,8 @@ def handle(payload: dict) -> None:
         if searches >= SEARCHES and calls - _int(state, "last_hint", -SPACING) >= SPACING:
             text = SEARCH_HINT.format(name=name[:40]) if name else SEARCH_HINT_PLAIN
             state["searches"], state["last_hint"] = 0, calls
+    elif calls - _int(state, "last_docs", -SPACING) >= SPACING:
+        text, state["last_docs"] = DOCS_HINT, calls
     _save(path, state)
     if fresh:
         _clean(folder)
@@ -243,7 +256,16 @@ def handle(payload: dict) -> None:
         _emit(event, text)
 
 
-def extra_event(tool: str, tool_input: dict, state: dict) -> bool:
+def docs_event(tool: str, tool_input: dict) -> bool:
+    if tool == "WebFetch":
+        url = tool_input.get("url")
+        if not isinstance(url, str):
+            return False
+        host = re.sub(r"^[a-z]+://", "", url, flags=re.I).split("/", 1)[0]
+        return bool(DOCS_HOST.search(host))
+    if tool == "WebSearch":
+        query = tool_input.get("query")
+        return isinstance(query, str) and len(query) < 500 and bool(DOCS_WORDS.search(query))
     return False
 
 
