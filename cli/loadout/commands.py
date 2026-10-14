@@ -173,14 +173,17 @@ def _register_configure(sub):
                               "  loadout configure set mcp dbhub on\n"
                               "  loadout configure own\n"
                               "  loadout configure set own foo@bar global\n"
+                              "  loadout configure new skill notes --description 'Use when ...'\n"
                               "  loadout configure set pref effortLevel '\"high\"'")
-    p.add_argument("action", nargs="?", choices=["show", "set", "prefs", "own"],
-                   help="show the current state, set one value, answer the working-preference questions, or list your own tools (own)")
-    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref", "own", "target"], help="what to set")
+    p.add_argument("action", nargs="?", choices=["show", "set", "prefs", "own", "new"],
+                   help="show the current state, set one value, answer the working-preference questions, list your own tools (own), or create a skill of your own (new skill)")
+    p.add_argument("kind", nargs="?", choices=["plugin", "mcp", "pref-choice", "pref", "own", "target", "skill"], help="what to set")
     p.add_argument("name", nargs="?", help="plugin id, MCP add-on id or server name, preference id, or settings key (ids: configure show), "
                                       "or one of your own tools (names: configure own)")
     p.add_argument("value", nargs="?", help="on|off for plugin/mcp; an option for pref-choice; a JSON value for pref; global|project:<profile>|leave|remove for own")
     p.add_argument("--all", action="store_true", help="with own: also list the tools you left on this machine")
+    p.add_argument("--to", default="global", help="with new skill: global (default), project:<profile> or repo")
+    p.add_argument("--description", help="with new skill: one line saying when an agent should use the skill")
     p.add_argument("--first-run", action="store_true", help="also ask the 'about you' questions again (keeps your me.md unless you agree)")
 
     def run(a):
@@ -194,8 +197,32 @@ def _register_configure(sub):
         if a.action == "own":
             print("\n".join(configure.own_lines(a.all)))
             return 0
-        if not (a.kind and a.name and a.value):
-            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own|target <name> <value>")
+        if a.action == "new":
+            if a.kind != "skill" or not a.name or a.value is not None:  # a stray value: --description forgotten?
+                raise ValueError("usage: loadout configure new skill NAME [--to global|project:<profile>|repo] "
+                                 "[--description TEXT]")
+            import sys
+            from . import new_skill, targets
+            from .backup import Backup
+            from .secrets import redact
+            bk = Backup(description=f"configure new skill {redact(a.name)}")
+            try:
+                lines = new_skill.create(a.name, a.to, a.description, bk=bk)
+            except new_skill.BadInput as exc:
+                print(f"loadout: {redact(str(exc))}", file=sys.stderr)
+                return 2
+            except new_skill.Refused as exc:
+                print(f"loadout: {redact(str(exc))}", file=sys.stderr)
+                return 1
+            print("\n".join(lines))
+            print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+            print(f"Fill in SKILL.md. {targets.restart_hint()}")
+            if a.to != "repo":
+                configure.offer_commit(_ask)
+            return 1 if any(": not linked" in line for line in lines) else 0  # an agent that is on cannot see it
+        if not (a.kind and a.name and a.value) or a.kind == "skill":  # skill is for `new skill` only
+            raise ValueError("usage: loadout configure set plugin|mcp|pref-choice|pref|own|target <name> <value>"
+                             + ("; to create a skill: loadout configure new skill NAME" if a.kind == "skill" else ""))
         if a.kind == "own":
             return configure.set_own(a.name, a.value)
         if a.kind == "target":

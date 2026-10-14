@@ -72,8 +72,8 @@ def test_codex_items_have_their_own_keys_and_choices(codex_on):
     skill = inventory.Item("skill", "solo", "x", str(paths.agents_skills() / "solo"), {})
     assert own.decision_key(mcp) == "mcp:codex:mine"
     assert own.decision_key(skill) == "skill:codex:solo"
-    assert own.options(mcp) == ["global", "leave", "remove"]
-    assert own.options(skill) == ["global", "leave", "remove"]
+    assert own.options(mcp) == ["global", "project", "leave", "remove"]
+    assert own.options(skill) == ["global", "project", "leave", "remove"]
 
 
 def test_codex_items_are_own_tools_not_catalog_matches(codex_on):

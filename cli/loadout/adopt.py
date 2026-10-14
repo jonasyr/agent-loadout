@@ -616,8 +616,9 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
 
 
 def _remove_project_skill(v: Verdict, profile: str, bk: Backup) -> list[str]:
+    where = "~/.agents/skills" if own.is_codex(v.item) else "~/.claude/skills"
     bk.move(Path(v.item.location), f"skill {v.item.name} (kept in profile {profile})")
-    return [f"skill {v.item.name}: removed from ~/.claude/skills (kept in profile {profile}; original in the backup)"]
+    return [f"skill {v.item.name}: removed from {where} (kept in profile {profile}; original in the backup)"]
 
 
 def apply_own(pairs: list, bk: Backup, others: list[Verdict] = (), ask: Ask = lambda q: "",

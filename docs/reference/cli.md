@@ -100,7 +100,7 @@ Exit codes:
 Choose preferences and global add-ons. Choices go into your personal layer. Without arguments it starts an interactive wizard.
 
 ```
-loadout configure [--all] [--first-run] [show | prefs | own | set KIND NAME VALUE]
+loadout configure [--all] [--first-run] [show | prefs | own | set KIND NAME VALUE | new skill NAME]
 ```
 
 | Form | What it does |
@@ -115,11 +115,14 @@ loadout configure [--all] [--first-run] [show | prefs | own | set KIND NAME VALU
 | `loadout configure own [--all]` | List the tools loadout does not manage. Read-only. |
 | `loadout configure set own NAME CHOICE` | Decide one own tool. `CHOICE` is `global`, `project:<profile>`, `leave` or `remove`. |
 | `loadout configure set target claude\|codex on\|off` | Set up that coding agent, or stop doing so (nothing is uninstalled; one agent stays on). Stored in `<personal>/targets.json`. See [Use loadout with Codex](../how-to/codex.md). |
+| `loadout configure new skill NAME [--to global\|project:<profile>\|repo] [--description TEXT]` | Create a skill of your own: see [Create a skill of your own](../how-to/your-own-tools.md#create-a-skill-of-your-own). |
 
 | Flag | Meaning |
 |---|---|
 | `--all` | With `own`: also list the tools you left on this machine. |
 | `--first-run` | Also ask the "about you" questions again. Keeps your `me.md` unless you agree to replace it. |
+| `--to` | With `new skill`: where the skill lives. `global` (default) is the personal layer, `project:<profile>` a personal profile, `repo` the current git repo (committed in `.claude/skills/`). |
+| `--description` | With `new skill`: one line saying when an agent should use the skill. Without it the stub says `TODO`. |
 
 `set plugin`, `set mcp`, `set pref-choice` and `set pref` afterwards apply the change: with Claude Code on they merge the settings, set up plugins and apply your personal MCP servers; with Codex on (and usable) the same choices are applied to Codex. They list pending changes of a personal-layer git repo but never commit them. `set pref-choice` for the auto mode preference needs a terminal, because it shows a draft that you must confirm.
 
@@ -131,6 +134,7 @@ loadout configure set pref-choice effort_level high
 loadout configure set plugin hookify@claude-plugins-official on
 loadout configure set mcp dbhub on
 loadout configure set own foo@bar global
+loadout configure new skill notes --description "Use when taking meeting notes."
 loadout configure set pref effortLevel '"high"'
 ```
 
@@ -139,8 +143,8 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | 0 | Done. |
-| 1 | `set own`: at least one named item was not recorded, or recorded but not active on this machine (see the `skipped:` or `failed:` line). `set pref-choice`: the answer is written but another setting or `me.md` line still contradicts it ("not effective"). `set target codex on` when Codex is not found or too old: the choice is stored, and Codex is set up once that is fixed (`loadout bootstrap`). Also: a missing argument, a value that is not `on` or `off`, an unknown agent, turning the last agent off, an unknown MCP add-on, preference or option, and `set pref-choice` for the auto mode draft without a terminal. |
-| 2 | `set own` with bad input (unknown or duplicate name, bad choice, a name that needs `<kind>:` or `#n`). Nothing changed. |
+| 1 | `set own`: at least one named item was not recorded, or recorded but not active on this machine (see the `skipped:` or `failed:` line). `set pref-choice`: the answer is written but another setting or `me.md` line still contradicts it ("not effective"). `set target codex on` when Codex is not found or too old: the choice is stored, and Codex is set up once that is fixed (`loadout bootstrap`). Also: a missing argument, a value that is not `on` or `off`, an unknown agent, turning the last agent off, an unknown MCP add-on, preference or option, and `set pref-choice` for the auto mode draft without a terminal. `new skill`: the name is taken, the profile or `skills.json` is damaged, `--to repo` outside a git repo, or the description is refused (nothing written); or the skill was written but an agent that is on cannot see it, because its link could not be made (a `not linked` line, e.g. Windows without symlink rights). |
+| 2 | `set own` with bad input (unknown or duplicate name, bad choice, a name that needs `<kind>:` or `#n`). Nothing changed. `new skill` with a bad name, profile name or `--to`. Nothing written. |
 
 The preference ids and options are in [preferences-format](preferences-format.md). The files this command writes are in [personal-layer](personal-layer.md).
 

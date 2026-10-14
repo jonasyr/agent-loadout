@@ -773,7 +773,9 @@ def _global_skill(v: Verdict, bk) -> Recorded:
 def options(item: Item) -> list[str]:
     """Choices that apply to this item, in prompt order."""
     if is_codex(item):
-        return ["global", "leave", "remove"]
+        if item.kind == "skill" and Path(item.location).is_symlink():
+            return ["global", "leave", "remove"]
+        return ["global", "project", "leave", "remove"]
     if item.kind == "mcp" and item.location != "~/.claude.json":
         return ["leave", "remove"]
     if item.kind == "marketplace" or (item.kind == "skill" and Path(item.location).is_symlink()):
@@ -816,12 +818,16 @@ def _append_once(lst: list, value) -> None:
 def record_project(v: Verdict, profile: str, bk) -> Recorded:
     """Record an item in a personal profile (personal layer only; the machine step is the removal in adopt)."""
     item = v.item
-    if not PROFILE_NAME.match(profile):
+    if secrets.redact(profile) != profile:  # it would become a file name, a backup label and output
+        raise ValueError("the profile name looks like a secret; choose a plain name")
+    if not PROFILE_NAME.fullmatch(profile):
         raise ValueError(f"profile name '{profile}': use lowercase letters, digits, - and _")
     if "project" not in options(item):
         raise ValueError(f"{label(item)}: project is not available for this item")
     where = f"personal profile {profile} ({_profile_path(profile)})"
     try:
+        if secrets.redact(item.name) != item.name:  # the name becomes a folder, a JSON key and a backup label
+            raise Collision(f"{item.kind}: its name looks like a secret; rename it, then record it")
         if item.kind == "plugin":
             def change(data):
                 _append_once(ensure(data, "install", list), item.name)
@@ -830,8 +836,16 @@ def record_project(v: Verdict, profile: str, bk) -> Recorded:
                 _add_market(settings, item.name.split("@", 1)[1] if "@" in item.name else "")
             _edit_profile(profile, bk, change)
         elif item.kind == "mcp":
+            if is_codex(item) and item.extra.get("config") is None:
+                raise Collision(item.extra.get("problem") or f"mcp {item.name}: cannot be recorded")
             new, lines = _secret_free(item.name, item.extra.get("config", {}))
             _refuse_if_secret(f"mcp {item.name}", json.dumps(new))
+            if is_codex(item):  # the same check as global: `loadout profile` must be able to write it back to Codex
+                from . import codex
+                try:
+                    codex.server(item.name, new)
+                except codex.Refused as exc:
+                    raise Collision(f"{exc} (record it by hand, or leave it)") from None
 
             def change(data):
                 servers = ensure(ensure(data, "mcp"), "mcpServers")
@@ -867,7 +881,7 @@ def parse_choice(text: str) -> Choice:
     action, _, profile = text.strip().partition(":")
     if action not in CHOICES or (action == "project") != bool(profile):
         raise ValueError(f"choice '{text}': use global, project:<profile>, leave or remove")
-    if profile and not PROFILE_NAME.match(profile):
+    if profile and not PROFILE_NAME.fullmatch(profile):
         raise ValueError(f"profile name '{profile}': use lowercase letters, digits, - and _")
     return Choice(action, profile)
 
@@ -986,7 +1000,7 @@ def ask_choices(verdicts: list[Verdict], ask) -> list[tuple[Verdict, Choice]]:
                              ).strip().lower() or last_profile
                 if not answer:
                     break  # Enter with no previous profile: skip this item
-                if PROFILE_NAME.match(answer):
+                if PROFILE_NAME.fullmatch(answer):
                     profile = answer
                     break
                 print("    use lowercase letters, digits, - and _")

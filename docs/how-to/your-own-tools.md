@@ -6,6 +6,38 @@ Use this page when `loadout adopt` or `loadout check` lists tools that loadout d
 
 `loadout configure own` lists the same items. Flags and exit codes of the commands are in the [CLI reference](../reference/cli.md#loadout-adopt).
 
+## You installed a tool yourself
+
+You found a skill, MCP server or plugin and installed it with its own installer (`npx ...`, `claude mcp add`, `codex mcp add`, `/plugin install`). loadout never records or moves it on its own; it waits for your answer.
+
+1. **Where it landed decides who sees it.** Claude Code reads skills from `~/.claude/skills` (every project) and a repo's `.claude/skills` (that repo). Codex reads `~/.agents/skills` and a repo's `.agents/skills`. An installer writes to one of these; an MCP server goes to one agent's config. So right after the install, only that agent has it, and only on this machine.
+2. **loadout notices it** when you run `loadout check` or `loadout adopt`: it is listed under your own tools, and with both agents on as `skill "x" only in Claude Code` (or `only in Codex`).
+3. **Decide where it lives** with `loadout adopt` (or `loadout configure set own x CHOICE`): `global` for every machine and both agents, `project:<profile>` for some repos, `leave` to keep it here only, `remove` to take it away. The table [below](#where-a-tool-of-yours-can-live) shows what each one means.
+4. **Installed into one repo** (`.claude/skills` in that repo): adopt does not look there. Commit it to share it with the repo; `loadout profile <profile>` (or `loadout init` when it applies a profile) links it into `.agents/skills` so Codex sees it too.
+
+To write a new skill yourself instead, see [Create a skill of your own](#create-a-skill-of-your-own).
+
+## Where a tool of yours can live
+
+| | Personal layer (`global`) | Personal profile (`project:<profile>`) | Committed in one repo |
+|---|---|---|---|
+| Files | `<personal>/skills/`, `mcp.json`, `settings.json` | `<personal>/profiles/<profile>.json` and `profiles/skills/` | the repo's `.claude/skills/`, `.mcp.json`, `.codex/config.toml` |
+| Which machines | every machine with your personal layer | every machine, but only in repos you apply the profile to | every clone of that repo |
+| Who else | nobody | nobody | everyone who clones the repo |
+| Claude Code gets it | linked into `~/.claude/skills`, servers through `claude mcp`, settings merged | `loadout profile <profile>` copies the skills into the repo and merges servers and settings into its `.mcp.json` and `.claude/settings.json` | reads the repo's files |
+| Codex gets it | linked into `~/.agents/skills`, servers in `~/.codex/config.toml` | `loadout profile` links `.agents/skills` and writes `.codex/config.toml` (with Codex on) | the repo's `.agents/skills` links (made by `loadout profile`, by `init` when it applies a profile, or by `new skill --to repo`) and `.codex/config.toml` |
+| Undo | `loadout restore` | `loadout restore` (the repo's copy stays; it is a copy) | `loadout restore` for what `new skill --to repo` created; files and links from `init` and `profile`, and your commits, are yours to revert ([what restore does not undo](undo-and-restore.md#what-restore-does-not-undo)) |
+
+## Create a skill of your own
+
+```bash
+loadout configure new skill notes --description "Use when taking meeting notes."
+loadout configure new skill db-tips --to project:db
+loadout configure new skill release --to repo
+```
+
+The command writes a `SKILL.md` stub (name, description, a short body to fill in) and links it for the agents that are on. It refuses, writing nothing, when the name is taken in a place it would write or link (also in another case, as a dangling link, or for `global` as a pointer in `skills.json`), and when the description is empty, has a line break or looks like a secret. The description is stored as a quoted string, so `Use when: ...` is fine. `--to repo` works in a git repo, but not when that repo is your home folder (a dotfiles repo); commit the new folder yourself. It always writes the repo's `.claude/skills`, also with Codex only: that is the repo's shared skills folder, and `.agents/skills` links to it (the same rule as [profiles](../reference/profile-format.md)). Every folder and link it creates is in a backup, so `loadout restore` removes it. For `global` and `project:<profile>` it ends with the commit offer, like adopt.
+
 ## Choices
 
 | Choice | Meaning |
@@ -30,8 +62,9 @@ When something was recorded or removed, adopt and `configure set own` end with a
 What you add directly in one agent lives only there. With both agents on, `loadout check` reports it, and so does the daily sync after a pull that brought new commits, for example `MCP server "x" only in Claude Code` or `skill "y" only in Codex`. Everything from the kit and your personal layer reaches both agents.
 
 - **Only in Claude Code:** record it with `loadout adopt` as above; the next sync puts it into both.
-- **Only in Codex:** adopt lists MCP servers in `~/.codex/config.toml` and skills in `~/.agents/skills` that only Codex has, with the choices `global`, `leave` and `remove`:
+- **Only in Codex:** adopt lists MCP servers in `~/.codex/config.toml` and skills in `~/.agents/skills` that only Codex has, with the choices `global`, `project:<profile>`, `leave` and `remove` (a skill that is a link to a shared source: `global`, `leave`, `remove`):
   - **global** writes the server to your personal layer's `mcp.json` (secrets go to `secrets.env`) or copies the skill into its `skills/`, then hands the server's section to loadout and links the skill for both agents. A server with keys Claude Code cannot express (a `tools` section, timeouts) cannot be recorded; leave it or remove it. Neither can a server whose plaintext secret would have to move under another variable name, because Codex forwards a variable only under its own name: put it in `secrets.env` under its key's name by hand, then record it.
+  - **project** writes the server into the profile's `mcp` (same conversion and refusals as `global`) or copies the skill into `profiles/skills/`, then removes it from Codex's global setup with a backup, as `remove` does.
   - **leave** is remembered on this machine and silences the report for that item.
   - **remove** saves `config.toml` in the backup, then runs `codex mcp remove`; a skill moves into the backup. `loadout restore` brings both back.
 
@@ -85,6 +118,7 @@ On the second machine, the [daily sync](../explanation/architecture.md#the-daily
 
 Nothing that looks like a secret is written to the personal layer. Printed lines are redacted where the patterns recognise a secret. Values you set yourself with `loadout configure set pref` do not pass this guard.
 
+- **Names:** a skill name, a profile name (`project:<profile>`) or a `new skill --description` that looks like a secret is refused before anything is written, because it would become a file name, a backup label and output.
 - **MCP servers:** values in `env` and `headers` become `${VAR}` and move to `secrets.env`. A secret in `args`, in the URL (query string or a high-entropy path segment) or in a multi-line value is refused, because it cannot be moved safely.
 - **Marketplaces:** a source URL with credentials or a token is refused.
 - **Hooks and skills:** a hook command, args, script or any skill file that looks secret is refused. All skill files are scanned, binary ones by their text runs; a file with a UTF-16 byte-order mark or any NUL byte is scanned as UTF-8 and as UTF-16 (LE and BE). An unreadable file refuses too.

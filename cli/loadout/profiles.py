@@ -33,7 +33,7 @@ def _dirs() -> list[Path]:
 def list_profiles() -> list[str]:
     names = set()
     for d in _dirs():
-        names.update(p.stem for p in d.glob("*.json") if NAME.match(p.stem))  # others cannot be loaded by name
+        names.update(p.stem for p in d.glob("*.json") if NAME.fullmatch(p.stem))  # others cannot be loaded by name
     return sorted(names)
 
 
@@ -61,7 +61,7 @@ def read_profile(path: Path, name: str) -> Profile:
 
 
 def load_profile(name: str) -> Profile:
-    if not NAME.match(name):
+    if not NAME.fullmatch(name):
         raise ValueError(f"profile name {name!r}: use lowercase letters, digits, - and _")
     for d in _dirs():
         path = d / f"{name}.json"
