@@ -76,22 +76,26 @@ def _plugins() -> list[CheckResult]:
 
 PLUGIN_ID = "loadout@agent-loadout"
 AGENT_FILES = {".in_use", "__pycache__"}  # what the agents or Python add to a copy; never part of the kit
+NOT_RUN = {"evals", "evals-browser"}  # never run by an agent; eval runs write gitignored reports into them
+
+
+def _plugin_files(root: Path) -> set[Path]:
+    """The plugin's files that can run, relative to root: without what agents or Python add and the eval folders."""
+    return {rel for f in root.rglob("*")
+            if not (AGENT_FILES & set((rel := f.relative_to(root)).parts) or rel.parts[0] in NOT_RUN
+                    or f.suffix == ".pyc") and f.is_file()}
 
 
 def _same_files(kit: Path, copy: Path) -> bool:
-    """Every file of the kit's plugin folder is in the copy with the same bytes (extra files in the copy are
-    unused leftovers: the copy's own hooks.json and manifests, compared here, decide what runs)."""
-    for f in kit.rglob("*"):
-        rel = f.relative_to(kit)
-        if not f.is_file() or AGENT_FILES & set(rel.parts) or f.suffix == ".pyc":
-            continue
-        other = copy / rel
-        try:
-            if not other.is_file() or other.read_bytes() != f.read_bytes():
-                return False
-        except OSError:
+    """The same files with the same bytes, both ways: a file only in the copy can still run (Codex loads every
+    folder under skills/, so a skill the kit removed or renamed would keep working from an old copy)."""
+    try:
+        files = _plugin_files(kit)
+        if files != _plugin_files(copy):
             return False
-    return True
+        return all((kit / rel).read_bytes() == (copy / rel).read_bytes() for rel in files)
+    except OSError:
+        return False
 
 
 def _claude_copy() -> Path | None:

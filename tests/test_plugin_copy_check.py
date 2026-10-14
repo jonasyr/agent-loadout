@@ -65,6 +65,15 @@ def test_a_file_missing_from_the_copy_is_a_warning(fake_home, kit):
     assert not r.ok
 
 
+def test_a_file_the_kit_removed_is_a_warning(fake_home, kit):
+    # Codex loads every folder under skills/, so a skill the kit removed or renamed still runs from an old copy
+    dst = _claude_copy(fake_home, kit)
+    (dst / "skills" / "old-name").mkdir(parents=True)
+    (dst / "skills" / "old-name" / "SKILL.md").write_text("---\nname: old-name\n---\n")
+    (r,) = _results("loadout plugin (Claude Code)")
+    assert not r.ok
+
+
 def test_files_the_agents_add_do_not_count(fake_home, kit):
     dst = _claude_copy(fake_home, kit)
     (dst / ".in_use").write_text("")
@@ -72,6 +81,16 @@ def test_files_the_agents_add_do_not_count(fake_home, kit):
     (dst / "hooks" / "__pycache__" / "advisor.cpython-312.pyc").write_bytes(b"\0")
     (kit / "hooks" / "__pycache__").mkdir()
     (kit / "hooks" / "__pycache__" / "tool_hint.cpython-312.pyc").write_bytes(b"\1")
+    (r,) = _results("loadout plugin (Claude Code)")
+    assert r.ok
+
+
+def test_eval_folders_do_not_count(fake_home, kit):
+    # eval runs write gitignored reports into the kit (evals/results/); a copy cloned from git never has them
+    _claude_copy(fake_home, kit)
+    for folder in ("evals", "evals-browser"):
+        (kit / folder / "results").mkdir(parents=True)
+        (kit / folder / "results" / "report.json").write_text("{}")
     (r,) = _results("loadout plugin (Claude Code)")
     assert r.ok
 
