@@ -36,6 +36,12 @@
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft codebase-memory-mcp hook-augment", "shell": "bash", "timeout": 5 }
         ]
+      },
+      {
+        "matcher": "Grep|Glob|Bash|WebSearch|WebFetch",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.py\"", "shell": "bash", "timeout": 5 }
+        ]
       }
     ],
     "PostToolUse": [
@@ -43,6 +49,12 @@
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/advisor.py\" record", "shell": "bash", "timeout": 5 }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_loadout_serena__.*|mcp__plugin_loadout_codebase-memory-mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.py\"", "shell": "bash", "timeout": 5 }
         ]
       }
     ],

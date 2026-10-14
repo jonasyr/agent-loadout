@@ -16,7 +16,8 @@ import typecheck  # noqa: E402
 # Claude hooks with no Codex counterpart, and why
 OMITTED = {
     "codebase-memory-mcp hook-augment": "Codex has no Grep/Glob tools to augment",
-    "reload_check.py": "compares Claude's installed_plugins.json; Codex loads plugins per session",
+    "tool_hint.py": "Codex has its own entries with other matchers (shell only), checked in test_tool_hint_wiring.py",
+    "reload_check.py":"compares Claude's installed_plugins.json; Codex loads plugins per session",
 }
 CODEX_ARGS = {"--client=claude-code": "--client=codex", "rtk hook claude": "rtk hook codex",
               "mcp__plugin_loadout_serena__": "mcp__serena__", "Write|Edit|MultiEdit": "Edit|Write"}

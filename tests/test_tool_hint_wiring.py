@@ -1,0 +1,42 @@
+"""The hint hook is wired for both agents, and the subagent card leads with triggers."""
+import json
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+
+PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "loadout"
+HINT = '"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" --soft --python "${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.py"'
+
+
+def _entries(name, event):
+    hooks = json.loads((PLUGIN / "hooks" / name).read_text())["hooks"]
+    return [(g["matcher"], h) for g in hooks.get(event, []) for h in g["hooks"]]
+
+
+def _matchers_for(name, event):
+    return [m for m, h in _entries(name, event) if h["command"] == HINT]
+
+
+def test_claude_code_runs_the_hint_on_searches_web_lookups_and_mcp_use():
+    pre = _matchers_for("hooks.json", "PreToolUse")
+    assert "Grep|Glob|Bash|WebSearch|WebFetch" in pre
+    post = _matchers_for("hooks.json", "PostToolUse")
+    assert "mcp__plugin_loadout_serena__.*|mcp__plugin_loadout_codebase-memory-mcp__.*" in post
+    assert all(h["timeout"] == 5 for m, h in _entries("hooks.json", "PreToolUse") + _entries("hooks.json", "PostToolUse")
+               if h["command"] == HINT)
+
+
+def test_codex_runs_the_hint_on_shell_and_mcp_use():
+    assert "Bash" in _matchers_for("codex.json", "PreToolUse")
+    assert "mcp__serena__.*|mcp__codebase-memory-mcp__.*" in _matchers_for("codex.json", "PostToolUse")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="bash")
+def test_the_subagent_card_leads_with_triggers_and_stays_short():
+    out = subprocess.run(["bash", str(PLUGIN / "hooks" / "subagent-context.sh")], capture_output=True, text=True)
+    card = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert len(card) < 400
+    for word in ("search_graph", "Serena", "Context7", "Microsoft Learn", "planning", "paths and symbols"):
+        assert word in card

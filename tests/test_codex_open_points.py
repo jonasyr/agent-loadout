@@ -16,7 +16,7 @@ def _trust(keys, hash_="sha256:aa"):
 
 def test_expected_hook_keys_follow_codex_json():
     keys = codex.hook_keys()
-    assert len(keys) == 9
+    assert len(keys) == 11  # nine plus the two tool_hint entries
     assert "loadout@agent-loadout:hooks/codex.json:pre_tool_use:0:0" in keys
     assert "loadout@agent-loadout:hooks/codex.json:subagent_start:0:0" in keys
 
