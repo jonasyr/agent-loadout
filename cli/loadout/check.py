@@ -86,6 +86,11 @@ def _plugin_files(root: Path) -> set[Path]:
                     or f.suffix == ".pyc") and f.is_file()}
 
 
+def _runnable(path: Path) -> bool:
+    """The owner's executable bit (hooks run run.sh and tool_hint.sh directly); Windows has none, so always False."""
+    return os.name != "nt" and bool(path.stat().st_mode & stat.S_IXUSR)
+
+
 def _same_files(kit: Path, copy: Path) -> bool:
     """The same files with the same bytes, both ways: a file only in the copy can still run (Codex loads every
     folder under skills/, so a skill the kit removed or renamed would keep working from an old copy)."""
@@ -93,7 +98,8 @@ def _same_files(kit: Path, copy: Path) -> bool:
         files = _plugin_files(kit)
         if files != _plugin_files(copy):
             return False
-        return all((kit / rel).read_bytes() == (copy / rel).read_bytes() for rel in files)
+        return all((kit / rel).read_bytes() == (copy / rel).read_bytes() and _runnable(kit / rel) == _runnable(copy / rel)
+                   for rel in files)
     except OSError:
         return False
 
