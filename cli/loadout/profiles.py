@@ -190,6 +190,9 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
         if entry.name.startswith(".") or not entry.is_dir():
             continue
         name, dest = entry.name, dest_root / entry.name
+        if not paths.inside(entry, project):  # a link to a skill elsewhere: dangling in every other clone
+            out.append(f"skill {name}: {src_rel}/{name} leads outside {project}, not linked for {agent}")
+            continue
         if dest.exists() or dest.is_symlink():
             if os.path.realpath(dest) == os.path.realpath(entry):
                 continue  # our link, or the other agent's link to this folder

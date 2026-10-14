@@ -60,7 +60,7 @@ Each name in `skills` is looked up in `<personal layer>/profiles/skills/<name>/`
 - A name that is not a plain folder name (it has a path separator, or is `.` or `..`) is skipped.
 - If the folder it copies into (`.claude` or `.claude/skills`; with Codex only `.agents` or `.agents/skills`) is a link that leads outside the repo, nothing is copied.
 - After the copy and the `commands`, every skill folder (or link to one) is linked into the skill folder of each other agent that is on: `.agents/skills/NAME -> ../../.claude/skills/NAME` for Codex, `.claude/skills/NAME -> ../../.agents/skills/NAME` for Claude Code. So a repo that started with Codex only gets its skills linked for Claude Code on the first `loadout profile` after you turn Claude Code on.
-- Nothing is linked, and the output says why, when either skill folder is a link that leads outside the repo or the folder it links into is not a folder.
+- Nothing is linked, and the output says why, when either skill folder is a link that leads outside the repo or the folder it links into is not a folder. A single skill that is a link leading outside the repo is not linked either, and reported.
 - A name that is found nowhere is reported and skipped.
 
 The copy is a snapshot. Later changes to the profile's skill do not reach the repo until you copy it again, and the copies in a repo can drift from the personal layer.
