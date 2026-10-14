@@ -6,6 +6,7 @@ import re
 import stat
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import catalog, link, paths, runner, settings_merge, wsl
 from .jsonio import InvalidJSON, get_dict, load_json
@@ -71,6 +72,99 @@ def _plugins() -> list[CheckResult]:
     # Claude Code installs enabled plugins from known marketplaces at its next start
     return [CheckResult("plugins installed", not missing, ", ".join(missing),
                         "they install automatically at the next Claude Code start (or run loadout bootstrap)", "warn")]
+
+
+PLUGIN_ID = "loadout@agent-loadout"
+AGENT_FILES = {".in_use", "__pycache__"}  # what the agents or Python add to a copy; never part of the kit
+NOT_RUN = {"evals", "evals-browser"}  # never run by an agent; eval runs write gitignored reports into them
+
+
+def _plugin_files(root: Path) -> set[Path]:
+    """The plugin's files that can run, relative to root: without what agents or Python add and the eval folders."""
+    return {rel for f in root.rglob("*")
+            if not (AGENT_FILES & set((rel := f.relative_to(root)).parts) or rel.parts[0] in NOT_RUN
+                    or f.suffix == ".pyc") and f.is_file()}
+
+
+def _runnable(path: Path) -> bool:
+    """The owner's executable bit (hooks run run.sh and tool_hint.sh directly); Windows has none, so always False."""
+    return os.name != "nt" and bool(path.stat().st_mode & stat.S_IXUSR)
+
+
+def _same_files(kit: Path, copy: Path) -> bool:
+    """The same files with the same bytes, both ways: a file only in the copy can still run (Codex loads every
+    folder under skills/, so a skill the kit removed or renamed would keep working from an old copy)."""
+    try:
+        files = _plugin_files(kit)
+        if files != _plugin_files(copy):
+            return False
+        return all((kit / rel).read_bytes() == (copy / rel).read_bytes() and _runnable(kit / rel) == _runnable(copy / rel)
+                   for rel in files)
+    except OSError:
+        return False
+
+
+UPDATE = "loadout update --yes, then "
+CLAUDE_RELOAD = "/reload-plugins in Claude Code"
+
+
+def _claude_copies() -> list[tuple[str, Path, str]]:
+    """(label, folder, fix) per recorded copy: user scope, and project or local scope, which runs in its project."""
+    try:
+        installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
+    except InvalidJSON:
+        return []  # "plugins installed" reports the broken file
+    entries = installed.get(PLUGIN_ID)
+    out, seen = [], set()
+    for e in entries if isinstance(entries, list) else []:
+        if not isinstance(e, dict) or not isinstance(e.get("installPath"), str):
+            continue
+        path, scope = Path(e["installPath"]), e.get("scope")
+        if path in seen or not path.is_dir():
+            continue
+        seen.add(path)
+        if scope == "user":
+            out.append(("Claude Code", path, UPDATE + CLAUDE_RELOAD))
+        elif scope in ("project", "local"):
+            where = f" {e['projectPath']}" if isinstance(e.get("projectPath"), str) else ""
+            out.append((f"Claude Code, {scope}{where}", path,  # loadout update refreshes only the user scope
+                        f"in that project: claude plugin update {PLUGIN_ID} --scope {scope}, then {CLAUDE_RELOAD}"))
+    return out
+
+
+def _codex_copies() -> list[tuple[str, Path, str]]:
+    folder = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
+    fix = UPDATE + "approve the changed hooks in Codex's /hooks"
+    if (folder / "local").is_dir():
+        return [("Codex", folder / "local", fix)]  # a marketplace cloned from a repo installs as "local"
+    try:
+        dirs = [d for d in folder.iterdir() if d.is_dir()] if folder.is_dir() else []
+    except OSError:
+        return []
+    return [("Codex", max(dirs, key=lambda d: d.stat().st_mtime), fix)] if dirs else []
+
+
+def _plugin_copies() -> list[CheckResult]:
+    """The installed loadout plugin, per agent that is on, against the kit's plugins/loadout: an old copy runs old
+    hooks and skills, which can act on state that has moved. No line when the agent has no copy, or when the plugin
+    is turned off (its leftover copy runs nothing, and `loadout update` skips it)."""
+    from . import targets
+    kit = paths.kit_root() / "plugins" / "loadout"
+    try:
+        wanted = get_dict(settings_merge.desired_settings(), "enabledPlugins").get(PLUGIN_ID)
+    except InvalidJSON:
+        return []  # "settings.json" and "own tools" report the broken file
+    if not kit.is_dir() or not wanted:
+        return []
+    copies = [*(_claude_copies() if targets.claude_enabled() else []),
+              *(_codex_copies() if targets.codex_enabled() else [])]
+    out = []
+    for label, copy, fix in copies:
+        ok = _same_files(kit, copy)
+        out.append(CheckResult(f"loadout plugin ({label})", ok,
+                               "" if ok else "the installed copy differs from the kit, so its hooks and skills may be old",
+                               fix, "warn"))
+    return out
 
 
 def _connectors() -> list[CheckResult]:
@@ -218,7 +312,7 @@ def run_checks() -> list[CheckResult]:
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
     return [*_python(), *_wsl(), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
-            *_codex(), *(_connectors() if on else []), *_own(),
+            *_codex(), *_plugin_copies(), *(_connectors() if on else []), *_own(),
             *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
 
 

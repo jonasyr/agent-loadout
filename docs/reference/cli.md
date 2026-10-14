@@ -219,6 +219,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 | `skills.json` is valid JSON | warn |
 | Settings drift (a kit-managed value was changed) | warn |
 | Enabled plugins are installed | warn |
+| The installed loadout plugin has the kit's files (`loadout plugin (Claude Code)`, and with Codex on `loadout plugin (Codex)`): the installed copy has the same files as the kit's `plugins/loadout/`, with the same bytes and executable bits (not on Windows), and no others (a skill the kit removed would still load from an old copy). Files the agents add (`.in_use`, `__pycache__`) and the eval folders, which never run, are left out. An old copy runs old hooks and skills, which can act on state that has since moved. A Claude Code copy installed at project or local scope gets its own line (`loadout plugin (Claude Code, project <path>)`); `loadout update` refreshes only the user scope, so its fix is `claude plugin update loadout@agent-loadout --scope project` in that project. No line when the agent has no copy or the loadout plugin is turned off. Unpushed changes in the kit checkout also show as a difference. | warn |
 | An enabled plugin and a claude.ai connector with the same tools ("ever connected" in `~/.claude.json`, an undocumented Claude Code field) | warn |
 | Own tools that loadout does not manage | warn |
 | `gh auth status` | warn |
