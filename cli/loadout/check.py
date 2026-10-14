@@ -6,6 +6,7 @@ import re
 import stat
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import catalog, link, paths, runner, settings_merge, wsl
 from .jsonio import InvalidJSON, get_dict, load_json
@@ -71,6 +72,71 @@ def _plugins() -> list[CheckResult]:
     # Claude Code installs enabled plugins from known marketplaces at its next start
     return [CheckResult("plugins installed", not missing, ", ".join(missing),
                         "they install automatically at the next Claude Code start (or run loadout bootstrap)", "warn")]
+
+
+PLUGIN_ID = "loadout@agent-loadout"
+AGENT_FILES = {".in_use", "__pycache__"}  # what the agents or Python add to a copy; never part of the kit
+
+
+def _same_files(kit: Path, copy: Path) -> bool:
+    """Every file of the kit's plugin folder is in the copy with the same bytes (extra files in the copy are
+    unused leftovers: the copy's own hooks.json and manifests, compared here, decide what runs)."""
+    for f in kit.rglob("*"):
+        rel = f.relative_to(kit)
+        if not f.is_file() or AGENT_FILES & set(rel.parts) or f.suffix == ".pyc":
+            continue
+        other = copy / rel
+        try:
+            if not other.is_file() or other.read_bytes() != f.read_bytes():
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def _claude_copy() -> Path | None:
+    try:
+        installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
+    except InvalidJSON:
+        return None  # "plugins installed" reports the broken file
+    entries = installed.get(PLUGIN_ID)
+    for e in entries if isinstance(entries, list) else []:
+        if isinstance(e, dict) and e.get("scope") == "user" and isinstance(e.get("installPath"), str):
+            path = Path(e["installPath"])
+            return path if path.is_dir() else None
+    return None
+
+
+def _codex_copy() -> Path | None:
+    folder = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
+    if (folder / "local").is_dir():
+        return folder / "local"  # a marketplace from git installs as "local"
+    try:
+        dirs = [d for d in folder.iterdir() if d.is_dir()] if folder.is_dir() else []
+    except OSError:
+        return None
+    return max(dirs, key=lambda d: d.stat().st_mtime) if dirs else None
+
+
+def _plugin_copies() -> list[CheckResult]:
+    """The installed loadout plugin, per agent that is on, against the kit's plugins/loadout: an old copy runs old
+    hooks and skills, which can act on state that has moved. No line when the agent has no copy."""
+    from . import targets
+    kit = paths.kit_root() / "plugins" / "loadout"
+    if not kit.is_dir():
+        return []
+    out = []
+    for name, on, find, reload in (
+            ("Claude Code", targets.claude_enabled(), _claude_copy, "then /reload-plugins in Claude Code"),
+            ("Codex", targets.codex_enabled(), _codex_copy, "then approve the changed hooks in Codex's /hooks")):
+        copy = find() if on else None
+        if copy is None:
+            continue
+        ok = _same_files(kit, copy)
+        out.append(CheckResult(f"loadout plugin ({name})", ok,
+                               "" if ok else "the installed copy differs from the kit, so its hooks and skills may be old",
+                               f"loadout update --yes, {reload}", "warn"))
+    return out
 
 
 def _connectors() -> list[CheckResult]:
@@ -218,7 +284,7 @@ def run_checks() -> list[CheckResult]:
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
     return [*_python(), *_wsl(), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
-            *_codex(), *(_connectors() if on else []), *_own(),
+            *_codex(), *_plugin_copies(), *(_connectors() if on else []), *_own(),
             *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
 
 
