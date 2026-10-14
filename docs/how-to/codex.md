@@ -32,6 +32,7 @@ The same kit and personal layer reach Codex. Where each part goes (the instructi
 - **Context7 without a login.** The plugin's Context7 address asks Codex for an OAuth login; loadout sets the plain address for Codex instead, which works without one. Anonymous use has Context7's lower rate limit, so loadout lists an optional `codex mcp login context7` until you log in.
 - **Logins and approvals are named where you work.** Bootstrap's "Still to do", `loadout configure set target codex on` and `loadout check` list what is still open in Codex: the hook approval in `/hooks` (until you approved them, and again after loadout's hooks change) and any MCP server that waits for a login (`codex mcp login NAME`). loadout does not approve hooks for you: that approval is Codex's safety gate.
 - **MCP tools load on demand in Codex.** Codex shows the model Serena's, codebase-memory's and the other servers' tools only when it searches for them, so a session can claim "Serena is not available" without looking. loadout's instruction block tells Codex to search first; if it still does not use them, ask for them by name ("use Serena's find_symbol").
+- **Tool hints cover shell searches only.** Codex gives hooks no Grep, Glob or web tools, so there is no docs hint; whether the hints run in Codex subagents is not known yet ([ADR 0026](../adr/0026-tool-hints-never-block.md)).
 - **Type checks run per edit** instead of a language server that keeps running. Large TypeScript projects can take a few seconds; after 20 seconds the check reports itself as skipped.
 
 ## Project trust

@@ -22,6 +22,7 @@ Map the request to a command, show the planned commands as a short list, and run
 | Turn an agent on or off | `loadout configure set target <claude or codex> <on or off>` |
 | Tools for one repo | `loadout profile <name>` in that repo; a new repo: `loadout init <names> --yes` (it also runs `git init` when the folder is not a repo yet; say so in the plan) |
 | Is everything working? | `loadout check` |
+| Do my agents use Serena, the graph or Context7? | `loadout usage` (read-only, counts only) |
 | Review the existing setup | `loadout adopt` (a dry run); after a yes, `loadout adopt --apply --groups <the agreed groups>` (add `,secrets` only when the user agreed to move the plaintext secrets the dry run listed) or `--own NAME=CHOICE`; when the groups include `update` or `install`, add `--yes` (naming `secrets` is its consent) |
 | Update tools | `loadout update` lists what is outdated; after a yes, `loadout update --yes` |
 | Undo a change | `loadout restore --list`, then `loadout restore <dir>` after a yes |

@@ -10,7 +10,7 @@ A count over the user's transcripts after setup showed Serena in 0.8% of Claude 
 
 ## Decision
 
-A hook adds one short fact next to a search or a docs web lookup that a better tool would answer: on the 3rd symbol search since Serena or the graph was last used, at most once per 10 matched calls, for the main session and (Claude Code) its subagents. It never blocks, never asks for permission, and is never switched off for the rest of a session, so an agent that drifts back gets it again. `loadout usage` measures the effect.
+A hook adds one short fact next to a search or a docs web lookup that a better tool would answer: on the 3rd symbol search since Serena or the graph was last used, at most once per 10 counted calls, for the main session and (Claude Code) its subagents. It never blocks, never asks for permission, and is never switched off for the rest of a session, so an agent that drifts back gets it again. `loadout usage` measures the effect.
 
 ## Alternatives considered
 

@@ -234,14 +234,14 @@ Exit codes: 0 when nothing failed (warnings do not count); 1 when at least one `
 loadout usage [--days N] [--json]
 ```
 
-Read-only. Counts, per agent and for main sessions and subagents separately, how often each tool family was used in the last N days (default 14): Serena, codebase-memory, Context7, Microsoft Learn, Grep, Glob, Read, the shell, other. It also counts symbol-like searches done with grep or rg and the sessions in the window in which loadout's search or docs hint appeared (the hook keeps its state for 7 days, so a longer window counts only about the last week). It reads the local transcripts of the agents that are on (`~/.claude/projects`, `$CODEX_HOME/sessions`) and prints counts only, never their content. Unreadable lines are skipped and counted.
+Read-only. Counts, per agent and for main sessions and subagents separately, how often each tool family was used in the last N days (default 14): Serena, codebase-memory, Context7, Microsoft Learn, Grep, Glob, Read, the shell, other. It also counts symbol-like searches (the Grep tool, or shell `rg`, `grep`, `egrep` and `git grep`, by the hint's own rule; `find` does not count) and, as one total for both agents, the sessions in the window in which loadout's search or docs hint appeared (the hook keeps its state for 7 days, so a longer window counts only about the last week). It reads the local transcripts of the agents that are on (`~/.claude/projects`, `$CODEX_HOME/sessions`) and prints counts only, never their content. Unreadable lines are skipped and counted.
 
 | Flag | Meaning |
 |---|---|
-| `--days N` | Look back N days. |
-| `--json` | Print the counts as JSON. |
+| `--days N` | Look back N days (default 14; values below 1 count as 1). |
+| `--json` | Print the counts as JSON: `days`, `hint_sessions`, and per agent (`claude`, `codex`) `main` and `subagent` with `sessions`, `calls`, `symbol_searches` and `families.<name>.calls`/`.sessions`, plus `skipped_lines`. An agent without a transcript folder is left out. |
 
-Exit codes: 0 done; 1 no session history for any agent that is on.
+Exit codes: 0 done (an empty transcript folder prints zero counts); 1 when no agent that is on has a transcript folder (`~/.claude/projects`, `$CODEX_HOME/sessions`).
 
 ## loadout apply-settings
 
