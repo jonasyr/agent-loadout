@@ -45,16 +45,16 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 - `preferences.py`, `configure.py` structured preferences and the wizard
 - `own.py` your own tools; `new_skill.py` `configure new skill` (a SKILL.md stub in one of the three scopes); `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks
 - `targets.py` which agents are on (`targets.json` in the personal layer); `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_project.py` the Codex side of `init` and `profile`
-- `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker
+- `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker; `usage.py` `loadout usage` (tool-family counts from local transcripts)
 
 Other kit parts:
 
-- `plugins/loadout/`: the plugin (`.claude-plugin/` and `.codex-plugin/` manifests, `skills/`, `hooks/` with `hooks.json` for Claude Code and `codex.json` for Codex, `evals/`, `evals-browser/`, `.mcp.json`)
+- `plugins/loadout/`: the plugin (`.claude-plugin/` and `.codex-plugin/` manifests, `skills/`, `hooks/` with `hooks.json` for Claude Code and `codex.json` for Codex (including `tool_hint.py`), `evals/`, `evals-browser/`, `.mcp.json`)
 - `.claude/skills/diagrams`: repo-local skill for editing the docs diagrams (Codex finds it through a short pointer in `.agents/skills/diagrams`)
 - `.github/`: CI workflows, issue forms and the PR template (see CONTRIBUTING.md)
 - `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
 
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0025), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0026), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).
