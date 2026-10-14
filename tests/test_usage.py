@@ -3,6 +3,8 @@ import json
 import os
 import time
 
+import pytest
+
 from loadout import paths, targets, usage
 from loadout.__main__ import main
 
@@ -86,6 +88,59 @@ def test_valid_json_with_an_odd_shape_is_skipped_not_a_crash(fake_home, monkeypa
     report = usage.collect(14)
     assert report["claude"]["main"]["families"]["read"]["calls"] == 1  # odd fields are tolerated
     assert report["codex"]["skipped_lines"] == 2  # an invocation or a name that cannot be read
+
+
+def test_a_resumed_session_counts_only_calls_inside_the_window(fake_home, monkeypatch):
+    _on(monkeypatch, codex=False)
+    old = dict(_tool("mcp__plugin_loadout_serena__find_symbol"), timestamp="2025-01-01T10:00:00Z")
+    new = dict(_tool("Read", file_path="a"), timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    _claude([old, new])  # the file was touched today, but one call is from last year
+    fam = usage.collect(14)["claude"]["main"]["families"]
+    assert fam["serena"]["calls"] == 0 and fam["read"]["calls"] == 1
+
+
+def test_a_resumed_codex_session_counts_only_calls_inside_the_window(fake_home, monkeypatch):
+    _on(monkeypatch, claude=False)
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    _codex([{"timestamp": "2025-01-01T10:00:00Z", "type": "response_item",
+             "payload": {"type": "function_call", "name": "mcp__serena__find_symbol", "arguments": "{}"}},
+            {"timestamp": now, "type": "response_item",
+             "payload": {"type": "function_call", "name": "mcp__context7__query-docs", "arguments": "{}"}}])
+    fam = usage.collect(14)["codex"]["main"]["families"]
+    assert fam["serena"]["calls"] == 0 and fam["context7"]["calls"] == 1
+
+
+@pytest.mark.parametrize("command", ["rg -g '*.py' record_project", "rg -t py record_project",
+                                     "grep -A 3 record_project src", "rtk rg -n record_project src"])
+def test_searches_with_option_values_count_like_the_hook_counts_them(fake_home, monkeypatch, command):
+    _on(monkeypatch, codex=False)
+    _claude([_tool("Bash", command=command)])
+    assert usage.collect(14)["claude"]["main"]["symbol_searches"] == 1
+
+
+def test_common_words_are_no_symbol_search_here_either(fake_home, monkeypatch):
+    _on(monkeypatch, codex=False)
+    _claude([_tool("Bash", command="rg -n error logs"), _tool("Grep", pattern="TODO")])
+    assert usage.collect(14)["claude"]["main"]["symbol_searches"] == 0
+
+
+def test_an_oversized_line_is_skipped_without_reading_it_whole(fake_home, monkeypatch):
+    _on(monkeypatch, codex=False)
+    path = _claude([json.dumps(_tool("Read", file_path="a"))])
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("x" * (usage.MAX_LINE * 3) + "\n")
+        fh.write(json.dumps(_tool("Read", file_path="b")) + "\n")
+    reads = []
+    real = usage._read_record
+
+    def spy(fh):
+        line = real(fh)
+        reads.append(len(line or ""))
+        return line
+    monkeypatch.setattr(usage, "_read_record", spy)
+    report = usage.collect(14)
+    assert report["claude"]["main"]["families"]["read"]["calls"] == 2 and report["claude"]["skipped_lines"] == 1
+    assert max(reads) <= usage.MAX_LINE + 1  # never more than one bounded chunk at a time
 
 
 def test_a_codex_mcp_call_logged_twice_counts_once(fake_home, monkeypatch):

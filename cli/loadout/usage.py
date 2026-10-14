@@ -16,8 +16,6 @@ FAMILIES = (("serena", re.compile(r"serena", re.I)),
             ("microsoft-learn", re.compile(r"microsoft[-_](learn|docs|code)|microsoft_docs", re.I)))
 BUILTIN = {"Grep": "grep", "Glob": "glob", "Read": "read", "Bash": "shell"}
 CODEX_SHELL = {"exec_command", "shell", "shell_command", "local_shell", "exec"}
-SEARCH = re.compile(r"(?:^|[\s|;&(])(?:rg|grep|egrep|git\s+grep)\s+(?:-\S+\s+)*(?:\"([^\"]+)\"|'([^']+)'|(\S+))")
-IDENT = re.compile(r"^(?:(?:def|class|function|fn|func|struct|interface|type)\s+)?[A-Za-z_][A-Za-z0-9_]{2,63}\(?$")
 NAMES = ("serena", "codebase-memory", "context7", "microsoft-learn", "grep", "glob", "read", "shell", "other")
 LABELS = {"serena": "Serena", "codebase-memory": "codebase-memory", "context7": "Context7",
           "microsoft-learn": "Microsoft Learn", "grep": "Grep", "glob": "Glob", "read": "Read", "shell": "shell",
@@ -36,10 +34,37 @@ def _group() -> dict:
             "families": {n: {"calls": 0, "sessions": 0} for n in NAMES}}
 
 
+def _hint_rules():
+    """The hook's own parser (plugins/loadout/hooks/tool_hint.py), so this metric and the hint use one definition
+    of a symbol search. Loaded like advisor.py's hook; None when the kit has no hook script."""
+    global _RULES
+    if _RULES is None:
+        import importlib.util
+        path = paths.kit_root() / "plugins" / "loadout" / "hooks" / "tool_hint.py"
+        if not path.is_file():
+            _RULES = False
+        else:
+            spec = importlib.util.spec_from_file_location("loadout_tool_hint_hook", path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            _RULES = module
+    return _RULES or None
+
+
+_RULES = None
+
+
 def _symbol_search(text: str) -> bool:
-    m = SEARCH.search(text or "")
-    pattern = next((g for g in m.groups() if g), "") if m else ""
-    return bool(IDENT.match(pattern.strip()))
+    rules = _hint_rules()
+    if rules is None:
+        return False
+    is_search, name, _ = rules.shell_search(text or "")
+    return is_search and name is not None
+
+
+def _symbol_pattern(pattern: object) -> bool:
+    rules = _hint_rules()
+    return rules is not None and rules.symbol(pattern) is not None
 
 
 SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish", "pwsh", "powershell"})
@@ -63,10 +88,27 @@ def _command_text(args: object) -> str:
     return args if isinstance(args, str) else ""
 
 
-def _lines(path: Path, skipped: list[int]):
+def _read_record(fh) -> str:
+    """The next line, read in chunks of at most MAX_LINE + 1 characters. An oversized line comes back as its first
+    chunk (longer than MAX_LINE, so the caller skips it); the rest is drained chunk by chunk, never held whole."""
+    line = fh.readline(MAX_LINE + 1)
+    if len(line) > MAX_LINE and not line.endswith("\n"):
+        while True:
+            chunk = fh.readline(MAX_LINE + 1)
+            if not chunk or chunk.endswith("\n"):
+                break
+    return line
+
+
+def _lines(path: Path, skipped: list[int], cutoff: float):
+    """JSON objects of a transcript whose own timestamp is inside the window (a resumed old session keeps its old
+    calls out). Lines without a readable timestamp count, since the file itself was changed in the window."""
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
+            while True:
+                line = _read_record(fh)
+                if not line:
+                    break
                 if len(line) > MAX_LINE:
                     skipped[0] += 1
                     continue
@@ -75,10 +117,22 @@ def _lines(path: Path, skipped: list[int]):
                 except ValueError:
                     skipped[0] += 1
                     continue
-                if isinstance(obj, dict):
+                if isinstance(obj, dict) and _in_window(obj, cutoff):
                     yield obj
     except OSError:
         skipped[0] += 1
+
+
+def _in_window(obj: dict, cutoff: float) -> bool:
+    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+    stamp = obj.get("timestamp") or payload.get("timestamp")
+    if not isinstance(stamp, str):
+        return True
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() >= cutoff
+    except (ValueError, OverflowError, OSError):
+        return True
 
 
 def _add(group: dict, calls: dict[str, int], searches: int) -> None:
@@ -103,7 +157,7 @@ def _claude(cutoff: float) -> dict | None:
             continue
         calls: dict[str, int] = {}
         searches = 0
-        for obj in _lines(path, skipped):
+        for obj in _lines(path, skipped, cutoff):
             try:  # valid JSON of an unexpected shape is skipped and counted, never a crash
                 message = obj.get("message") if obj.get("type") == "assistant" else None
                 content = message.get("content") if isinstance(message, dict) else None
@@ -114,7 +168,7 @@ def _claude(cutoff: float) -> dict | None:
                     inp = inp if isinstance(inp, dict) else {}
                     fam = family(name)
                     calls[fam] = calls.get(fam, 0) + 1
-                    if fam == "grep" and IDENT.match(str(inp.get("pattern", "")).strip()):
+                    if fam == "grep" and _symbol_pattern(inp.get("pattern")):
                         searches += 1
                     elif fam == "shell" and _symbol_search(_command_text(inp)):
                         searches += 1
@@ -138,7 +192,7 @@ def _codex(cutoff: float) -> dict | None:
             continue
         calls: dict[str, int] = {}
         searches, sub, mcp_ids = 0, False, set()  # an MCP call can be logged twice: function_call and its end event
-        for obj in _lines(path, skipped):
+        for obj in _lines(path, skipped, cutoff):
             try:  # valid JSON of an unexpected shape is skipped and counted, never a crash
                 p = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
                 if obj.get("type") == "session_meta":
