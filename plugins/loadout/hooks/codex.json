@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.sh\"",
             "shell": "bash",
             "timeout": 5
           }
@@ -89,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.sh\"",
             "shell": "bash",
             "timeout": 5
           }

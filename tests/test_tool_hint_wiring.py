@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "loadout"
-HINT = '"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" --soft --python "${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.py"'
+HINT = '"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.sh"'
 
 
 def _entries(name, event):

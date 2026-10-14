@@ -175,14 +175,58 @@ def test_a_broken_state_file_starts_fresh(home, repo):
 def test_a_session_id_is_never_a_path(home, repo):
     for _ in range(3):
         _run(home, _grep(repo, "record_project", session="../../escape"))
-    assert not (home / ".local" / "escape.json").exists()
+    assert not list(home.rglob("escape*"))  # tool-hint/../../escape.json would be state/escape.json
 
 
 def test_huge_payload_is_ignored_quickly(home, repo):
+    payload = _bash(repo, "rg record_project " + "a" * 2_000_000)
     start = time.monotonic()
-    assert _run(home, None, raw='{"tool_input": {"command": "' + "a" * 2_000_000 + '"}}') is None
+    assert _run(home, None, raw=json.dumps(payload)) is None
     assert time.monotonic() - start < 5
+    assert not (home / ".local" / "state" / "loadout" / "tool-hint" / "s1.json").exists()
     assert _run(home, None, raw="\x00\xff not json") is None
+
+
+def test_codex_shell_wrapper_and_cmd_field_count(home, repo):
+    _run(home, _bash(repo, ["bash", "-lc", "rg -n record_project src"]))
+    payload = _bash(repo, "x")
+    payload["tool_input"] = {"cmd": "rg -n record_project src"}
+    _run(home, payload)
+    assert _context(_run(home, _bash(repo, ["/bin/zsh", "-c", "grep -rn record_project ."])))
+
+
+def test_a_search_word_that_is_not_a_command_never_counts(home, repo):
+    for _ in range(4):
+        assert _run(home, _bash(repo, "echo grep record_project")) is None
+        assert _run(home, _bash(repo, "git commit -m 'grep record_project'")) is None
+
+
+def test_the_state_folder_is_private(home, repo):
+    _run(home, _grep(repo, "record_project"))
+    for folder in (home / ".local" / "state" / "loadout", home / ".local" / "state" / "loadout" / "tool-hint"):
+        assert folder.stat().st_mode & 0o077 == 0, folder
+
+
+GATE = PLUGIN / "hooks" / "tool_hint.sh"
+
+
+def _gate(home, payload):
+    env = {"HOME": str(home), "PATH": os.environ["PATH"]}
+    res = subprocess.run(["bash", str(GATE)], input=json.dumps(payload), env=env, capture_output=True, text=True,
+                         timeout=10)
+    assert res.returncode == 0
+    return json.loads(res.stdout) if res.stdout.strip() else None
+
+
+def test_the_gate_lets_searches_through_and_stops_everything_else_before_python(home, repo, tmp_path):
+    for _ in range(2):
+        _gate(home, _bash(repo, "rg -n record_project src"))
+    assert _context(_gate(home, _bash(repo, "rg -n record_project src")))
+    other = home / "other"
+    other.mkdir()
+    for _ in range(4):
+        assert _gate(other, _bash(repo, "ls -la && npm test")) is None
+    assert not (other / ".local").exists()  # stopped before the hook: no state written
 
 
 def test_concurrent_runs_never_crash(home, repo):
@@ -194,6 +238,8 @@ def test_concurrent_runs_never_crash(home, repo):
         p.stdin.close()
     for p in procs:
         assert p.wait(timeout=10) == 0 and p.stderr.read() == ""
+    state = json.loads((home / ".local" / "state" / "loadout" / "tool-hint" / "s1.json").read_text())
+    assert 1 <= state["calls"] <= 8  # last writer wins: counts may be lost, the file never breaks
 
 
 def test_old_state_files_are_cleaned(home, repo):

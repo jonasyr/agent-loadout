@@ -75,6 +75,32 @@ def test_malformed_and_oversized_lines_are_skipped_and_counted(fake_home, monkey
     assert report["claude"]["skipped_lines"] == 2 and report["claude"]["main"]["families"]["read"]["calls"] == 1
 
 
+def test_valid_json_with_an_odd_shape_is_skipped_not_a_crash(fake_home, monkeypatch):
+    _on(monkeypatch)
+    _claude([{"type": "assistant", "message": "oops"},
+             {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash", "input": "abc"}]}},
+             {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Grep", "input": ["x"]}]}},
+             json.dumps(_tool("Read", file_path="a"))])
+    _codex([{"type": "event_msg", "payload": {"type": "mcp_tool_call_end", "invocation": "s"}},
+            {"type": "response_item", "payload": {"type": "function_call", "name": 7, "arguments": ["x"]}}])
+    report = usage.collect(14)
+    assert report["claude"]["main"]["families"]["read"]["calls"] == 1  # odd fields are tolerated
+    assert report["codex"]["skipped_lines"] == 2  # an invocation or a name that cannot be read
+
+
+def test_codex_symbol_searches_are_counted_in_every_command_shape(fake_home, monkeypatch):
+    _on(monkeypatch, claude=False)
+    _codex([{"type": "session_meta", "payload": {"timestamp": "2026-10-14T10:00:00Z", "source": "cli"}},
+            {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command",
+                                                  "arguments": json.dumps({"cmd": "rg record_project"})}},
+            {"type": "response_item", "payload": {"type": "function_call", "name": "shell",
+                                                  "arguments": json.dumps({"command": ["bash", "-lc",
+                                                                                       "rg -n record_project src"]})}},
+            {"type": "response_item", "payload": {"type": "function_call", "name": "shell",
+                                                  "arguments": json.dumps({"command": ["ls", "-la"]})}}])
+    assert usage.collect(14)["codex"]["main"]["symbol_searches"] == 2
+
+
 def test_an_agent_that_is_off_is_not_read(fake_home, monkeypatch):
     _on(monkeypatch, claude=False, codex=True)
     _claude([_tool("Read", file_path="a")])

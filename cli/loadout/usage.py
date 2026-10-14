@@ -42,6 +42,27 @@ def _symbol_search(text: str) -> bool:
     return bool(IDENT.match(pattern.strip()))
 
 
+SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish", "pwsh", "powershell"})
+
+
+def _command_text(args: object) -> str:
+    """The shell text of a tool call: Claude Code's {"command": "..."}, Codex's JSON arguments with `cmd` or
+    `command` (a string or an argv list), and `bash -lc "<script>"` unwrapped one level."""
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except ValueError:
+            return args
+    if isinstance(args, dict):
+        args = args.get("command") if args.get("command") is not None else args.get("cmd")
+    if isinstance(args, list):
+        words = [w for w in args if isinstance(w, str)]
+        if len(words) >= 3 and words[0].rsplit("/", 1)[-1] in SHELLS and words[1] in ("-c", "-lc", "-ic"):
+            return words[2]
+        return " ".join(words)
+    return args if isinstance(args, str) else ""
+
+
 def _lines(path: Path, skipped: list[int]):
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -83,17 +104,22 @@ def _claude(cutoff: float) -> dict | None:
         calls: dict[str, int] = {}
         searches = 0
         for obj in _lines(path, skipped):
-            content = (obj.get("message") or {}).get("content") if obj.get("type") == "assistant" else None
-            for item in content if isinstance(content, list) else []:
-                if not isinstance(item, dict) or item.get("type") != "tool_use":
-                    continue
-                name, inp = str(item.get("name", "")), item.get("input") or {}
-                fam = family(name)
-                calls[fam] = calls.get(fam, 0) + 1
-                if fam == "grep" and IDENT.match(str(inp.get("pattern", "")).strip()):
-                    searches += 1
-                elif fam == "shell" and _symbol_search(str(inp.get("command", ""))):
-                    searches += 1
+            try:  # valid JSON of an unexpected shape is skipped and counted, never a crash
+                message = obj.get("message") if obj.get("type") == "assistant" else None
+                content = message.get("content") if isinstance(message, dict) else None
+                for item in content if isinstance(content, list) else []:
+                    if not isinstance(item, dict) or item.get("type") != "tool_use":
+                        continue
+                    name, inp = str(item.get("name", "")), item.get("input")
+                    inp = inp if isinstance(inp, dict) else {}
+                    fam = family(name)
+                    calls[fam] = calls.get(fam, 0) + 1
+                    if fam == "grep" and IDENT.match(str(inp.get("pattern", "")).strip()):
+                        searches += 1
+                    elif fam == "shell" and _symbol_search(_command_text(inp)):
+                        searches += 1
+            except (AttributeError, TypeError, ValueError):
+                skipped[0] += 1
         _add(out["subagent" if "subagents" in path.parts else "main"], calls, searches)
     out["skipped_lines"] = skipped[0]
     return out
@@ -113,22 +139,29 @@ def _codex(cutoff: float) -> dict | None:
         calls: dict[str, int] = {}
         searches, sub = 0, False
         for obj in _lines(path, skipped):
-            p = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
-            if obj.get("type") == "session_meta":
-                sub = "subagent" in json.dumps(p.get("source", "")).lower()
-            kind = p.get("type")
-            if kind in ("function_call", "custom_tool_call"):
-                name = str(p.get("name", ""))
-                args = p.get("arguments") or p.get("input") or ""
-                args = args if isinstance(args, str) else json.dumps(args)
-                fam = "shell" if name in CODEX_SHELL else family(name)
-                calls[fam] = calls.get(fam, 0) + 1
-                if fam == "shell" and _symbol_search(args):
-                    searches += 1
-            elif kind == "mcp_tool_call_end":
-                fam = family(str((p.get("invocation") or {}).get("server", "")))
-                if fam != "other":
+            try:  # valid JSON of an unexpected shape is skipped and counted, never a crash
+                p = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+                if obj.get("type") == "session_meta":
+                    sub = "subagent" in json.dumps(p.get("source", "")).lower()
+                kind = p.get("type")
+                if kind in ("function_call", "custom_tool_call"):
+                    name = p.get("name")
+                    if not isinstance(name, str):
+                        raise TypeError("tool name")
+                    args = p.get("arguments") or p.get("input") or ""
+                    fam = "shell" if name in CODEX_SHELL else family(name)
                     calls[fam] = calls.get(fam, 0) + 1
+                    if fam == "shell" and _symbol_search(_command_text(args)):
+                        searches += 1
+                elif kind == "mcp_tool_call_end":
+                    invocation = p.get("invocation")
+                    if not isinstance(invocation, dict):
+                        raise TypeError("invocation")
+                    fam = family(str(invocation.get("server", "")))
+                    if fam != "other":
+                        calls[fam] = calls.get(fam, 0) + 1
+            except (AttributeError, TypeError, ValueError):
+                skipped[0] += 1
         _add(out["subagent" if sub else "main"], calls, searches)
     out["skipped_lines"] = skipped[0]
     return out

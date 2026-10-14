@@ -12,9 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -67,6 +65,10 @@ def state_dir() -> Path:
     return root / "loadout" / "tool-hint"
 
 
+SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish"})
+PREFIXES = frozenset({"rtk", "xargs", "sudo", "time", "nice", "env", "command", "exec", "nohup"})
+
+
 def symbol(pattern: object) -> str | None:
     """The symbol a search pattern looks for, or None (a common word, a phrase, a regex soup)."""
     if not isinstance(pattern, str) or len(pattern) > 200:
@@ -85,23 +87,32 @@ def symbol(pattern: object) -> str | None:
 
 
 def _words(command: object) -> list[str]:
+    """The words of a shell command: a string (Claude Code) or an argv list (Codex); `bash -lc "<script>"`
+    is unwrapped one level, so Codex's usual shell wrapper is seen."""
     if isinstance(command, list):
-        return [w for w in command if isinstance(w, str)][:200]
+        words = [w for w in command if isinstance(w, str)][:200]
+        if len(words) >= 3 and os.path.basename(words[0]) in SHELLS and words[1] in ("-c", "-lc", "-ic"):
+            return _words(words[2])
+        return words
     if not isinstance(command, str) or len(command) > 4000:
         return []
     try:
+        import shlex  # imported here: most calls never get this far
         return shlex.split(command)[:200]
     except ValueError:
         return command.split()[:200]
 
 
 def shell_search(command: object) -> tuple[bool, str | None, list[str]]:
-    """(is a search, symbol or None, path arguments) for the first rg/grep/git grep/find in a shell command.
-    A grep that filters another command's output (`ls | grep X`) and a find that changes files are no search."""
+    """(is a search, symbol or None, path arguments) for the first rg/grep/git grep/find that starts a command
+    (after `;`, `&&`, `rtk`, `xargs` and the like). A grep that filters another command's output (`ls | grep X`),
+    a word in a message (`echo grep X`) and a find that changes files are no search."""
     words = _words(command)
     for i, w in enumerate(words):
+        prev = words[i - 1] if i else ""
+        if i and prev not in OPERATORS and prev not in PREFIXES:
+            continue  # an argument, not a command
         base = os.path.basename(w)
-        piped = i > 0 and words[i - 1] == "|"
         if base == "find":
             rest = words[i + 1:]
             if any(x in ("-delete", "-exec", "-execdir", "-ok", "-okdir") for x in rest):
@@ -113,7 +124,7 @@ def shell_search(command: object) -> tuple[bool, str | None, list[str]]:
         if base == "git" and i + 1 < len(words) and words[i + 1] == "grep":
             return _search_args(words[i + 2:])
         if base in SEARCH_CMDS:
-            return (False, None, []) if piped else _search_args(words[i + 1:])
+            return (False, None, []) if prev == "|" else _search_args(words[i + 1:])
     return False, None, []
 
 
@@ -189,7 +200,10 @@ def _load(path: Path) -> dict:
 
 
 def _save(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # loadout's state folder is private (0700), like the CLI keeps it; created here when the hook runs first
+    path.parent.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, exist_ok=True)
+    import tempfile  # imported here: only a counted search writes state
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(data, fh)
@@ -230,7 +244,8 @@ def search_event(tool: str, tool_input: dict) -> tuple[bool, str | None]:
         pattern = tool_input.get("pattern")
         return isinstance(pattern, str) and pattern.endswith(CODE_EXT), None
     if tool in SHELL_TOOLS:
-        is_search, name, paths = shell_search(tool_input.get("command"))
+        command = tool_input.get("command")
+        is_search, name, paths = shell_search(command if command is not None else tool_input.get("cmd"))
         if not is_search or non_code(paths):
             return False, None
         return (name is not None or paths is FIND), name  # a common word or a phrase never counts
@@ -243,7 +258,8 @@ def handle(payload: dict) -> None:
         return
     event = payload.get("hook_event_name") or ""
     tool = payload.get("tool_name") or ""
-    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    raw_input = payload.get("tool_input")
+    tool_input: dict = raw_input if isinstance(raw_input, dict) else {}
     folder = state_dir()
     path = folder / f"{session}.json"
     fresh = not path.exists()
