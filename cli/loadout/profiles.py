@@ -175,9 +175,13 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
     src_root, dest_root, agent = project / src_rel, project / dest_rel, AGENT_OF[dest_rel]
     if not src_root.is_dir():
         return []
-    if not paths.inside(dest_root.parent, project) or not paths.inside(dest_root, project):
-        top = dest_root.parent.name
-        return [f"skills not linked: {dest_root} points outside {project} (a symlinked {top} or {top}/skills)"]
+    for root in (src_root, dest_root):  # a skill from outside the repo would be dangling in every other clone
+        if not paths.inside(root.parent, project) or not paths.inside(root, project):
+            top = root.parent.name
+            return [f"skills not linked: {root} points outside {project} (a symlinked {top} or {top}/skills)"]
+    for part in (dest_root.parent, dest_root):
+        if (part.exists() or part.is_symlink()) and not part.is_dir():
+            return [f"skills not linked: {part} is not a folder"]
     out = []
     for entry in sorted(src_root.iterdir()):
         if entry.name.startswith(".") or not entry.is_dir():

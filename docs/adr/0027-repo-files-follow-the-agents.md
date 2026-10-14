@@ -32,7 +32,7 @@ A repo gets the files of the agents that are on (`targets.json`), and only those
 
 - loadout keeps no list of repos, so turning an agent on reaches a repo on the next `loadout profile` or `loadout init` there.
 - A repo can have real skill folders in both places; each agent's folder then holds what it uses, and a name in both is reported once.
-- With Claude Code off, a repo's `.claude/skills` is read only to link a teammate's skills for Codex and to refuse a second skill of the same name; nothing is written there.
+- With an agent off, its repo skill folder (`.claude/skills` or `.agents/skills`) is read only to link a teammate's skills for the other agent and to leave or refuse a second skill of the same name; nothing is written there. The AGENTS.md rule that nothing reads an agent's files when it is off is about the user's agent folders (`~/.claude`, `~/.codex`), not a repo's shared files.
 
 ## In the code
 

@@ -213,3 +213,44 @@ def test_both_on_init_is_unchanged(repo):
     scaffold.scaffold(repo)
     assert (repo / "CLAUDE.md").is_file()
     assert scaffold.ensure_gitignore(repo) == scaffold.GITIGNORE_LINES
+
+
+@pytest.mark.parametrize("blocker", [".claude", ".claude/skills"])
+def test_a_link_target_that_is_a_file_gives_one_line_not_a_crash(repo, blocker):
+    targets.set_agents({"claude": True, "codex": False})
+    _real(repo, ".agents/skills", "notes")
+    (repo / blocker).parent.mkdir(parents=True, exist_ok=True)
+    (repo / blocker).write_text("")
+    lines = profiles.link_skills(repo, dry_run=False)
+    assert len(lines) == 1 and lines[0].startswith("skills not linked:") and "not a folder" in lines[0]
+
+
+def test_skills_from_a_folder_outside_the_repo_are_not_linked(repo, tmp_path):
+    targets.set_agents({"claude": True, "codex": False})
+    (tmp_path / "elsewhere" / "skills" / "evil").mkdir(parents=True)
+    (repo / ".agents").symlink_to(tmp_path / "elsewhere")
+    lines = profiles.link_skills(repo, dry_run=False)
+    assert len(lines) == 1 and lines[0].startswith("skills not linked:") and "outside" in lines[0]
+    assert not (repo / ".claude").exists()
+
+
+def test_calm_summary_names_the_links_it_made(repo, fake_runner, monkeypatch, capsys):
+    from loadout import out, project
+    monkeypatch.setattr(out, "VERBOSE", False)
+    targets.set_agents({"claude": True, "codex": False})
+    _real(repo, ".agents/skills", "notes")
+    monkeypatch.setattr(profiles, "load_profile", lambda name: profiles.Profile(name="web", description=""))
+    assert project.add_profile(repo, "web", install=False) == 0
+    text = capsys.readouterr().out
+    assert "notes skill link" in text and "nothing to change" not in text
+
+
+def test_calm_codex_only_notes_are_steps_not_warnings(repo, fake_runner, monkeypatch, capsys):
+    from loadout import codex_project, out, project
+    monkeypatch.setattr(out, "VERBOSE", False)
+    targets.set_agents({"claude": False, "codex": True})
+    monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
+    monkeypatch.setattr(codex_project, "apply", lambda *a, **k: [])
+    assert project.add_profile(repo, "web", install=False) == 0
+    text = capsys.readouterr().out
+    assert "applied with problems" not in text and "Claude Code is off: .mcp.json not written" in text

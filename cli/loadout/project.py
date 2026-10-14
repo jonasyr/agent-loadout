@@ -88,6 +88,8 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         bad = "not linked" in line or "left as is" in line
         (warn if bad else info)(line)
         links_ok = links_ok and not bad
+        if line.startswith("linked skill"):
+            parts.append(line.split()[2] + " skill link")
     if not links_ok:
         ok = False
     if skipped or not skills_ok:
