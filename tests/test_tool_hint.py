@@ -3,6 +3,7 @@ The hook runs as a subprocess with a temporary HOME and a fixture repo."""
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -244,6 +245,24 @@ def test_the_gate_lets_searches_through_and_stops_everything_else_before_python(
     for _ in range(4):
         assert _gate(other, _bash(repo, "ls -la && npm test")) is None
     assert not (other / ".local").exists()  # stopped before the hook: no state written
+
+
+def test_a_python3_that_does_not_run_falls_back_to_python(home, repo, tmp_path):
+    # Windows: `python3` can be the Microsoft Store alias, which exists but only prints a notice and fails
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    stub = bindir / "python3"
+    stub.write_text("#!/bin/sh\necho 'Python was not found; run without arguments to install' >&2\nexit 9009\n")
+    stub.chmod(0o755)
+    (bindir / "python").symlink_to(sys.executable)
+    env = {"HOME": str(home), "PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}"}
+    out = None
+    for _ in range(3):
+        res = subprocess.run(["bash", str(GATE)], input=json.dumps(_bash(repo, "rg -n record_project src")),
+                             env=env, capture_output=True, text=True, timeout=10)
+        assert res.returncode == 0
+        out = json.loads(res.stdout) if res.stdout.strip() else None
+    assert _context(out)
 
 
 def test_concurrent_runs_never_crash(home, repo):
