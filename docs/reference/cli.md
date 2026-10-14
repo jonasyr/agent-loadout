@@ -2,7 +2,7 @@
 
 `loadout` is the command-line tool of the kit. Run `loadout --help` or `loadout <command> --help` for the built-in help. The flag tables below match that help.
 
-The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update`, `restore` and `kit-path`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They are not listed in `loadout --help` and are not meant to be run by hand.
+The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update`, `restore`, `usage` and `kit-path`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They are not listed in `loadout --help` and are not meant to be run by hand.
 
 `loadout --version` prints the release and the kit's commit, for example `loadout 0.1.0 (54af5b7)`; the commit is left out when the kit is not a git clone. Bug reports ask for it.
 
@@ -227,6 +227,21 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 | With Codex on (nothing is checked about Codex while it is off): `codex` found and new enough (`Codex`), the loadout plugin installed (`Codex plugin`), the block in `~/.codex/AGENTS.md` current (`Codex instructions`; an `AGENTS.override.md` that shadows it adds a second `Codex instructions` line, a warning), loadout's entries in `config.toml` current (`Codex config`), enabled plugins without a Codex route (`Codex plugins`), loadout's hooks approved in `/hooks` (`Codex hooks`), MCP servers waiting for a login (`Codex logins`), MCP servers and skills present in only one agent (`Codex drift`) | warn, except `Codex plugin` and `Codex instructions`: FAIL |
 
 Exit codes: 0 when nothing failed (warnings do not count); 1 when at least one `FAIL` line was printed.
+
+## loadout usage
+
+```
+loadout usage [--days N] [--json]
+```
+
+Read-only. Counts, per agent and for main sessions and subagents separately, how often each tool family was used in the last N days (default 14): Serena, codebase-memory, Context7, Microsoft Learn, Grep, Glob, Read, the shell, other. It also counts symbol-like searches (the Grep tool, or shell `rg`, `grep`, `egrep` and `git grep`, by the hint's own rule; `find` does not count) and, as one total for both agents, the sessions in the window in which loadout's search or docs hint appeared (the hook keeps its state for 7 days, so a longer window counts only about the last week). It reads the local transcripts of the agents that are on (`~/.claude/projects`, `$CODEX_HOME/sessions`) and prints counts only, never their content. Unreadable lines are skipped and counted.
+
+| Flag | Meaning |
+|---|---|
+| `--days N` | Look back N days (default 14; values below 1 count as 1). |
+| `--json` | Print the counts as JSON: `days`, `hint_sessions`, and per agent (`claude`, `codex`) `main` and `subagent` with `sessions`, `calls`, `symbol_searches` and `families.<name>.calls`/`.sessions`, plus `skipped_lines`. An agent without a transcript folder is left out. |
+
+Exit codes: 0 done (an empty transcript folder prints zero counts); 1 when no agent that is on has a transcript folder (`~/.claude/projects`, `$CODEX_HOME/sessions`).
 
 ## loadout apply-settings
 

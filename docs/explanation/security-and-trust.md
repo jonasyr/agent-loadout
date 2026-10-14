@@ -12,6 +12,7 @@ loadout keeps itself current for Claude Code and Codex, so you should know what 
 | The session hook, Codex | Start of every session, once you approved the plugin's hooks in `/hooks` | Codex runs `loadout hook-session-start` from the plugin's `hooks/codex.json` |
 | Pull of the kit and the personal layer | At most once a day, in a detached background process started by the session hook | `maintenance._maintain` |
 | Version check of tool binaries | At most once a week, same process | `maintenance._maintain` |
+| Tool hints | Before search, shell and web tool calls, and after Serena or graph calls | The plugin's `hooks/tool_hint.sh` and `tool_hint.py`: they read the call's input and the repo's top-level file names, write only counters to `~/.local/state/loadout/tool-hint/`, and use no network ([Hooks](../reference/hooks.md#hooks-of-the-loadout-plugin)) |
 
 How the pull and the weekly check work, what they re-apply and how to turn them off: [The daily sync](architecture.md#the-daily-sync). Tool binaries are updated only by [`loadout update`](../reference/cli.md#loadout-update), which shows each command and asks first.
 
@@ -54,6 +55,7 @@ It does not touch:
 - Your `~/.claude/CLAUDE.md`, apart from the adopt choice above. Rules are linked as a folder instead.
 - Settings keys it does not manage, unless you ask (`adopt`).
 - Project files, except through `loadout init` and `loadout profile`. Scaffold files are never overwritten. Profiles merge into the repo's `.claude/settings.json` and `.mcp.json` (the profile's value wins on the same key), may run the profile's `commands`, and are not backed up; use git.
+- Your session transcripts. Only `loadout usage` reads them, when you run it, locally; it prints counts, never their content, and changes nothing.
 - Your Claude login or claude.ai connectors. It does not change them. `loadout check` reads only the connector names in `~/.claude.json` (`claudeAiMcpEverConnected`) to warn about a plugin that duplicates one, and prints only names from the kit's catalog.
 
 Items you own that loadout removes or replaces are moved to a backup first. The routine sync of what the kit itself manages (managed settings keys, your personal MCP servers) is not backed up, and neither is the shell startup file bootstrap appends to on Linux and macOS; your personal layer's git history is the record. See [What restore does not undo](../how-to/undo-and-restore.md#what-restore-does-not-undo).

@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-# SubagentStart: subagents get a one-line pointer to the kit's tool routing.
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"Tool routing (loadout): structure and call chains -> codebase-memory-mcp; exact symbol lookup or edits -> Serena; text/config -> Grep/Read; library docs -> Context7; UI checks -> playwright-cli."}}'
+# SubagentStart: subagents get the kit's tool routing, triggers first (docs/reference/hooks.md).
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"Tool routing (loadout): code structure or callers -> codebase-memory search_graph/trace_path before grep; exact symbol or edit -> Serena; library docs, also while planning -> Context7, Microsoft APIs -> Microsoft Learn; text and config -> Grep/Read. Use the paths and symbols the parent gave you."}}'
