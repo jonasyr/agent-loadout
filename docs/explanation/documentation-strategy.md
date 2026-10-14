@@ -188,7 +188,7 @@ The copy had already drifted: the code says `MAX_TITLE_LEN = 120`.
 | Existing repo with messy docs | Then `/loadout:docs-audit` |
 | Every feature | `/loadout:docs-sync` before merging |
 
-`loadout init` scaffolds whatever is missing of AGENTS.md, CLAUDE.md (`@AGENTS.md`), `docs/README.md` and `docs/adr/README.md`, and adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
+`loadout init` scaffolds whatever is missing of AGENTS.md, CLAUDE.md (`@AGENTS.md`), `docs/README.md` and `docs/adr/README.md`, and adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`. With Claude Code off it leaves out CLAUDE.md and the `.claude/settings.local.json` line ([ADR 0027](../adr/0027-repo-files-follow-the-agents.md)).
 
 **Without the kit**
 
