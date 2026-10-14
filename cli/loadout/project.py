@@ -81,11 +81,18 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     ran: list[str] = []
     ok = _install(prof, project, dry_run, info, warn, ran, calm) if install else True
     parts += [f"ran {what}" for what in ran]
+    links_ok = True
+    for line in profiles.link_skills(project, dry_run):  # after the commands, which may install skills
+        bad = "not linked" in line or "left as is" in line
+        (warn if bad else info)(line)
+        links_ok = links_ok and not bad
+    if not links_ok:
+        ok = False
     if skipped or not skills_ok:
         ok = False
     from . import codex_project, targets
     if targets.codex_enabled():
-        codex_ok = True
+        codex_ok = links_ok
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
             bad = line.startswith("skipped") or any(s in line for s in (
                 ": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is"))

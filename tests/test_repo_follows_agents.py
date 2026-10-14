@@ -65,3 +65,88 @@ def test_codex_only_agents_folder_outside_the_repo_is_refused(repo, kit_skill, t
     lines = profiles.copy_skills(kit_skill, repo)
     assert len(lines) == 1 and "points outside" in lines[0] and ".agents" in lines[0]
     assert list((tmp_path / "elsewhere").iterdir()) == []
+
+
+def _real(repo, rel, name):
+    (repo / rel / name).mkdir(parents=True)
+    (repo / rel / name / "SKILL.md").write_text(f"---\nname: {name}\n---\n")
+
+
+def test_both_on_links_each_way(repo):
+    targets.set_agents({"claude": True, "codex": True})
+    _real(repo, ".claude/skills", "pw")
+    _real(repo, ".agents/skills", "mine")
+    lines = profiles.link_skills(repo, dry_run=False)
+    assert Path(os.readlink(repo / ".agents/skills/pw")) == Path("../../.claude/skills/pw")
+    assert Path(os.readlink(repo / ".claude/skills/mine")) == Path("../../.agents/skills/mine")
+    assert lines == ["linked skill pw for Codex -> .agents/skills/pw",
+                     "linked skill mine for Claude Code -> .claude/skills/mine"]
+    assert profiles.link_skills(repo, dry_run=False) == []
+
+
+def test_codex_only_links_a_teammates_claude_skill_and_writes_nothing_under_claude(repo):
+    _real(repo, ".claude/skills", "pw")
+    targets.set_agents({"claude": False, "codex": True})
+    before = sorted(p.name for p in (repo / ".claude" / "skills").iterdir())
+    assert profiles.link_skills(repo, dry_run=False) == ["linked skill pw for Codex -> .agents/skills/pw"]
+    assert sorted(p.name for p in (repo / ".claude" / "skills").iterdir()) == before
+
+
+def test_turning_claude_code_on_later_links_codex_skills(repo):
+    targets.set_agents({"claude": False, "codex": True})
+    _real(repo, ".agents/skills", "notes")
+    assert profiles.link_skills(repo, dry_run=False) == []
+    assert not (repo / ".claude").exists()
+    targets.set_agents({"claude": True, "codex": True})
+    assert profiles.link_skills(repo, dry_run=False) == ["linked skill notes for Claude Code -> .claude/skills/notes"]
+    assert (repo / ".claude/skills/notes/SKILL.md").is_file()
+
+
+def test_the_other_agents_link_is_silent_after_claude_code_is_turned_off(repo):
+    targets.set_agents({"claude": True, "codex": True})
+    _real(repo, ".agents/skills", "notes")
+    profiles.link_skills(repo, dry_run=False)  # .claude/skills/notes -> ../../.agents/skills/notes
+    targets.set_agents({"claude": False, "codex": True})
+    assert profiles.link_skills(repo, dry_run=False) == []
+
+
+def test_two_real_folders_give_one_line(repo):
+    targets.set_agents({"claude": True, "codex": True})
+    _real(repo, ".claude/skills", "pw")
+    _real(repo, ".agents/skills", "pw")
+    assert profiles.link_skills(repo, dry_run=False) == [
+        "skill pw: .agents/skills/pw is not a link to .claude/skills/pw, left as is (Codex uses that one)"]
+
+
+def test_claude_only_links_nothing_into_agents(repo):
+    targets.set_agents({"claude": True, "codex": False})
+    _real(repo, ".claude/skills", "pw")
+    assert profiles.link_skills(repo, dry_run=False) == []
+    assert not (repo / ".agents").exists()
+
+
+def test_a_claude_folder_outside_the_repo_gets_one_line(repo, tmp_path):
+    targets.set_agents({"claude": True, "codex": True})
+    _real(repo, ".agents/skills", "notes")
+    (tmp_path / "elsewhere").mkdir()
+    (repo / ".claude").symlink_to(tmp_path / "elsewhere")
+    lines = profiles.link_skills(repo, dry_run=False)
+    assert len(lines) == 1 and lines[0].startswith("skills not linked:") and ".claude" in lines[0]
+    assert list((tmp_path / "elsewhere").iterdir()) == []
+
+
+def test_link_dry_run_names_the_link_and_writes_nothing(repo):
+    targets.set_agents({"claude": True, "codex": True})
+    _real(repo, ".agents/skills", "notes")
+    assert profiles.link_skills(repo, dry_run=True) == [
+        "would link skill notes for Claude Code -> .claude/skills/notes"]
+    assert not (repo / ".claude").exists()
+
+
+def test_profile_links_skills_with_claude_code_only(repo, fake_runner, monkeypatch):
+    from loadout import project
+    targets.set_agents({"claude": True, "codex": False})
+    _real(repo, ".agents/skills", "notes")
+    monkeypatch.setattr(profiles, "load_profile", lambda name: profiles.Profile(name="web", description=""))
+    assert project.add_profile(repo, "web", install=False) == 0
+    assert (repo / ".claude/skills/notes").is_symlink()

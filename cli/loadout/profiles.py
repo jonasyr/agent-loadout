@@ -1,6 +1,7 @@
 """Per-project profiles: settings/.mcp.json fragments plus plugins to install."""
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from dataclasses import dataclass, field
@@ -134,4 +135,53 @@ def copy_skills(profile: Profile, project: Path, dry_run: bool = False) -> list[
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(src, dest, symlinks=True)
             out.append(f"copied skill {name} -> {dest}")
+    return out
+
+
+AGENT_OF = {".claude/skills": "Claude Code", ".agents/skills": "Codex"}
+
+
+def link_skills(project: Path, dry_run: bool) -> list[str]:
+    """Link each repo skill into the skill folder of every other agent that is on (relative, so the link works in
+    every clone): .claude/skills/NAME into .agents/skills for Codex, .agents/skills/NAME into .claude/skills for
+    Claude Code (ADR 0027)."""
+    from . import targets
+    claude, agents = REPO_SKILLS
+    out = []
+    if targets.codex_enabled():
+        out += _link_into(project, claude, agents, dry_run, report=True)
+    if targets.claude_enabled():
+        out += _link_into(project, agents, claude, dry_run, report=False)  # two real folders: the Codex direction says so
+    return out
+
+
+def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report: bool) -> list[str]:
+    src_root, dest_root, agent = project / src_rel, project / dest_rel, AGENT_OF[dest_rel]
+    if not src_root.is_dir():
+        return []
+    if not paths.inside(dest_root.parent, project) or not paths.inside(dest_root, project):
+        top = dest_root.parent.name
+        return [f"skills not linked: {dest_root} points outside {project} (a symlinked {top} or {top}/skills)"]
+    out = []
+    for entry in sorted(src_root.iterdir()):
+        if entry.name.startswith(".") or not entry.is_dir():
+            continue
+        name, dest = entry.name, dest_root / entry.name
+        if dest.exists() or dest.is_symlink():
+            if os.path.realpath(dest) == os.path.realpath(entry):
+                continue  # our link, or the other agent's link to this folder
+            if report:
+                out.append(f"skill {name}: {dest_rel}/{name} is not a link to {src_rel}/{name}, "
+                           f"left as is ({agent} uses that one)")
+            continue
+        if dry_run:
+            out.append(f"would link skill {name} for {agent} -> {dest_rel}/{name}")
+            continue
+        dest_root.mkdir(parents=True, exist_ok=True)
+        try:
+            os.symlink(f"../../{src_rel}/{name}", dest, target_is_directory=True)
+        except OSError as exc:  # e.g. Windows without symlink rights
+            out.append(f"skill {name}: not linked for {agent} ({exc.strerror or exc})")
+            continue
+        out.append(f"linked skill {name} for {agent} -> {dest_rel}/{name}")
     return out

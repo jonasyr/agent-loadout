@@ -76,13 +76,14 @@ def test_symlinked_codex_folder_outside_the_repo_is_refused(repo, tmp_path):
 
 
 def test_repo_skills_are_linked_for_codex(repo):
+    targets.set_agents({"claude": False, "codex": True})
     (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
     (repo / ".agents" / "skills" / "mine").mkdir(parents=True)
-    lines = codex_project.skills(repo, dry_run=False)
+    lines = profiles.link_skills(repo, dry_run=False)
     link = repo / ".agents" / "skills" / "pw"
     assert link.is_symlink() and Path(os.readlink(link)) == Path("../../.claude/skills/pw")
     assert (repo / ".agents" / "skills" / "mine").is_dir()  # never replaced
-    assert codex_project.skills(repo, dry_run=False) == []  # second run: nothing to do
+    assert profiles.link_skills(repo, dry_run=False) == []  # second run: nothing to do
     assert lines == ["linked skill pw for Codex -> .agents/skills/pw"]
 
 
@@ -125,7 +126,6 @@ def test_add_profile_runs_codex_only_when_codex_is_on(repo, fake_runner, monkeyp
 
 def test_trust_note_unless_the_project_is_trusted(repo, monkeypatch):
     monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run, skip=frozenset(): ["x"])
-    monkeypatch.setattr(codex_project, "skills", lambda p, dry_run: [])
     assert codex_project.TRUST_NOTE in codex_project.apply(WEB, repo, install=False, dry_run=False)
     cfg = paths.codex_home() / "config.toml"
     cfg.parent.mkdir(parents=True)
@@ -144,11 +144,12 @@ def test_a_symlinked_config_file_outside_the_repo_is_refused(repo, tmp_path):
 
 
 def test_a_symlinked_skills_folder_outside_the_repo_is_refused(repo, tmp_path):
+    targets.set_agents({"claude": False, "codex": True})
     (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
     (tmp_path / "elsewhere").mkdir()
     (repo / ".agents").mkdir()
     (repo / ".agents" / "skills").symlink_to(tmp_path / "elsewhere")
-    lines = codex_project.skills(repo, dry_run=False)
+    lines = profiles.link_skills(repo, dry_run=False)
     assert any("points outside" in l for l in lines)
     assert list((tmp_path / "elsewhere").iterdir()) == []
 
@@ -202,7 +203,6 @@ def test_a_failed_plugin_list_makes_nothing_project_only(repo, fake_runner, monk
 
 def test_trust_note_repeats_on_a_second_run_while_untrusted(repo, monkeypatch):
     monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run, skip=frozenset(): [])
-    monkeypatch.setattr(codex_project, "skills", lambda p, dry_run: [])
     assert codex_project.TRUST_NOTE in codex_project.apply(WEB, repo, install=False, dry_run=False)
     empty = profiles.Profile(name="empty", description="")
     assert codex_project.TRUST_NOTE not in codex_project.apply(empty, repo, install=False, dry_run=False)
@@ -317,13 +317,14 @@ def test_failed_skill_links_make_profile_exit_1(repo, monkeypatch):
 
 
 def test_a_different_skill_under_the_same_name_is_reported(repo):
+    targets.set_agents({"claude": False, "codex": True})
     (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
     (repo / ".agents" / "skills" / "pw").mkdir(parents=True)
-    lines = codex_project.skills(repo, dry_run=False)
+    lines = profiles.link_skills(repo, dry_run=False)
     assert any("pw" in l and "left as is" in l for l in lines)
     (repo / ".agents" / "skills" / "pw").rmdir()
-    codex_project.skills(repo, dry_run=False)
-    assert codex_project.skills(repo, dry_run=False) == []  # our own link: silent
+    profiles.link_skills(repo, dry_run=False)
+    assert profiles.link_skills(repo, dry_run=False) == []  # our own link: silent
 
 
 def test_a_repo_switch_that_is_off_is_reported_as_a_problem(repo):
