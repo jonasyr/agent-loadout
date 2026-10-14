@@ -96,21 +96,38 @@ def _skill_source(name: str) -> Path | None:
     return None
 
 
+REPO_SKILLS = (".claude/skills", ".agents/skills")  # Claude Code's and Codex's skill folder in a repo
+
+
+def repo_skill_dirs(project: Path) -> tuple[Path, Path | None]:
+    """(where a new repo skill's real folder goes, the other agent's folder that links to it, or None): Claude Code's
+    .claude/skills whenever Claude Code is on, else Codex's .agents/skills (ADR 0027)."""
+    from . import targets
+    claude, agents = (project / rel for rel in REPO_SKILLS)
+    if not targets.claude_enabled():
+        return agents, None
+    return claude, agents if targets.codex_enabled() else None
+
+
 def copy_skills(profile: Profile, project: Path, dry_run: bool = False) -> list[str]:
-    """Copy the profile's skills into the repo. An existing skill folder is never overwritten."""
+    """Copy the profile's skills into the repo's real skill folder (repo_skill_dirs). A skill of that name in either
+    agent's folder is never overwritten."""
     out = []
-    skills_dir = project / ".claude" / "skills"
+    skills_dir, _ = repo_skill_dirs(project)
     if not paths.inside(skills_dir, project):
-        return [f"skills not copied: {skills_dir} points outside {project} (a symlinked .claude or .claude/skills)"]
+        top = skills_dir.parent.name
+        return [f"skills not copied: {skills_dir} points outside {project} (a symlinked {top} or {top}/skills)"]
     for name in profile.skills:
         if not isinstance(name, str) or not name or Path(name).name != name or name in (".", ".."):
             out.append(f"skill {name}: not a plain name, skipped")
             continue
         src, dest = _skill_source(name), skills_dir / name
+        found = next((project / rel / name for rel in REPO_SKILLS
+                      if (project / rel / name).exists() or (project / rel / name).is_symlink()), None)
         if src is None:
             out.append(f"skill {name}: not found in profiles/skills/ (personal layer or kit)")
-        elif dest.exists() or dest.is_symlink():
-            out.append(f"skill {name}: {dest} exists, left as is")
+        elif found is not None:
+            out.append(f"skill {name}: {found} exists, left as is")
         elif dry_run:
             out.append(f"would copy skill {name} -> {dest}")
         else:
