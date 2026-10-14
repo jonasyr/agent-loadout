@@ -13,7 +13,7 @@ Answer from `loadout usage`, the read-only counter of tool calls in this machine
 
 ## 2. Read the JSON
 
-- `days`, and `hint_sessions`: sessions whose last tool hint was shown inside the window. It is one total for both agents, main sessions and subagents, and the hook keeps its state for 7 days, so it covers about the last week whatever `--days` says.
+- `days`, and `hint_sessions`: sessions whose last tool hint was shown inside the window. It is one total for both agents, main sessions and subagents, and the hook keeps its state for 7 days, so it covers the window you asked for, capped at about 7 days.
 - Per agent (`claude`, `codex`; an agent without a transcript folder is missing) and per kind (`main`, `subagent`): `sessions`, `calls`, `symbol_searches` (symbol-like Grep, `rg`, `grep` or `git grep` searches, which a hint could have answered) and `families.<name>.calls` / `.sessions` for `serena`, `codebase-memory`, `context7`, `microsoft-learn`, `grep`, `glob`, `read`, `shell`, `other`.
 - Per agent, `claude.skipped_lines` (and `codex.skipped_lines`): that agent's transcript lines it could not read. Mention it only when it is large next to that agent's `calls`.
 

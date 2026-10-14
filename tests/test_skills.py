@@ -39,6 +39,7 @@ def test_usage_skill_reads_the_json_and_never_the_transcripts():
     assert "Never open" in text and "transcript" in text  # counts only, like the command
     assert "`claude.skipped_lines`" in text  # per agent, as usage.render reads it
     assert "7 days" in text and "not a denominator" in text  # hint state is kept a week, for both agents
+    assert "capped at about 7 days" in text and "whatever `--days` says" not in text  # --days 1 counts one day
     assert "before the hints" not in text  # a low count does not date the plugin
     assert "only `claude.main`" in text and "no reference for Codex" in text  # ADR 0026 measured Claude Code
 
