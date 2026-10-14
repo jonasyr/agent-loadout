@@ -116,6 +116,10 @@ EOF2
   "restore "*) case "${2:-}" in --list|"") echo "~/.local/state/loadout/backups/loadout-20261012-185909  configure: set up Codex"
       echo "~/.local/state/loadout/backups/loadout-20261009-121111  adopt" ;; *) echo "restored: ${2}" ;; esac ;;
   "check "*) echo "31 of 32 checks OK"; echo "! Context7: also connected as a claude.ai connector" ;;
+  "usage "*|usage) case " $* " in *" --json "*) cat <<'EOF'
+{"days": 14, "hint_sessions": 40, "claude": {"main": {"sessions": 200, "calls": 6000, "symbol_searches": 300, "families": {"serena": {"calls": 30, "sessions": 6}, "codebase-memory": {"calls": 32, "sessions": 8}, "context7": {"calls": 8, "sessions": 4}, "microsoft-learn": {"calls": 0, "sessions": 0}, "grep": {"calls": 120, "sessions": 60}, "glob": {"calls": 0, "sessions": 0}, "read": {"calls": 400, "sessions": 120}, "shell": {"calls": 4000, "sessions": 100}, "other": {"calls": 900, "sessions": 200}}}, "subagent": {"sessions": 150, "calls": 5000, "symbol_searches": 500, "families": {"serena": {"calls": 0, "sessions": 0}, "codebase-memory": {"calls": 0, "sessions": 0}, "context7": {"calls": 0, "sessions": 0}, "microsoft-learn": {"calls": 0, "sessions": 0}, "grep": {"calls": 10, "sessions": 5}, "glob": {"calls": 0, "sessions": 0}, "read": {"calls": 400, "sessions": 120}, "shell": {"calls": 4500, "sessions": 100}, "other": {"calls": 900, "sessions": 200}}}, "skipped_lines": 3}}
+EOF
+    ;; *) echo "Tool use in the last 14 days (counts only):"; echo "  Claude Code main: 200 sessions, 6000 tool calls; Serena 30 calls in 6, codebase-memory 32 calls in 8, Context7 8 calls in 4"; echo "  sessions with a loadout tool hint: 40" ;; esac ;;
   "profile "*) echo "added profile ${2:-}: plugins installed with --scope project" ;;
   "init "*) echo "scaffolded AGENTS.md, CLAUDE.md, docs/README.md, docs/adr/README.md" ;;
   *) echo "usage: loadout {init,profile,configure,check,...}" ;;

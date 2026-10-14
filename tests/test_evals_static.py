@@ -13,7 +13,7 @@ from loadout import configure, paths
 
 EVALS = paths.kit_root() / "plugins/loadout/evals"
 BROWSER_EVALS = paths.kit_root() / "plugins/loadout/evals-browser"  # opt-in suite
-SKILLS = ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor")
+SKILLS = ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor", "usage")
 GRADER_TYPES = {"regex", "tool_used", "tool_order", "file_exists", "llm", "baseline"}
 # The stubs and scaffolds are bash scripts; Windows can't run them (same as tests/test_hooks.py).
 posix_only = pytest.mark.skipif(os.name == "nt", reason="bash scripts; not run on Windows")

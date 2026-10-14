@@ -15,7 +15,7 @@ def _frontmatter(name):
 
 
 def test_skills_have_frontmatter_and_short_descriptions():
-    for name in ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor"):
+    for name in ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor", "usage"):
         got, description, extra, _ = _frontmatter(name)
         assert got == name
         assert len(description) <= 400, f"{name} description too long (loaded every session)"
@@ -25,8 +25,18 @@ def test_skills_have_frontmatter_and_short_descriptions():
 def test_heavy_skills_are_user_invoked_only():
     for name in ("onboard", "docs-audit"):
         assert _frontmatter(name)[2].get("disable-model-invocation") == "true", name
-    for name in ("docs-sync", "configure", "execution-advisor"):
+    for name in ("docs-sync", "configure", "execution-advisor", "usage"):
         assert "disable-model-invocation" not in _frontmatter(name)[2], name
+
+
+def test_usage_skill_reads_the_json_and_never_the_transcripts():
+    _, description, _, text = _frontmatter("usage")
+    assert "loadout usage" in description
+    assert "loadout usage --json" in text and "--days" in text
+    for key in ("hint_sessions", "symbol_searches", "families", "subagent"):
+        assert key in text, key
+    assert "0026" in text  # the reference measurement lives in the ADR, not in the skill
+    assert "Never open" in text and "transcript" in text  # counts only, like the command
 
 
 def test_onboard_new_project_does_not_hand_off_to_brainstorming():
