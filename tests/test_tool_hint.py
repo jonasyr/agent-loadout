@@ -125,6 +125,28 @@ def test_non_code_paths_never_count(home, repo):
         assert _run(home, _grep(repo, "record_project", path="logs/app.log")) is None
 
 
+@pytest.mark.parametrize("command", [
+    "ls src | grep record_project",           # filtering another command's output
+    "cat notes.txt | grep record_project",
+    "rg record_project -t md",                 # limited to a docs type or glob
+    "rg record_project -g '*.md'",
+    "rg --glob=*.json record_project",
+    "find . -name '*.py' -delete",             # changes files, not a search
+    "find . -name '*.py' -exec rm {} +",
+])
+def test_filters_doc_types_and_destructive_finds_never_count(home, repo, command):
+    for _ in range(4):
+        assert _run(home, _bash(repo, command)) is None
+
+
+def test_a_grep_tool_limited_to_docs_never_counts(home, repo):
+    for tool_input in ({"pattern": "record_project", "type": "md"}, {"pattern": "record_project", "glob": "**/*.md"}):
+        for _ in range(4):
+            payload = _grep(repo, "x")
+            payload["tool_input"] = tool_input
+            assert _run(home, payload) is None
+
+
 def test_non_code_repo_gives_no_hint(home, tmp_path):
     plain = tmp_path / "notes"
     plain.mkdir()

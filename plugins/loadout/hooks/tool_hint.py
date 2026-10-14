@@ -96,12 +96,16 @@ def _words(command: object) -> list[str]:
 
 
 def shell_search(command: object) -> tuple[bool, str | None, list[str]]:
-    """(is a search, symbol or None, path arguments) for the first rg/grep/git grep/find in a shell command."""
+    """(is a search, symbol or None, path arguments) for the first rg/grep/git grep/find in a shell command.
+    A grep that filters another command's output (`ls | grep X`) and a find that changes files are no search."""
     words = _words(command)
     for i, w in enumerate(words):
         base = os.path.basename(w)
+        piped = i > 0 and words[i - 1] == "|"
         if base == "find":
             rest = words[i + 1:]
+            if any(x in ("-delete", "-exec", "-execdir", "-ok", "-okdir") for x in rest):
+                return False, None, []
             for j, x in enumerate(rest[:-1]):
                 if x in ("-name", "-iname") and rest[j + 1].endswith(CODE_EXT):
                     return True, None, FIND
@@ -109,7 +113,7 @@ def shell_search(command: object) -> tuple[bool, str | None, list[str]]:
         if base == "git" and i + 1 < len(words) and words[i + 1] == "grep":
             return _search_args(words[i + 2:])
         if base in SEARCH_CMDS:
-            return _search_args(words[i + 1:])
+            return (False, None, []) if piped else _search_args(words[i + 1:])
     return False, None, []
 
 
@@ -124,6 +128,10 @@ def _search_args(args: list[str]) -> tuple[bool, str | None, list[str]]:
         if a in ("-e", "--regexp") and j + 1 < len(args):
             pattern, skip = args[j + 1], True
             continue
+        if a in FILTERS and j + 1 < len(args) and doc_filter(args[j + 1]):
+            return False, None, []  # limited to docs, configs or data: a text search
+        if "=" in a and a.split("=", 1)[0] in FILTERS and doc_filter(a.split("=", 1)[1]):
+            return False, None, []
         if a in TAKES_VALUE:
             skip = True
             continue
@@ -140,6 +148,19 @@ def _search_args(args: list[str]) -> tuple[bool, str | None, list[str]]:
 
 def non_code(paths: list[str]) -> bool:
     return bool(paths) and all(p.lower().endswith(NON_CODE) for p in paths)
+
+
+FILTERS = frozenset({"-t", "--type", "-g", "--glob", "--include", "--iglob"})
+DOC_TYPES = frozenset({"md", "markdown", "rst", "txt", "json", "jsonl", "yaml", "yml", "toml", "csv", "log", "html",
+                       "xml", "ini", "cfg"})
+
+
+def doc_filter(value: object) -> bool:
+    """A file type or glob that limits a search to docs, configs or data (`-t md`, `-g '*.json'`)."""
+    if not isinstance(value, str) or not value:
+        return False
+    v = value.strip("'\"").lower()
+    return v in DOC_TYPES or v.endswith(NON_CODE)
 
 
 def code_repo(cwd: object) -> bool:
@@ -200,6 +221,8 @@ def search_event(tool: str, tool_input: dict) -> tuple[bool, str | None]:
     if tool == "Grep":
         path = tool_input.get("path") or tool_input.get("glob") or ""
         if isinstance(path, str) and non_code([path]):
+            return False, None
+        if doc_filter(tool_input.get("type")) or doc_filter(tool_input.get("glob")):
             return False, None
         name = symbol(tool_input.get("pattern"))
         return name is not None, name
