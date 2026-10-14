@@ -25,7 +25,7 @@ The kit ships `thesis`, `web`, `db`, `sonar` and `android`. Yours live in `<pers
    loadout profile NAME
    ```
 
-   This merges `settings` into the repo's `.claude/settings.json` and `mcp` into `.mcp.json`, copies `skills`, installs `install` plugins at project scope (in Claude Code; with Codex on, also in Codex, see [In Codex](../reference/profile-format.md#in-codex)) and runs `commands`. Add `--no-install` to skip the plugins and commands. Commit what it wrote: `.claude/settings.json`, `.mcp.json`, any `.claude/skills/`, and with Codex on `.codex/config.toml` and `.agents/skills`. They are normal project files and `loadout restore` does not undo them.
+   This merges `settings` into the repo's `.claude/settings.json` and `mcp` into `.mcp.json`, copies `skills`, installs `install` plugins at project scope (in Claude Code; with Codex on, also in Codex, see [In Codex](../reference/profile-format.md#in-codex)) and runs `commands`. Add `--no-install` to skip the plugins and commands. Commit what it wrote: with Claude Code on `.claude/settings.json`, `.mcp.json` and any `.claude/skills/`, and with Codex on `.codex/config.toml` and `.agents/skills` (with Codex only, the skills live there). They are normal project files and `loadout restore` does not undo them.
 4. **Sync it.** To use the profile on other machines, commit and push your personal layer. See [Sync](../reference/personal-layer.md#sync).
 
 ## Changes later

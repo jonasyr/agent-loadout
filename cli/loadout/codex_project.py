@@ -1,7 +1,6 @@
 """The Codex side of `loadout init` and `loadout profile`: the repo's .codex/config.toml, .agents/skills and plugins."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from . import codex, paths, profiles
@@ -83,38 +82,6 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
     return lines
 
 
-def skills(project: Path, dry_run: bool) -> list[str]:
-    """Link each skill in the repo's .claude/skills into .agents/skills (relative, so the link works in every clone)."""
-    src_root, dest_root = project / ".claude" / "skills", project / ".agents" / "skills"
-    if not src_root.is_dir():
-        return []
-    if not paths.inside(dest_root.parent, project) or not paths.inside(dest_root, project):
-        return [f"skills not linked: {dest_root} points outside {project} (a symlinked .agents or .agents/skills)"]
-    out = []
-    for entry in sorted(src_root.iterdir()):
-        if entry.name.startswith(".") or not entry.is_dir():
-            continue
-        dest = dest_root / entry.name
-        want = f"../../.claude/skills/{entry.name}"
-        if dest.is_symlink() and Path(os.readlink(dest)) == Path(want):
-            continue
-        if dest.exists() or dest.is_symlink():
-            out.append(f"skill {entry.name}: .agents/skills/{entry.name} is not a link to .claude/skills/{entry.name}, "
-                       "left as is (Codex uses that one)")
-            continue
-        if dry_run:
-            out.append(f"would link skill {entry.name} for Codex -> .agents/skills/{entry.name}")
-            continue
-        dest_root.mkdir(parents=True, exist_ok=True)
-        try:
-            os.symlink(want, dest, target_is_directory=True)
-        except OSError as exc:  # e.g. Windows without symlink rights
-            out.append(f"skill {entry.name}: not linked for Codex ({exc.strerror or exc})")
-            continue
-        out.append(f"linked skill {entry.name} for Codex -> .agents/skills/{entry.name}")
-    return out
-
-
 def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     """Install the profile's plugins in Codex; one that is not on everywhere stays switched off outside its projects."""
     from . import backup
@@ -185,7 +152,7 @@ def failed_plugins(prof: profiles.Profile, lines: list[str]) -> frozenset:
 
 def apply(prof: profiles.Profile, project: Path, install: bool, dry_run: bool) -> list[str]:
     lines = plugins(prof, dry_run) if install else []
-    lines = config(prof, project, dry_run, skip=failed_plugins(prof, lines)) + skills(project, dry_run) + lines
+    lines = config(prof, project, dry_run, skip=failed_plugins(prof, lines)) + lines  # skills: profiles.link_skills
     tables, plugins_, _ = _wanted(prof)
     has_codex_parts = bool(tables or plugins_) or any((project / ".agents" / "skills").glob("*"))
     if has_codex_parts and not dry_run and not _trusted(project):  # on every run until trusted, not only on changes

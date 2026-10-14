@@ -121,7 +121,7 @@ loadout configure [--all] [--first-run] [show | prefs | own | set KIND NAME VALU
 |---|---|
 | `--all` | With `own`: also list the tools you left on this machine. |
 | `--first-run` | Also ask the "about you" questions again. Keeps your `me.md` unless you agree to replace it. |
-| `--to` | With `new skill`: where the skill lives. `global` (default) is the personal layer, `project:<profile>` a personal profile, `repo` the current git repo (committed in `.claude/skills/`). |
+| `--to` | With `new skill`: where the skill lives. `global` (default) is the personal layer, `project:<profile>` a personal profile, `repo` the current git repo (committed in `.claude/skills/`, linked into `.agents/skills/` with both agents on; in `.agents/skills/` with Codex only). |
 | `--description` | With `new skill`: one line saying when an agent should use the skill. Without it the stub says `TODO`. |
 
 `set plugin`, `set mcp`, `set pref-choice` and `set pref` afterwards apply the change: with Claude Code on they merge the settings, set up plugins and apply your personal MCP servers; with Codex on (and usable) the same choices are applied to Codex. They list pending changes of a personal-layer git repo but never commit them. `set pref-choice` for the auto mode preference needs a terminal, because it shows a draft that you must confirm.
@@ -166,7 +166,7 @@ loadout init [--yes] [--no-install] [--dry-run] [--verbose] [PROFILE ...]
 
 Without a terminal, no `PROFILE` and no `--yes`, no profile is applied. If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
 
-Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes), or when a profile was applied with problems (the run goes on and prints `profile NAME: applied with problems`). Problems are: a repo file skipped because it is, or lies behind, a symlink out of the repo; skills not copied; a plugin install or command that failed, a plugin id that is not `name@marketplace`, or a command that is not a list of words; with Codex on, a Codex step that failed or was skipped. `init` also returns 1 when it skipped `git init` because `.git` points out of the repo.
+Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes), or when a profile was applied with problems (the run goes on and prints `profile NAME: applied with problems`). Problems are: a repo file skipped because it is, or lies behind, a symlink out of the repo; skills not copied; a plugin install or command that failed, a plugin id that is not `name@marketplace`, or a command that is not a list of words; a repo skill that was not linked for an agent that is on, or a different item left at the link's place (`not linked`, `left as is`); with Codex on, a Codex step that failed or was skipped. `Claude Code is off: … not written` is not a problem. `init` also returns 1 when it skipped `git init` because `.git` points out of the repo.
 
 ## loadout profile
 
@@ -184,17 +184,17 @@ loadout profile [--no-install] [--verbose] NAME
 
 What `init` and `profile` write in the repo, per agent:
 
-| | Claude Code (shared repo files, written even when Claude Code is off) | Codex (only when Codex is on) |
+| | Claude Code (only when Claude Code is on) | Codex (only when Codex is on) |
 |---|---|---|
 | Profile MCP servers | Merged into `.mcp.json`. | Added as sections to `.codex/config.toml`; `${VAR}` arguments are skipped with the reason. |
 | Profile settings | Merged into `.claude/settings.json`. | Not used, except which servers are switched off. |
 | Profile plugins (`install`) | `claude plugin install ID --scope project`. Skipped when Claude Code is off. | `codex plugin add`, switched on only in this repo (`enabled = true` in `.codex/config.toml`). |
-| Profile skills | Copied into `.claude/skills/`. | Every skill in `.claude/skills` is linked into `.agents/skills`. |
+| Profile skills | Copied into `.claude/skills/`; every skill in `.agents/skills` is linked into `.claude/skills`. | Copied into `.agents/skills/` with Codex only; every skill in `.claude/skills` is linked into `.agents/skills`. |
 | `commands` | Run once; they are not tied to an agent. | |
-| Scaffold (`init` only) | `AGENTS.md`, `CLAUDE.md`, `docs/`, `.gitignore` entries: the same for both agents. | |
+| Scaffold (`init` only) | `CLAUDE.md` and the `.claude/settings.local.json` line in `.gitignore`. | `AGENTS.md`, `docs/` and the other `.gitignore` entries are for both agents. |
 | Next step printed (`init`) | Start Claude Code here and run `/loadout:onboard`. | Start Codex here and ask it to use the `loadout:onboard` skill (printed when Claude Code is off). |
 
-Codex reads `.codex/config.toml` only in a trusted project; loadout prints the step and never trusts one for you. Details per field: [In Codex](profile-format.md#in-codex). The format of a profile is in [profile-format](profile-format.md). Exit codes: as for [init](#loadout-init): 0 on success; 1 for an unknown profile name or when the profile was applied with problems.
+With Claude Code off, the profile's `.mcp.json` and `.claude/settings.json` are not written and the output says so; files already in the repo stay ([ADR 0027](../adr/0027-repo-files-follow-the-agents.md)). Codex reads `.codex/config.toml` only in a trusted project; loadout prints the step and never trusts one for you. Details per field: [In Codex](profile-format.md#in-codex). The format of a profile is in [profile-format](profile-format.md). Exit codes: as for [init](#loadout-init): 0 on success; 1 for an unknown profile name or when the profile was applied with problems.
 
 ## loadout check
 

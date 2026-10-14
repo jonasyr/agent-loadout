@@ -71,6 +71,8 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             parts.append(path.relative_to(project).as_posix() if paths.inside(path, project) else path.name)
         for line in skipped:
             warn(line)
+    for line in profiles.claude_off_notes(prof):
+        (steps.append if calm else info)(line)
     skills_ok = True
     for line in profiles.copy_skills(prof, project, dry_run=dry_run):
         good = line.startswith(("copied skill", "would copy skill"))
@@ -81,11 +83,20 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     ran: list[str] = []
     ok = _install(prof, project, dry_run, info, warn, ran, calm) if install else True
     parts += [f"ran {what}" for what in ran]
+    links_ok = True
+    for line in profiles.link_skills(project, dry_run):  # after the commands, which may install skills
+        bad = "not linked" in line or "left as is" in line
+        (warn if bad else info)(line)
+        links_ok = links_ok and not bad
+        if line.startswith("linked skill"):
+            parts.append(line.split()[2] + " skill link")
+    if not links_ok:
+        ok = False
     if skipped or not skills_ok:
         ok = False
     from . import codex_project, targets
     if targets.codex_enabled():
-        codex_ok = True
+        codex_ok = links_ok
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run):
             bad = line.startswith("skipped") or any(s in line for s in (
                 ": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is"))
