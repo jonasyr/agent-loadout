@@ -166,11 +166,11 @@ def link_skills(project: Path, dry_run: bool) -> list[str]:
     Claude Code (ADR 0027)."""
     from . import targets
     claude, agents = REPO_SKILLS
-    out = []
-    if targets.codex_enabled():
+    out, codex = [], targets.codex_enabled()
+    if codex:
         out += _link_into(project, claude, agents, dry_run, report=True)
-    if targets.claude_enabled():
-        out += _link_into(project, agents, claude, dry_run, report=False)  # two real folders: the Codex direction says so
+    if targets.claude_enabled():  # two real folders: reported once, by the Codex direction when it ran
+        out += _link_into(project, agents, claude, dry_run, report=not codex)
     return out
 
 

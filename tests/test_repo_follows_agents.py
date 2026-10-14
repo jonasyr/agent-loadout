@@ -256,6 +256,14 @@ def test_calm_codex_only_notes_are_steps_not_warnings(repo, fake_runner, monkeyp
     assert "applied with problems" not in text and "Claude Code is off: .mcp.json not written" in text
 
 
+def test_two_real_folders_are_reported_with_claude_code_only(repo):
+    targets.set_agents({"claude": True, "codex": False})
+    _real(repo, ".claude/skills", "pw")
+    _real(repo, ".agents/skills", "pw")
+    assert profiles.link_skills(repo, dry_run=False) == [
+        "skill pw: .claude/skills/pw is not a link to .agents/skills/pw, left as is (Claude Code uses that one)"]
+
+
 @pytest.mark.parametrize("agents, blocker", [
     ({"claude": False, "codex": True}, ".agents"),
     ({"claude": False, "codex": True}, ".agents/skills"),
