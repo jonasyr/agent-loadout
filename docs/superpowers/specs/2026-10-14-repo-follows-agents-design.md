@@ -4,7 +4,7 @@ Status: approved in chat 2026-10-14. Implements the backlog section "4d: repo sk
 
 ## Goal
 
-A repo gets the files of the agents that are on (`targets.json`), and only those. With Codex only, `loadout profile`, `loadout init` and `loadout configure new skill --to repo` write nothing under `.claude`, no `.mcp.json` and no `CLAUDE.md`. With both agents on, every result stays byte for byte what it is today.
+A repo gets the files of the agents that are on (`targets.json`), and only those. With Codex only, `loadout profile`, `loadout init` and `loadout configure new skill --to repo` write nothing under `.claude`, no `.mcp.json` and no `CLAUDE.md`. With both agents on, a repo without real skill folders in `.agents/skills` gets exactly what it gets today.
 
 ## Decisions (from the user)
 
@@ -45,7 +45,7 @@ def repo_skill_dirs(project: Path) -> tuple[Path, Path | None]:
 - `codex_project.skills` becomes `profiles.link_skills(project, dry_run)`, called from `project.add_profile` for every agent setting (today it runs only inside `codex_project.apply`):
   - Codex on: every real folder in `.claude/skills` gets `.agents/skills/NAME -> ../../.claude/skills/NAME` (today's behaviour, today's lines).
   - Claude Code on: every real folder in `.agents/skills` gets `.claude/skills/NAME -> ../../.agents/skills/NAME`, line `linked skill NAME for Claude Code -> .claude/skills/NAME`.
-  - Links are made only from a real folder, never from a link (no link chains), only for an agent that is on, and only when the name is missing in the target folder. A different item already there stays and is reported (today's wording, with the agent's name).
+  - Links are made only for an agent that is on, and only when the name is missing in the target folder. Nothing happens when both paths already lead to the same folder (one is the other agent's link). In the Codex direction a different item already there stays and is reported (today's wording). In the Claude Code direction an existing item stays silently: `.claude/skills/NAME` is already a Claude Code skill or the user's choice, and two real folders are reported once, by the Codex direction.
   - The existing guards cover both directions: a target folder (or its parent) that points outside the repo gets one "not linked" line; `os.symlink` failing (Windows without the right) gets one line per skill.
 - `codex_project.apply` no longer links; its `has_codex_parts` (the trust note) still counts `.agents/skills`.
 - The calm summary and the problem classification in `add_profile` keep today's words; the new Claude Code link line is a good line, "left as is" and "not linked" stay problems.
@@ -75,7 +75,7 @@ def repo_skill_dirs(project: Path) -> tuple[Path, Path | None]:
 
 - `repo_skill_dirs` for the three settings.
 - `copy_skills`: Codex only copies into `.agents/skills` and creates no `.claude`; a name present in the other folder is left as is.
-- `link_skills`: both on links `.claude → .agents` exactly as today; Codex only with a teammate's real `.claude/skills/x` links it for Codex and writes nothing under `.claude`; Codex only → both on, then `profile` again links `.claude/skills/NAME -> ../../.agents/skills/NAME`; a link is never linked again; a different item in the target stays and is reported; a target folder that points outside the repo gets one line.
+- `link_skills`: both on links `.claude → .agents` exactly as today, and a real `.agents/skills/x` into `.claude/skills/x`; the other agent's link to the same folder is silent; two real folders give one line; Codex only with a teammate's real `.claude/skills/x` links it for Codex and writes nothing under `.claude`; Codex only → both on, then `profile` again links `.claude/skills/NAME -> ../../.agents/skills/NAME`; a different item in the target stays and is reported; a target folder that points outside the repo gets one line.
 - `new skill --to repo`: Codex only writes `.agents/skills/NAME/SKILL.md` and no `.claude`; a name in `.claude/skills` is refused with Codex only; both on unchanged.
 - `apply_profile` / `add_profile`: Codex only writes no `.claude/settings.json` or `.mcp.json`, prints the info line, exits 0; Claude Code on afterwards writes them.
 - `init`: Codex only creates no `CLAUDE.md` and no `.claude/settings.local.json` line; both on unchanged.
