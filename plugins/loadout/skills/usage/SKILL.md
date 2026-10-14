@@ -32,7 +32,7 @@ Keep it to a short table and a few lines:
 Then:
 
 - **Hints.** Give `hint_sessions` as a sign that hints fire, not a denominator: it mixes both agents and session kinds and only reaches back 7 days. A hint fires only after enough searches, so a low count does not say when the plugin got the hints; if the user wants an effect measured, suggest comparing two runs some weeks apart.
-- **Against the reference.** ADR 0026 (`docs/adr/0026-tool-hints-never-block.md`, section "Context") holds the measurement the hints were built against: the share of Claude Code main sessions that used each tool. Compare the main-session shares with it and say plainly whether use went up, stayed or went down. It was measured on one setup, so call it a reference, not a target.
+- **Against the reference.** ADR 0026 (`docs/adr/0026-tool-hints-never-block.md`, section "Context") holds the measurement the hints were built against: the share of Claude Code main sessions that used each tool. Compare only `claude.main` with it and say plainly whether use went up, stayed or went down. It was measured on one setup, so call it a reference, not a target. There is no reference for Codex (other tools and hooks): report its shares without an up or down, and with Codex only, say that no reference applies.
 - **Caveats, only those that apply.** Many sessions with very few calls (hook or eval runs) lower every share; a Codex row with only a handful of sessions is too small to judge.
 - **One next step**, if the numbers call for one: a longer `--days`, a re-measure after the hints have been out for two weeks, or, if use stays low after that, a stronger nudge at session or prompt start (ADR 0026 ruled out blocking a search).
 
