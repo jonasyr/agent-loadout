@@ -98,7 +98,9 @@ def _words(command: object) -> list[str]:
         return []
     try:
         import shlex  # imported here: most calls never get this far
-        return shlex.split(command)[:200]
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)  # `src;rg` -> `src`, `;`, `rg`
+        lexer.whitespace_split = True
+        return list(lexer)[:200]
     except ValueError:
         return command.split()[:200]
 

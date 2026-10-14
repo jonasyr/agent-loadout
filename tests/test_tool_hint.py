@@ -85,6 +85,12 @@ def test_shell_searches_count_also_behind_rtk_and_git_grep(home, repo):
     assert "record_project" in _context(_run(home, _bash(repo, "git grep record_project")))
 
 
+def test_searches_after_shell_operators_without_spaces_count(home, repo):
+    _run(home, _bash(repo, "cd src; rg record_project"))
+    _run(home, _bash(repo, "cd src&&grep -rn record_project ."))
+    assert _context(_run(home, _bash(repo, "true||rg record_project src 2>/dev/null")))
+
+
 def test_codex_command_as_list_counts(home, repo):
     for _ in range(2):
         _run(home, _bash(repo, ["rg", "-n", "record_project", "src"]))
