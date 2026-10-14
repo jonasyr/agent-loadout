@@ -15,8 +15,9 @@ def render(text: str, values: dict) -> str:
 
 
 def scaffold(project: Path, dry_run: bool = False) -> tuple[list[Path], list[str]]:
+    from . import targets
     templates = paths.kit_root() / "templates" / "project"
-    skip = set()
+    skip = set() if targets.claude_enabled() else {"CLAUDE.md"}  # Claude Code's file (ADR 0027)
     notes = []
     if (project / "CLAUDE.md").exists() and not (project / "AGENTS.md").exists():
         skip = {"AGENTS.md", "CLAUDE.md"}
@@ -49,7 +50,9 @@ def ensure_gitignore(project: Path, dry_run: bool = False) -> list[str]:
         return []
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     existing = {line.strip() for line in text.splitlines()}
-    missing = [line for line in GITIGNORE_LINES if line not in existing]
+    from . import targets
+    wanted = [l for l in GITIGNORE_LINES if targets.claude_enabled() or not l.startswith(".claude/")]
+    missing = [line for line in wanted if line not in existing]
     if missing and not dry_run:
         if text and not text.endswith("\n"):
             text += "\n"

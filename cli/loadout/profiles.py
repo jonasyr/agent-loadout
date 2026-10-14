@@ -71,10 +71,26 @@ def load_profile(name: str) -> Profile:
     raise ValueError(f"unknown profile '{name}' (available: {', '.join(list_profiles())})")
 
 
+CLAUDE_FILES = (("settings", Path(".claude/settings.json")), ("mcp", Path(".mcp.json")))  # Claude Code's repo files
+
+
+def claude_off_notes(profile: Profile) -> list[str]:
+    """With Claude Code off: one line per Claude Code file the profile would have written (ADR 0027)."""
+    from . import targets
+    if targets.claude_enabled():
+        return []
+    return [f"Claude Code is off: {rel.as_posix()} not written (turn it on and run loadout profile {profile.name} again)"
+            for attr, rel in CLAUDE_FILES if getattr(profile, attr)]
+
+
 def apply_profile(profile: Profile, project: Path) -> tuple[list[Path], list[str]]:
     """Merge the profile into the repo's settings and .mcp.json. Returns (changed files, skipped lines)."""
+    from . import targets
     changed, skipped = [], []
-    for rel, overlay in ((Path(".claude/settings.json"), profile.settings), (Path(".mcp.json"), profile.mcp)):
+    if not targets.claude_enabled():
+        return changed, skipped  # claude_off_notes says what was not written
+    for attr, rel in CLAUDE_FILES:
+        overlay = getattr(profile, attr)
         if not overlay:
             continue
         target = project / rel

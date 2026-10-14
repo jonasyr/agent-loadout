@@ -169,3 +169,47 @@ def test_new_skill_codex_only_refuses_a_name_in_claude_skills(repo):
     with pytest.raises(new_skill.Refused):
         new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
     assert not (repo / ".agents").exists()
+
+
+WEB = profiles.Profile(name="web", description="",
+                       mcp={"mcpServers": {"x": {"command": "x"}}}, settings={"disabledMcpjsonServers": ["x"]})
+
+
+def test_codex_only_profile_writes_no_claude_files_and_says_so(repo, fake_runner, monkeypatch, capsys):
+    from loadout import codex_project, project
+    targets.set_agents({"claude": False, "codex": True})
+    monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
+    monkeypatch.setattr(codex_project, "apply", lambda *a, **k: [])
+    assert project.add_profile(repo, "web", install=False) == 0
+    assert not (repo / ".claude").exists() and not (repo / ".mcp.json").exists()
+    out = capsys.readouterr().out
+    assert "Claude Code is off: .claude/settings.json not written (turn it on and run loadout profile web again)" in out
+    assert "Claude Code is off: .mcp.json not written" in out
+
+
+def test_turning_claude_code_on_then_profile_writes_them(repo, fake_runner, monkeypatch):
+    from loadout import codex_project, project
+    targets.set_agents({"claude": False, "codex": True})
+    monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
+    monkeypatch.setattr(codex_project, "apply", lambda *a, **k: [])
+    project.add_profile(repo, "web", install=False)
+    targets.set_agents({"claude": True, "codex": True})
+    project.add_profile(repo, "web", install=False)
+    assert (repo / ".mcp.json").is_file() and (repo / ".claude/settings.json").is_file()
+
+
+def test_codex_only_init_writes_no_claude_md_and_no_claude_gitignore_line(repo):
+    from loadout import scaffold
+    targets.set_agents({"claude": False, "codex": True})
+    created, _ = scaffold.scaffold(repo)
+    assert repo / "CLAUDE.md" not in created and not (repo / "CLAUDE.md").exists()
+    assert (repo / "AGENTS.md").is_file()
+    assert scaffold.ensure_gitignore(repo) == [".serena/cache/"]
+
+
+def test_both_on_init_is_unchanged(repo):
+    from loadout import scaffold
+    targets.set_agents({"claude": True, "codex": True})
+    scaffold.scaffold(repo)
+    assert (repo / "CLAUDE.md").is_file()
+    assert scaffold.ensure_gitignore(repo) == scaffold.GITIGNORE_LINES
