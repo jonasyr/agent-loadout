@@ -298,6 +298,28 @@ def _register_advisor(sub):
 EXTRA_COMMANDS.append(_register_advisor)
 
 
+def _register_usage(sub):
+    p = sub.add_parser("usage", help="how often the agents used each tool family (local transcripts, counts only)")
+    p.add_argument("--days", type=int, default=14, help="look back this many days (default 14)")
+    p.add_argument("--json", action="store_true", help="print the counts as JSON")
+
+    def run(a):
+        import json as _json
+        import sys as _sys
+        from . import usage
+        report = usage.collect(max(1, a.days))
+        if "claude" not in report and "codex" not in report:
+            print("loadout: no session history found for the agents that are on", file=_sys.stderr)
+            return 1
+        print(_json.dumps(report, indent=2) if a.json else usage.render(report))
+        return 0
+
+    p.set_defaults(func=run)
+
+
+EXTRA_COMMANDS.append(_register_usage)
+
+
 def _register_kit_path(sub):
     p = sub.add_parser("kit-path", help="print the kit's folder (its rules/ and docs/ are read by the doc skills)")
 

@@ -228,6 +228,21 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 
 Exit codes: 0 when nothing failed (warnings do not count); 1 when at least one `FAIL` line was printed.
 
+## loadout usage
+
+```
+loadout usage [--days N] [--json]
+```
+
+Read-only. Counts, per agent and for main sessions and subagents separately, how often each tool family was used in the last N days (default 14): Serena, codebase-memory, Context7, Microsoft Learn, Grep, Glob, Read, the shell, other. It also counts symbol-like searches done with grep or rg and the sessions in which loadout's tool hint appeared. It reads the local transcripts of the agents that are on (`~/.claude/projects`, `$CODEX_HOME/sessions`) and prints counts only, never their content. Unreadable lines are skipped and counted.
+
+| Flag | Meaning |
+|---|---|
+| `--days N` | Look back N days. |
+| `--json` | Print the counts as JSON. |
+
+Exit codes: 0 done; 1 no session history for any agent that is on.
+
 ## loadout apply-settings
 
 Merge the kit's and your personal settings into `~/.claude/settings.json`.
