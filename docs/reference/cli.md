@@ -235,6 +235,8 @@ Exit codes: 0 when nothing failed (warnings do not count); 1 when at least one `
 loadout usage [--days N] [--json]
 ```
 
+To get the numbers read out, ask your agent, or run `/loadout:usage` (Codex: `$loadout:usage`): the skill runs `loadout usage --json` and compares the shares with the measurement in [ADR 0026](../adr/0026-tool-hints-never-block.md).
+
 Read-only. Counts, per agent and for main sessions and subagents separately, how often each tool family was used in the last N days (default 14): Serena, codebase-memory, Context7, Microsoft Learn, Grep, Glob, Read, the shell, other. It also counts symbol-like searches (the Grep tool, or shell `rg`, `grep`, `egrep` and `git grep`, by the hint's own rule; `find` does not count) and, as one total for both agents, the sessions in the window in which loadout's search or docs hint appeared (the hook keeps its state for 7 days, so a longer window counts only about the last week). It reads the local transcripts of the agents that are on (`~/.claude/projects`, `$CODEX_HOME/sessions`) and prints counts only, never their content. Unreadable lines are skipped and counted.
 
 | Flag | Meaning |

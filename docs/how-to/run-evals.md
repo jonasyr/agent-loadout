@@ -1,6 +1,6 @@
 # Run the skill evals
 
-Use this page to check that the plugin's skills (onboard, configure, docs-audit, docs-sync, execution-advisor) still behave after you changed them. The evals are in `plugins/loadout/evals/`. Each case has a prompt, a scaffold that builds a fixture repo, and graders.
+Use this page to check that the plugin's skills (onboard, configure, docs-audit, docs-sync, execution-advisor, usage) still behave after you changed them. The evals are in `plugins/loadout/evals/`. Each case has a prompt, a scaffold that builds a fixture repo, and graders.
 
 ## Run them
 

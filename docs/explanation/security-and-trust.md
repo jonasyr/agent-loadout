@@ -55,7 +55,7 @@ It does not touch:
 - Your `~/.claude/CLAUDE.md`, apart from the adopt choice above. Rules are linked as a folder instead.
 - Settings keys it does not manage, unless you ask (`adopt`).
 - Project files, except through `loadout init` and `loadout profile`. Scaffold files are never overwritten. Profiles merge into the repo's `.claude/settings.json` and `.mcp.json` (the profile's value wins on the same key), may run the profile's `commands`, and are not backed up; use git.
-- Your session transcripts. Only `loadout usage` reads them, when you run it, locally; it prints counts, never their content, and changes nothing.
+- Your session transcripts. Only `loadout usage` reads them (also when the `/loadout:usage` skill runs it), when you run it, locally; it prints counts, never their content, and changes nothing.
 - Your Claude login or claude.ai connectors. It does not change them. `loadout check` reads only the connector names in `~/.claude.json` (`claudeAiMcpEverConnected`) to warn about a plugin that duplicates one, and prints only names from the kit's catalog.
 
 Items you own that loadout removes or replaces are moved to a backup first. The routine sync of what the kit itself manages (managed settings keys, your personal MCP servers) is not backed up, and neither is the shell startup file bootstrap appends to on Linux and macOS; your personal layer's git history is the record. See [What restore does not undo](../how-to/undo-and-restore.md#what-restore-does-not-undo).
