@@ -17,6 +17,8 @@ def kit(tmp_path, monkeypatch):
     (plugin / "hooks" / "advisor.py").write_text("print('new')\n")
     (plugin / ".claude-plugin" / "plugin.json").write_text('{"name": "loadout"}')
     monkeypatch.setenv("LOADOUT_ROOT", str(root))
+    monkeypatch.setattr(check.settings_merge, "desired_settings",
+                        lambda: {"enabledPlugins": {"loadout@agent-loadout": True}})
     return plugin
 
 
@@ -147,3 +149,25 @@ def test_run_checks_includes_the_copy_check(fake_home, fake_runner, monkeypatch)
     monkeypatch.setattr(check, "_plugin_copies", lambda: called.append(1) or [])
     check.run_checks()
     assert called
+
+
+def test_a_disabled_plugin_is_not_checked(fake_home, kit, monkeypatch):
+    # `loadout update` skips a disabled plugin, so its leftover copy would warn forever
+    dst = _claude_copy(fake_home, kit)
+    (dst / "hooks" / "hooks.json").write_text("{}")
+    monkeypatch.setattr(check.settings_merge, "desired_settings",
+                        lambda: {"enabledPlugins": {"loadout@agent-loadout": False}})
+    assert check._plugin_copies() == []
+
+
+def test_project_and_local_copies_are_checked_too(fake_home, kit):
+    user = _claude_copy(fake_home, kit)
+    project = _copy(kit, fake_home / ".claude" / "plugins" / "cache" / "agent-loadout" / "loadout" / "old")
+    (project / "hooks" / "hooks.json").write_text("{}")
+    record = fake_home / ".claude" / "plugins" / "installed_plugins.json"
+    record.write_text(json.dumps({"version": 2, "plugins": {"loadout@agent-loadout": [
+        {"scope": "user", "installPath": str(user)},
+        {"scope": "project", "projectPath": "/work/app", "installPath": str(project)},
+        {"scope": "local", "projectPath": "/work/app", "installPath": str(user)}]}}))
+    results = {r.name: r.ok for r in check._plugin_copies()}
+    assert results == {"loadout plugin (Claude Code)": True, "loadout plugin (Claude Code, project /work/app)": False}

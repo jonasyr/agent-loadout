@@ -104,48 +104,66 @@ def _same_files(kit: Path, copy: Path) -> bool:
         return False
 
 
-def _claude_copy() -> Path | None:
+UPDATE = "loadout update --yes, then "
+CLAUDE_RELOAD = "/reload-plugins in Claude Code"
+
+
+def _claude_copies() -> list[tuple[str, Path, str]]:
+    """(label, folder, fix) per recorded copy: user scope, and project or local scope, which runs in its project."""
     try:
         installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
     except InvalidJSON:
-        return None  # "plugins installed" reports the broken file
+        return []  # "plugins installed" reports the broken file
     entries = installed.get(PLUGIN_ID)
+    out, seen = [], set()
     for e in entries if isinstance(entries, list) else []:
-        if isinstance(e, dict) and e.get("scope") == "user" and isinstance(e.get("installPath"), str):
-            path = Path(e["installPath"])
-            return path if path.is_dir() else None
-    return None
+        if not isinstance(e, dict) or not isinstance(e.get("installPath"), str):
+            continue
+        path, scope = Path(e["installPath"]), e.get("scope")
+        if path in seen or not path.is_dir():
+            continue
+        seen.add(path)
+        if scope == "user":
+            out.append(("Claude Code", path, UPDATE + CLAUDE_RELOAD))
+        elif scope in ("project", "local"):
+            where = f" {e['projectPath']}" if isinstance(e.get("projectPath"), str) else ""
+            out.append((f"Claude Code, {scope}{where}", path,  # loadout update refreshes only the user scope
+                        f"in that project: claude plugin update {PLUGIN_ID} --scope {scope}, then {CLAUDE_RELOAD}"))
+    return out
 
 
-def _codex_copy() -> Path | None:
+def _codex_copies() -> list[tuple[str, Path, str]]:
     folder = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
+    fix = UPDATE + "approve the changed hooks in Codex's /hooks"
     if (folder / "local").is_dir():
-        return folder / "local"  # a marketplace from git installs as "local"
+        return [("Codex", folder / "local", fix)]  # a marketplace cloned from a repo installs as "local"
     try:
         dirs = [d for d in folder.iterdir() if d.is_dir()] if folder.is_dir() else []
     except OSError:
-        return None
-    return max(dirs, key=lambda d: d.stat().st_mtime) if dirs else None
+        return []
+    return [("Codex", max(dirs, key=lambda d: d.stat().st_mtime), fix)] if dirs else []
 
 
 def _plugin_copies() -> list[CheckResult]:
     """The installed loadout plugin, per agent that is on, against the kit's plugins/loadout: an old copy runs old
-    hooks and skills, which can act on state that has moved. No line when the agent has no copy."""
+    hooks and skills, which can act on state that has moved. No line when the agent has no copy, or when the plugin
+    is turned off (its leftover copy runs nothing, and `loadout update` skips it)."""
     from . import targets
     kit = paths.kit_root() / "plugins" / "loadout"
-    if not kit.is_dir():
+    try:
+        wanted = get_dict(settings_merge.desired_settings(), "enabledPlugins").get(PLUGIN_ID)
+    except InvalidJSON:
+        return []  # "settings.json" and "own tools" report the broken file
+    if not kit.is_dir() or not wanted:
         return []
+    copies = [*(_claude_copies() if targets.claude_enabled() else []),
+              *(_codex_copies() if targets.codex_enabled() else [])]
     out = []
-    for name, on, find, reload in (
-            ("Claude Code", targets.claude_enabled(), _claude_copy, "then /reload-plugins in Claude Code"),
-            ("Codex", targets.codex_enabled(), _codex_copy, "then approve the changed hooks in Codex's /hooks")):
-        copy = find() if on else None
-        if copy is None:
-            continue
+    for label, copy, fix in copies:
         ok = _same_files(kit, copy)
-        out.append(CheckResult(f"loadout plugin ({name})", ok,
+        out.append(CheckResult(f"loadout plugin ({label})", ok,
                                "" if ok else "the installed copy differs from the kit, so its hooks and skills may be old",
-                               f"loadout update --yes, {reload}", "warn"))
+                               fix, "warn"))
     return out
 
 
