@@ -143,6 +143,17 @@ def test_an_oversized_line_is_skipped_without_reading_it_whole(fake_home, monkey
     assert max(reads) <= usage.MAX_LINE + 1  # never more than one bounded chunk at a time
 
 
+def test_an_old_codex_subagent_session_with_new_calls_stays_a_subagent(fake_home, monkeypatch):
+    _on(monkeypatch, claude=False)
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    _codex([{"timestamp": "2025-01-01T10:00:00Z", "type": "session_meta",
+             "payload": {"timestamp": "2025-01-01T10:00:00Z", "source": {"subagent": "x"}}},
+            {"timestamp": now, "type": "response_item",
+             "payload": {"type": "function_call", "name": "mcp__serena__find_symbol", "arguments": "{}"}}])
+    report = usage.collect(14)["codex"]
+    assert report["subagent"]["families"]["serena"]["calls"] == 1 and report["main"]["sessions"] == 0
+
+
 def test_a_codex_mcp_call_logged_twice_counts_once(fake_home, monkeypatch):
     _on(monkeypatch, claude=False)
     _codex([{"type": "session_meta", "payload": {"timestamp": "2026-10-14T10:00:00Z"}},
@@ -159,11 +170,11 @@ def test_hint_sessions_follow_the_window_and_include_docs_hints(fake_home, monke
     _on(monkeypatch, codex=False)
     state = paths.state_dir() / "tool-hint"
     state.mkdir(parents=True)
-    (state / "search.json").write_text(json.dumps({"last_hint": 3}))
-    (state / "docs.json").write_text(json.dumps({"last_docs": 1}))
-    old = state / "old.json"
-    old.write_text(json.dumps({"last_hint": 5}))
-    os.utime(old, (time.time() - 3 * 86400,) * 2)
+    now = time.time()
+    (state / "search.json").write_text(json.dumps({"last_hint": 3, "hint_at": now}))
+    (state / "docs.json").write_text(json.dumps({"last_docs": 1, "hint_at": now}))
+    # a hint three days ago in a session that is still active today (its file was just rewritten)
+    (state / "old.json").write_text(json.dumps({"last_hint": 5, "hint_at": now - 3 * 86400}))
     assert usage.collect(14)["hint_sessions"] == 3
     assert usage.collect(1)["hint_sessions"] == 2
 
@@ -193,7 +204,7 @@ def test_hint_sessions_come_from_the_hint_state(fake_home, monkeypatch):
     _on(monkeypatch, codex=False)
     state = paths.state_dir() / "tool-hint"
     state.mkdir(parents=True)
-    (state / "a.json").write_text(json.dumps({"last_hint": 3, "calls": 7}))
+    (state / "a.json").write_text(json.dumps({"last_hint": 3, "calls": 7, "hint_at": time.time()}))
     (state / "b.json").write_text(json.dumps({"calls": 2}))
     assert usage.collect(14)["hint_sessions"] == 1
 

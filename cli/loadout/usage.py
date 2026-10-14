@@ -124,6 +124,8 @@ def _lines(path: Path, skipped: list[int], cutoff: float):
 
 
 def _in_window(obj: dict, cutoff: float) -> bool:
+    if obj.get("type") == "session_meta":
+        return True  # it classifies the session (main or subagent), however old; it holds no tool calls
     payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
     stamp = obj.get("timestamp") or payload.get("timestamp")
     if not isinstance(stamp, str):
@@ -226,19 +228,17 @@ def _codex(cutoff: float) -> dict | None:
 
 
 def _hint_sessions(cutoff: float) -> int:
-    """Sessions in the window that got a search or a docs hint. The hook keeps its state files for 7 days, so a
-    longer window still counts only about the last week."""
+    """Sessions whose last search or docs hint was shown inside the window (`hint_at`, written by the hook). The
+    hook keeps its state files for 7 days, so a longer window still counts only about the last week."""
     folder = paths.state_dir() / "tool-hint"
     n = 0
     for path in folder.glob("*.json") if folder.is_dir() else []:
         try:
-            if path.stat().st_mtime < cutoff:
-                continue
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(data, dict) and any(isinstance(data.get(k), int) and data[k] > 0
-                                          for k in ("last_hint", "last_docs")):
+        shown = data.get("hint_at") if isinstance(data, dict) else None
+        if isinstance(shown, (int, float)) and not isinstance(shown, bool) and shown >= cutoff:
             n += 1
     return n
 

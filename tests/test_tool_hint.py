@@ -57,6 +57,17 @@ def _context(out):
     return out["hookSpecificOutput"]["additionalContext"] if out else None
 
 
+def test_a_hint_records_when_it_was_shown(home, repo):
+    for _ in range(3):
+        _run(home, _grep(repo, "record_project"))
+    state = json.loads((home / ".local" / "state" / "loadout" / "tool-hint" / "s1.json").read_text())
+    assert abs(state["hint_at"] - time.time()) < 60
+    before = state["hint_at"]
+    _run(home, _grep(repo, "record_project"))  # a later counted search without a hint keeps the time
+    state = json.loads((home / ".local" / "state" / "loadout" / "tool-hint" / "s1.json").read_text())
+    assert state["hint_at"] == before
+
+
 def test_the_third_symbol_search_gets_one_short_fact(home, repo):
     assert _run(home, _grep(repo, "record_project")) is None
     assert _run(home, _grep(repo, "record_project")) is None

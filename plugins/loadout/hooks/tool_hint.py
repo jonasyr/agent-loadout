@@ -288,6 +288,8 @@ def handle(payload: dict) -> None:
             state["searches"], state["last_hint"] = 0, calls
     elif calls - _int(state, "last_docs", -SPACING) >= SPACING:
         text, state["last_docs"] = DOCS_HINT, calls
+    if text:
+        state["hint_at"] = time.time()  # when the last hint was shown: `loadout usage` counts it by this
     _save(path, state)
     if fresh:
         _clean(folder)
