@@ -8,8 +8,6 @@ append_system_prompt: |
 
   Pick the tool by the question, not by habit:
 
-  | Need | Use |
-  |---|---|
   | When you need | Use |
   |---|---|
   | Who calls X, a call chain, the architecture, dead code, the impact of a change | codebase-memory-mcp (`search_graph`, `trace_path`, `get_architecture`, `query_graph`) before grep. If the repo is not indexed yet, run `index_repository` first. |
