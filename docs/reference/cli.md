@@ -219,6 +219,7 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 | `skills.json` is valid JSON | warn |
 | Settings drift (a kit-managed value was changed) | warn |
 | Enabled plugins are installed | warn |
+| The installed loadout plugin has the kit's files (`loadout plugin (Claude Code)`, and with Codex on `loadout plugin (Codex)`): every file in the kit's `plugins/loadout/` is in the installed copy with the same bytes. An old copy runs old hooks and skills, which can act on state that has since moved. No line when the agent has no copy. Unpushed changes in the kit checkout also show as a difference. | warn |
 | An enabled plugin and a claude.ai connector with the same tools ("ever connected" in `~/.claude.json`, an undocumented Claude Code field) | warn |
 | Own tools that loadout does not manage | warn |
 | `gh auth status` | warn |
