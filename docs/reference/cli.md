@@ -166,7 +166,7 @@ loadout init [--yes] [--no-install] [--dry-run] [--verbose] [PROFILE ...]
 
 Without a terminal, no `PROFILE` and no `--yes`, no profile is applied. If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
 
-Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes), or when a profile was applied with problems (the run goes on and prints `profile NAME: applied with problems`). Problems are: a repo file skipped because it is, or lies behind, a symlink out of the repo; skills not copied; a plugin install or command that failed, a plugin id that is not `name@marketplace`, or a command that is not a list of words; with Codex on, a Codex step that failed or was skipped. `init` also returns 1 when it skipped `git init` because `.git` points out of the repo.
+Exit codes: 0 on success; 1 for an unknown profile name (every name is checked before anything changes), or when a profile was applied with problems (the run goes on and prints `profile NAME: applied with problems`). Problems are: a repo file skipped because it is, or lies behind, a symlink out of the repo; skills not copied; a plugin install or command that failed, a plugin id that is not `name@marketplace`, or a command that is not a list of words; a repo skill that was not linked for an agent that is on, or a different item left at the link's place (`not linked`, `left as is`); with Codex on, a Codex step that failed or was skipped. `Claude Code is off: … not written` is not a problem. `init` also returns 1 when it skipped `git init` because `.git` points out of the repo.
 
 ## loadout profile
 
