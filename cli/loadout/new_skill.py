@@ -159,7 +159,7 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
         dest = dest_root / name
         dest_root.mkdir(parents=True, exist_ok=True)
         try:
-            os.symlink(f"../../.claude/skills/{name}", dest, target_is_directory=True)
+            os.symlink(os.path.join("..", "..", ".claude", "skills", name), dest, target_is_directory=True)  # Windows: its own separator
         except OSError as exc:  # e.g. Windows without symlink rights
             return out + [f"skill {name}: not linked for Codex ({exc.strerror or exc})"]
         bk.record_created(dest, f"Codex link for skill {name}")

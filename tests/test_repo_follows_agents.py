@@ -320,3 +320,15 @@ def test_a_copy_target_that_is_a_file_gives_one_line_not_a_crash(repo, kit_skill
     (repo / blocker).write_text("")
     lines = profiles.copy_skills(kit_skill, repo)
     assert len(lines) == 1 and lines[0].startswith("skills not copied:") and "not a folder" in lines[0]
+
+
+def test_every_link_made_resolves_to_the_skill(repo):
+    # a relative link with "/" does not resolve on Windows; CI runs this there
+    from loadout import backup, new_skill
+    targets.set_agents({"claude": True, "codex": True})
+    _real(repo, ".claude/skills", "pw")
+    _real(repo, ".agents/skills", "notes")
+    profiles.link_skills(repo, dry_run=False)
+    new_skill.create("fresh", to="repo", cwd=repo, bk=backup.Backup(description="t"))
+    for link in (".agents/skills/pw", ".claude/skills/notes", ".agents/skills/fresh"):
+        assert (repo / link).is_symlink() and (repo / link / "SKILL.md").is_file(), link

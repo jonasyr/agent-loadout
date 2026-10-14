@@ -195,7 +195,7 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
         if not paths.inside(entry, project):  # a link to a skill elsewhere: dangling in every other clone
             out.append(f"skill {name}: {src_rel}/{name} leads outside {project}, not linked for {agent}")
             continue
-        want = f"../../{src_rel}/{name}"
+        want = os.path.join("..", "..", *src_rel.split("/"), name)  # Windows resolves only its own separator
         if dest.exists() or dest.is_symlink():
             ours = dest.is_symlink() and Path(os.readlink(dest)) == Path(want)
             reverse = not dest.is_symlink() and os.path.realpath(dest) == os.path.realpath(entry)
