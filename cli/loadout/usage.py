@@ -137,7 +137,7 @@ def _codex(cutoff: float) -> dict | None:
         except OSError:
             continue
         calls: dict[str, int] = {}
-        searches, sub = 0, False
+        searches, sub, mcp_ids = 0, False, set()  # an MCP call can be logged twice: function_call and its end event
         for obj in _lines(path, skipped):
             try:  # valid JSON of an unexpected shape is skipped and counted, never a crash
                 p = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
@@ -151,12 +151,16 @@ def _codex(cutoff: float) -> dict | None:
                     args = p.get("arguments") or p.get("input") or ""
                     fam = "shell" if name in CODEX_SHELL else family(name)
                     calls[fam] = calls.get(fam, 0) + 1
+                    if fam not in ("shell", "other") and isinstance(p.get("call_id"), str):
+                        mcp_ids.add(p["call_id"])
                     if fam == "shell" and _symbol_search(_command_text(args)):
                         searches += 1
                 elif kind == "mcp_tool_call_end":
                     invocation = p.get("invocation")
                     if not isinstance(invocation, dict):
                         raise TypeError("invocation")
+                    if p.get("call_id") in mcp_ids:
+                        continue  # already counted from its function_call
                     fam = family(str(invocation.get("server", "")))
                     if fam != "other":
                         calls[fam] = calls.get(fam, 0) + 1
@@ -167,15 +171,20 @@ def _codex(cutoff: float) -> dict | None:
     return out
 
 
-def _hint_sessions() -> int:
+def _hint_sessions(cutoff: float) -> int:
+    """Sessions in the window that got a search or a docs hint. The hook keeps its state files for 7 days, so a
+    longer window still counts only about the last week."""
     folder = paths.state_dir() / "tool-hint"
     n = 0
     for path in folder.glob("*.json") if folder.is_dir() else []:
         try:
+            if path.stat().st_mtime < cutoff:
+                continue
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(data, dict) and isinstance(data.get("last_hint"), int) and data["last_hint"] > 0:
+        if isinstance(data, dict) and any(isinstance(data.get(k), int) and data[k] > 0
+                                          for k in ("last_hint", "last_docs")):
             n += 1
     return n
 
@@ -187,7 +196,7 @@ def collect(days: int, now: float | None = None) -> dict:
         report["claude"] = c
     if targets.codex_enabled() and (c := _codex(cutoff)) is not None:
         report["codex"] = c
-    report["hint_sessions"] = _hint_sessions()
+    report["hint_sessions"] = _hint_sessions(cutoff)
     return report
 
 

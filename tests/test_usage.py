@@ -88,6 +88,31 @@ def test_valid_json_with_an_odd_shape_is_skipped_not_a_crash(fake_home, monkeypa
     assert report["codex"]["skipped_lines"] == 2  # an invocation or a name that cannot be read
 
 
+def test_a_codex_mcp_call_logged_twice_counts_once(fake_home, monkeypatch):
+    _on(monkeypatch, claude=False)
+    _codex([{"type": "session_meta", "payload": {"timestamp": "2026-10-14T10:00:00Z"}},
+            {"type": "response_item", "payload": {"type": "function_call", "name": "mcp__serena__find_symbol",
+                                                  "arguments": "{}", "call_id": "c1"}},
+            {"type": "event_msg", "payload": {"type": "mcp_tool_call_end", "call_id": "c1",
+                                              "invocation": {"server": "serena", "tool": "find_symbol"}}},
+            {"type": "event_msg", "payload": {"type": "mcp_tool_call_end", "call_id": "c2",
+                                              "invocation": {"server": "serena", "tool": "find_symbol"}}}])
+    assert usage.collect(14)["codex"]["main"]["families"]["serena"]["calls"] == 2  # c1 once, c2 once
+
+
+def test_hint_sessions_follow_the_window_and_include_docs_hints(fake_home, monkeypatch):
+    _on(monkeypatch, codex=False)
+    state = paths.state_dir() / "tool-hint"
+    state.mkdir(parents=True)
+    (state / "search.json").write_text(json.dumps({"last_hint": 3}))
+    (state / "docs.json").write_text(json.dumps({"last_docs": 1}))
+    old = state / "old.json"
+    old.write_text(json.dumps({"last_hint": 5}))
+    os.utime(old, (time.time() - 3 * 86400,) * 2)
+    assert usage.collect(14)["hint_sessions"] == 3
+    assert usage.collect(1)["hint_sessions"] == 2
+
+
 def test_codex_symbol_searches_are_counted_in_every_command_shape(fake_home, monkeypatch):
     _on(monkeypatch, claude=False)
     _codex([{"type": "session_meta", "payload": {"timestamp": "2026-10-14T10:00:00Z", "source": "cli"}},
