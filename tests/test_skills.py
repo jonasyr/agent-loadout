@@ -37,6 +37,20 @@ def test_usage_skill_reads_the_json_and_never_the_transcripts():
         assert key in text, key
     assert "0026" in text  # the reference measurement lives in the ADR, not in the skill
     assert "Never open" in text and "transcript" in text  # counts only, like the command
+    assert "`claude.skipped_lines`" in text  # per agent, as usage.render reads it
+    assert "7 days" in text and "not a denominator" in text  # hint state is kept a week, for both agents
+    assert "before the hints" not in text  # a low count does not date the plugin
+
+
+def test_usage_eval_stub_puts_skipped_lines_under_the_agent():
+    import json, subprocess, os
+    if os.name == "nt":
+        return
+    stub = paths.kit_root() / "plugins/loadout/evals/bin/loadout"
+    out = subprocess.run(["bash", str(stub), "usage", "--json"], capture_output=True, text=True,
+                         cwd=paths.kit_root() / "plugins/loadout/evals", check=True).stdout
+    data = json.loads(out)
+    assert "skipped_lines" in data["claude"] and "skipped_lines" not in data
 
 
 def test_onboard_new_project_does_not_hand_off_to_brainstorming():
