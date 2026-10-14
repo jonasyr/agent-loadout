@@ -137,8 +137,8 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
     root = repo_root(Path(os.path.abspath(cwd)))
     if root is None:
         raise Refused(f"--to repo: {cwd} is not inside a git repo")
-    src_root = root / ".claude" / "skills"
-    dest_root = root / ".agents" / "skills" if targets.codex_enabled() else None
+    from . import profiles
+    src_root, dest_root = profiles.repo_skill_dirs(root)  # the real folder, and the link folder (both agents on)
     if Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
         raise Refused(f"--to repo: the repo found is your home folder ({root}, a dotfiles repo?), where "
                       ".claude/skills is Claude Code's own folder; run it inside a project repo")
@@ -152,7 +152,7 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
         for part in ((folder.parent, folder) if folder is not None else ()):  # .claude / .agents and skills/
             if (part.exists() or part.is_symlink()) and not part.is_dir():
                 raise Refused(f"--to repo: {part} is not a folder; nothing written")
-    _refuse_taken(name, [f for f in (src_root, dest_root) if f is not None])
+    _refuse_taken(name, [root / rel for rel in profiles.REPO_SKILLS])  # whatever is on: one skill per name
     skill_md = _write(src_root, name, description, bk)
     out = [f"skill {name}: created {skill_md} (commit it to share it with this repo)"]
     if dest_root is not None:

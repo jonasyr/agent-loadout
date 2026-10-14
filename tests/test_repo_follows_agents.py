@@ -150,3 +150,22 @@ def test_profile_links_skills_with_claude_code_only(repo, fake_runner, monkeypat
     monkeypatch.setattr(profiles, "load_profile", lambda name: profiles.Profile(name="web", description=""))
     assert project.add_profile(repo, "web", install=False) == 0
     assert (repo / ".claude/skills/notes").is_symlink()
+
+
+def test_new_skill_codex_only_writes_agents_skills_and_no_claude(repo):
+    from loadout import backup, new_skill
+    targets.set_agents({"claude": False, "codex": True})
+    lines = new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
+    assert (repo / ".agents/skills/notes/SKILL.md").is_file()
+    assert not (repo / ".agents/skills/notes").is_symlink()
+    assert not (repo / ".claude").exists()
+    assert any(".agents/skills/notes/SKILL.md" in l.replace(os.sep, "/") for l in lines)
+
+
+def test_new_skill_codex_only_refuses_a_name_in_claude_skills(repo):
+    from loadout import backup, new_skill
+    targets.set_agents({"claude": False, "codex": True})
+    _real(repo, ".claude/skills", "notes")
+    with pytest.raises(new_skill.Refused):
+        new_skill.create("notes", to="repo", cwd=repo, bk=backup.Backup(description="t"))
+    assert not (repo / ".agents").exists()
