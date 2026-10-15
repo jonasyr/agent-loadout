@@ -53,20 +53,22 @@ def _present(data: dict, event: str, sub: str) -> bool:
 
 
 def trust_keys() -> set[str]:
-    """Codex's [hooks.state] keys for loadout's entries in hooks.json: '<absolute path>:<event_snake>:<group>:<hook>'
-    (codex-rs/hooks/src/lib.rs, discovery.rs); empty when loadout owns none or the file cannot be read."""
-    owned = [o for o in _record().get("hooks", []) if isinstance(o, dict)]
+    """Codex's [hooks.state] keys for every Serena hook in hooks.json, loadout's or the user's own (Codex runs neither
+    before /hooks): '<absolute path>:<event_snake>:<group>:<hook>' (codex-rs/hooks/src/lib.rs, discovery.rs)."""
     try:
-        events = json.loads(path().read_bytes().decode("utf-8")).get("hooks", {}) if owned and path().exists() else {}
+        events = json.loads(path().read_bytes().decode("utf-8")).get("hooks", {}) if path().exists() else {}
     except (OSError, ValueError, AttributeError):
         return set()
     snake = lambda name: re.sub(r"(?<!^)([A-Z])", r"_\1", name).lower()  # noqa: E731
+    subs = {s for _, _, s, _ in SERENA_HOOKS}
     keys = set()
-    for o in owned:
-        groups = events.get(o.get("event"), []) if isinstance(events, dict) else []
+    for event, groups in (events.items() if isinstance(events, dict) else []):
         for gi, group in enumerate(groups if isinstance(groups, list) else []):
-            if _canon(group) == o.get("group"):
-                keys.add(f"{path()}:{snake(o['event'])}:{gi}:0")
+            hooks_ = group.get("hooks") if isinstance(group, dict) else None
+            for hi, hook in enumerate(hooks_ if isinstance(hooks_, list) else []):
+                command = hook.get("command") if isinstance(hook, dict) else None
+                if isinstance(command, str) and any(_runs(command, sub) for sub in subs):
+                    keys.add(f"{path()}:{snake(event)}:{gi}:{hi}")
     return keys
 
 

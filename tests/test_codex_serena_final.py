@@ -31,6 +31,22 @@ def test_a_personal_serena_plus_the_users_codex_serena_is_still_one(cfg):
     assert cfg.read_text().count("start-mcp-server") == 1
 
 
+def test_two_personal_serenas_give_one_and_a_line(cfg):
+    _personal({"serena-a": SERENA, "serena-b": SERENA})
+    lines = codex.apply_config(backup.Backup(description="t"))
+    assert cfg.read_text().count("start-mcp-server") == 1
+    assert any("serena-b" in l and "second Serena" in l for l in lines)
+
+
+def test_trust_covers_the_users_own_serena_hooks(fake_home):
+    p = codex_hooks.path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"hooks": {"SessionStart": [{"matcher": "startup|resume", "hooks": [
+        {"type": "command", "command": "echo hi"},
+        {"type": "command", "command": "serena-hooks activate --client=codex"}]}]}}, indent=2) + "\n")
+    assert codex_hooks.trust_keys() == {f"{p}:session_start:0:1"}
+
+
 def test_a_personal_serena_under_another_name_replaces_loadouts(cfg):
     _personal({"my-serena": SERENA})
     codex.apply_config(backup.Backup(description="t"))

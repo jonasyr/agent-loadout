@@ -332,12 +332,17 @@ def desired_tables(skip_serena: bool = False) -> tuple[dict[str, str], list[str]
     from .settings_merge import desired_settings
     if get_dict(desired_settings(), "enabledPlugins").get("context7@claude-plugins-official") is True:
         tables["context7"] = table_text("context7", CONTEXT7)
+    personal_serena = None
     for name, cfg in servers.items():
         try:
             mapped = server(name, cfg)
-            if is_serena(mapped):  # one Serena only: the user's own in config.toml, else the personal one
+            if is_serena(mapped):  # one Serena only: the user's own in config.toml, else the first personal one
                 if skip_serena:
                     continue
+                if personal_serena is not None:
+                    problems.append(f"skipped mcp {name}: a second Serena (loadout keeps {personal_serena})")
+                    continue
+                personal_serena = name
                 if name != "serena" and tables.get("serena") == table_text("serena", SERENA):
                     tables.pop("serena")
             text = table_text(name, mapped)
