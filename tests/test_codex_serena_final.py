@@ -110,6 +110,23 @@ def test_a_moved_serena_hook_needs_approval_again(hooks):
     assert codex.hooks_status() == "changed"  # Stop:0 still holds the hash Codex gave the user's hook
 
 
+INLINE = "".join(f'[[hooks.{e}]]\n{f"matcher = {json.dumps(m)}" + chr(10) if m else ""}'
+                 f'[[hooks.{e}.hooks]]\ntype = "command"\ncommand = "serena-hooks {s} --client=codex"\n\n'
+                 for e, m, s, _ in codex_hooks.SERENA_HOOKS)
+
+
+def test_inline_serena_hooks_in_config_toml_count_as_present(hooks):
+    (paths.codex_home() / "config.toml").write_text(INLINE)
+    assert codex_hooks.apply(backup.Backup(description="t")) == []
+    assert not hooks.exists()
+
+
+def test_with_other_inline_hooks_loadout_creates_no_hooks_json(hooks):
+    (paths.codex_home() / "config.toml").write_text('[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "echo hi"\n')
+    lines = codex_hooks.apply(backup.Backup(description="t"))
+    assert not hooks.exists() and any("add these yourself" in l and "config.toml" in l for l in lines)
+
+
 def test_a_personal_serena_under_another_name_replaces_loadouts(cfg):
     _personal({"my-serena": SERENA})
     codex.apply_config(backup.Backup(description="t"))

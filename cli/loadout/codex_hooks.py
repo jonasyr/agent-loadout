@@ -42,6 +42,18 @@ def _runs(command: str, sub: str) -> bool:
     return sub in words and codex
 
 
+def _inline() -> dict:
+    """Hook groups the user defined inline as [hooks] in config.toml (Codex reads both forms), by event."""
+    import tomllib
+    cfg = paths.codex_home() / "config.toml"
+    try:
+        hooks = tomllib.loads(cfg.read_text(encoding="utf-8")).get("hooks", {}) if cfg.exists() else {}
+    except Exception:
+        return {}
+    return {ev: groups for ev, groups in hooks.items() if ev != "state" and isinstance(groups, list)} \
+        if isinstance(hooks, dict) else {}
+
+
 def _present(data: dict, event: str, sub: str) -> bool:
     for ev in ALSO.get(sub, (event,)):
         for group in data.get("hooks", {}).get(ev, []) or []:
@@ -121,7 +133,13 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
             changed = True
             continue
         kept.append(o)
-    missing = [(e, m, s, t) for e, m, s, t in wanted if not _present(data, e, s)]
+    inline = _inline()
+    both = {"hooks": {ev: [*(events.get(ev) or []), *(inline.get(ev) or [])] for ev in {*events, *inline}}}
+    missing = [(e, m, s, t) for e, m, s, t in wanted if not _present(both, e, s)]
+    if missing and inline and not p.exists():  # the user keeps hooks in config.toml: a hooks.json beside it is mixed
+        snippet = "; ".join(f"{e}: {json.dumps(_group(m, s, t))}" for e, m, s, t in missing)
+        return [f"{paths.codex_home() / 'config.toml'}: Serena hooks missing, add these yourself to its [hooks] "
+                f"(loadout creates no hooks.json next to inline hooks): {snippet}"]
     for e, m, s, t in missing:
         group = _group(m, s, t)
         if e not in events:
