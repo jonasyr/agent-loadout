@@ -560,6 +560,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     owned_tables, owned_keys = dict(record["tables"]), dict(record["keys"])
     was_tables, was_keys = set(owned_tables), set(owned_keys)
     sections = _sections(old.splitlines(), tl)
+    removed = False  # an owned section that goes gets its own backup copy
     tables, lines = desired_tables(skip_serena=user_serena(before, set(record["tables"])) is not None)
 
     def find(path_):
@@ -580,6 +581,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         elif tables.get(name) != text:
             sections.remove(sec)
             owned_tables.pop(name)
+            removed = True
     for name, text in tables.items():
         existing = find(("mcp_servers", name))
         if existing is not None:
@@ -660,6 +662,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         bk.save_copy(path, "Codex config.toml before loadout's first change")
     elif path.exists() and switched:
         bk.save_copy(path, "Codex config.toml before switching plugins on or off")
+    elif path.exists() and removed:  # a section goes: restore must be able to bring it back
+        bk.save_copy(path, "Codex config.toml before loadout removed one of its sections")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")
     from .jsonio import write_atomic

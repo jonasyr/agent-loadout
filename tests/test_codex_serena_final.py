@@ -68,6 +68,15 @@ def test_an_edited_approved_serena_hook_counts_as_changed(hooks):
     assert codex.hooks_status() == "changed"
 
 
+def test_removing_loadouts_serena_table_saves_a_copy_first(cfg):
+    codex.apply_config(backup.Backup(description="t"))
+    cfg.write_text(cfg.read_text() + '\n[mcp_servers.my-serena]\ncommand = "serena"\nargs = ["start-mcp-server"]\n')
+    bk = backup.Backup(description="t")
+    codex.apply_config(bk)
+    assert "[mcp_servers.serena]" not in cfg.read_text()
+    assert any("config.toml" in step["label"] and "move" not in step["undo"] for step in bk.steps)
+
+
 def test_a_personal_serena_under_another_name_replaces_loadouts(cfg):
     _personal({"my-serena": SERENA})
     codex.apply_config(backup.Backup(description="t"))
