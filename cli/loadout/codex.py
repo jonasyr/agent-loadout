@@ -174,7 +174,8 @@ def refresh_instructions() -> str | None:
     return f"refreshed loadout's block in {_tilde(path)}"
 
 
-SERENA = {"command": "serena", "args": ["start-mcp-server", "--context=codex", "--project-from-cwd"]}
+SERENA = {"command": "serena", "args": ["start-mcp-server", "--project-from-cwd", "--context=codex"],
+          "startup_timeout_sec": 15}  # as `serena setup codex` writes it (oraios.github.io/serena, clients page)
 # the plugin's Context7 address (?client=claude-code-plugin) asks Codex for OAuth; the plain one answers anonymously
 CONTEXT7 = {"url": "https://mcp.context7.com/mcp"}
 _BARE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -202,6 +203,8 @@ def toml_value(value) -> str:
     DEL is the one character JSON leaves raw and TOML forbids."""
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
     if isinstance(value, str):
         return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
     if isinstance(value, list) and all(isinstance(v, str) for v in value):
@@ -304,16 +307,45 @@ def read_record() -> dict:
     return {**record, "tables": get_dict(record, "tables"), "keys": get_dict(record, "keys")}
 
 
-def desired_tables() -> tuple[dict[str, str], list[str]]:
-    """Table text per server name, and the lines for servers that cannot be mapped."""
+def is_serena(table: dict) -> bool:
+    """A Codex server table that starts Serena's MCP server, whatever its name: serena, a full path to it, or uvx/uv."""
+    command, args = table.get("command"), table.get("args")
+    if not isinstance(command, str) or not isinstance(args, list) or "start-mcp-server" not in args:
+        return False
+    base = re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe")
+    return base == "serena" or (base in ("uvx", "uv") and any(isinstance(a, str) and "serena" in a for a in args))
+
+
+def user_serena(data: dict, owned: set[str]) -> str | None:
+    """The name of the user's own Serena server in config.toml (a table loadout did not write), or None."""
+    for name, table in get_dict(data, "mcp_servers").items():
+        if name not in owned and isinstance(table, dict) and is_serena(table):
+            return name
+    return None
+
+
+def desired_tables(skip_serena: bool = False) -> tuple[dict[str, str], list[str]]:
+    """Table text per server name, and the lines for servers that cannot be mapped. skip_serena: the user has
+    their own Serena (user_serena), so loadout writes none (spec PR A)."""
     servers = get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers")
-    tables, problems = {"serena": table_text("serena", SERENA)}, []
+    tables, problems = ({} if skip_serena else {"serena": table_text("serena", SERENA)}), []
     from .settings_merge import desired_settings
     if get_dict(desired_settings(), "enabledPlugins").get("context7@claude-plugins-official") is True:
         tables["context7"] = table_text("context7", CONTEXT7)
+    personal_serena = None
     for name, cfg in servers.items():
         try:
-            text = table_text(name, server(name, cfg))
+            mapped = server(name, cfg)
+            if is_serena(mapped):  # one Serena only: the user's own in config.toml, else the first personal one
+                if skip_serena:
+                    continue
+                if personal_serena is not None:
+                    problems.append(f"skipped mcp {name}: a second Serena (loadout keeps {personal_serena})")
+                    continue
+                personal_serena = name
+                if name != "serena" and tables.get("serena") == table_text("serena", SERENA):
+                    tables.pop("serena")
+            text = table_text(name, mapped)
             try:
                 text.encode("utf-8")
             except UnicodeEncodeError:
@@ -528,7 +560,10 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     owned_tables, owned_keys = dict(record["tables"]), dict(record["keys"])
     was_tables, was_keys = set(owned_tables), set(owned_keys)
     sections = _sections(old.splitlines(), tl)
-    tables, lines = desired_tables()
+    removed = False  # an owned section that goes gets its own backup copy
+    still_ours = {name for name, text in owned_tables.items()  # a section the user edited is theirs from now on
+                  if any(s[0] == ("mcp_servers", name) and _text(s[1]) == text for s in sections)}
+    tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
 
     def find(path_):
         return next((s for s in sections if s[0] == path_), None)
@@ -548,6 +583,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         elif tables.get(name) != text:
             sections.remove(sec)
             owned_tables.pop(name)
+            removed = True
     for name, text in tables.items():
         existing = find(("mcp_servers", name))
         if existing is not None:
@@ -628,6 +664,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         bk.save_copy(path, "Codex config.toml before loadout's first change")
     elif path.exists() and switched:
         bk.save_copy(path, "Codex config.toml before switching plugins on or off")
+    elif path.exists() and removed:  # a section goes: restore must be able to bring it back
+        bk.save_copy(path, "Codex config.toml before loadout removed one of its sections")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")
     from .jsonio import write_atomic
@@ -876,7 +914,7 @@ def drift() -> list[str]:
     personal = set(get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers"))
     owned = set(read_record()["tables"])
     in_claude = set(get_dict(load_json(paths.claude_json()), "mcpServers"))
-    accounted = left | personal | owned
+    accounted = left | personal | owned | _codex_serenas()  # a Serena is the kit's tool, never one to adopt
     out = [f'MCP server "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
            for n in sorted(in_claude - in_codex - accounted)]
     out += [f'MCP server "{n}" only in Codex (record it with loadout adopt, then both get it)'
@@ -890,10 +928,22 @@ def drift() -> list[str]:
     return out
 
 
+def _codex_serenas() -> set[str]:
+    """Names of the config.toml servers that start Serena (anyone's)."""
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return set()
+    return {n for n, t in get_dict(data, "mcp_servers").items() if isinstance(t, dict) and is_serena(t)}
+
+
 def _plugin_servers() -> set[str]:
-    """MCP servers that Codex has from installed plugins (their .mcp.json), not from the user."""
+    """MCP servers that Codex has from installed plugins, from the file each manifest names (else .mcp.json)."""
     names: set[str] = set()
-    for mcp in (paths.codex_home() / "plugins" / "cache").glob("*/*/*/.mcp.json"):
+    for root in (paths.codex_home() / "plugins" / "cache").glob("*/*/*"):
+        ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
+        mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
         names |= set(get_dict(load_json(mcp), "mcpServers"))
     return names
 
@@ -933,7 +983,9 @@ def apply_all(bk, refresh: bool = False, say=None) -> list[str]:
     if lock is None:
         return ["skipped: another loadout run is setting up Codex right now; run this again when it has finished"]
     try:
-        return [apply_instructions(bk), *apply_config(bk), *apply_skills(bk), *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
+        from . import codex_hooks
+        return [apply_instructions(bk), *apply_config(bk), *codex_hooks.apply(bk, keep=refresh), *apply_skills(bk),
+                *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
     finally:
         try:
             lock.unlink()
@@ -960,7 +1012,16 @@ def checks() -> list:
         results.append(CheckResult("Codex instructions", False, "AGENTS.override.md shadows AGENTS.md, so Codex ignores loadout's block",
                                    "merge it into AGENTS.md or remove it", "warn"))
     pending = apply_config(object(), dry_run=True)
-    results.append(CheckResult("Codex config", not pending, "; ".join(pending), "loadout bootstrap", "warn"))
+    yours = ("rename or remove that table in ~/.codex/config.toml if you want loadout's; loadout never changes your "
+             "entries")
+    left = [line for line in pending if "left as is" in line]
+    fix = yours if left and len(left) == len(pending) else f"loadout bootstrap; {yours}" if left else "loadout bootstrap"
+    results.append(CheckResult("Codex config", not pending, "; ".join(pending), fix, "warn"))
+    from . import codex_hooks
+    pending_hooks = codex_hooks.apply(object(), dry_run=True)
+    hooks_fix = ("add the listed entries to ~/.codex/hooks.json" if pending_hooks
+                 and all("add these yourself" in line for line in pending_hooks) else "loadout bootstrap")
+    results.append(CheckResult("Codex Serena hooks", not pending_hooks, "; ".join(pending_hooks), hooks_fix, "warn"))
     from .settings_merge import desired_settings
     missing = plugin_routes(desired_settings())[1]
     if missing:
@@ -1022,16 +1083,29 @@ def hooks_status(remember: bool = False) -> str | None:
         state = get_dict(state, "state")
     except Exception:
         return None
+    from . import codex_hooks
+    serena = codex_hooks.serena_items()  # the Serena hooks in hooks.json need /hooks too, loadout's or the user's
+    in_file = f"{codex_hooks.path()}:"  # every hooks.json key, so a Serena hook moved onto one is caught
     current = {k: v.get("trusted_hash") for k, v in state.items()
-               if k.startswith(HOOK_PLUGIN + ":") and isinstance(v, dict) and v.get("trusted_hash")}
-    if not hook_keys() <= set(current):
+               if (k.startswith(HOOK_PLUGIN + ":") or k.startswith(in_file)) and isinstance(v, dict)
+               and v.get("trusted_hash")}
+    if not (hook_keys() | set(serena)) <= set(current):
         return "untrusted"
     digest, seen = _hooks_digest(), load_json(_hooks_record())
-    if seen.get("digest") not in (None, digest) and seen.get("hashes") == current:
+    plugin_now = {k: v for k, v in current.items() if k.startswith(HOOK_PLUGIN + ":")}
+    plugin_seen = {k: v for k, v in get_dict(seen, "hashes").items() if k.startswith(HOOK_PLUGIN + ":")}
+    if seen.get("digest") not in (None, digest) and plugin_seen == plugin_now:
         return "changed"
-    if remember and seen != {"digest": digest, "hashes": current}:
+    # a Serena key whose content changed (edited, or another hook moved onto it) is approved again only when Codex
+    # stored a new hash for it; the old hash belongs to what was there before
+    seen_items, seen_hashes = get_dict(seen, "serena"), get_dict(seen, "hashes")
+    if any(k in seen_hashes and seen_items.get(k) != content and seen_hashes[k] == current.get(k)
+           for k, content in serena.items()):
+        return "changed"
+    record = {"digest": digest, "hashes": current, "serena": serena}
+    if remember and seen != record:
         _hooks_record().parent.mkdir(parents=True, exist_ok=True)
-        save_json(_hooks_record(), {"digest": digest, "hashes": current})
+        save_json(_hooks_record(), record)
     return "trusted"
 
 

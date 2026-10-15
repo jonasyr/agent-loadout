@@ -31,7 +31,7 @@ loadout has three parts: the kit repo (shared), your personal layer (yours) and 
 | Your personal rules (`rules/*.md`, such as `me.md`) | the folder is linked as `~/.claude/rules/personal` | copied into the same block |
 | Your skills | linked into `~/.claude/skills` | linked into `~/.agents/skills` |
 | Your hooks | linked into `~/.claude/hooks/personal` | not linked |
-| Your MCP servers | `claude mcp add-json` (user scope) | owned `[mcp_servers.*]` sections in `config.toml`, secrets as `env_vars` names; loadout also owns a `serena` section, and a `context7` section when the Context7 plugin is on |
+| Your MCP servers | `claude mcp add-json` (user scope) | owned `[mcp_servers.*]` sections in `config.toml`, secrets as `env_vars` names; loadout also owns a `serena` section unless you have your own Serena server, and a `context7` section when the Context7 plugin is on; Serena's hooks are owned entries in `hooks.json` |
 | Settings | three-way merge into `settings.json` | effort and notifications as `model_reasoning_effort` and `tui.notifications` in `config.toml`; for plugins a project profile installed, a `plugins.<id>.enabled` switch that keeps them off at user level |
 | Plugins | the kit marketplace; Claude Code installs and updates them | loadout installs and refreshes the same plugins through the `codex` CLI |
 | Your own text | `~/.claude/CLAUDE.md` is not edited, unless you ask adopt to move its content into your personal layer | the rest of `AGENTS.md` is not edited; `AGENTS.override.md` would shadow the block (`loadout check` warns) |

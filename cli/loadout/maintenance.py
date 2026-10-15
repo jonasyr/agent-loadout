@@ -22,7 +22,7 @@ NOTICE = "pending-notice"
 def codex_notice(line: str) -> bool:
     """A Codex line worth a notice: a problem, not loadout leaving the user's own entry alone (said by check)."""
     from .out import PROBLEM
-    return bool(PROBLEM.search(line)) and "left as is" not in line
+    return (bool(PROBLEM.search(line)) and "left as is" not in line) or "/hooks" in line  # Codex runs nothing unapproved
 
 
 def _stamp(name: str) -> Path:

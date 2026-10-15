@@ -12,12 +12,12 @@ The last column says how `plugins/loadout/hooks/codex.json` differs: `same` mean
 
 | Event | Matcher | Runs | Timeout | Purpose | In Codex |
 |---|---|---|---|---|---|
-| `SessionStart` | all | `serena-hooks activate --client=claude-code` | 15 s | Serena's own activation hook. | argument (`--client=codex`) |
+| `SessionStart` | all | `serena-hooks activate --client=claude-code` | 15 s | Serena's own activation hook. | — (in `~/.codex/hooks.json`, see [Serena's hooks in Codex](#serenas-hooks-in-codex)) |
 | `SessionStart` | all | `loadout hook-session-start` | 10 s | Shows queued notices (for example "updates available, run `loadout update`") and starts the background maintenance when the daily pull or the weekly update check is due. Errors never break the session. | same |
 | `SessionStart` | all | `--soft --python hooks/reload_check.py` | 5 s | Tells you once per session to run `/reload-plugins` when Claude Code updated the plugin after the session started (the session keeps the old skills and hooks until then). State: `~/.local/state/loadout/reload-notified.json`. | — (Codex loads plugins per session) |
-| `SessionEnd` | all | `serena-hooks cleanup --client=claude-code` | 10 s | Serena's own cleanup hook. | argument (`--client=codex`), timeout 3 s |
+| `SessionEnd` | all | `serena-hooks cleanup --client=claude-code` | 10 s | Serena's own cleanup hook. | — (in `~/.codex/hooks.json`, see [Serena's hooks in Codex](#serenas-hooks-in-codex)) |
 | `PreToolUse` | `Bash` | `rtk hook claude` | 10 s | rtk rewrites shell commands to its token-saving form. | argument (`rtk hook codex`) |
-| `PreToolUse` | `mcp__plugin_loadout_serena__.*` | `serena-hooks auto-approve --client=claude-code` | 10 s | Serena's own auto-approve hook, for Serena's tools only. | argument (`--client=codex`), matcher `mcp__serena__.*` |
+| `PreToolUse` | `mcp__plugin_loadout_serena__.*` | `serena-hooks auto-approve --client=claude-code` | 10 s | Serena's own auto-approve hook, for Serena's tools only. | — (Serena documents none for Codex) |
 | `PreToolUse` | `Grep\|Glob` | `--soft codebase-memory-mcp hook-augment` | 5 s | The code-graph server's hook for `Grep` and `Glob`. It watches only those two tools; loadout's own hint also covers shell searches. | — (Codex has no such tools) |
 | `PreToolUse` | `Grep\|Glob\|Bash\|WebSearch\|WebFetch` | `hooks/tool_hint.sh` (a bash filter; it starts `hooks/tool_hint.py` only when the call mentions grep, rg, find, Glob, a web tool or an MCP tool, with `python3`, or through `run.sh --python` when `python3` is missing or does not run) | 5 s | From the 3rd symbol search on (Grep, Glob of code files, shell `rg`/`grep`/`git grep`, or `find -name` of code files) since Serena or the code graph was last used, adds one fact of at most 300 characters naming them; after a hint the count starts again. Only in a code repo (its top level has a code file, a build file or `src/`). A pattern that is a common word (`error`, `TODO`) or a phrase, a grep after a pipe, a search limited to docs or config files (`-t md`, `-g '*.json'`), and a `find` that deletes or executes do not count. A library-docs web lookup (a docs host, or a web search naming docs, an API or a library) gets one fact naming Context7 and Microsoft Learn. Each kind of hint at most once per 10 counted searches and docs lookups; never blocks; never switched off for a session. Claude Code subagents share their parent's session, so they share its count. State: `$XDG_STATE_HOME/loadout/tool-hint/<session>.json` (`~/.local/state/loadout/tool-hint/` by default); files older than 7 days are removed when a session's first counted search or docs lookup creates its state file. | matcher `Bash` (Codex has no Grep, Glob or web tools for hooks, so no docs hint) |
 | `PostToolUse` | `Write\|Edit\|MultiEdit` | `--soft --python hooks/advisor.py record` | 5 s | Remembers a finished implementation plan. | matcher `Edit\|Write`; in Codex it reads `apply_patch` headers (see below) |
@@ -29,7 +29,22 @@ The last column says how `plugins/loadout/hooks/codex.json` differs: `same` mean
 
 Measure the effect with `loadout usage` ([CLI](cli.md#loadout-usage)), or ask for the report with `/loadout:usage` (Codex: `$loadout:usage`).
 
-The plugin also declares two MCP servers in `plugins/loadout/.mcp.json`: `serena` and `codebase-memory-mcp`.
+The plugin also declares two MCP servers in `plugins/loadout/.mcp.json`: `serena` and `codebase-memory-mcp`. For Codex it declares only `codebase-memory-mcp` (`plugins/loadout/.codex-mcp.json`): Codex gets Serena from `~/.codex/config.toml` instead.
+
+### Serena's hooks in Codex
+
+In Codex, Serena's hooks are not in the plugin. loadout writes the six that Serena documents for Codex ([Serena: clients](https://oraios.github.io/serena/02-usage/030_clients.html)) into `~/.codex/hooks.json`, each only if no hook of that event already runs the same `serena-hooks` subcommand with `--client=codex`:
+
+| Event | Matcher | Runs | Timeout |
+|---|---|---|---|
+| `PreToolUse` | `Bash` | `serena-hooks remind --client=codex` | 5 s |
+| `PreToolUse` | `^mcp__serena__` | `serena-hooks plan-guard --client=codex` | Codex default |
+| `PostToolUse` | `^mcp__serena__.*$` | `serena-hooks reset --client=codex` | Codex default |
+| `SessionStart` | `startup\|resume` | `serena-hooks activate --client=codex` | Codex default |
+| `UserPromptSubmit` | — | `serena-hooks plan-context --client=codex` | Codex default |
+| `SessionEnd` | — | `serena-hooks cleanup --client=codex` (a `cleanup` under `Stop` counts too) | 3 s |
+
+loadout records the entries it wrote and never changes yours. It rewrites the file only when it is in loadout's own format (two-space JSON with one kind of line ending, LF or CRLF, which it keeps); otherwise it leaves it as it is and `loadout check` lists the entries to add by hand. Serena hooks you keep inline as `[hooks]` in `config.toml` count as present too, and next to inline hooks loadout creates no `hooks.json` (Codex warns about mixed forms); it lists what to add there instead. Without `serena-hooks` and `serena` on `PATH` it removes its own entries, but never in the background daily sync, whose `PATH` can lack Serena's folder. An entry of loadout's that you delete comes back on the next run, as a `config.toml` section does; to keep Serena's hooks out, turn Serena off. The matchers name the server `serena`: with your own Serena under another name, Serena's `mcp__serena__` hooks (and the tool hints' reset) do not match its tools, as in Serena's own docs. Codex runs them only after you review them in `/hooks`, and `loadout check` waits for that approval of every Serena hook there, yours included ([ADR 0028](../adr/0028-serena-codex-hooks-in-hooks-json.md)).
 
 ### Maintenance
 

@@ -54,7 +54,7 @@ Whatever restore replaces goes into a new `pre-restore` backup, so a restore can
 
 ## Codex
 
-With Codex on, the first change to an existing `~/.codex/AGENTS.md` or `~/.codex/config.toml` saves a copy in the backup (`$CODEX_HOME` replaces `~/.codex` if set). A file loadout created is moved aside on restore. Restore also runs the recorded `codex plugin remove` and `codex plugin marketplace remove` for the plugins and marketplaces loadout installed, so they are gone afterwards; ones that were already there stay. `loadout adopt` removing a Codex-only MCP server saves `config.toml` first, and a removed skill moves into the backup, so restore brings both back. To turn Codex off, see [Use loadout with Codex](codex.md#switch-it-on); to remove it fully, [Uninstall](uninstall.md#codex).
+With Codex on, the first change to an existing `~/.codex/AGENTS.md` or `~/.codex/config.toml`, and every change to `~/.codex/hooks.json`, saves a copy in the backup (`$CODEX_HOME` replaces `~/.codex` if set). A file loadout created is moved aside on restore. Restore also runs the recorded `codex plugin remove` and `codex plugin marketplace remove` for the plugins and marketplaces loadout installed, so they are gone afterwards; ones that were already there stay. `loadout adopt` removing a Codex-only MCP server saves `config.toml` first, and a removed skill moves into the backup, so restore brings both back. To turn Codex off, see [Use loadout with Codex](codex.md#switch-it-on); to remove it fully, [Uninstall](uninstall.md#codex).
 
 ## The managed-settings snapshot
 

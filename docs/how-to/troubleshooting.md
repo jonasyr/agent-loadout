@@ -64,6 +64,8 @@ Only if Codex is on ([Use loadout with Codex](codex.md)). `loadout check` names 
 | `plugin NAME@MARKET: no Codex route (its marketplace is not on GitHub)` | Codex gets plugins only from GitHub marketplaces. The plugin keeps working in Claude Code; Codex does without it. |
 | An MCP server waits for a login in Codex | Run `codex mcp login NAME`. For Context7 the login is optional ([details](codex.md#what-stays-different)). |
 | `MCP server "x" only in Claude Code` (or `only in Codex`) in the check or the session notice | You added it in one agent only. Record it with `loadout adopt` so both get it ([Handle your own tools](your-own-tools.md#tools-only-one-agent-has)). |
+| `loadout check` warns `Codex Serena hooks: … add these yourself` | Your `~/.codex/hooks.json` is not in loadout's own format (other indentation, or mixed line endings), so loadout does not rewrite it. Add the listed `serena-hooks … --client=codex` entries by hand, or run `serena setup codex` ([Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)). |
+| `mcp serena: left as is, config.toml already has a server of that name` | Your `[mcp_servers.serena]` does not start Serena (if it does, loadout uses it and says nothing). Rename that table if you want loadout's Serena; loadout never changes it. |
 
 ## Windows
 
