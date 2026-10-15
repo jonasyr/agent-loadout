@@ -43,7 +43,7 @@ def test_trust_covers_the_users_own_serena_hooks(fake_home):
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"hooks": {"SessionStart": [{"matcher": "startup|resume", "hooks": [
         {"type": "command", "command": "echo hi"},
-        {"type": "command", "command": "serena-hooks activate --client=codex"}]}]}}, indent=2) + "\n")
+        {"type": "command", "command": "serena-hooks activate --client=codex"}]}]}}, indent=2) + "\n", newline="\n")
     assert codex_hooks.trust_keys() == {f"{p}:session_start:0:1"}
 
 
@@ -60,11 +60,11 @@ def test_an_edited_approved_serena_hook_counts_as_changed(hooks):
     codex_hooks.apply(backup.Backup(description="t"))
     keys = codex.hook_keys() | codex_hooks.trust_keys()
     cfgp = paths.codex_home() / "config.toml"
-    cfgp.write_text("".join(f'[hooks.state."{k}"]\ntrusted_hash = "sha256:aa"\n\n' for k in keys))
+    cfgp.write_text("".join(f'[hooks.state.{codex.toml_value(k)}]\ntrusted_hash = "sha256:aa"\n\n' for k in keys))
     assert codex.hooks_status(remember=True) == "trusted"
     data = json.loads(hooks.read_text())
     data["hooks"]["SessionEnd"][0]["hooks"][0]["timeout"] = 2
-    hooks.write_text(json.dumps(data, indent=2) + "\n")
+    hooks.write_text(json.dumps(data, indent=2) + "\n", newline="\n")
     assert codex.hooks_status() == "changed"
 
 
@@ -89,12 +89,12 @@ def test_an_edited_once_owned_serena_counts_as_the_users_in_the_same_run(cfg):
 def test_a_moved_serena_hook_needs_approval_again(hooks):
     from loadout import codex
     hooks.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo mine"}]}]}},
-                                indent=2) + "\n")
+                                indent=2) + "\n", newline="\n")
     codex_hooks.apply(backup.Backup(description="t"))
     cfgp = paths.codex_home() / "config.toml"
 
     def trust(mapping):
-        cfgp.write_text("".join(f'[hooks.state."{k}"]\ntrusted_hash = "{v}"\n\n' for k, v in mapping.items()))
+        cfgp.write_text("".join(f'[hooks.state.{codex.toml_value(k)}]\ntrusted_hash = "{v}"\n\n' for k, v in mapping.items()))
 
     base = {k: "sha256:p" for k in codex.hook_keys()}
     mine = f"{hooks}:stop:0:0"
@@ -104,7 +104,7 @@ def test_a_moved_serena_hook_needs_approval_again(hooks):
     data = json.loads(hooks.read_text())  # cleanup moves to Stop position 0, the user's hook to position 1
     cleanup = data["hooks"].pop("SessionEnd")[0]
     data["hooks"]["Stop"].insert(0, cleanup)
-    hooks.write_text(json.dumps(data, indent=2) + "\n")
+    hooks.write_text(json.dumps(data, indent=2) + "\n", newline="\n")
     moved = {k for k in serena_keys if ":session_end:" not in k}
     trust({**base, mine: "sha256:mine", f"{hooks}:stop:1:0": "sha256:mine2", **{k: "sha256:s-" + k for k in moved}})
     assert codex.hooks_status() == "changed"  # Stop:0 still holds the hash Codex gave the user's hook

@@ -150,7 +150,12 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     for ev in [ev for ev in created if events.get(ev) == []]:  # only event keys loadout itself added
         del events[ev]
     created = {ev for ev in created if ev in events}
-    new = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    nl = "\r\n" if "\r\n" in old else "\n"  # keep the file's line endings (Python's json writes CRLF on Windows)
+
+    def canonical(value) -> str:
+        return json.dumps(value, indent=2, ensure_ascii=False).replace("\n", nl) + nl
+
+    new = canonical(data)
     new_record = {**record, "hooks": kept, "hook_events": sorted(created)}
     for key in ("hooks", "hook_events"):
         if not new_record[key]:
@@ -159,7 +164,7 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
         if new_record != record and not dry_run:
             save_json(codex.record_path(), new_record)
         return []
-    if old and json.dumps(json.loads(old), indent=2, ensure_ascii=False) + "\n" != old:
+    if old and canonical(json.loads(old)) != old:
         snippet = "; ".join(f"{e}: {json.dumps(_group(m, s, t))}" for e, m, s, t in missing)
         snippet += " (the table in docs/reference/hooks.md, section \"Serena's hooks in Codex\")"
         return [f"{p}: Serena hooks missing, add these yourself (loadout does not rewrite a file in another format): "

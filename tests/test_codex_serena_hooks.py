@@ -44,7 +44,7 @@ def test_the_users_official_set_is_left_alone(hooks):
 def test_only_missing_entries_are_added(hooks):
     hooks.write_text(json.dumps({"hooks": {"SessionStart": [{"matcher": "startup|resume", "hooks": [
         {"type": "command", "command": "/opt/bin/serena-hooks activate --client=codex", "timeout": 20}]}],
-        "Stop": [{"hooks": [{"type": "command", "command": "serena-hooks cleanup --client=codex"}]}]}}, indent=2) + "\n")
+        "Stop": [{"hooks": [{"type": "command", "command": "serena-hooks cleanup --client=codex"}]}]}}, indent=2) + "\n", newline="\n")
     codex_hooks.apply(backup.Backup(description="t"))
     cmds = _commands(hooks)
     assert sum("activate" in c for c in cmds) == 1 and sum("cleanup" in c for c in cmds) == 1
@@ -70,28 +70,35 @@ def test_an_entry_the_user_changed_becomes_theirs(hooks):
     codex_hooks.apply(backup.Backup(description="t"))
     data = json.loads(hooks.read_text())
     data["hooks"]["SessionEnd"][0]["hooks"][0]["timeout"] = 9
-    hooks.write_text(json.dumps(data, indent=2) + "\n")
+    hooks.write_text(json.dumps(data, indent=2) + "\n", newline="\n")
     before = hooks.read_text()
     assert codex_hooks.apply(backup.Backup(description="t")) == []  # cleanup still present (theirs now)
     assert hooks.read_text() == before
 
 
 def test_restore_reverts_the_first_change(hooks):
-    hooks.write_text(json.dumps({"hooks": {}}, indent=2) + "\n")
+    hooks.write_text(json.dumps({"hooks": {}}, indent=2) + "\n", newline="\n")
     bk = backup.Backup(description="t")
     codex_hooks.apply(bk)
     assert any(step["label"].startswith("Codex hooks.json") for step in bk.steps)
 
 
-def test_a_crlf_file_is_not_rewritten(hooks):
-    users = b'{\r\n  "hooks": {}\r\n}\r\n'
+def test_a_crlf_file_keeps_its_line_endings(hooks):
+    hooks.write_bytes(b'{\r\n  "hooks": {}\r\n}\r\n')  # as Python's json writes it on Windows
+    codex_hooks.apply(backup.Backup(description="t"))
+    data = hooks.read_bytes()
+    assert b"serena-hooks remind" in data and data.count(b"\n") == data.count(b"\r\n")
+
+
+def test_a_file_with_mixed_line_endings_is_not_rewritten(hooks):
+    users = b'{\r\n  "hooks": {}\n}\r\n'
     hooks.write_bytes(users)
     lines = codex_hooks.apply(backup.Backup(description="t"))
     assert hooks.read_bytes() == users and any("add these yourself" in l for l in lines)
 
 
 def test_the_users_own_empty_event_survives_removal(hooks, monkeypatch):
-    hooks.write_text(json.dumps({"description": "x", "hooks": {"PreToolUse": []}}, indent=2) + "\n")
+    hooks.write_text(json.dumps({"description": "x", "hooks": {"PreToolUse": []}}, indent=2) + "\n", newline="\n")
     codex_hooks.apply(backup.Backup(description="t"))
     monkeypatch.setattr(runner, "have", lambda b: False)
     codex_hooks.apply(backup.Backup(description="t"))
@@ -119,7 +126,7 @@ def test_a_missing_serena_hooks_on_path_does_not_remove_ours_while_serena_is_the
 ])
 def test_presence_reads_the_flags_in_any_order(hooks, command, counts):
     hooks.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
-        {"type": "command", "command": command}]}]}}, indent=2) + "\n")
+        {"type": "command", "command": command}]}]}}, indent=2) + "\n", newline="\n")
     codex_hooks.apply(backup.Backup(description="t"))
     assert (sum("remind" in c for c in _commands(hooks)) == 1) is counts
 

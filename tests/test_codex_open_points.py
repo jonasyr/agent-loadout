@@ -11,7 +11,7 @@ from loadout import bootstrap, check, codex, paths, runner
 def _trust(keys, hash_="sha256:aa"):
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f'[hooks.state."{k}"]\ntrusted_hash = "{hash_}"\n\n' for k in keys), encoding="utf-8")
+    path.write_text("".join(f'[hooks.state.{codex.toml_value(k)}]\ntrusted_hash = "{hash_}"\n\n' for k in keys), encoding="utf-8")
 
 
 def test_expected_hook_keys_follow_codex_json():
