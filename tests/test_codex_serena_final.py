@@ -47,6 +47,27 @@ def test_trust_covers_the_users_own_serena_hooks(fake_home):
     assert codex_hooks.trust_keys() == {f"{p}:session_start:0:1"}
 
 
+def test_every_rewrite_of_an_existing_hooks_json_has_a_backup(hooks, monkeypatch):
+    codex_hooks.apply(backup.Backup(description="t"))  # creates the file
+    monkeypatch.setattr(runner, "have", lambda b: False)
+    bk = backup.Backup(description="t")
+    codex_hooks.apply(bk)  # removes loadout's entries from the existing file
+    assert any(step["label"].startswith("Codex hooks.json") and "move" not in step["undo"] for step in bk.steps)
+
+
+def test_an_edited_approved_serena_hook_counts_as_changed(hooks):
+    from loadout import codex
+    codex_hooks.apply(backup.Backup(description="t"))
+    keys = codex.hook_keys() | codex_hooks.trust_keys()
+    cfgp = paths.codex_home() / "config.toml"
+    cfgp.write_text("".join(f'[hooks.state."{k}"]\ntrusted_hash = "sha256:aa"\n\n' for k in keys))
+    assert codex.hooks_status(remember=True) == "trusted"
+    data = json.loads(hooks.read_text())
+    data["hooks"]["SessionEnd"][0]["hooks"][0]["timeout"] = 2
+    hooks.write_text(json.dumps(data, indent=2) + "\n")
+    assert codex.hooks_status() == "changed"
+
+
 def test_a_personal_serena_under_another_name_replaces_loadouts(cfg):
     _personal({"my-serena": SERENA})
     codex.apply_config(backup.Backup(description="t"))

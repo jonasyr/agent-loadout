@@ -1056,10 +1056,13 @@ def hook_keys() -> set[str]:
 
 def _hooks_digest() -> str:
     import hashlib
+    from . import codex_hooks
     try:
-        return hashlib.sha256(_codex_hooks_file().read_bytes()).hexdigest()
+        plugin = _codex_hooks_file().read_bytes()
     except OSError:
         return ""
+    serena = codex_hooks.serena_digest_text().encode("utf-8")  # the Serena hooks in hooks.json need /hooks too
+    return hashlib.sha256(plugin + (b"\0" + serena if serena else b"")).hexdigest()
 
 
 def _hooks_record() -> Path:

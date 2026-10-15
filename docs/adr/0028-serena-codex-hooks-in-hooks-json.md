@@ -11,7 +11,7 @@ Serena documents its Codex setup ([Serena: clients](https://oraios.github.io/ser
 ## Decision
 
 - loadout writes Serena's server exactly as Serena documents it, and none when the user's `config.toml` already has a table that starts Serena's MCP server, whatever its name.
-- Serena's six hooks are loadout-owned entries in `~/.codex/hooks.json`, with the `config.toml` contract: loadout records each entry it wrote by its exact text, adds only the ones that are missing (an entry counts as present when any hook of that event runs `serena-hooks <same subcommand> --client=codex`; `cleanup` under `SessionEnd` or `Stop`), never touches the user's entries, saves a copy before its first change, and removes only its own entries when `serena-hooks` and `serena` are gone.
+- Serena's six hooks are loadout-owned entries in `~/.codex/hooks.json`, with the `config.toml` contract: loadout records each entry it wrote by its exact text, adds only the ones that are missing (an entry counts as present when any hook of that event runs `serena-hooks <same subcommand> --client=codex`; `cleanup` under `SessionEnd` or `Stop`), never touches the user's entries, saves a copy before every change, and removes only its own entries when `serena-hooks` and `serena` are gone.
 - It rewrites `hooks.json` only when the file is already in its own format (two-space JSON, LF line endings); any other file is left byte for byte and loadout names the entries to add by hand.
 - The plugin no longer runs Serena in Codex: its `codex.json` has no `serena-hooks`, and its Codex manifest points at `.codex-mcp.json`, which has codebase-memory only. Claude Code is unchanged.
 
@@ -25,7 +25,7 @@ Serena documents its Codex setup ([Serena: clients](https://oraios.github.io/ser
 
 - Codex runs the entries only after the user reviews them in `/hooks`; `loadout check` counts them as part of "Codex hooks" (their keys are `<absolute path of hooks.json>:<event>:<group>:<hook>`).
 - Codex loses the auto-approve for Serena's tools; Codex asks before a Serena tool call as for any MCP tool.
-- Only the first change to `hooks.json` has a backup copy, as for `config.toml`.
+- Every change loadout makes to an existing `hooks.json` saves a copy first, so `loadout restore` of that run puts the file back.
 
 ## In the code
 

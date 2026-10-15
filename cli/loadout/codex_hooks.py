@@ -72,6 +72,24 @@ def trust_keys() -> set[str]:
     return keys
 
 
+def serena_digest_text() -> str:
+    """Every Serena hook in hooks.json with its group's matcher, canonical: an edit Codex asks to re-approve changes it."""
+    try:
+        events = json.loads(path().read_bytes().decode("utf-8")).get("hooks", {}) if path().exists() else {}
+    except (OSError, ValueError, AttributeError):
+        return ""
+    subs = {s for _, _, s, _ in SERENA_HOOKS}
+    out = []
+    for event, groups in sorted(events.items()) if isinstance(events, dict) else []:
+        for group in groups if isinstance(groups, list) else []:
+            hooks_ = group.get("hooks") if isinstance(group, dict) else None
+            for hook in hooks_ if isinstance(hooks_, list) else []:
+                command = hook.get("command") if isinstance(hook, dict) else None
+                if isinstance(command, str) and any(_runs(command, sub) for sub in subs):
+                    out.append(json.dumps([event, group.get("matcher"), hook], sort_keys=True))
+    return "\n".join(out)
+
+
 def _record() -> dict:
     from . import codex
     return codex.read_record()
@@ -142,9 +160,9 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
                 f"{snippet}" if missing else f"{p}: loadout's old Serena hooks are still in it; remove them yourself"]
     if dry_run:
         return [f"{p}: Serena hooks pending"]
-    if p.exists() and not record.get("hooks"):
-        bk.save_copy(p, "Codex hooks.json before loadout's first change")
-    elif not p.exists():
+    if p.exists():  # every rewrite, so `loadout restore` of this run puts the file back as it was
+        bk.save_copy(p, "Codex hooks.json before loadout changed it")
+    else:
         bk.record_created(p, "created Codex hooks.json")
     p.parent.mkdir(parents=True, exist_ok=True)
     write_atomic(p, new)
