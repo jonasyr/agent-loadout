@@ -24,10 +24,10 @@ def _apply():
 
 def test_values_are_toml():
     assert codex.toml_value('a "quoted"\\path\n') == '"a \\"quoted\\"\\\\path\\n"'
-    assert codex.toml_value(True) == "true" and codex.toml_value(["a", "b"]) == '["a", "b"]'
+    assert codex.toml_value(15) == "15" and codex.toml_value(True) == "true" and codex.toml_value(["a", "b"]) == '["a", "b"]'
     assert codex.toml_value({"K": "v", "with.dot": "x"}) == '{ K = "v", "with.dot" = "x" }'
     with pytest.raises(codex.Refused):
-        codex.toml_value(3)
+        codex.toml_value(3.5)
 
 
 def test_stdio_server_forwards_secrets_by_name():
@@ -62,7 +62,7 @@ def test_writes_servers_serena_and_keys(fake_home):
     _apply()
     text = _config()
     assert "[mcp_servers.gh]\ncommand = \"gh-mcp\"\nenv_vars = [\"GITHUB_TOKEN\"]\n" in text
-    assert '[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--context=codex", "--project-from-cwd"]\n' in text
+    assert '[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--project-from-cwd", "--context=codex"]\nstartup_timeout_sec = 15\n' in text
     assert text.startswith('model_reasoning_effort = "medium"\n')
     assert "[tui]\nnotifications = true\n" in text
     record = json.loads(codex.record_path().read_text())

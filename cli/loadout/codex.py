@@ -174,7 +174,8 @@ def refresh_instructions() -> str | None:
     return f"refreshed loadout's block in {_tilde(path)}"
 
 
-SERENA = {"command": "serena", "args": ["start-mcp-server", "--context=codex", "--project-from-cwd"]}
+SERENA = {"command": "serena", "args": ["start-mcp-server", "--project-from-cwd", "--context=codex"],
+          "startup_timeout_sec": 15}  # as `serena setup codex` writes it (oraios.github.io/serena, clients page)
 # the plugin's Context7 address (?client=claude-code-plugin) asks Codex for OAuth; the plain one answers anonymously
 CONTEXT7 = {"url": "https://mcp.context7.com/mcp"}
 _BARE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -202,6 +203,8 @@ def toml_value(value) -> str:
     DEL is the one character JSON leaves raw and TOML forbids."""
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
     if isinstance(value, str):
         return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
     if isinstance(value, list) and all(isinstance(v, str) for v in value):
@@ -304,10 +307,28 @@ def read_record() -> dict:
     return {**record, "tables": get_dict(record, "tables"), "keys": get_dict(record, "keys")}
 
 
-def desired_tables() -> tuple[dict[str, str], list[str]]:
-    """Table text per server name, and the lines for servers that cannot be mapped."""
+def is_serena(table: dict) -> bool:
+    """A Codex server table that starts Serena's MCP server, whatever its name: serena, a full path to it, or uvx/uv."""
+    command, args = table.get("command"), table.get("args")
+    if not isinstance(command, str) or not isinstance(args, list) or "start-mcp-server" not in args:
+        return False
+    base = re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe")
+    return base == "serena" or (base in ("uvx", "uv") and any(isinstance(a, str) and "serena" in a for a in args))
+
+
+def user_serena(data: dict, owned: set[str]) -> str | None:
+    """The name of the user's own Serena server in config.toml (a table loadout did not write), or None."""
+    for name, table in get_dict(data, "mcp_servers").items():
+        if name not in owned and isinstance(table, dict) and is_serena(table):
+            return name
+    return None
+
+
+def desired_tables(skip_serena: bool = False) -> tuple[dict[str, str], list[str]]:
+    """Table text per server name, and the lines for servers that cannot be mapped. skip_serena: the user has
+    their own Serena (user_serena), so loadout writes none (spec PR A)."""
     servers = get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers")
-    tables, problems = {"serena": table_text("serena", SERENA)}, []
+    tables, problems = ({} if skip_serena else {"serena": table_text("serena", SERENA)}), []
     from .settings_merge import desired_settings
     if get_dict(desired_settings(), "enabledPlugins").get("context7@claude-plugins-official") is True:
         tables["context7"] = table_text("context7", CONTEXT7)
@@ -528,7 +549,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     owned_tables, owned_keys = dict(record["tables"]), dict(record["keys"])
     was_tables, was_keys = set(owned_tables), set(owned_keys)
     sections = _sections(old.splitlines(), tl)
-    tables, lines = desired_tables()
+    tables, lines = desired_tables(skip_serena=user_serena(before, set(record["tables"])) is not None)
 
     def find(path_):
         return next((s for s in sections if s[0] == path_), None)
@@ -960,7 +981,11 @@ def checks() -> list:
         results.append(CheckResult("Codex instructions", False, "AGENTS.override.md shadows AGENTS.md, so Codex ignores loadout's block",
                                    "merge it into AGENTS.md or remove it", "warn"))
     pending = apply_config(object(), dry_run=True)
-    results.append(CheckResult("Codex config", not pending, "; ".join(pending), "loadout bootstrap", "warn"))
+    yours = ("rename or remove that table in ~/.codex/config.toml if you want loadout's; loadout never changes your "
+             "entries")
+    left = [line for line in pending if "left as is" in line]
+    fix = yours if left and len(left) == len(pending) else f"loadout bootstrap; {yours}" if left else "loadout bootstrap"
+    results.append(CheckResult("Codex config", not pending, "; ".join(pending), fix, "warn"))
     from .settings_merge import desired_settings
     missing = plugin_routes(desired_settings())[1]
     if missing:
