@@ -94,7 +94,7 @@ def test_a_moved_serena_hook_needs_approval_again(hooks):
     cfgp = paths.codex_home() / "config.toml"
 
     def trust(mapping):
-        cfgp.write_text("".join(f'[hooks.state.{codex.toml_value(k)}]\ntrusted_hash = "{v}"\n\n' for k, v in mapping.items()))
+        cfgp.write_text("".join(f'[hooks.state.{codex.toml_value(k)}]\ntrusted_hash = {codex.toml_value(v)}\n\n' for k, v in mapping.items()))
 
     base = {k: "sha256:p" for k in codex.hook_keys()}
     mine = f"{hooks}:stop:0:0"
