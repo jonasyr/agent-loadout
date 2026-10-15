@@ -44,15 +44,16 @@ def test_usage_skill_reads_the_json_and_never_the_transcripts():
     assert "only `claude.main`" in text and "no reference for Codex" in text  # ADR 0026 measured Claude Code
 
 
-def test_usage_eval_stub_puts_skipped_lines_under_the_agent():
+def test_usage_eval_stub_puts_skipped_lines_under_the_agent(tmp_path):
     import json, subprocess, os
     if os.name == "nt":
         return
     stub = paths.kit_root() / "plugins/loadout/evals/bin/loadout"
     out = subprocess.run(["bash", str(stub), "usage", "--json"], capture_output=True, text=True,
-                         cwd=paths.kit_root() / "plugins/loadout/evals", check=True).stdout
+                         cwd=tmp_path, check=True).stdout  # the stub logs every call to ./.loadout-calls.log
     data = json.loads(out)
     assert "skipped_lines" in data["claude"] and "skipped_lines" not in data
+    assert (tmp_path / ".loadout-calls.log").read_text() == "usage --json\n"
 
 
 def test_onboard_new_project_does_not_hand_off_to_brainstorming():
