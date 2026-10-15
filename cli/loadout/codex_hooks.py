@@ -45,7 +45,8 @@ def _runs(command: str, sub: str) -> bool:
 def _present(data: dict, event: str, sub: str) -> bool:
     for ev in ALSO.get(sub, (event,)):
         for group in data.get("hooks", {}).get(ev, []) or []:
-            for hook in (group.get("hooks", []) if isinstance(group, dict) else []):
+            hooks_ = group.get("hooks") if isinstance(group, dict) else None
+            for hook in (hooks_ if isinstance(hooks_, list) else []):
                 if isinstance(hook, dict) and isinstance(hook.get("command"), str) and _runs(hook["command"], sub):
                     return True
     return False
@@ -74,7 +75,9 @@ def _record() -> dict:
     return codex.read_record()
 
 
-def apply(bk, dry_run: bool = False) -> list[str]:
+def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
+    """keep: never remove loadout's entries (the background sync, whose PATH can lack Serena's folder; a removal
+    would also shift the positions Codex keys its approvals on)."""
     from . import codex
     p = path()
     try:  # bytes, so line endings count: a CRLF file is "another format" and never rewritten
@@ -93,6 +96,8 @@ def apply(bk, dry_run: bool = False) -> list[str]:
     if runner.have("serena-hooks"):
         wanted = SERENA_HOOKS
     elif runner.have("serena"):  # Serena is there, only serena-hooks is not on this PATH (a background run): keep
+        return []
+    elif keep:
         return []
     else:
         wanted = ()
@@ -129,7 +134,8 @@ def apply(bk, dry_run: bool = False) -> list[str]:
             save_json(codex.record_path(), new_record)
         return []
     if old and json.dumps(json.loads(old), indent=2, ensure_ascii=False) + "\n" != old:
-        snippet = ", ".join(f"{e}: serena-hooks {s} --client=codex" for e, _, s, _ in missing)
+        snippet = "; ".join(f"{e}: {json.dumps(_group(m, s, t))}" for e, m, s, t in missing)
+        snippet += " (the table in docs/reference/hooks.md, section \"Serena's hooks in Codex\")"
         return [f"{p}: Serena hooks missing, add these yourself (loadout does not rewrite a file in another format): "
                 f"{snippet}" if missing else f"{p}: loadout's old Serena hooks are still in it; remove them yourself"]
     if dry_run:

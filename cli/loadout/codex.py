@@ -334,7 +334,13 @@ def desired_tables(skip_serena: bool = False) -> tuple[dict[str, str], list[str]
         tables["context7"] = table_text("context7", CONTEXT7)
     for name, cfg in servers.items():
         try:
-            text = table_text(name, server(name, cfg))
+            mapped = server(name, cfg)
+            if is_serena(mapped):  # one Serena only: the user's own in config.toml, else the personal one
+                if skip_serena:
+                    continue
+                if name != "serena" and tables.get("serena") == table_text("serena", SERENA):
+                    tables.pop("serena")
+            text = table_text(name, mapped)
             try:
                 text.encode("utf-8")
             except UnicodeEncodeError:
@@ -897,7 +903,7 @@ def drift() -> list[str]:
     personal = set(get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers"))
     owned = set(read_record()["tables"])
     in_claude = set(get_dict(load_json(paths.claude_json()), "mcpServers"))
-    accounted = left | personal | owned
+    accounted = left | personal | owned | _codex_serenas()  # a Serena is the kit's tool, never one to adopt
     out = [f'MCP server "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
            for n in sorted(in_claude - in_codex - accounted)]
     out += [f'MCP server "{n}" only in Codex (record it with loadout adopt, then both get it)'
@@ -911,10 +917,22 @@ def drift() -> list[str]:
     return out
 
 
+def _codex_serenas() -> set[str]:
+    """Names of the config.toml servers that start Serena (anyone's)."""
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return set()
+    return {n for n, t in get_dict(data, "mcp_servers").items() if isinstance(t, dict) and is_serena(t)}
+
+
 def _plugin_servers() -> set[str]:
-    """MCP servers that Codex has from installed plugins (their .mcp.json), not from the user."""
+    """MCP servers that Codex has from installed plugins, from the file each manifest names (else .mcp.json)."""
     names: set[str] = set()
-    for mcp in (paths.codex_home() / "plugins" / "cache").glob("*/*/*/.mcp.json"):
+    for root in (paths.codex_home() / "plugins" / "cache").glob("*/*/*"):
+        ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
+        mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
         names |= set(get_dict(load_json(mcp), "mcpServers"))
     return names
 
@@ -955,7 +973,7 @@ def apply_all(bk, refresh: bool = False, say=None) -> list[str]:
         return ["skipped: another loadout run is setting up Codex right now; run this again when it has finished"]
     try:
         from . import codex_hooks
-        return [apply_instructions(bk), *apply_config(bk), *codex_hooks.apply(bk), *apply_skills(bk),
+        return [apply_instructions(bk), *apply_config(bk), *codex_hooks.apply(bk, keep=refresh), *apply_skills(bk),
                 *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
     finally:
         try:
