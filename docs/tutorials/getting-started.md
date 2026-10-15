@@ -90,7 +90,7 @@ Log in only to the agents you chose.
 
 ### Codex only: approve the hooks
 
-Codex runs plugin hooks only after you approve them. Start `codex`, run `/hooks` and approve loadout's hooks. loadout never does this for you; which hooks there are is in [Hooks](../reference/hooks.md).
+Codex runs plugin hooks, and the Serena hooks loadout writes into `~/.codex/hooks.json`, only after you approve them. Start `codex`, run `/hooks` and approve them. loadout never does this for you; which hooks there are is in [Hooks](../reference/hooks.md).
 
 ## Verify
 

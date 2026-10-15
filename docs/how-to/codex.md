@@ -19,7 +19,7 @@ One agent must stay on. Switching an agent off uninstalls nothing; loadout just 
 
 The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; a progress line names each step (with `--verbose`, or without a terminal, one line each). Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
 
-Then approve loadout's hooks once in Codex: start `codex` and run `/hooks`. Codex runs plugin hooks only after you approve them, and again after they change ([which hooks](../reference/hooks.md)).
+Then approve loadout's hooks once in Codex: start `codex` and run `/hooks`. Codex runs plugin hooks, and the Serena hooks loadout puts into `~/.codex/hooks.json`, only after you approve them, and again after they change ([which hooks](../reference/hooks.md), [Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)).
 
 ## What Codex gets
 
