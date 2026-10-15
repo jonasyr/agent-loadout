@@ -51,6 +51,24 @@ def _present(data: dict, event: str, sub: str) -> bool:
     return False
 
 
+def trust_keys() -> set[str]:
+    """Codex's [hooks.state] keys for loadout's entries in hooks.json: '<absolute path>:<event_snake>:<group>:<hook>'
+    (codex-rs/hooks/src/lib.rs, discovery.rs); empty when loadout owns none or the file cannot be read."""
+    owned = [o for o in _record().get("hooks", []) if isinstance(o, dict)]
+    try:
+        events = json.loads(path().read_bytes().decode("utf-8")).get("hooks", {}) if owned and path().exists() else {}
+    except (OSError, ValueError, AttributeError):
+        return set()
+    snake = lambda name: re.sub(r"(?<!^)([A-Z])", r"_\1", name).lower()  # noqa: E731
+    keys = set()
+    for o in owned:
+        groups = events.get(o.get("event"), []) if isinstance(events, dict) else []
+        for gi, group in enumerate(groups if isinstance(groups, list) else []):
+            if _canon(group) == o.get("group"):
+                keys.add(f"{path()}:{snake(o['event'])}:{gi}:0")
+    return keys
+
+
 def _record() -> dict:
     from . import codex
     return codex.read_record()

@@ -1054,9 +1054,11 @@ def hooks_status(remember: bool = False) -> str | None:
         state = get_dict(state, "state")
     except Exception:
         return None
+    from . import codex_hooks
+    owned = codex_hooks.trust_keys()  # Serena's entries loadout wrote into hooks.json need /hooks too
     current = {k: v.get("trusted_hash") for k, v in state.items()
-               if k.startswith(HOOK_PLUGIN + ":") and isinstance(v, dict) and v.get("trusted_hash")}
-    if not hook_keys() <= set(current):
+               if (k.startswith(HOOK_PLUGIN + ":") or k in owned) and isinstance(v, dict) and v.get("trusted_hash")}
+    if not (hook_keys() | owned) <= set(current):
         return "untrusted"
     digest, seen = _hooks_digest(), load_json(_hooks_record())
     if seen.get("digest") not in (None, digest) and seen.get("hashes") == current:

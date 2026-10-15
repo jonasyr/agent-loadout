@@ -18,6 +18,7 @@ OMITTED = {
     "codebase-memory-mcp hook-augment": "Codex has no Grep/Glob tools to augment",
     "tool_hint.sh": "Codex has its own entries with other matchers (shell only), checked in test_tool_hint_wiring.py",
     "reload_check.py":"compares Claude's installed_plugins.json; Codex loads plugins per session",
+    "serena-hooks": "Codex gets Serena's documented hooks in ~/.codex/hooks.json (ADR 0029), never from the plugin",
 }
 CODEX_ARGS = {"--client=claude-code": "--client=codex", "rtk hook claude": "rtk hook codex",
               "mcp__plugin_loadout_serena__": "mcp__serena__", "Write|Edit|MultiEdit": "Edit|Write"}
@@ -118,3 +119,12 @@ def test_checks_pick_the_project_folder(tmp_path, monkeypatch):
     found = typecheck.checks([tmp_path / "web" / "x.ts", tmp_path / "crate" / "src" / "lib.rs"])
     assert (["/usr/bin/tsc", "--noEmit", "-p", str(tmp_path / "web")], tmp_path / "web") in found
     assert (["/usr/bin/cargo", "check", "--quiet", "--message-format=short"], tmp_path / "crate") in found
+
+
+def test_codex_gets_no_serena_from_the_plugin():
+    # Codex starts an active plugin's MCP servers by bare name; with the user's Serena under another name the
+    # plugin's `serena` (context claude-code) would run as a second one
+    manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    servers = json.loads((PLUGIN / manifest["mcpServers"]).read_text(encoding="utf-8"))["mcpServers"]
+    assert "serena" not in servers and "codebase-memory-mcp" in servers
+    assert "serena-hooks" not in (PLUGIN / "hooks" / "codex.json").read_text(encoding="utf-8")

@@ -16,9 +16,23 @@ def _trust(keys, hash_="sha256:aa"):
 
 def test_expected_hook_keys_follow_codex_json():
     keys = codex.hook_keys()
-    assert len(keys) == 11  # nine plus the two tool_hint entries
+    assert len(keys) == 8  # six plus the two tool_hint entries; Serena's hooks live in ~/.codex/hooks.json (ADR 0029)
     assert "loadout@agent-loadout:hooks/codex.json:pre_tool_use:0:0" in keys
     assert "loadout@agent-loadout:hooks/codex.json:subagent_start:0:0" in keys
+
+
+def test_hooks_status_needs_the_serena_hooks_in_hooks_json_approved_too(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex_hooks
+    monkeypatch.setattr(runner, "have", lambda b: b == "serena-hooks")
+    codex_hooks.apply(backup.Backup(description="t"))
+    _trust(codex.hook_keys())
+    assert codex.hooks_status() == "untrusted"  # Codex runs hooks.json entries only after /hooks too
+    hooks_json = str(codex_hooks.path())
+    owned = {f"{hooks_json}:{ev}:0:0" for ev in ("pre_tool_use", "post_tool_use", "session_start",
+                                                 "user_prompt_submit", "session_end")} | {f"{hooks_json}:pre_tool_use:1:0"}
+    assert codex_hooks.trust_keys() == owned
+    _trust(codex.hook_keys() | owned)
+    assert codex.hooks_status() == "trusted"
 
 
 def test_hooks_status_untrusted_trusted_and_changed(fake_home, monkeypatch):

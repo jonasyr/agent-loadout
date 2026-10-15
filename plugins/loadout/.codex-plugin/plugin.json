@@ -6,6 +6,6 @@
   "repository": "https://github.com/jonasyr/agent-loadout",
   "license": "MIT",
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./.codex-mcp.json",
   "hooks": "./hooks/codex.json"
 }
