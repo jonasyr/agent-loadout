@@ -954,7 +954,9 @@ def apply_all(bk, refresh: bool = False, say=None) -> list[str]:
     if lock is None:
         return ["skipped: another loadout run is setting up Codex right now; run this again when it has finished"]
     try:
-        return [apply_instructions(bk), *apply_config(bk), *apply_skills(bk), *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
+        from . import codex_hooks
+        return [apply_instructions(bk), *apply_config(bk), *codex_hooks.apply(bk), *apply_skills(bk),
+                *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
     finally:
         try:
             lock.unlink()
@@ -986,6 +988,11 @@ def checks() -> list:
     left = [line for line in pending if "left as is" in line]
     fix = yours if left and len(left) == len(pending) else f"loadout bootstrap; {yours}" if left else "loadout bootstrap"
     results.append(CheckResult("Codex config", not pending, "; ".join(pending), fix, "warn"))
+    from . import codex_hooks
+    pending_hooks = codex_hooks.apply(object(), dry_run=True)
+    hooks_fix = ("add the listed entries to ~/.codex/hooks.json" if pending_hooks
+                 and all("add these yourself" in line for line in pending_hooks) else "loadout bootstrap")
+    results.append(CheckResult("Codex Serena hooks", not pending_hooks, "; ".join(pending_hooks), hooks_fix, "warn"))
     from .settings_merge import desired_settings
     missing = plugin_routes(desired_settings())[1]
     if missing:

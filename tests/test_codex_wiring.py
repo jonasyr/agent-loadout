@@ -38,8 +38,10 @@ def test_apply_all_runs_every_part(fake_home, fake_runner, monkeypatch):
     calls = []
     for name in ("apply_instructions", "apply_config", "apply_skills", "apply_plugins"):
         monkeypatch.setattr(codex, name, lambda *a, n=name, **k: calls.append(n) or ([] if n != "apply_instructions" else "ok"))
+    from loadout import codex_hooks
+    monkeypatch.setattr(codex_hooks, "apply", lambda *a, **k: calls.append("codex_hooks") or [])
     codex.apply_all(object())
-    assert calls == ["apply_instructions", "apply_config", "apply_skills", "apply_plugins"]
+    assert calls == ["apply_instructions", "apply_config", "codex_hooks", "apply_skills", "apply_plugins"]
 
 
 def test_check_without_codex_has_no_codex_group(fake_home, fake_runner):
