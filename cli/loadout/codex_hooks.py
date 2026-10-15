@@ -1,5 +1,5 @@
 """Serena's documented Codex hooks (oraios.github.io/serena, clients page) as loadout-owned entries in
-~/.codex/hooks.json: added when missing, never twice, the user's entries byte for byte (ADR 0029)."""
+~/.codex/hooks.json: added when missing, never twice, the user's entries byte for byte (ADR 0028)."""
 from __future__ import annotations
 
 import json

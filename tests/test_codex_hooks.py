@@ -18,7 +18,7 @@ OMITTED = {
     "codebase-memory-mcp hook-augment": "Codex has no Grep/Glob tools to augment",
     "tool_hint.sh": "Codex has its own entries with other matchers (shell only), checked in test_tool_hint_wiring.py",
     "reload_check.py":"compares Claude's installed_plugins.json; Codex loads plugins per session",
-    "serena-hooks": "Codex gets Serena's documented hooks in ~/.codex/hooks.json (ADR 0029), never from the plugin",
+    "serena-hooks": "Codex gets Serena's documented hooks in ~/.codex/hooks.json (ADR 0028), never from the plugin",
 }
 CODEX_ARGS = {"--client=claude-code": "--client=codex", "rtk hook claude": "rtk hook codex",
               "mcp__plugin_loadout_serena__": "mcp__serena__", "Write|Edit|MultiEdit": "Edit|Write"}
