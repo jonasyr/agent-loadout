@@ -27,7 +27,7 @@ The last column says how `plugins/loadout/hooks/codex.json` differs: `same` mean
 | `SubagentStart` | `*` | `hooks/subagent-context.sh` | 5 s | Gives a subagent the tool routing, triggers first (code structure, symbols, library docs also while planning). | same |
 | `PostToolUse` | `Edit\|Write` | `--soft --python hooks/typecheck.py` | 90 s | Codex only. Runs `pyright`, `tsc --noEmit` or `cargo check` on the changed files and reports the errors, because Codex has no LSP plugins. Each check is capped at 20 s; after that it reports itself as skipped. Silent when clean. | Codex only. Serena's diagnostics tool also reports type errors when asked. |
 
-Measure the effect with `loadout usage` ([CLI](cli.md#loadout-usage)).
+Measure the effect with `loadout usage` ([CLI](cli.md#loadout-usage)), or ask for the report with `/loadout:usage` (Codex: `$loadout:usage`).
 
 The plugin also declares two MCP servers in `plugins/loadout/.mcp.json`: `serena` and `codebase-memory-mcp`.
 
