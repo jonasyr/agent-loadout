@@ -51,7 +51,7 @@ Status: approved in chat 2026-10-15. Goal from the user: a Codex-only user on Wi
 - `docs/how-to/setups.md`: the matrix (agent: Claude Code, Codex, both × platform: Linux, macOS, native Windows, WSL with Codex in WSL, WSL with Codex on Windows, both sides × starting point: fresh, own Serena, shared repo with Claude Code and Codex users). Each cell: the exact path and links; cells loadout does not support say so.
 - `docs/how-to/wsl.md`: a Codex section (which side, the extension setting, `CODEX_HOME`, login in WSL, `/mnt/d`).
 - `troubleshooting.md` rows for each new message.
-- ADR 0028 "Codex on Windows and WSL: one loadout per side"; ADR 0029 "Serena's Codex hooks as owned hooks.json entries".
+- ADR 0028 "Serena's Codex hooks as owned entries in hooks.json" (PR A); ADR 0029 "Codex on Windows and WSL: one loadout per side" (PR B).
 
 ## Live tour (after A–D)
 

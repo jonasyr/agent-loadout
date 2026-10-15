@@ -51,3 +51,4 @@ Template:
 | [0025](0025-state-in-xdg-state-home.md) | loadout's own files live in XDG state, not in `~/.claude` | Accepted |
 | [0026](0026-tool-hints-never-block.md) | Tool hints add context, never block | Accepted |
 | [0027](0027-repo-files-follow-the-agents.md) | Repo files follow the agents that are on | Accepted |
+| [0028](0028-serena-codex-hooks-in-hooks-json.md) | Serena's Codex hooks as owned entries in hooks.json | Accepted |
