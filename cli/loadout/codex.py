@@ -561,7 +561,9 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     was_tables, was_keys = set(owned_tables), set(owned_keys)
     sections = _sections(old.splitlines(), tl)
     removed = False  # an owned section that goes gets its own backup copy
-    tables, lines = desired_tables(skip_serena=user_serena(before, set(record["tables"])) is not None)
+    still_ours = {name for name, text in owned_tables.items()  # a section the user edited is theirs from now on
+                  if any(s[0] == ("mcp_servers", name) and _text(s[1]) == text for s in sections)}
+    tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
 
     def find(path_):
         return next((s for s in sections if s[0] == path_), None)
@@ -1060,13 +1062,10 @@ def hook_keys() -> set[str]:
 
 def _hooks_digest() -> str:
     import hashlib
-    from . import codex_hooks
     try:
-        plugin = _codex_hooks_file().read_bytes()
+        return hashlib.sha256(_codex_hooks_file().read_bytes()).hexdigest()
     except OSError:
         return ""
-    serena = codex_hooks.serena_digest_text().encode("utf-8")  # the Serena hooks in hooks.json need /hooks too
-    return hashlib.sha256(plugin + (b"\0" + serena if serena else b"")).hexdigest()
 
 
 def _hooks_record() -> Path:
@@ -1085,17 +1084,28 @@ def hooks_status(remember: bool = False) -> str | None:
     except Exception:
         return None
     from . import codex_hooks
-    owned = codex_hooks.trust_keys()  # Serena's entries loadout wrote into hooks.json need /hooks too
+    serena = codex_hooks.serena_items()  # the Serena hooks in hooks.json need /hooks too, loadout's or the user's
+    in_file = f"{codex_hooks.path()}:"  # every hooks.json key, so a Serena hook moved onto one is caught
     current = {k: v.get("trusted_hash") for k, v in state.items()
-               if (k.startswith(HOOK_PLUGIN + ":") or k in owned) and isinstance(v, dict) and v.get("trusted_hash")}
-    if not (hook_keys() | owned) <= set(current):
+               if (k.startswith(HOOK_PLUGIN + ":") or k.startswith(in_file)) and isinstance(v, dict)
+               and v.get("trusted_hash")}
+    if not (hook_keys() | set(serena)) <= set(current):
         return "untrusted"
     digest, seen = _hooks_digest(), load_json(_hooks_record())
-    if seen.get("digest") not in (None, digest) and seen.get("hashes") == current:
+    plugin_now = {k: v for k, v in current.items() if k.startswith(HOOK_PLUGIN + ":")}
+    plugin_seen = {k: v for k, v in get_dict(seen, "hashes").items() if k.startswith(HOOK_PLUGIN + ":")}
+    if seen.get("digest") not in (None, digest) and plugin_seen == plugin_now:
         return "changed"
-    if remember and seen != {"digest": digest, "hashes": current}:
+    # a Serena key whose content changed (edited, or another hook moved onto it) is approved again only when Codex
+    # stored a new hash for it; the old hash belongs to what was there before
+    seen_items, seen_hashes = get_dict(seen, "serena"), get_dict(seen, "hashes")
+    if any(k in seen_hashes and seen_items.get(k) != content and seen_hashes[k] == current.get(k)
+           for k, content in serena.items()):
+        return "changed"
+    record = {"digest": digest, "hashes": current, "serena": serena}
+    if remember and seen != record:
         _hooks_record().parent.mkdir(parents=True, exist_ok=True)
-        save_json(_hooks_record(), {"digest": digest, "hashes": current})
+        save_json(_hooks_record(), record)
     return "trusted"
 
 

@@ -52,42 +52,30 @@ def _present(data: dict, event: str, sub: str) -> bool:
     return False
 
 
-def trust_keys() -> set[str]:
-    """Codex's [hooks.state] keys for every Serena hook in hooks.json, loadout's or the user's own (Codex runs neither
-    before /hooks): '<absolute path>:<event_snake>:<group>:<hook>' (codex-rs/hooks/src/lib.rs, discovery.rs)."""
+def serena_items() -> dict[str, str]:
+    """Every Serena hook in hooks.json, loadout's or the user's own (Codex runs neither before /hooks), as Codex's
+    [hooks.state] key '<absolute path>:<event_snake>:<group>:<hook>' (codex-rs/hooks/src/lib.rs, discovery.rs) ->
+    its content (event, the group's matcher, the handler), canonical."""
     try:
         events = json.loads(path().read_bytes().decode("utf-8")).get("hooks", {}) if path().exists() else {}
     except (OSError, ValueError, AttributeError):
-        return set()
+        return {}
     snake = lambda name: re.sub(r"(?<!^)([A-Z])", r"_\1", name).lower()  # noqa: E731
     subs = {s for _, _, s, _ in SERENA_HOOKS}
-    keys = set()
+    items = {}
     for event, groups in (events.items() if isinstance(events, dict) else []):
         for gi, group in enumerate(groups if isinstance(groups, list) else []):
             hooks_ = group.get("hooks") if isinstance(group, dict) else None
             for hi, hook in enumerate(hooks_ if isinstance(hooks_, list) else []):
                 command = hook.get("command") if isinstance(hook, dict) else None
                 if isinstance(command, str) and any(_runs(command, sub) for sub in subs):
-                    keys.add(f"{path()}:{snake(event)}:{gi}:{hi}")
-    return keys
+                    items[f"{path()}:{snake(event)}:{gi}:{hi}"] = json.dumps([event, group.get("matcher"), hook],
+                                                                             sort_keys=True)
+    return items
 
 
-def serena_digest_text() -> str:
-    """Every Serena hook in hooks.json with its group's matcher, canonical: an edit Codex asks to re-approve changes it."""
-    try:
-        events = json.loads(path().read_bytes().decode("utf-8")).get("hooks", {}) if path().exists() else {}
-    except (OSError, ValueError, AttributeError):
-        return ""
-    subs = {s for _, _, s, _ in SERENA_HOOKS}
-    out = []
-    for event, groups in sorted(events.items()) if isinstance(events, dict) else []:
-        for group in groups if isinstance(groups, list) else []:
-            hooks_ = group.get("hooks") if isinstance(group, dict) else None
-            for hook in hooks_ if isinstance(hooks_, list) else []:
-                command = hook.get("command") if isinstance(hook, dict) else None
-                if isinstance(command, str) and any(_runs(command, sub) for sub in subs):
-                    out.append(json.dumps([event, group.get("matcher"), hook], sort_keys=True))
-    return "\n".join(out)
+def trust_keys() -> set[str]:
+    return set(serena_items())
 
 
 def _record() -> dict:

@@ -77,6 +77,39 @@ def test_removing_loadouts_serena_table_saves_a_copy_first(cfg):
     assert any("config.toml" in step["label"] and "move" not in step["undo"] for step in bk.steps)
 
 
+def test_an_edited_once_owned_serena_counts_as_the_users_in_the_same_run(cfg):
+    _personal({"my-serena": SERENA})
+    codex.apply_config(backup.Backup(description="t"))  # loadout owns [mcp_servers.my-serena]
+    _personal({})
+    cfg.write_text(cfg.read_text().replace('"--context=claude-code"', '"--context=codex"'))  # the user edits it
+    codex.apply_config(backup.Backup(description="t"))
+    assert cfg.read_text().count("start-mcp-server") == 1
+
+
+def test_a_moved_serena_hook_needs_approval_again(hooks):
+    from loadout import codex
+    hooks.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo mine"}]}]}},
+                                indent=2) + "\n")
+    codex_hooks.apply(backup.Backup(description="t"))
+    cfgp = paths.codex_home() / "config.toml"
+
+    def trust(mapping):
+        cfgp.write_text("".join(f'[hooks.state."{k}"]\ntrusted_hash = "{v}"\n\n' for k, v in mapping.items()))
+
+    base = {k: "sha256:p" for k in codex.hook_keys()}
+    mine = f"{hooks}:stop:0:0"
+    serena_keys = codex_hooks.trust_keys()
+    trust({**base, mine: "sha256:mine", **{k: "sha256:s-" + k for k in serena_keys}})
+    assert codex.hooks_status(remember=True) == "trusted"
+    data = json.loads(hooks.read_text())  # cleanup moves to Stop position 0, the user's hook to position 1
+    cleanup = data["hooks"].pop("SessionEnd")[0]
+    data["hooks"]["Stop"].insert(0, cleanup)
+    hooks.write_text(json.dumps(data, indent=2) + "\n")
+    moved = {k for k in serena_keys if ":session_end:" not in k}
+    trust({**base, mine: "sha256:mine", f"{hooks}:stop:1:0": "sha256:mine2", **{k: "sha256:s-" + k for k in moved}})
+    assert codex.hooks_status() == "changed"  # Stop:0 still holds the hash Codex gave the user's hook
+
+
 def test_a_personal_serena_under_another_name_replaces_loadouts(cfg):
     _personal({"my-serena": SERENA})
     codex.apply_config(backup.Backup(description="t"))
