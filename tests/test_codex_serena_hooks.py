@@ -83,6 +83,47 @@ def test_restore_reverts_the_first_change(hooks):
     assert any(step["label"].startswith("Codex hooks.json") for step in bk.steps)
 
 
+def test_a_crlf_file_is_not_rewritten(hooks):
+    users = b'{\r\n  "hooks": {}\r\n}\r\n'
+    hooks.write_bytes(users)
+    lines = codex_hooks.apply(backup.Backup(description="t"))
+    assert hooks.read_bytes() == users and any("add these yourself" in l for l in lines)
+
+
+def test_the_users_own_empty_event_survives_removal(hooks, monkeypatch):
+    hooks.write_text(json.dumps({"description": "x", "hooks": {"PreToolUse": []}}, indent=2) + "\n")
+    codex_hooks.apply(backup.Backup(description="t"))
+    monkeypatch.setattr(runner, "have", lambda b: False)
+    codex_hooks.apply(backup.Backup(description="t"))
+    assert json.loads(hooks.read_text()) == {"description": "x", "hooks": {"PreToolUse": []}}
+
+
+@pytest.mark.parametrize("text", ["  \n", '{\n  "hooks": {\n    "PreToolUse": null\n  }\n}\n'])
+def test_odd_files_give_a_line_not_a_crash(hooks, text):
+    hooks.write_text(text)
+    lines = codex_hooks.apply(backup.Backup(description="t"))
+    assert hooks.read_text() == text and lines and lines[0].startswith("skipped")
+
+
+def test_a_missing_serena_hooks_on_path_does_not_remove_ours_while_serena_is_there(hooks, monkeypatch):
+    codex_hooks.apply(backup.Backup(description="t"))
+    monkeypatch.setattr(runner, "have", lambda b: b == "serena")  # e.g. a background run with a shorter PATH
+    assert codex_hooks.apply(backup.Backup(description="t")) == []
+    assert _commands(hooks) == OFFICIAL
+
+
+@pytest.mark.parametrize("command, counts", [
+    ("serena-hooks --client=codex remind", True),
+    ("serena-hooks remind --client=codexfoo", False),
+    ("serena-hooks remind --client=claude-code", False),
+])
+def test_presence_reads_the_flags_in_any_order(hooks, command, counts):
+    hooks.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
+        {"type": "command", "command": command}]}]}}, indent=2) + "\n")
+    codex_hooks.apply(backup.Backup(description="t"))
+    assert (sum("remind" in c for c in _commands(hooks)) == 1) is counts
+
+
 def test_codex_setup_and_check_include_the_serena_hooks(hooks, monkeypatch):
     from loadout import codex
     monkeypatch.setattr(codex, "apply_instructions", lambda bk: "instructions")

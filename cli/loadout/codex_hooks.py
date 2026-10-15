@@ -29,12 +29,24 @@ def _canon(group) -> str:
     return json.dumps(group, sort_keys=True)
 
 
+_TOOL = re.compile(r"(?:^|[\s/\\\"'])serena-hooks(?:\.exe)?[\"']?(?=\s|$)")
+
+
+def _runs(command: str, sub: str) -> bool:
+    """`serena-hooks <sub> --client=codex` in any flag order, by a full path or quoted."""
+    m = _TOOL.search(command)
+    if m is None:
+        return False
+    words = [w.strip("\"'") for w in command[m.end():].split()]
+    codex = "--client=codex" in words or any(a == "--client" and b == "codex" for a, b in zip(words, words[1:]))
+    return sub in words and codex
+
+
 def _present(data: dict, event: str, sub: str) -> bool:
-    rx = re.compile(rf"(?:^|[\s/\\\"'])serena-hooks(?:\.exe)?[\"']?\s+{re.escape(sub)}\b.*--client[= ]codex")
     for ev in ALSO.get(sub, (event,)):
         for group in data.get("hooks", {}).get(ev, []) or []:
             for hook in (group.get("hooks", []) if isinstance(group, dict) else []):
-                if isinstance(hook, dict) and isinstance(hook.get("command"), str) and rx.search(hook["command"]):
+                if isinstance(hook, dict) and isinstance(hook.get("command"), str) and _runs(hook["command"], sub):
                     return True
     return False
 
@@ -47,16 +59,25 @@ def _record() -> dict:
 def apply(bk, dry_run: bool = False) -> list[str]:
     from . import codex
     p = path()
-    old = p.read_text(encoding="utf-8") if p.exists() else ""
-    try:
-        data = json.loads(old) if old.strip() else {}
-    except ValueError as exc:
+    try:  # bytes, so line endings count: a CRLF file is "another format" and never rewritten
+        old = p.read_bytes().decode("utf-8") if p.exists() else ""
+        data = json.loads(old) if old else {}
+    except (OSError, ValueError) as exc:
         return [f"skipped {p}: it is not valid JSON ({exc}); fix it, then run loadout bootstrap"]
     if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
         return [f"skipped {p}: it has no hooks object; nothing written"]
+    odd = sorted(ev for ev, groups in data.get("hooks", {}).items() if not isinstance(groups, list))
+    if odd:
+        return [f"skipped {p}: {', '.join(odd)} is not a list of hook groups; nothing written"]
     record = _record()
     owned = [o for o in record.get("hooks", []) if isinstance(o, dict)]
-    wanted = SERENA_HOOKS if runner.have("serena-hooks") else ()
+    created = {ev for ev in record.get("hook_events", []) if isinstance(ev, str)}  # event keys loadout added
+    if runner.have("serena-hooks"):
+        wanted = SERENA_HOOKS
+    elif runner.have("serena"):  # Serena is there, only serena-hooks is not on this PATH (a background run): keep
+        return []
+    else:
+        wanted = ()
     events = data.setdefault("hooks", {})
     kept, changed = [], False
     for o in owned:  # loadout's entries: drop the unwanted ones, forget the ones the user changed
@@ -72,17 +93,19 @@ def apply(bk, dry_run: bool = False) -> list[str]:
     missing = [(e, m, s, t) for e, m, s, t in wanted if not _present(data, e, s)]
     for e, m, s, t in missing:
         group = _group(m, s, t)
+        if e not in events:
+            created.add(e)
         events.setdefault(e, []).append(group)
         kept.append({"event": e, "group": _canon(group)})
         changed = True
-    for ev in [ev for ev, groups in events.items() if groups == []]:
-        if not any(ev == o.get("event") for o in owned):
-            continue
+    for ev in [ev for ev in created if events.get(ev) == []]:  # only event keys loadout itself added
         del events[ev]
+    created = {ev for ev in created if ev in events}
     new = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    new_record = {**record, "hooks": kept}
-    if not new_record["hooks"]:
-        new_record.pop("hooks")
+    new_record = {**record, "hooks": kept, "hook_events": sorted(created)}
+    for key in ("hooks", "hook_events"):
+        if not new_record[key]:
+            new_record.pop(key)
     if not changed:
         if new_record != record and not dry_run:
             save_json(codex.record_path(), new_record)
@@ -103,4 +126,4 @@ def apply(bk, dry_run: bool = False) -> list[str]:
     save_json(codex.record_path(), new_record)
     added = [s for _, _, s, _ in missing]
     return [f"hooks.json: added Serena's hooks ({', '.join(added)}); approve them in Codex: /hooks"] if added else \
-           ["hooks.json: removed loadout's Serena hooks"]
+           ["hooks.json: removed loadout's Serena hooks; if Codex asks about your other hooks, review them in /hooks"]
