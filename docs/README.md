@@ -13,6 +13,7 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 - [Ask your agent about loadout](how-to/ask-about-loadout.md). Read this when you have a question about loadout or want to change your setup without looking up the command.
 - [Handle your own tools](how-to/your-own-tools.md). Read this when you installed a skill, MCP server or plugin yourself (`npx`, `claude mcp add`, ...), when `adopt` or `check` lists tools loadout does not manage, or when you want to create a skill of your own.
 - [Keep your personal layer in a private git repo](how-to/personal-repo.md). Read this when you want your preferences and own tools on more than one machine.
+- [Find the path for your setup](how-to/setups.md). Read this before installing when you use Windows, WSL, Codex, or a machine or repo that already has parts set up: it names the path for each platform, agent and starting point.
 - [Use loadout with Codex](how-to/codex.md). Read this for the Codex-only details: switching Codex on, hook approval, project trust and where it stays different.
 - [Undo what loadout changed](how-to/undo-and-restore.md). Read this when something went wrong, or you want a removed tool back.
 - [Set your working preferences](how-to/set-preferences.md). Read this when you want to change answer language, commit style, effort or another preference everywhere.
