@@ -151,3 +151,11 @@ def test_the_windows_side_choice_gets_one_line_not_a_wall_of_warnings(wsl2, tmp_
     rows = [r for r in check.run_checks() if "codex" in (r.name + r.detail).lower()]
     assert [r.name for r in rows if not r.ok] == []
     assert any(r.name == "Codex" and r.ok and "bootstrap.ps1" in r.detail for r in rows)
+
+
+def test_the_windows_side_choice_does_not_fail_binary_codex(wsl2, tmp_path, monkeypatch):
+    targets.set_agents({"claude": False, "codex": True})
+    wsl2.missing.add("codex")
+    wsl2.paths["codex.exe"] = "/mnt/c/Program Files/codex/codex.exe"
+    monkeypatch.setattr(wsl, "codex_side", lambda **k: wsl.CodexSide("windows", ["x"], None, False, False))
+    assert not [r for r in check.run_checks() if r.name == "binary codex" and not r.ok]

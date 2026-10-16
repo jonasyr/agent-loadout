@@ -209,10 +209,10 @@ def _own() -> list[CheckResult]:
                         "decide with `loadout adopt --apply` or `loadout configure own`", "warn")]
 
 
-def _binaries() -> list[CheckResult]:
+def _binaries(cs=None) -> list[CheckResult]:
     out = []
     for entry in catalog.binaries():
-        if entry.get("helper"):
+        if entry.get("helper") or (entry["id"] == "codex" and _windows_only(cs)):  # it runs on Windows (ADR 0029)
             continue
         name = entry["id"]
         ok = runner.have(name)
@@ -356,7 +356,7 @@ def run_checks() -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *_plugin_copies(), *(_connectors() if on else []), *_own(),
-            *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
+            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
