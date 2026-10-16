@@ -53,7 +53,7 @@ Only with `--personal new`. Show the user the JSON you will write; write nothing
 }
 ```
 
-`about` takes `name`, `role`, `languages` and `preferences`. `preferences` takes the ids and values from the table in [Preferences format](../reference/preferences-format.md); a free-text option is written as `other:<text>`, for example `"answer_language": "other:French"`. Leave out what the user did not answer: loadout uses the default. Bootstrap refuses an unknown key or value before it changes anything.
+`about` takes `name`, `role`, `languages` and `preferences`. `preferences` takes the ids and values from the table in [Preferences format](../reference/preferences-format.md); a free-text option is written as `other:<text>`, for example `"answer_language": "other:French"`. Leave out what the user did not answer: loadout uses the default. Bootstrap refuses an unknown key or value, and a value that looks like a secret, before it changes anything.
 
 After the yes in step 4, run `mktemp`, write the JSON to the new, empty file whose path it prints (an absolute path, outside the kit), and pass that path as `--answers`. A fresh file overwrites nothing.
 

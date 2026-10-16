@@ -42,6 +42,30 @@ def test_bad_answers_are_refused_with_the_key(tmp_path, fake_home, data, word):
         answers.load(_file(tmp_path, data))
 
 
+_TOKEN = "ghp" + "_" + "a1b2c3d4e5" * 4  # built at runtime, so no scanner sees a token here
+
+
+@pytest.mark.parametrize("data, word", [
+    ({"about": {"preferences": "my GitHub token is " + _TOKEN}}, "about.preferences"),
+    ({"about": {"name": "password=" + "hunter2hunter2"}}, "about.name"),
+    ({"about": {"role": "dev " + "Zq8xLp2Vt9" * 5}}, "about.role"),
+    ({"preferences": {"answer_language": "other:" + _TOKEN}}, "preferences.answer_language"),
+])
+def test_a_secret_in_an_answer_is_refused(tmp_path, fake_home, capsys, data, word):
+    with pytest.raises(ValueError) as exc:
+        answers.load(_file(tmp_path, data))
+    msg = str(exc.value)
+    assert word in msg and "secret" in msg and "secrets.env" in msg
+    assert _TOKEN not in msg and "hunter2" not in msg and _TOKEN not in capsys.readouterr().out
+
+
+def test_plain_prose_answers_are_not_secrets(tmp_path, fake_home):
+    a = answers.load(_file(tmp_path, {"about": {
+        "preferences": "short answers; ask before deleting tokens or keys; I use an API key from secrets.env",
+        "languages": "Python, TypeScript, Rust, Kotlin"}}))
+    assert a.about["languages"].startswith("Python")
+
+
 def test_a_file_that_is_not_json_is_refused(tmp_path, fake_home):
     with pytest.raises(ValueError, match="answers.json"):
         answers.load(_file(tmp_path, "{not json"))
