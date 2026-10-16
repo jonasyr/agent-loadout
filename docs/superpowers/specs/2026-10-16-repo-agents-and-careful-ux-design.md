@@ -1,6 +1,6 @@
 # Repos for chosen agents, shared repos, and changes a careful user can trust: design
 
-Status: approved in chat 2026-10-16 (Parts 0–6). Goal from the user: setup and daily use work perfectly and are easy, through an agent that follows the repo's docs and the CLI, or through the CLI directly; especially for Codex only on Windows/WSL with VS Code. A repo can be for chosen agents (some Codex only). A repo shared by two loadout users works for both: the user (Claude Code and Codex) and a friend (Codex only, Windows/WSL, VS Code). A careful, skeptical user who documented their setup and their scientific repos must always know exactly what loadout will change, agree to it, and be able to undo it; nothing they set up is changed behind their back.
+Status: approved in chat 2026-10-16 (Parts 0–7). Goal from the user: setup and daily use work perfectly and are easy, through an agent that follows the repo's docs and the CLI, or through the CLI directly; especially for Codex only on Windows/WSL with VS Code. A repo can be for chosen agents (some Codex only). A repo shared by two loadout users works for both: the user (Claude Code and Codex) and a friend (Codex only, Windows/WSL, VS Code). A careful, skeptical user who documented their setup and their scientific repos must always know exactly what loadout will change, agree to it, and be able to undo it; nothing they set up is changed behind their back.
 
 ## Facts this rests on (2026-10-16)
 
@@ -94,13 +94,21 @@ Status: approved in chat 2026-10-16 (Parts 0–6). Goal from the user: setup and
 - After the pick: exactly what will go back (each file, each undo command), then `Restore this? [y/N]`. The restore is backed up as today.
 - `--repo PATH` filters to one repo's backups; `--last` takes the newest; `--list` prints the list (agents, scripts). Without a terminal nothing is picked: a path or `--last` is needed.
 
+## Part 7: full docs audit
+
+This changes how loadout works with repos at its core (who decides a repo's files, how they are written, how they are undone), so every page is checked, not only the ones a PR touches.
+
+- Before PR 1: run the `loadout:docs-audit` skill on `main` and record every page that states the old model: repo files follow the user's agents (ADR 0027), profiles merge with "the profile wins", repo files have no backup and `restore` does not undo them, `--dry-run` omits settings, restore takes a copied path. The list goes into the plan; each later PR updates the pages its behaviour owns, in the same PR.
+- In PR 5: the full audit again on the finished branch: README, the tutorial, every how-to, reference, explanation (architecture, security and trust, documentation strategy), the ADR index (0027 marked as partly superseded by 0030), `AGENTS.md`'s map, the plugin's skills (configure, onboard, docs-sync, docs-audit) and the Serena memories. Each fact has one home; links and anchors resolve; no page states the old model. The audit's findings are fixed in PR 5, and the PR lists the pages it checked.
+- The agent page (`install-with-an-agent.md`) and the configure skill are read as an agent would: every command in them runs as written on the platforms they name.
+
 ## PRs
 
 1. Parts 0 and 1: plan/preview/apply engine for repo writes, repo backups and restore, `.loadout.json` with `agents` and `manage`, `explain`, ADR 0030.
 2. Part 2: the three-way repo merge and the record.
 3. Part 3: broken-link detection and the Windows link-target test.
 4. Part 4 and Part 6: VS Code flag and check row; the restore picker.
-5. Docs (`setups.md`, the agent page walkthrough, troubleshooting, reference pages) and the live tour with its fixes.
+5. Docs (`setups.md`, the agent page walkthrough, troubleshooting, reference pages), the full docs audit (Part 7), and the live tour with its fixes.
 
 ## Not in scope
 
