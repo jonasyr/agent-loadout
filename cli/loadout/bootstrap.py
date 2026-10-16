@@ -654,6 +654,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     if agents is not None:
         targets.parse_agents(agents)  # a typo in --agents stops here, before any question or clone (ValueError)
     personal = personal.strip() if personal is not None else None
+    if personal is not None and personal.lower() == "new":
+        personal = "new"
     if personal is not None and (not personal or personal.startswith("-")):
         raise ValueError("--personal: give `new` or the git URL of your personal layer")
     from . import answers as answers_mod

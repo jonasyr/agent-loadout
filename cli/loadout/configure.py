@@ -275,7 +275,8 @@ def ask_preferences(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup
     for line in preferences.ask_all(ask, fill_defaults=fill_defaults, interactive=interactive, bk=bk, given=given):
         print(f"  {line}")
     if not interactive and fill_defaults:
-        print("preferences: defaults applied (auto mode skipped); change them with `loadout configure prefs`")
+        applied = "your answers and the defaults applied" if given else "defaults applied"
+        print(f"preferences: {applied} (auto mode skipped); change them with `loadout configure prefs`")
 
 
 def prefs(ask: Ask, interactive: bool | None = None) -> int:

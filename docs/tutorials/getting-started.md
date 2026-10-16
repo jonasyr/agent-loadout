@@ -76,7 +76,7 @@ Bootstrap is safe to re-run. It works in four steps, prints one status line for 
 
 Items you own that bootstrap removes or replaces go into a backup first. The end of the output names it and shows the undo command. See [Undo what loadout changed](../how-to/undo-and-restore.md).
 
-Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input) bootstrap skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates a starter personal layer with default preferences if none exists, merges settings, applies your MCP servers and sets up plugins. Pass `--yes` to apply adopt's default groups (remove, migrate, scope-down) plus moving plaintext secrets, without asking. The flags are in the [CLI reference](../reference/cli.md#loadout-bootstrap).
+Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input), or with `--yes`, bootstrap asks nothing. Without a terminal it also skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates the personal layer from `--personal` (a starter with default preferences, or your `--answers`, when not given), merges settings, applies your MCP servers and sets up plugins. Pass `--yes` to apply adopt's default groups (remove, migrate, scope-down) plus moving plaintext secrets, without asking. The flags are in the [CLI reference](../reference/cli.md#loadout-bootstrap).
 
 ## Log in
 

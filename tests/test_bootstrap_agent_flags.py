@@ -108,3 +108,13 @@ def test_a_token_in_the_clone_url_is_not_printed(fake_home, fake_runner, capsys)
     token = "ghp" + "_" + "a1b2c3d4e5" * 4  # built at runtime: no token-shaped text in the repo
     _run(personal=f"https://user:{token}@github.com/me/p.git")
     assert token not in capsys.readouterr().out
+
+
+def test_personal_new_in_any_case_is_a_starter(fake_home, fake_runner):
+    _run(personal="New")
+    assert not [c for c in fake_runner.calls if c[:2] == ["git", "clone"]]
+
+
+def test_without_a_terminal_the_answers_are_named_as_applied(fake_home, fake_runner, tmp_path, capsys):
+    _run(answers=_answers(tmp_path, {"preferences": {"answer_language": "german"}}))
+    assert "your answers and the defaults applied" in capsys.readouterr().out

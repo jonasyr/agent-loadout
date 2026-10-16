@@ -39,12 +39,12 @@ Ask these, one at a time:
 1. **Which agents** should loadout set up: Claude Code, Codex, or both? This becomes `--agents claude`, `--agents codex` or `--agents claude,codex`.
 2. **In WSL, only when the user's Codex is the Windows one:** set up Codex in WSL (installs Codex here) or on Windows (they run `bootstrap.ps1` there)? This becomes `--codex-side wsl` or `--codex-side windows`. See [Codex in WSL](wsl.md#codex).
 3. **The personal layer:** the URL of their private git repo for it, or a new one? This becomes `--personal <URL>` or `--personal new`. If a personal layer exists already (step 1), skip this question and the next two; loadout keeps it.
-4. **About them** (only for a new layer): their name, their role, their main languages, and anything else about how they like to work. Every answer is optional.
-5. **Working preferences** (only for a new layer): show the recommended answers from the table in [Preferences format](../reference/preferences-format.md) and ask whether to keep them or change some. `automode_trust` is not set here; the user can run `loadout configure prefs` later.
+4. **About them** (only with `--personal new`; a cloned layer has its own): their name, their role, their main languages, and anything else about how they like to work. Every answer is optional.
+5. **Working preferences** (only with `--personal new`): show the recommended answers from the table in [Preferences format](../reference/preferences-format.md) and ask whether to keep them or change some. `automode_trust` is not set here; the user can run `loadout configure prefs` later.
 
 ## 3. Write the answers file
 
-Only for a new personal layer. Write a JSON file to an absolute path outside the kit, for example `/tmp/loadout-answers.json`, and show it to the user:
+Only with `--personal new`. Write a JSON file to an absolute path outside the kit, for example `/tmp/loadout-answers.json`, and show it to the user:
 
 ```json
 {
@@ -57,20 +57,28 @@ Only for a new personal layer. Write a JSON file to an absolute path outside the
 
 ## 4. Show the command, then run it after a yes
 
-A machine without loadout:
+A machine without loadout, with a new personal layer:
 
 ```bash
 git clone https://github.com/jonasyr/agent-loadout ~/agent-loadout
-~/agent-loadout/bootstrap.sh --install --agents <list> --personal <new|URL> --answers /tmp/loadout-answers.json </dev/null
+~/agent-loadout/bootstrap.sh --install --agents <list> --personal new --answers /tmp/loadout-answers.json </dev/null
 ```
 
-A machine with loadout (repair, or a new personal layer):
+With the user's own personal layer, write `--personal <URL>` and leave out `--answers`.
+
+A machine with loadout but no personal layer yet (for example after a failed clone): the same flags, with `loadout bootstrap` instead of the script:
+
+```bash
+loadout bootstrap --install --agents <list> --personal <new|URL> [--answers /tmp/loadout-answers.json] </dev/null
+```
+
+A machine with loadout and a personal layer (repair):
 
 ```bash
 loadout bootstrap --install --agents <list> </dev/null
 ```
 
-Add `--codex-side wsl|windows` when step 2 asked it. Leave out `--answers` when the personal layer exists.
+Add `--codex-side wsl|windows` when step 2 asked it.
 
 Before the user answers, say two things:
 
@@ -81,7 +89,7 @@ Run the command after the yes. It takes a few minutes. Show the user its summary
 
 ## 5. Review the existing setup
 
-Without a terminal, bootstrap skips the review of what was installed before loadout. Run `loadout adopt` (a dry run, it changes nothing), explain each group it lists in one line, and ask which groups to apply. Then run `loadout adopt --apply --groups <the agreed groups>`. Add `,secrets` only when the user agreed to move the plaintext secrets the dry run listed.
+Without a terminal, bootstrap skips the review of what was installed before loadout. Run `loadout adopt </dev/null` (a dry run, it changes nothing), explain each group it lists in one line, and ask which groups to apply. Then run `loadout adopt --apply --groups <the agreed groups> </dev/null`. Add `,secrets` only when the user agreed to move the plaintext secrets the dry run listed. The groups `update` and `install` run only with `--yes` added; with `--groups`, `--yes` applies exactly the groups named.
 
 ## 6. Finish
 
