@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -31,8 +32,9 @@ def set_enabled(on: bool) -> str:
     return targets.set_target("codex", on)
 
 
-def unavailable() -> str | None:
-    """None when a usable codex is on PATH, else the reason in one line."""
+def unavailable(allow_shared_home: bool = False) -> str | None:
+    """None when a usable codex is on PATH, else the reason in one line. In WSL, a Windows codex and a
+    CODEX_HOME that points into Windows are reasons too (ADR 0029); only bootstrap --codex-side wsl allows the latter."""
     if not runner.have("codex"):
         return "codex not found on PATH"
     from . import wsl
@@ -41,6 +43,11 @@ def unavailable() -> str | None:
         # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
         return (f"the codex on PATH is the Windows one ({found}): run bootstrap with --install to install Codex in "
                 "WSL, or set loadout up on Windows (docs/how-to/wsl.md#codex)")
+    shared = os.environ.get("CODEX_HOME", "")
+    if (not allow_shared_home and shared and wsl.detect() is not None
+            and wsl._on_windows_drive(Path(shared), wsl.MOUNT)):
+        return (f"CODEX_HOME points into Windows ({shared}): both sides would read loadout's WSL commands; unset it "
+                "in WSL, or run bootstrap with --codex-side wsl to set it up anyway (docs/how-to/wsl.md#codex)")
     res = runner.run(["codex", "--version"], timeout=20)
     m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
     if not m:

@@ -127,7 +127,7 @@ def test_yes_in_a_terminal_does_not_pick_a_side(fake_home, fake_runner, monkeypa
 
 def test_skipping_the_codex_step_keeps_the_exit_code(fake_home, fake_runner, monkeypatch):
     _side(monkeypatch, "windows")
-    monkeypatch.setattr(codex, "unavailable", lambda: "codex is not usable here")
+    monkeypatch.setattr(codex, "unavailable", lambda **k: "codex is not usable here")
     skipped = bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex")
     open_gate = bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
                                     codex_side="wsl")
@@ -189,3 +189,26 @@ def test_a_typo_in_the_side_question_stops_instead_of_choosing(fake_home, fake_r
     _side(monkeypatch, "windows")
     line = bootstrap.codex_gate(None, ask=lambda q: "wsl", interactive=True)
     assert "no such choice" in line and "--codex-side wsl" in line
+
+
+def test_a_shared_codex_home_is_unavailable_unless_bootstrap_was_told(fake_home, fake_runner, monkeypatch, tmp_path):
+    from loadout import runner
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    shared = tmp_path / "mnt" / "c" / "Users" / "u" / ".codex"
+    shared.mkdir(parents=True)
+    monkeypatch.setenv("CODEX_HOME", str(shared))
+    fake_runner.paths["codex"] = "/usr/local/bin/codex"
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.170.0\n", "")
+    assert "CODEX_HOME points into Windows" in codex.unavailable()
+    assert codex.unavailable(allow_shared_home=True) is None
+
+
+def test_bootstrap_with_codex_side_wsl_sets_up_a_shared_home(fake_home, fake_runner, monkeypatch, tmp_path):
+    _side(monkeypatch, "wsl", shared_home=True)
+    seen = []
+    monkeypatch.setattr(codex, "unavailable", lambda allow_shared_home=False: seen.append(allow_shared_home))
+    monkeypatch.setattr(codex, "apply_all", lambda *a, **k: [])
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
+                        codex_side="wsl")
+    assert seen[0] is True  # the Codex step; the final check still warns about the shared home

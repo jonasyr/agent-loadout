@@ -723,7 +723,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     if chosen["codex"]:
         _step("Codex")
-        problem = gate or codex.unavailable()
+        problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())
         if problem:
             out.status("Codex", problem, "warn")
         else:
