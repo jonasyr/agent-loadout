@@ -42,6 +42,7 @@ With Codex on, `loadout init` and `loadout profile NAME` also set up Codex in th
 
 ## Where to read more
 
+- Codex on Windows with WSL (which side loadout sets up, the VS Code setting, `--codex-side`): [Codex in WSL](wsl.md#codex).
 - What loadout changes in `~/.codex`, and what it never touches: [Security and trust](../explanation/security-and-trust.md).
 - Record a Codex-only MCP server or skill (`loadout adopt`): [Handle your own tools](your-own-tools.md#tools-only-one-agent-has).
 - Undo and remove: [Undo what loadout changed](undo-and-restore.md#codex) and [Uninstall](uninstall.md#codex). Turning Codex off with `loadout configure set target codex off` removes nothing.

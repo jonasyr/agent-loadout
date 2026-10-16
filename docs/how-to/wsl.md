@@ -2,7 +2,7 @@
 
 Use this page if you work on Windows. WSL 2 is the recommended setup for loadout. Native Windows is experimental and not recommended; its steps are in [Getting started](../tutorials/getting-started.md#experimental-native-windows).
 
-loadout detects WSL. `loadout check` prints `WSL 1` or `WSL 2` and warns about the problems below that it can see: WSL 1, the kit, the personal layer or the current folder under `/mnt/<drive>/`, `claude`, `node`, `npm`, `uv` or `git` (and `codex`, when Codex is on) resolving to a Windows program, and (WSL 2) missing bubblewrap or socat. Bootstrap prints the same warnings at its start and continues. The steps below are the fixes.
+loadout detects WSL. `loadout check` prints `WSL 1` or `WSL 2` and warns about the problems below that it can see: the kit, the personal layer or the current folder under `/mnt/<drive>/`; `node`, `npm`, `uv` or `git` resolving to a Windows program; with Claude Code on, WSL 1, `claude` resolving to a Windows program and (WSL 2) missing bubblewrap or socat; with Codex on, `codex` resolving to a Windows program and the [Windows side of Codex](#codex). Bootstrap prints the same warnings at its start and continues. The steps below are the fixes.
 
 Anthropic supports both native Windows and WSL 2 for Claude Code and does not name a preferred one ([setup](https://code.claude.com/docs/en/setup)). loadout recommends WSL 2 for these reasons:
 
@@ -29,7 +29,7 @@ Keep the clone in the Linux home: the installed links point into it. Choose Clau
 
 ## 3. Know which install loadout configures
 
-A Windows-native install uses `%USERPROFILE%\.claude` (and `%USERPROFILE%\.codex` for Codex) and a WSL install uses the Linux `~/.claude` and `~/.codex` (or `$CODEX_HOME`); they do not share configuration. loadout configures the one it runs in. If you use both, you must set up both, and your personal layer in each home is separate until you sync it through git (see [Sync](../reference/personal-layer.md#sync)).
+A Windows-native install uses `%USERPROFILE%\.claude` (and `%USERPROFILE%\.codex` for Codex) and a WSL install uses the Linux `~/.claude` and `~/.codex` (or `$CODEX_HOME`); they do not share configuration. loadout configures the one it runs in. If you use both, you must set up both, and your personal layer in each home is separate until you sync it through git (see [Sync](../reference/personal-layer.md#sync)). For Codex, bootstrap checks which side you use first: see [Codex](#codex).
 
 ## 4. Keep repos in the Linux filesystem
 
@@ -57,6 +57,44 @@ sudo apt-get install bubblewrap socat
 
 On Ubuntu 24.04 and later, bubblewrap may also need an AppArmor profile; see [sandboxing](https://code.claude.com/docs/en/sandboxing).
 
+## Codex
+
+Codex on Windows and Codex in WSL are two installs with two homes: `%USERPROFILE%\.codex` on Windows, `~/.codex` (or `$CODEX_HOME`) in WSL. loadout sets up one side per run: in WSL the WSL home, on Windows (`bootstrap.ps1`) the Windows home. It never writes the other side's home ([ADR 0029](../adr/0029-codex-on-windows-and-wsl.md)).
+
+### Which side your Codex runs on
+
+Bootstrap and `loadout check` in WSL look, read-only, at:
+
+- `codex` on `PATH`: a Linux one, or a Windows one under `/mnt/<drive>/` (such as the npm shim in `AppData/Roaming/npm`), and `codex.exe`;
+- sessions from the last 30 days in the Windows Codex home;
+- the VS Code setting `chatgpt.runCodexInWindowsSubsystemForLinux` in `AppData/Roaming/Code/User/settings.json` on Windows (`true`: the extension runs Codex in WSL; `false` or not set: on Windows);
+- `CODEX_HOME`, and whether it points into Windows.
+
+loadout finds the Windows home through `cmd.exe` and `wslpath`; without Windows interop it tries `/mnt/c/Users/$USER`.
+
+### When your only Codex is the Windows one
+
+Bootstrap does not set up the WSL home for a Codex that does not read it. In a terminal it asks which side you want:
+
+1. **Codex in WSL.** Run bootstrap with `--install` so it installs Codex in WSL (`mise use -g codex`); a Windows `codex` on `PATH` does not count. If VS Code's setting is not `true`, bootstrap offers to set it. On a yes it edits only that key in `settings.json` and keeps every other byte; it saves a copy first, so `loadout restore` puts it back. VS Code reloads. To do it by hand: in VS Code on Windows, open Settings, search for `chatgpt.runCodexInWindowsSubsystemForLinux` and tick it.
+2. **Codex on Windows.** Run loadout's `bootstrap.ps1` in PowerShell on Windows, with the same personal layer. Bootstrap in WSL then skips its Codex step; the rest of the setup runs.
+
+Without a terminal, or with `--yes`, pass `--codex-side wsl` or `--codex-side windows`. Without the flag the Codex step stops and prints both ways; the exit code is the same as without the step.
+
+Log in to Codex on the side you set up: `codex login` in WSL for Codex in WSL.
+
+### Codex on both sides
+
+If you use Codex on Windows too, run loadout on both sides. `loadout check` in WSL shows `Codex (Windows side)` when the Windows home has sessions from the last 30 days but no loadout block in its `AGENTS.md`.
+
+### A CODEX_HOME that points into Windows
+
+A WSL `CODEX_HOME` under `/mnt/<drive>/` is read by both sides, but the commands loadout writes fit only one. `loadout check` warns (`Codex home`), and bootstrap does not set it up unless you pass `--codex-side wsl`. Fix: unset `CODEX_HOME` in WSL and let each side keep its own home.
+
+### Repos on /mnt/d
+
+A repo on a Windows drive works, but it is slower in WSL: Serena and codebase-memory index it more slowly. The links loadout makes in its skill folders are WSL links, which a Codex on Windows does not follow. `loadout init` and `loadout profile` print one note for such a repo. Keep repos in the Linux home if you can ([step 4](#4-keep-repos-in-the-linux-filesystem)).
+
 ## Problems
 
 | Symptom | Fix |
@@ -66,5 +104,6 @@ On Ubuntu 24.04 and later, bubblewrap may also need an AppArmor profile; see [sa
 | The JetBrains plugin does not connect | With WSL 2 in NAT networking mode, add a Windows firewall rule or set `networkingMode=mirrored` in `.wslconfig`. See [JetBrains](https://code.claude.com/docs/en/jetbrains#wsl-configuration). |
 | Searches miss files, or commands are slow | The repo is under `/mnt/c`. Move it into the Linux home. |
 | `claude` or `node` behaves oddly | Step 5: it resolves to a Windows binary. |
+| `Codex step skipped: …` in bootstrap | Your Codex runs on Windows, or `CODEX_HOME` points into Windows. Choose a side: [Codex](#codex). |
 
 Other install problems: [troubleshooting](troubleshooting.md).
