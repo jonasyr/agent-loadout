@@ -50,3 +50,57 @@ def test_a_file_that_is_not_json_is_refused(tmp_path, fake_home):
 def test_a_missing_file_is_refused(tmp_path, fake_home):
     with pytest.raises(ValueError, match="cannot read"):
         answers.load(tmp_path / "nope.json")
+
+
+from loadout import backup, configure, paths, preferences
+
+
+def test_given_about_answers_are_written_without_asking(fake_home):
+    paths.personal_root().mkdir(parents=True)
+    configure._about_you(lambda q: pytest.fail(f"asked: {q}"), backup.Backup(description="t"),
+                         given={"name": "Jonas", "role": "student", "languages": "Python", "preferences": "short"})
+    text = (paths.personal_root() / "rules" / "me.md").read_text()
+    assert "Jonas" in text and "student" in text and "Python" in text
+
+
+def test_missing_about_answers_take_defaults_without_asking_when_told(fake_home):
+    paths.personal_root().mkdir(parents=True)
+    configure._about_you(lambda q: pytest.fail(f"asked: {q}"), backup.Backup(description="t"),
+                         given={"name": "Jonas"}, ask_missing=False)
+    assert "Jonas" in (paths.personal_root() / "rules" / "me.md").read_text()
+
+
+def test_missing_about_answers_are_asked_in_a_terminal(fake_home):
+    paths.personal_root().mkdir(parents=True)
+    asked = []
+    configure._about_you(lambda q: asked.append(q) or "", backup.Backup(description="t"), given={"name": "Jonas"})
+    assert len(asked) == 3 and not any("name" in q.lower() for q in asked)
+
+
+def test_given_preferences_win_over_defaults_without_a_terminal(fake_home):
+    paths.personal_root().mkdir(parents=True)
+    (paths.personal_root() / "settings.json").write_text("{}\n")
+    configure._about_you(lambda q: "", backup.Backup(description="t"), ask_missing=False)
+    preferences.ask_all(lambda q: pytest.fail(q), fill_defaults=True, interactive=False,
+                        bk=backup.Backup(description="t"), given={"answer_language": ("german", "")})
+    assert "always answer in German" in (paths.personal_root() / "rules" / "me.md").read_text()
+
+
+def test_given_preferences_are_not_asked_in_a_terminal(fake_home):
+    paths.personal_root().mkdir(parents=True)
+    (paths.personal_root() / "settings.json").write_text("{}\n")
+    configure._about_you(lambda q: "", backup.Backup(description="t"), ask_missing=False)
+    asked = []
+    preferences.ask_all(lambda q: asked.append(q) or "", fill_defaults=True, interactive=True,
+                        bk=backup.Backup(description="t"), given={"answer_language": ("german", "")})
+    assert asked and not any(q.startswith("answer_language") for q in asked)
+
+
+def test_the_one_screen_summary_shows_the_given_answers(fake_home, capsys):
+    paths.personal_root().mkdir(parents=True)
+    (paths.personal_root() / "settings.json").write_text("{}\n")
+    configure._about_you(lambda q: "", backup.Backup(description="t"), ask_missing=False)
+    configure.ask_preferences(lambda q: "", fill_defaults=True, interactive=True, bk=backup.Backup(description="t"),
+                              quick=True, given={"answer_language": ("german", "")})
+    import re
+    assert re.search(r"answer_language\s+german", capsys.readouterr().out.split("Working preferences")[1])

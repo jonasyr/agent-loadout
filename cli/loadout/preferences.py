@@ -640,8 +640,10 @@ def _ask_one(ask: Ask, pref: dict, state: State, fill_defaults: bool) -> tuple[s
     return None
 
 
-def ask_all(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup | None = None) -> list[str]:
-    """All questions; Enter keeps the current or detected answer.
+def ask_all(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup | None = None,
+            given: dict | None = None) -> list[str]:
+    """All questions; Enter keeps the current or detected answer. given: answers from --answers
+    (id -> (value, text)); they are applied, not asked.
 
     fill_defaults (first run): an answer that is not set yet takes the default. Without a terminal
     nothing is asked: unset answers take the default (fill_defaults) and automode is skipped.
@@ -652,7 +654,9 @@ def ask_all(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup | None 
     answers, out = {}, []
     for pref in prefs:
         st = states[pref["id"]]
-        if interactive:
+        if pref["id"] in (given or {}):
+            answer = given[pref["id"]]
+        elif interactive:
             answer = _ask_one(ask, pref, st, fill_defaults)
         else:
             answer = (pref["default"], "") if fill_defaults and not st.is_set else None
