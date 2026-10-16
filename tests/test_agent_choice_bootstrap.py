@@ -57,7 +57,7 @@ def test_cloned_choice_decides_without_asking(fake_home, fake_runner, monkeypatc
         return "cloned", True
     monkeypatch.setattr(bootstrap, "ensure_personal", cloned_layer)
     calls = []
-    monkeypatch.setattr(bootstrap, "check_prereqs", lambda install, ask, installed=None, notes=None: calls.append(
+    monkeypatch.setattr(bootstrap, "check_prereqs", lambda install, ask, installed=None, notes=None, **kw: calls.append(
         {e["id"] for e in __import__("loadout").catalog.binaries()}) or [])
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])

@@ -29,7 +29,7 @@ def _bootstrap_end(monkeypatch, fake_runner, path_changed, todo):
     from loadout import bootstrap as b
     monkeypatch.setattr(b.check, "run_checks", lambda: [])
     monkeypatch.setattr(b, "setup_path", lambda bk=None: ((["added x to PATH"], True) if path_changed else ([], False)))
-    monkeypatch.setattr(b, "still_to_do", lambda key: todo)
+    monkeypatch.setattr(b, "still_to_do", lambda key, **kw: todo)
     b.bootstrap(False, True, False, False, lambda q: "", interactive=False)
 
 

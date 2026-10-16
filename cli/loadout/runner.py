@@ -181,4 +181,6 @@ def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict 
                               encoding="utf-8", errors="replace", timeout=timeout, env=env, **extra)
     except subprocess.TimeoutExpired:
         return Result(124, "", f"{cmd[0]}: timed out after {timeout}s")
+    except OSError as exc:  # found but cannot start (WSL with Windows interop off: Exec format error)
+        return Result(126, "", f"{cmd[0]}: could not start ({exc})")
     return Result(proc.returncode, proc.stdout or "", proc.stderr or "")

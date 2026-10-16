@@ -51,8 +51,9 @@ def _calm() -> bool:
     return not out.VERBOSE
 
 
-def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False) -> int:
-    """Calm (default, not a dry run): one status line, problems below it. --verbose and --dry-run: every line."""
+def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False, drive_note: bool = True) -> int:
+    """Calm (default, not a dry run): one status line, problems below it. --verbose and --dry-run: every line.
+    drive_note: the WSL note for a repo on a Windows drive (init prints it with the first profile only)."""
     from . import out
     calm = not dry_run and _calm()
     problems: list[str] = []
@@ -108,6 +109,10 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             parts.append("Codex")
     if prof.notes:
         info(f"note ({name}): {prof.notes}")
+    from . import wsl
+    note = wsl.repo_note(project) if drive_note else None
+    if note:
+        (steps.append if calm else info)(note)
     if calm:
         summary = ", ".join(parts) or "nothing to change"
         out.status(f"Profile {name}", summary if ok else "applied with problems (below)", "ok" if ok else "warn")
@@ -148,8 +153,8 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
             chosen = suggested if answer == "" else [] if answer == "-" else [a.strip() for a in answer.split(",") if a.strip()]
             for name in chosen:
                 profiles.load_profile(name)
-    for name in chosen:
-        rc = add_profile(project, name, install=install, dry_run=dry_run) or rc
+    for i, name in enumerate(chosen):
+        rc = add_profile(project, name, install=install, dry_run=dry_run, drive_note=i == 0) or rc
     calm = not dry_run and _calm()
     created, notes = scaffold.scaffold(project, dry_run=dry_run)
     made = [path.relative_to(project).as_posix() for path in created]

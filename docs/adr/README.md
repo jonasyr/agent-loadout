@@ -52,3 +52,4 @@ Template:
 | [0026](0026-tool-hints-never-block.md) | Tool hints add context, never block | Accepted |
 | [0027](0027-repo-files-follow-the-agents.md) | Repo files follow the agents that are on | Accepted |
 | [0028](0028-serena-codex-hooks-in-hooks-json.md) | Serena's Codex hooks as owned entries in hooks.json | Accepted |
+| [0029](0029-codex-on-windows-and-wsl.md) | Codex on Windows and WSL: one loadout per side | Accepted |

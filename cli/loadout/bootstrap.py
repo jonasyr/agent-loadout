@@ -95,7 +95,7 @@ def _claude_logged_in() -> bool:
 PERSONAL_REPO_HOWTO = "docs/how-to/personal-repo.md"
 
 
-def still_to_do(key: str) -> list[str]:
+def still_to_do(key: str, codex_here: bool = True) -> list[str]:
     out = []
     if not runner.have("git"):
         out.append(f"install git: {MANUAL_STEPS['git'][key]}")
@@ -105,7 +105,7 @@ def still_to_do(key: str) -> list[str]:
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    out += codex.open_steps()
+    out += codex.open_steps() if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
@@ -159,8 +159,20 @@ def _tail(res: runner.Result, limit: int = 400) -> str:
     return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
 
 
-def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None) -> list[str]:
+def missing_binary(name: str) -> bool:
+    """Not on PATH, or (in WSL) a codex that resolves to the Windows one: --install then installs a Linux Codex."""
+    if not runner.have(name):
+        return True
+    if name != "codex" or wsl.detect() is None:
+        return False
+    found = runner.which(name)
+    return bool(found) and wsl._on_windows_drive(Path(found), wsl.MOUNT)
+
+
+def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None,
+                  skip: frozenset = frozenset()) -> list[str]:
     """notes: collects the missing and failed lines for the caller to print under its status line (else printed now).
+    skip: binaries not wanted this run (codex when, in WSL, the user's Codex is the Windows one).
     Progress lines ("installing …") always print at once: an install can take minutes."""
     from . import pkgmgr
 
@@ -174,15 +186,15 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
     if install:
         _ensure_local_bin()
     prepend_tool_dirs()
-    entries = catalog.install_order(catalog.binaries())
+    entries = [e for e in catalog.install_order(catalog.binaries()) if e["id"] not in skip]
     # helpers are wanted only when a missing, wanted binary needs them
-    needed = {d for e in entries if not e.get("helper") and _wanted(e) and not runner.have(e["id"])
+    needed = {d for e in entries if not e.get("helper") and _wanted(e) and missing_binary(e["id"])
               for d in e.get("needs", [])}
     missing, failed = [], set()
     for entry in entries:
         name = entry["id"]
         wanted = name in needed if entry.get("helper") else _wanted(entry)
-        if not wanted or runner.have(name):
+        if not wanted or not missing_binary(name):
             continue
         cmds = catalog.platform_cmds(entry, "install")
         blocked = [d for d in entry.get("needs", []) if d in failed]
@@ -209,9 +221,9 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
                 runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals
                 prepend_tool_dirs()
-            if installed is not None and runner.have(name) and not entry.get("helper"):
+            if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
-        if not runner.have(name):
+        if missing_binary(name):
             failed.add(name)
             if not entry.get("helper"):
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
@@ -525,6 +537,68 @@ def choose_agents(ask, interactive: bool, flag) -> dict:
     return _choose_agents(ask, interactive, flag)[0]
 
 
+def _codex_seen() -> bool:
+    """A Codex on PATH, or (in WSL) a Windows codex.exe: worth asking which agents to set up."""
+    return runner.have("codex") or (wsl.detect() is not None and bool(runner.which("codex.exe")))
+
+
+CODEX_SIDE_QUESTION = ("Your Codex runs on Windows. Set loadout up for:  1) Codex in WSL (installs Codex here; switch the "
+                       "VS Code extension to WSL)  2) Codex on Windows (run bootstrap.ps1 in PowerShell)  [1] ")
+WINDOWS_WAY = ("Codex on Windows: run loadout's bootstrap.ps1 in PowerShell there, with the same personal layer "
+               "(docs/how-to/wsl.md#codex)")
+
+
+SKIPPED = "Codex step skipped: "
+
+
+def codex_gate_needed(chosen: dict) -> bool:
+    return bool(chosen.get("codex")) and wsl.detect() is not None
+
+
+VSCODE_QUESTION = "Switch the VS Code Codex extension to WSL now (settings.json, backup first)? [y/N] "
+
+
+def _offer_vscode(cs, ask, bk) -> None:
+    """After choosing Codex in WSL: VS Code's extension still runs the Windows Codex until its switch is on."""
+    home = cs.windows_home
+    if home is None or not wsl.vscode_settings(home).is_file() or wsl.vscode_wsl_mode(home) is True:
+        return
+    if not ask(VSCODE_QUESTION).strip().lower().startswith("y"):
+        return
+    out.status("VS Code", wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL)
+
+
+def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None) -> str | None:
+    """In WSL: None to set up this side's Codex, else the line that explains why not (one loadout per side, ADR 0029)."""
+    if wsl.detect() is None or flag == "wsl":
+        return None
+    if flag == "windows":
+        return SKIPPED + WINDOWS_WAY
+    cs = wsl.codex_side()
+    why = "; ".join(cs.reasons)
+    if cs.shared_home:
+        return (f"Codex step skipped: {why}. One config would be read by both sides, but its commands fit only one. "
+                "Unset CODEX_HOME in WSL, or pass --codex-side wsl to set it up anyway")
+    if cs.side != "windows":
+        if cs.side == "both" and cs.vscode_windows:  # Codex in WSL, but VS Code's extension still runs the Windows one
+            if interactive:
+                _offer_vscode(cs, ask, bk)
+            else:
+                out.status("VS Code", f"the Codex extension runs Codex on Windows; {wsl.MANUAL}", "warn")
+        return None
+    if interactive:
+        answer = ask("\n" + CODEX_SIDE_QUESTION).strip() or "1"
+        if answer == "2":
+            return SKIPPED + WINDOWS_WAY
+        if answer != "1":
+            return (f"{SKIPPED}no such choice ({answer!r}). Re-run and answer 1 or 2, or pass "
+                    "--codex-side wsl or --codex-side windows")
+        _offer_vscode(cs, ask, bk)
+        return None
+    return (f"Codex step skipped: {why}. Choose a side: --codex-side wsl (with --install, installs Codex in WSL), "
+            f"or {WINDOWS_WAY}")
+
+
 def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -> tuple[dict, bool]:
     """(choice, store it): --agents first, then a decided personal layer, then the question (interactive), else
     Claude Code as before. Only an explicit choice is stored: writing the default into an existing git-backed
@@ -537,9 +611,9 @@ def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -
         return stored, False
     if existing is None:
         existing = paths.personal_root().exists()
-    if not interactive or (existing and not runner.have("codex")):
+    if not interactive or (existing and not _codex_seen()):
         return {"claude": True, "codex": False}, False  # as before this change: no new question without Codex
-    default = "3" if runner.have("codex") else "1"
+    default = "3" if _codex_seen() else "1"
     answer = ask("\n" + AGENT_QUESTION.format(default=default)).strip() or default
     if answer not in _ANSWERS:
         print(f"no such choice ({answer!r}); using {default} (change it later: loadout configure set target)")
@@ -548,16 +622,16 @@ def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
-              agents: str | None = None) -> int:
+              agents: str | None = None, codex_side: str | None = None) -> int:
     from . import targets
     try:
-        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents)
+        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side)
     finally:
         targets.OVERRIDE = None
 
 
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
-               agents: str | None) -> int:
+               agents: str | None, codex_side: str | None = None) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -602,10 +676,13 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     chosen, store = decided["choice"]
     if personal_ok and store:
         targets.set_agents(chosen)
+    # in WSL the Codex side is settled first: a Windows-side choice installs no Linux Codex (ADR 0029)
+    gate = codex_gate(codex_side, ask, interactive and not yes, bk) if codex_gate_needed(chosen) else None
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []
-    missing = check_prereqs(install, ask, installed=installed, notes=notes)
+    missing = check_prereqs(install, ask, installed=installed, notes=notes,
+                            skip=frozenset({"codex"}) if gate else frozenset())
     summary, level = _prereq_summary(missing, installed)
     out.status("Prerequisites", summary, level)
     for line in notes:
@@ -651,7 +728,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     if chosen["codex"]:
         _step("Codex")
-        problem = codex.unavailable()
+        problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())
         if problem:
             out.status("Codex", problem, "warn")
         else:
@@ -678,7 +755,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     if not bk.empty:
         out.detail(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
-    results = check.run_checks()
+    results = check.run_checks(codex_windows=True) if gate and WINDOWS_WAY in gate else check.run_checks()
     if out.VERBOSE:
         text, code = check.format_results(results)
         print(text)
@@ -689,7 +766,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                    "fail" if code else "warn" if bad else "ok")
         if bad:
             print(text)
-    todo = still_to_do(os_key())
+    here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
+    todo = still_to_do(os_key(), codex_here=here["codex"])
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
         print(f"\n{adopt.UNDO_LINE}")
     if path_changed and out.VERBOSE:
@@ -698,9 +776,11 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
-    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if chosen[a])
-    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if chosen[a])
-    if out.VERBOSE:
+    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if here[a])
+    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if here[a])
+    if not run:  # Codex only, and its step stopped: on Windows, or a CODEX_HOME shared with Windows
+        print(f"\nNext: {WINDOWS_WAY}." if WINDOWS_WAY in gate else "\nNext: settle Codex's side (see the Codex step above).")
+    elif out.VERBOSE:
         print(f"\nThen start {names}." if path_changed else f"\nRestart {names} to load plugins and rules.")
     else:
         print(f"\nNext: run {run} in a new terminal." if path_changed

@@ -38,6 +38,7 @@ Set up or repair this machine. Safe to re-run.
 
 ```
 loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [--agents LIST]
+                  [--codex-side wsl|windows]
 ```
 
 | Flag | Meaning |
@@ -47,6 +48,7 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [-
 | `--no-plugins` | Skip adding marketplaces and installing plugins (offline or CI). |
 | `--no-adopt` | Skip reviewing the existing setup. |
 | `--agents LIST` | `claude`, `codex` or `claude,codex`: the coding agents to set up, without asking. Stored in `<personal>/targets.json`; it wins over the personal layer's choice. |
+| `--codex-side wsl\|windows` | In WSL, with Codex on: set up the WSL Codex home (`wsl`) or leave Codex to `bootstrap.ps1` on Windows (`windows`), without asking. Needed without a terminal, or with `--yes`, when the only Codex is the Windows one, and always when `CODEX_HOME` points into Windows; otherwise the Codex step stops. Ignored outside WSL. See [Codex in WSL](../how-to/wsl.md#codex). |
 | `--verbose` | Print every detail of every step (links, commands, the full check list, the backup path). |
 
 By default bootstrap prints one status line per step (`✓`, `!` for a warning, `✗` for a failure), the adopt questions, and at the end the health-check count, `Undo any time: loadout restore --list` when it made a backup, and the next step. Problem lines (a failed install or plugin, a check that failed) are always printed in full. Without a terminal, colour is off (also with `NO_COLOR` or `TERM=dumb`, see [Environment variables](#environment-variables)); where the console cannot show `✓`, ASCII stands in.
@@ -209,7 +211,8 @@ By default it prints `Health check: N of M OK`, then only the warnings and failu
 | Check | Severity when it fails |
 |---|---|
 | The Python version that runs loadout (an `ok` line; loadout needs 3.11 or newer and stops before this on older versions) | — |
-| Inside WSL: the WSL version (an ok line), then one warning per problem from [WSL 2](../how-to/wsl.md) | warn |
+| Inside WSL: the WSL version (an ok line), then one warning per problem from [WSL 2](../how-to/wsl.md) (the `claude` and sandbox rows only with Claude Code on) | warn |
+| Inside WSL, with Codex on: `Codex (Windows side)` when the Windows Codex home has sessions from the last 30 days and no loadout block in its `AGENTS.md`; `Codex home` when `CODEX_HOME` points into Windows. When the only Codex is the Windows one, the Codex rows above are replaced by one `ok` line, `Codex`, that points to `bootstrap.ps1`. Read-only ([Codex in WSL](../how-to/wsl.md#codex)) | warn |
 | `loadout state`: everything of loadout's in `~/.claude/.loadout` and its `loadout-<timestamp>` folders in `~/.claude/backups` was copied to the new place, and no old entry was kept because both places have it (compare and delete it by hand). Old copies waiting to be retired, and Claude Code's own files in `~/.claude/backups`, are not counted | warn |
 | The links under `~/.claude` (rules, global skills, `hooks/personal`) | FAIL |
 | `settings.json` is valid JSON | FAIL |

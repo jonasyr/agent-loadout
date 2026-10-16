@@ -209,10 +209,10 @@ def _own() -> list[CheckResult]:
                         "decide with `loadout adopt --apply` or `loadout configure own`", "warn")]
 
 
-def _binaries() -> list[CheckResult]:
+def _binaries(cs=None) -> list[CheckResult]:
     out = []
     for entry in catalog.binaries():
-        if entry.get("helper"):
+        if entry.get("helper") or (entry["id"] == "codex" and _windows_only(cs)):  # it runs on Windows (ADR 0029)
             continue
         name = entry["id"]
         ok = runner.have(name)
@@ -274,16 +274,69 @@ def _python() -> list[CheckResult]:
     return [CheckResult(f"Python {sys.version_info[0]}.{sys.version_info[1]}", True)]
 
 
-def _wsl() -> list[CheckResult]:
+def _wsl(cs=None) -> list[CheckResult]:
     version = wsl.detect()
     if version is None:
         return []
+    problems = wsl.problems(version, wsl.current_dir())
+    if _windows_only(cs):  # a Windows codex on PATH is the user's choice, not a problem
+        problems = [(p, f) for p, f in problems if not p.startswith("codex resolves")]
     return [CheckResult(f"WSL {version}", True),
-            *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in wsl.problems(version, wsl.current_dir()))]
+            *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in problems)]
 
 
-def _codex() -> list[CheckResult]:
+def _wsl_codex_side():
+    """In WSL with Codex on: which side the user's Codex runs on (read once per check); else None."""
+    from . import targets
+    if wsl.detect() is None or not targets.codex_enabled():
+        return None
+    return wsl.codex_side()
+
+
+def _windows_only(cs) -> bool:
+    """The user's only Codex is the Windows one: the WSL home is not theirs to check (ADR 0029)."""
+    return cs is not None and cs.side == "windows" and not cs.shared_home
+
+
+def _without_codex(fn):
+    """Run a check as if Codex were off: with only the Windows Codex, the WSL Codex home is not the user's."""
+    from . import targets
+    old = targets.OVERRIDE
+    targets.OVERRIDE = {"claude": targets.claude_enabled(), "codex": False}
+    try:
+        return fn()
+    finally:
+        targets.OVERRIDE = old
+
+
+def _codex_side(cs=False) -> list[CheckResult]:
+    """WSL only: the Windows Codex side, read-only (one loadout per side, ADR 0029)."""
     from . import codex
+    cs = _wsl_codex_side() if cs is False else cs
+    if cs is None:
+        return []
+    out = []
+    if cs.shared_home:
+        out.append(CheckResult("Codex home", False, "CODEX_HOME points into Windows: one config serves both sides, "
+                               "and its commands fit only one", "unset CODEX_HOME in WSL (docs/how-to/wsl.md#codex)", "warn"))
+    if cs.windows_home is not None and cs.windows_used:
+        agents = cs.windows_home / ".codex" / "AGENTS.md"
+        try:
+            ok = codex.START in agents.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            ok = False
+        out.append(CheckResult("Codex (Windows side)", ok, "" if ok else
+                               "you use Codex on Windows too, and loadout has not set it up there",
+                               "in PowerShell on Windows: run loadout's bootstrap.ps1 with the same personal layer "
+                               "(docs/how-to/wsl.md#codex)", "warn"))
+    return out
+
+
+def _codex(cs=None) -> list[CheckResult]:
+    from . import codex
+    if _windows_only(cs) and codex.enabled():
+        return [CheckResult("Codex", True, "runs on Windows: loadout sets it up there with bootstrap.ps1 "
+                            "(docs/how-to/wsl.md#codex)")]
     return codex.checks()
 
 
@@ -307,13 +360,18 @@ def _legacy_state() -> list[CheckResult]:
                         f"compare with {paths.state_dir()} and delete them by hand", "warn")]
 
 
-def run_checks() -> list[CheckResult]:
+def run_checks(codex_windows: bool = False) -> list[CheckResult]:
+    """codex_windows: bootstrap chose the Windows side for Codex in this run, whatever the detection says."""
     from . import targets
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
-    return [*_python(), *_wsl(), *_legacy_state(),
+    cs = _wsl_codex_side()
+    if codex_windows and cs is not None:
+        from dataclasses import replace
+        cs = replace(cs, side="windows", shared_home=False)
+    return [*_python(), *_wsl(cs), *_codex_side(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
-            *_codex(), *_plugin_copies(), *(_connectors() if on else []), *_own(),
-            *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
+            *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
+            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
