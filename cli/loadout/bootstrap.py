@@ -166,7 +166,7 @@ def missing_binary(name: str) -> bool:
     if name != "codex" or wsl.detect() is None:
         return False
     found = runner.which(name)
-    return bool(found) and wsl._on_windows_drive(Path(found), "/mnt/")
+    return bool(found) and wsl._on_windows_drive(Path(found), wsl.MOUNT)
 
 
 def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None,

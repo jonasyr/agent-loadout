@@ -11,6 +11,7 @@ from pathlib import Path
 from . import paths, runner
 
 OSRELEASE = Path("/proc/sys/kernel/osrelease")
+MOUNT = "/mnt/"  # where WSL mounts the Windows drives
 LINUX_TOOLS = ("node", "npm", "uv", "git")
 SANDBOX = (("bwrap", "bubblewrap"), ("socat", "socat"))
 
@@ -203,8 +204,9 @@ def _recent(folder: Path, days: int = RECENT_DAYS) -> bool:
         return False
 
 
-def codex_side(mount: str = "/mnt/") -> CodexSide:
+def codex_side(mount: str | None = None) -> CodexSide:
     """Which side of WSL the user's Codex runs on, from read-only signals (docs/how-to/wsl.md#codex)."""
+    mount = mount or MOUNT
     found = runner.which("codex")
     linux = bool(found) and not _on_windows_drive(Path(found), mount)
     windows_bin = (bool(found) and not linux) or bool(runner.which("codex.exe"))
@@ -239,8 +241,9 @@ def _claude_on() -> bool:
         return True
 
 
-def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple[str, str]]:
+def problems(version: int, cwd: Path | None, mount: str | None = None) -> list[tuple[str, str]]:
     """The setup problems seen from WSL; Claude Code's tools and sandbox only with Claude Code on."""
+    mount = mount or MOUNT
     out = []
     claude = _claude_on()
     if version == 1 and claude:
@@ -267,6 +270,14 @@ def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple
             out.append((f"sandbox packages missing: {', '.join(missing)} (needed for Claude Code's sandbox)",
                         f"`sudo apt-get install {' '.join(missing)}`"))
     return out
+
+
+def repo_note(project: Path) -> str | None:
+    """In WSL, for a repo on a Windows drive: the one-line note init and profile print (never a problem)."""
+    if detect() is None or not _on_windows_drive(project, MOUNT):
+        return None
+    return ("note: this repo is on the Windows drive (slower in WSL: Serena and codebase-memory index it more slowly; "
+            "links in its skill folders are WSL links that a Windows-side Codex does not follow)")
 
 
 def report_lines(version: int, cwd: Path | None) -> list[str]:

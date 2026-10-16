@@ -80,3 +80,47 @@ def test_run_checks_includes_the_windows_side(wsl2, tmp_path, monkeypatch):
     (home / ".codex").mkdir(parents=True)
     _windows_side(monkeypatch, home)
     assert any(r.name == "Codex (Windows side)" for r in check.run_checks())
+
+
+def _repo(tmp_path, *parts):
+    repo = tmp_path.joinpath(*parts)
+    (repo / ".git").mkdir(parents=True)
+    return repo
+
+
+def _empty_profile(monkeypatch):
+    from loadout import profiles
+    monkeypatch.setattr(profiles, "load_profile", lambda name: profiles.Profile(name="web", description=""))
+
+
+def test_profile_notes_a_repo_on_the_windows_drive(wsl2, tmp_path, monkeypatch, capsys):
+    from loadout import project
+    repo = _repo(tmp_path, "mnt", "d", "git", "thesis")
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    _empty_profile(monkeypatch)
+    assert project.add_profile(repo, "web", install=False) == 0
+    assert capsys.readouterr().out.count("Windows drive") == 1
+
+
+def test_a_repo_in_the_linux_home_gets_no_note(wsl2, tmp_path, monkeypatch, capsys):
+    from loadout import project
+    repo = _repo(tmp_path, "home", "u", "thesis")
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    _empty_profile(monkeypatch)
+    project.add_profile(repo, "web", install=False)
+    assert "Windows drive" not in capsys.readouterr().out
+
+
+def test_outside_wsl_no_note(fake_home, fake_runner, tmp_path, monkeypatch):
+    repo = _repo(tmp_path, "mnt", "d", "thesis")
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    assert wsl.repo_note(repo) is None
+
+
+def test_init_with_two_profiles_notes_the_drive_once(wsl2, tmp_path, monkeypatch, capsys):
+    from loadout import project
+    repo = _repo(tmp_path, "mnt", "d", "thesis")
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    _empty_profile(monkeypatch)
+    project.init(repo, ["web", "web"], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False)
+    assert capsys.readouterr().out.count("Windows drive") == 1
