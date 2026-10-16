@@ -1,7 +1,11 @@
 """WSL detection and the setup problems loadout can see from inside WSL (docs/how-to/wsl.md)."""
 from __future__ import annotations
 
+import os
+import re
 import sys
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import paths, runner
@@ -54,6 +58,83 @@ def _codex_on() -> bool:
         return targets.codex_enabled()
     except Exception:  # a damaged targets.json: the check stays as before
         return False
+
+
+WIN_SETTING = "chatgpt.runCodexInWindowsSubsystemForLinux"  # the Codex extension's choice (Windows only)
+RECENT_DAYS = 30
+
+
+@dataclass
+class CodexSide:
+    side: str  # "wsl", "windows", "both" or "none"
+    reasons: list[str] = field(default_factory=list)
+    windows_home: Path | None = None
+    windows_used: bool = False
+    shared_home: bool = False
+
+
+def windows_home() -> Path | None:
+    """The Windows user's home as a WSL path (/mnt/c/Users/<name>), via cmd.exe and wslpath; None without interop."""
+    cwd = "/mnt/c" if Path("/mnt/c").is_dir() else None  # cmd.exe warns about a Linux (UNC) working folder
+    res = runner.run(["cmd.exe", "/c", "echo", "%USERPROFILE%"], cwd=cwd, timeout=15)
+    win = res.stdout.strip().splitlines()[-1].strip() if res.ok and res.stdout.strip() else ""
+    if not win or "%" in win:
+        return None
+    conv = runner.run(["wslpath", "-u", win], timeout=15)
+    path = Path(conv.stdout.strip()) if conv.ok and conv.stdout.strip() else None
+    return path if path is not None and path.is_dir() else None
+
+
+def vscode_settings(home: Path) -> Path:
+    return home / "AppData" / "Roaming" / "Code" / "User" / "settings.json"
+
+
+_SETTING_RX = re.compile(r'"chatgpt\.runCodexInWindowsSubsystemForLinux"\s*:\s*(true|false)')
+
+
+def vscode_wsl_mode(home: Path) -> bool | None:
+    """The extension's WSL switch from VS Code's settings.json (JSONC: read by text); None when not set."""
+    try:
+        m = _SETTING_RX.search(vscode_settings(home).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return None
+    return None if m is None else m.group(1) == "true"
+
+
+def _recent(folder: Path, days: int = RECENT_DAYS) -> bool:
+    cutoff = time.time() - days * 86400
+    try:
+        return any(f.stat().st_mtime >= cutoff for f in folder.rglob("*.jsonl"))
+    except OSError:
+        return False
+
+
+def codex_side(mount: str = "/mnt/") -> CodexSide:
+    """Which side of WSL the user's Codex runs on, from read-only signals (docs/how-to/wsl.md#codex)."""
+    found = runner.which("codex")
+    linux = bool(found) and not _on_windows_drive(Path(found), mount)
+    windows_bin = (bool(found) and not linux) or bool(runner.which("codex.exe"))
+    home = windows_home()
+    used = home is not None and _recent(home / ".codex" / "sessions")
+    mode = vscode_wsl_mode(home) if home is not None else None
+    codex_home = os.environ.get("CODEX_HOME", "")
+    shared = bool(codex_home) and _on_windows_drive(Path(codex_home), mount)
+    reasons = []
+    if linux:
+        reasons.append(f"Codex in WSL: {found}")
+    if windows_bin:
+        reasons.append(f"a Windows Codex is on PATH{f' ({found})' if found and not linux else ''}")
+    if used:
+        reasons.append(f"the Windows Codex home ({home / '.codex'}) has sessions from the last {RECENT_DAYS} days")
+    if mode is True:
+        reasons.append(f"VS Code runs Codex in WSL ({WIN_SETTING} = true)")
+    elif mode is False:
+        reasons.append(f"VS Code runs Codex on Windows ({WIN_SETTING} = false)")
+    if shared:
+        reasons.append(f"CODEX_HOME points into Windows ({codex_home})")
+    wsl_side, win_side = linux or mode is True, windows_bin or used or mode is False
+    side = "both" if wsl_side and win_side else "wsl" if wsl_side else "windows" if win_side else "none"
+    return CodexSide(side, reasons, home, used, shared)
 
 
 def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple[str, str]]:
