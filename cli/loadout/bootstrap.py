@@ -169,8 +169,10 @@ def missing_binary(name: str) -> bool:
     return bool(found) and wsl._on_windows_drive(Path(found), "/mnt/")
 
 
-def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None) -> list[str]:
+def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None,
+                  skip: frozenset = frozenset()) -> list[str]:
     """notes: collects the missing and failed lines for the caller to print under its status line (else printed now).
+    skip: binaries not wanted this run (codex when, in WSL, the user's Codex is the Windows one).
     Progress lines ("installing …") always print at once: an install can take minutes."""
     from . import pkgmgr
 
@@ -184,7 +186,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
     if install:
         _ensure_local_bin()
     prepend_tool_dirs()
-    entries = catalog.install_order(catalog.binaries())
+    entries = [e for e in catalog.install_order(catalog.binaries()) if e["id"] not in skip]
     # helpers are wanted only when a missing, wanted binary needs them
     needed = {d for e in entries if not e.get("helper") and _wanted(e) and missing_binary(e["id"])
               for d in e.get("needs", [])}
@@ -546,6 +548,16 @@ WINDOWS_WAY = ("Codex on Windows: run loadout's bootstrap.ps1 in PowerShell ther
                "(docs/how-to/wsl.md#codex)")
 
 
+SKIPPED = "Codex step skipped: "
+
+
+def _windows_codex() -> str | None:
+    """In WSL, after the gate chose this side: the codex on PATH is still the Windows one."""
+    if wsl.detect() is None or not runner.have("codex") or not missing_binary("codex"):
+        return None
+    return f"the codex on PATH is the Windows one ({runner.which('codex')}): re-run with --install (installs Codex in WSL)"
+
+
 def codex_gate_needed(chosen: dict) -> bool:
     return bool(chosen.get("codex")) and wsl.detect() is not None
 
@@ -555,7 +567,7 @@ def codex_gate(flag, ask, interactive: bool) -> str | None:
     if wsl.detect() is None or flag == "wsl":
         return None
     if flag == "windows":
-        return WINDOWS_WAY
+        return SKIPPED + WINDOWS_WAY
     cs = wsl.codex_side()
     why = "; ".join(cs.reasons)
     if cs.shared_home:
@@ -564,7 +576,7 @@ def codex_gate(flag, ask, interactive: bool) -> str | None:
     if cs.side != "windows":
         return None
     if interactive:
-        return None if (ask("\n" + CODEX_SIDE_QUESTION).strip() or "1") == "1" else WINDOWS_WAY
+        return None if (ask("\n" + CODEX_SIDE_QUESTION).strip() or "1") == "1" else SKIPPED + WINDOWS_WAY
     return (f"Codex step skipped: {why}. Choose a side: --codex-side wsl (with --install, installs Codex in WSL), "
             f"or {WINDOWS_WAY}")
 
@@ -646,10 +658,13 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     chosen, store = decided["choice"]
     if personal_ok and store:
         targets.set_agents(chosen)
+    # in WSL the Codex side is settled first: a Windows-side choice installs no Linux Codex (ADR 0029)
+    gate = codex_gate(codex_side, ask, interactive and not yes) if codex_gate_needed(chosen) else None
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []
-    missing = check_prereqs(install, ask, installed=installed, notes=notes)
+    missing = check_prereqs(install, ask, installed=installed, notes=notes,
+                            skip=frozenset({"codex"}) if gate else frozenset())
     summary, level = _prereq_summary(missing, installed)
     out.status("Prerequisites", summary, level)
     for line in notes:
@@ -695,8 +710,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     if chosen["codex"]:
         _step("Codex")
-        gate = codex_gate(codex_side, ask, interactive and not yes) if codex_gate_needed(chosen) else None
-        problem = gate or codex.unavailable()
+        problem = gate or _windows_codex() or codex.unavailable()
         if problem:
             out.status("Codex", problem, "warn")
         else:

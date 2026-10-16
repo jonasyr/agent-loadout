@@ -88,3 +88,47 @@ def test_install_replaces_a_windows_shim_with_a_linux_codex(fake_home, fake_runn
 def test_outside_wsl_a_codex_on_path_is_there(fake_home, fake_runner):
     fake_runner.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
     assert bootstrap.missing_binary("codex") is False
+
+
+def test_the_windows_side_installs_no_linux_codex(fake_home, fake_runner, monkeypatch, capsys):
+    _side(monkeypatch, "windows")
+    fake_runner.missing.add("codex")
+    for flag in ("windows", None):
+        bootstrap.bootstrap(True, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
+                            codex_side=flag)
+    assert ["mise", "use", "-g", "codex"] not in fake_runner.calls
+    assert "missing (required) codex" not in capsys.readouterr().out
+
+
+def test_answering_windows_installs_no_linux_codex(fake_home, fake_runner, monkeypatch):
+    _side(monkeypatch, "windows")
+    fake_runner.missing.add("codex")
+    bootstrap.bootstrap(True, False, False, False, ask=lambda q: "2" if "Windows" in q else "", interactive=True,
+                        agents="codex")
+    assert ["mise", "use", "-g", "codex"] not in fake_runner.calls
+
+
+def test_the_windows_shim_is_named_when_the_gate_is_open(fake_home, fake_runner, monkeypatch, capsys):
+    _side(monkeypatch, "windows")
+    fake_runner.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
+    monkeypatch.setattr(codex, "apply_all", lambda *a, **k: pytest.fail("set up through the Windows codex"))
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
+                        codex_side="wsl")
+    assert "the codex on PATH is the Windows one" in capsys.readouterr().out
+
+
+def test_yes_in_a_terminal_does_not_pick_a_side(fake_home, fake_runner, monkeypatch, capsys):
+    _side(monkeypatch, "windows")
+    monkeypatch.setattr(codex, "apply_all", lambda *a, **k: pytest.fail("--yes picked WSL"))
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: pytest.fail(f"asked: {q}") if "Windows" in q else "",
+                        interactive=True, agents="codex")
+    assert "--codex-side wsl" in capsys.readouterr().out
+
+
+def test_skipping_the_codex_step_keeps_the_exit_code(fake_home, fake_runner, monkeypatch):
+    _side(monkeypatch, "windows")
+    monkeypatch.setattr(codex, "unavailable", lambda: "codex is not usable here")
+    skipped = bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex")
+    open_gate = bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
+                                    codex_side="wsl")
+    assert skipped == open_gate
