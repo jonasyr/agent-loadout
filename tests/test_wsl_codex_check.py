@@ -18,9 +18,10 @@ def test_claude_off_skips_claude_and_its_sandbox(wsl2):
     assert "claude" not in text and "sandbox" not in text
 
 
-def test_claude_on_still_checks_claude_and_its_sandbox(wsl2):
+def test_claude_on_still_checks_claude_and_its_sandbox(wsl2, tmp_path, monkeypatch):
     targets.set_agents({"claude": True, "codex": False})
-    wsl2.paths["claude"] = "/mnt/c/Users/u/AppData/Roaming/npm/claude"
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
+    wsl2.paths["claude"] = (tmp_path / "mnt" / "c" / "Users" / "u" / "AppData" / "Roaming" / "npm" / "claude").as_posix()
     wsl2.missing.update({"bwrap", "socat"})
     text = " ".join(p for p, _ in wsl.problems(2, None))
     assert "claude resolves" in text and "sandbox" in text
@@ -96,7 +97,7 @@ def _empty_profile(monkeypatch):
 def test_profile_notes_a_repo_on_the_windows_drive(wsl2, tmp_path, monkeypatch, capsys):
     from loadout import project
     repo = _repo(tmp_path, "mnt", "d", "git", "thesis")
-    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
     _empty_profile(monkeypatch)
     assert project.add_profile(repo, "web", install=False) == 0
     assert capsys.readouterr().out.count("Windows drive") == 1
@@ -105,7 +106,7 @@ def test_profile_notes_a_repo_on_the_windows_drive(wsl2, tmp_path, monkeypatch, 
 def test_a_repo_in_the_linux_home_gets_no_note(wsl2, tmp_path, monkeypatch, capsys):
     from loadout import project
     repo = _repo(tmp_path, "home", "u", "thesis")
-    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
     _empty_profile(monkeypatch)
     project.add_profile(repo, "web", install=False)
     assert "Windows drive" not in capsys.readouterr().out
@@ -113,14 +114,14 @@ def test_a_repo_in_the_linux_home_gets_no_note(wsl2, tmp_path, monkeypatch, caps
 
 def test_outside_wsl_no_note(fake_home, fake_runner, tmp_path, monkeypatch):
     repo = _repo(tmp_path, "mnt", "d", "thesis")
-    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
     assert wsl.repo_note(repo) is None
 
 
 def test_init_with_two_profiles_notes_the_drive_once(wsl2, tmp_path, monkeypatch, capsys):
     from loadout import project
     repo = _repo(tmp_path, "mnt", "d", "thesis")
-    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
     _empty_profile(monkeypatch)
     project.init(repo, ["web", "web"], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False)
     assert capsys.readouterr().out.count("Windows drive") == 1
@@ -134,7 +135,7 @@ def test_a_program_that_cannot_start_is_a_result_not_a_crash(tmp_path, monkeypat
         pytest.skip("POSIX exec")
     bad = tmp_path / "bin" / "cmd.exe"
     bad.parent.mkdir()
-    bad.write_bytes(b"MZ\x90\x00 not an ELF binary")  # what WSL sees when Windows interop is off
+    bad.write_bytes(b"\x00\x01\x02 neither ELF nor a script")  # exec fails as for cmd.exe with interop off
     bad.chmod(0o755)
     monkeypatch.setenv("PATH", str(bad.parent) + os.pathsep + os.environ.get("PATH", ""))
     res = runner.run(["cmd.exe", "/c", "echo", "%USERPROFILE%"])

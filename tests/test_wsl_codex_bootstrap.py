@@ -4,6 +4,12 @@ import pytest
 from loadout import bootstrap, codex, wsl
 
 
+def _win_shim(monkeypatch, tmp_path):
+    """A Windows npm codex shim under a fake /mnt (as_posix: the Windows CI job resolves paths too)."""
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
+    return (tmp_path / "mnt" / "c" / "Users" / "u" / "AppData" / "Roaming" / "npm" / "codex").as_posix()
+
+
 def _side(monkeypatch, side, **kw):
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
     monkeypatch.setattr(wsl, "codex_side", lambda **k: wsl.CodexSide(side, [f"reason {side}"], **kw))
@@ -77,9 +83,9 @@ def test_windows_only_bootstrap_skips_the_codex_step_and_keeps_going(fake_home, 
                                      agents="codex", codex_side="windows")
 
 
-def test_install_replaces_a_windows_shim_with_a_linux_codex(fake_home, fake_runner, monkeypatch):
+def test_install_replaces_a_windows_shim_with_a_linux_codex(fake_home, fake_runner, monkeypatch, tmp_path):
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
-    fake_runner.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
+    fake_runner.paths["codex"] = _win_shim(monkeypatch, tmp_path)
     assert bootstrap.missing_binary("codex") is True
     fake_runner.paths["codex"] = "/home/u/.local/share/mise/shims/codex"
     assert bootstrap.missing_binary("codex") is False
@@ -108,9 +114,9 @@ def test_answering_windows_installs_no_linux_codex(fake_home, fake_runner, monke
     assert ["mise", "use", "-g", "codex"] not in fake_runner.calls
 
 
-def test_the_windows_shim_is_named_when_the_gate_is_open(fake_home, fake_runner, monkeypatch, capsys):
+def test_the_windows_shim_is_named_when_the_gate_is_open(fake_home, fake_runner, monkeypatch, capsys, tmp_path):
     _side(monkeypatch, "windows")
-    fake_runner.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
+    fake_runner.paths["codex"] = _win_shim(monkeypatch, tmp_path)
     monkeypatch.setattr(codex, "apply_all", lambda *a, **k: pytest.fail("set up through the Windows codex"))
     bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
                         codex_side="wsl")
@@ -175,10 +181,10 @@ def test_no_vscode_settings_means_no_question(fake_home, fake_runner, monkeypatc
     assert len(asked) == 1
 
 
-def test_in_wsl_a_windows_codex_is_unavailable_for_every_caller(fake_home, fake_runner, monkeypatch):
+def test_in_wsl_a_windows_codex_is_unavailable_for_every_caller(fake_home, fake_runner, monkeypatch, tmp_path):
     from loadout import runner
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
-    fake_runner.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
+    fake_runner.paths["codex"] = _win_shim(monkeypatch, tmp_path)
     fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.170.0\n", "")
     assert "the codex on PATH is the Windows one" in codex.unavailable()
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: None)
@@ -194,7 +200,7 @@ def test_a_typo_in_the_side_question_stops_instead_of_choosing(fake_home, fake_r
 def test_a_shared_codex_home_is_unavailable_unless_bootstrap_was_told(fake_home, fake_runner, monkeypatch, tmp_path):
     from loadout import runner
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
-    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
     shared = tmp_path / "mnt" / "c" / "Users" / "u" / ".codex"
     shared.mkdir(parents=True)
     monkeypatch.setenv("CODEX_HOME", str(shared))
@@ -212,3 +218,22 @@ def test_bootstrap_with_codex_side_wsl_sets_up_a_shared_home(fake_home, fake_run
     bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
                         codex_side="wsl")
     assert seen[0] is True  # the Codex step; the final check still warns about the shared home
+
+
+def test_both_sides_with_the_extension_on_windows_offers_the_switch(fake_home, fake_runner, monkeypatch, tmp_path):
+    from loadout import backup
+    home = tmp_path / "winhome"
+    p = wsl.vscode_settings(home)
+    p.parent.mkdir(parents=True)
+    p.write_text('{"editor.tabSize": 2}')
+    _side(monkeypatch, "both", windows_home=home, vscode_windows=True)
+    asked = []
+    assert bootstrap.codex_gate(None, ask=lambda q: asked.append(q) or "y", interactive=True,
+                                bk=backup.Backup(description="t")) is None
+    assert len(asked) == 1 and "VS Code" in asked[0] and wsl.vscode_wsl_mode(home) is True
+
+
+def test_both_sides_without_a_terminal_names_the_manual_switch(fake_home, fake_runner, monkeypatch, tmp_path, capsys):
+    _side(monkeypatch, "both", windows_home=tmp_path, vscode_windows=True)
+    assert bootstrap.codex_gate(None, ask=lambda q: pytest.fail(q), interactive=False) is None
+    assert wsl.MANUAL in capsys.readouterr().out

@@ -580,6 +580,11 @@ def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None) -> str | 
         return (f"Codex step skipped: {why}. One config would be read by both sides, but its commands fit only one. "
                 "Unset CODEX_HOME in WSL, or pass --codex-side wsl to set it up anyway")
     if cs.side != "windows":
+        if cs.side == "both" and cs.vscode_windows:  # Codex in WSL, but VS Code's extension still runs the Windows one
+            if interactive:
+                _offer_vscode(cs, ask, bk)
+            else:
+                out.status("VS Code", f"the Codex extension runs Codex on Windows; {wsl.MANUAL}", "warn")
         return None
     if interactive:
         answer = ask("\n" + CODEX_SIDE_QUESTION).strip() or "1"

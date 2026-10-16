@@ -17,7 +17,7 @@ def win(tmp_path, fake_home, fake_runner, monkeypatch):
 
 
 def _mount(home):
-    return str(home.parents[2]) + "/"
+    return home.parents[2].as_posix() + "/"
 
 
 def _sessions(home, age_days=1):
@@ -84,13 +84,13 @@ def test_no_codex_anywhere_is_none(win):
 
 
 def test_windows_home_survives_a_missing_cmd_exe(tmp_path, fake_home, fake_runner, monkeypatch):
-    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
     fake_runner.responses[("cmd.exe",)] = runner.Result(127, "", "cmd.exe: not found")
     assert wsl.windows_home() is None
 
 
 def test_without_cmd_exe_the_windows_home_is_guessed_from_the_user_name(tmp_path, fake_home, fake_runner, monkeypatch):
-    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
     monkeypatch.setenv("USER", "u")
     home = tmp_path / "mnt" / "c" / "Users" / "u"
     home.mkdir(parents=True)
@@ -213,7 +213,7 @@ def test_a_value_that_is_not_true_or_false_is_left_to_the_user(win):
 
 
 def test_a_name_cmd_exe_garbles_falls_back_to_the_user_name(tmp_path, fake_home, fake_runner, monkeypatch):
-    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setattr(wsl, "MOUNT", (tmp_path / "mnt").as_posix() + "/")
     monkeypatch.setenv("USER", "u")
     home = tmp_path / "mnt" / "c" / "Users" / "u"
     home.mkdir(parents=True)
@@ -242,3 +242,30 @@ def test_recent_sessions_are_found_newest_first(tmp_path):
         mp.setattr(type(root), "stat", spy)
         assert wsl._recent(root)
     assert "01" not in seen and "15" in seen
+
+
+def _extension(home):
+    (home / ".vscode" / "extensions" / "openai.chatgpt-26.1015.0-linux-x64").mkdir(parents=True)
+
+
+def test_the_codex_extension_with_the_switch_unset_runs_on_windows(win, fake_runner):
+    fake_runner.paths["codex"] = "/usr/local/bin/codex"
+    _vscode(win, '{"editor.tabSize": 2}')
+    _extension(win)
+    cs = wsl.codex_side(mount=_mount(win))
+    assert cs.side == "both" and cs.vscode_windows and any("default" in r for r in cs.reasons)
+
+
+def test_an_unset_switch_without_the_extension_says_nothing(win, fake_runner):
+    fake_runner.paths["codex"] = "/usr/local/bin/codex"
+    _vscode(win, '{"editor.tabSize": 2}')
+    cs = wsl.codex_side(mount=_mount(win))
+    assert cs.side == "wsl" and not cs.vscode_windows
+
+
+@pytest.mark.parametrize("text", ['[{}]', '"x" {', '{"a": 1', '// only a comment {'])
+def test_a_root_that_is_not_an_object_is_left_to_the_user(win, text):
+    _vscode(win, text)
+    bk = backup.Backup(description="t")
+    line = wsl.set_vscode_wsl_mode(bk, win)
+    assert wsl.MANUAL in line and wsl.vscode_settings(win).read_text() == text and not bk.steps

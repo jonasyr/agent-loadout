@@ -72,6 +72,7 @@ class CodexSide:
     windows_home: Path | None = None
     windows_used: bool = False
     shared_home: bool = False
+    vscode_windows: bool = False  # VS Code's Codex extension runs Codex on Windows
 
 
 def windows_home() -> Path | None:
@@ -88,6 +89,14 @@ def windows_home() -> Path | None:
     if (path is None or not path.is_dir()) and os.environ.get("USER"):  # cmd.exe garbles non-ASCII names
         path = drive / "Users" / os.environ["USER"]
     return path if path is not None and path.is_dir() else None
+
+
+def vscode_codex_extension(home: Path) -> bool:
+    """VS Code on Windows has the Codex extension (openai.chatgpt) installed."""
+    try:
+        return any((home / ".vscode" / "extensions").glob("openai.chatgpt-*"))
+    except OSError:
+        return False
 
 
 def vscode_settings(home: Path) -> Path:
@@ -183,12 +192,13 @@ def set_vscode_wsl_mode(bk, home: Path) -> str:
         return "VS Code already runs Codex in WSL"
     if found is not None and found[2] is None:
         return f"VS Code settings ({path}) give {WIN_SETTING} a value other than true or false; {MANUAL}"
+    body = masked.lstrip("\ufeff \t\r\n")
+    if not (body.startswith("{") and body.rstrip().endswith("}")):  # parse guard: only an object is edited
+        return f"VS Code settings ({path}) are not an object; {MANUAL}"
     if found is not None:
         new = text[:found[0]] + "true" + text[found[1]:]
     else:
         brace = masked.find("{")
-        if brace < 0:
-            return f"VS Code settings ({path}) are not an object; {MANUAL}"
         nl = "\r\n" if "\r\n" in text else "\n"
         empty = masked[brace + 1:].lstrip().startswith("}")
         new = text[:brace + 1] + f'{nl}  "{WIN_SETTING}": true{nl if empty else ","}' + text[brace + 1:]
@@ -241,6 +251,8 @@ def codex_side(mount: str | None = None) -> CodexSide:
     home = windows_home()
     used = home is not None and _recent(home / ".codex" / "sessions")
     mode = vscode_wsl_mode(home) if home is not None else None
+    # unset means Windows, the extension's default; it counts only when the Codex extension is installed
+    on_windows = mode is False or (mode is None and home is not None and vscode_codex_extension(home))
     codex_home = os.environ.get("CODEX_HOME", "")
     shared = bool(codex_home) and _on_windows_drive(Path(codex_home), mount)
     reasons = []
@@ -254,11 +266,13 @@ def codex_side(mount: str | None = None) -> CodexSide:
         reasons.append(f"VS Code runs Codex in WSL ({WIN_SETTING} = true)")
     elif mode is False:
         reasons.append(f"VS Code runs Codex on Windows ({WIN_SETTING} = false)")
+    elif on_windows:
+        reasons.append(f"VS Code's Codex extension runs Codex on Windows ({WIN_SETTING} not set; Windows is its default)")
     if shared:
         reasons.append(f"CODEX_HOME points into Windows ({codex_home})")
-    wsl_side, win_side = linux or mode is True, windows_bin or used or mode is False
+    wsl_side, win_side = linux or mode is True, windows_bin or used or on_windows
     side = "both" if wsl_side and win_side else "wsl" if wsl_side else "windows" if win_side else "none"
-    return CodexSide(side, reasons, home, used, shared)
+    return CodexSide(side, reasons, home, used, shared, on_windows)
 
 
 def _claude_on() -> bool:
