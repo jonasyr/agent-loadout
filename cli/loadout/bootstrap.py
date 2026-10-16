@@ -244,15 +244,26 @@ def _gh_for_git() -> bool:
 
 
 def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None = None,
-                    before_starter=None) -> tuple[str, bool]:
+                    before_starter=None, personal: str | None = None, given=None,
+                    ask_missing: bool = True) -> tuple[str, bool]:
     """Returns (message, ok). ok is False only when a clone was asked for and failed.
-    before_starter: called before a starter layer asks its questions (bootstrap settles the agents there)."""
+    before_starter: called before a starter layer asks its questions (bootstrap settles the agents there).
+    personal: --personal (new, or a git URL to clone); given: --answers for a starter layer;
+    ask_missing False: nothing is asked (no terminal, or --yes)."""
     bk = bk if bk is not None else Backup(description="bootstrap")
     interactive = ui.is_interactive() if interactive is None else interactive
     root = paths.personal_root()
     if root.exists():
+        if personal is not None or given is not None:
+            return (f"personal layer: {root} exists; --personal/--answers apply only to a new one "
+                    "(change answers with loadout configure prefs)"), True
         return f"personal layer: {root}", True
-    url = ask("Personal layer: git URL to clone (empty = create a starter one): ").strip()
+    if personal is not None:
+        url = "" if personal == "new" else personal
+    elif ask_missing:
+        url = ask("Personal layer: git URL to clone (empty = create a starter one): ").strip()
+    else:
+        url = ""
     if url:
         prepend_tool_dirs()  # the clone runs before the prerequisites step: find tools installed earlier,
         _gh_for_git()        # and let a logged-in gh answer for git (a private HTTPS repo)
@@ -271,8 +282,9 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
     (root / "settings.json").write_text("{}\n", encoding="utf-8")
     bk.record_created(root / "settings.json", "created personal settings.json")
     from .configure import _about_you, ask_preferences
-    _about_you(ask, bk)
-    ask_preferences(ask, fill_defaults=True, interactive=interactive, bk=bk, quick=True)
+    _about_you(ask, bk, given=given.about if given else None, ask_missing=ask_missing)
+    ask_preferences(ask, fill_defaults=True, interactive=interactive and ask_missing, bk=bk, quick=True,
+                    given=given.prefs if given else None)
     return f"created starter personal layer at {root} (to sync it across machines, make it a private git repo: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)})", True
 
 
@@ -621,22 +633,35 @@ def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -
     return dict(_ANSWERS[answer]), True
 
 
+def _no_question(question: str) -> str:
+    """bootstrap without a terminal, or with --yes: every question takes its default, unasked."""
+    return ""
+
+
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
-              agents: str | None = None, codex_side: str | None = None) -> int:
+              agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
+              answers: str | None = None) -> int:
     from . import targets
     try:
-        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side)
+        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers)
     finally:
         targets.OVERRIDE = None
 
 
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
-               agents: str | None, codex_side: str | None = None) -> int:
+               agents: str | None, codex_side: str | None = None, personal: str | None = None,
+               answers: str | None = None) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
     if agents is not None:
         targets.parse_agents(agents)  # a typo in --agents stops here, before any question or clone (ValueError)
+    if personal is not None and (not personal.strip() or personal.startswith("-")):
+        raise ValueError("--personal: give `new` or the git URL of your personal layer")
+    from . import answers as answers_mod
+    given = answers_mod.load(answers) if answers is not None else None  # a bad file stops here too
+    if not interactive or yes:
+        ask = _no_question  # an agent's shell may keep stdin open: never wait for an answer
     print(INTRO)
     if not out.VERBOSE:
         print()
@@ -657,7 +682,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         decided["choice"] = _choose_agents(ask, interactive and not yes, agents, existing=not fresh)
         targets.OVERRIDE = decided["choice"][0]  # the starter's questions and the installs follow the choice
 
-    message, personal_ok = ensure_personal(ask, bk, interactive, before_starter=decide)
+    message, personal_ok = ensure_personal(ask, bk, interactive, before_starter=decide, personal=personal,
+                                           given=given, ask_missing=interactive and not yes)
     starter = fresh and personal_ok and paths.personal_root().exists() and not (paths.personal_root() / ".git").exists()
     where = _tilde(paths.personal_root())
     if personal_ok:

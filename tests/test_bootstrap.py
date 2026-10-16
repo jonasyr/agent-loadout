@@ -155,8 +155,8 @@ def test_bootstrap_clone_failure_sets_exit_code(fake_home, fake_runner, capsys, 
     from loadout import runner
     monkeypatch.setattr(b.check, "run_checks", lambda: [])
     fake_runner.responses[("git", "clone")] = runner.Result(128, "", "repository not found")
-    answers = iter(["git@github.com:me/nope.git"] + [""] * 20)
-    rc = b.bootstrap(False, True, False, False, lambda q: next(answers), interactive=False)
+    rc = b.bootstrap(False, True, False, False, lambda q: "", interactive=False,
+                     personal="git@github.com:me/nope.git")  # without a terminal the URL comes as a flag
     assert rc == 1
     assert "clone failed" in capsys.readouterr().out
 
