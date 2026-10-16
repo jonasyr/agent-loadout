@@ -19,8 +19,8 @@ Map the request to a command, show the planned commands as a short list, and run
 
 | Request | Command |
 |---|---|
-| Set loadout up, or repair it | Follow `docs/how-to/install-with-an-agent.md` (in the folder `loadout kit-path` prints; without loadout, on GitHub): ask one question at a time, write the answers file, show the bootstrap command with `--agents`, `--personal` and `--answers` (in WSL also `--codex-side`) and `</dev/null`, run it after a yes, then `loadout adopt` as a dry run |
-| Set up the other side (Windows and WSL) | Answer from the "Codex" section of `docs/how-to/wsl.md`: each side runs its own loadout; on Windows `bootstrap.ps1` in PowerShell (the user runs it), in WSL `loadout bootstrap --codex-side wsl` |
+| Set loadout up, or repair it | Follow `docs/how-to/install-with-an-agent.md` (in the folder `loadout kit-path` prints; without loadout, on GitHub): ask one question at a time, show the answers JSON and the bootstrap command with `--agents`, `--personal` and `--answers` (in WSL also `--codex-side`) and `</dev/null`; after a yes write the answers to a fresh `mktemp` file and run it, then `loadout adopt` as a dry run |
+| Set up the other side (Windows and WSL) | Answer from the "Codex" section of `docs/how-to/wsl.md`: each side runs its own loadout; on Windows `bootstrap.ps1` in PowerShell (the user runs it), in WSL `loadout bootstrap --codex-side wsl`. For which path fits a platform, agent and starting point, use `docs/how-to/setups.md` |
 | Serena is already set up | Answer from "Serena already set up?" in `docs/how-to/codex.md`: loadout uses the user's Serena server and adds only the Serena hooks that are missing; nothing to change |
 | Turn an agent on or off | `loadout configure set target <claude or codex> <on or off>` |
 | Tools for one repo | `loadout profile <name>` in that repo; a new repo: `loadout init <names> --yes` (it also runs `git init` when the folder is not a repo yet; say so in the plan) |
