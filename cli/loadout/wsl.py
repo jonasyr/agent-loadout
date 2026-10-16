@@ -11,7 +11,7 @@ from pathlib import Path
 from . import paths, runner
 
 OSRELEASE = Path("/proc/sys/kernel/osrelease")
-LINUX_TOOLS = ("claude", "node", "npm", "uv", "git")
+LINUX_TOOLS = ("node", "npm", "uv", "git")
 SANDBOX = (("bwrap", "bubblewrap"), ("socat", "socat"))
 
 
@@ -195,9 +195,19 @@ def codex_side(mount: str = "/mnt/") -> CodexSide:
     return CodexSide(side, reasons, home, used, shared)
 
 
+def _claude_on() -> bool:
+    from . import targets
+    try:
+        return targets.claude_enabled()
+    except Exception:  # a damaged targets.json: the check stays as before
+        return True
+
+
 def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple[str, str]]:
+    """The setup problems seen from WSL; Claude Code's tools and sandbox only with Claude Code on."""
     out = []
-    if version == 1:
+    claude = _claude_on()
+    if version == 1 and claude:
         out.append(("WSL 1: Claude Code's sandbox needs WSL 2, and its native binary can fail with `Exec format error`",
                     "in PowerShell: `wsl --set-version <distro> 2`"))
     roots = (("the kit", paths.kit_root()), ("the personal layer", paths.personal_root()))
@@ -209,13 +219,13 @@ def problems(version: int, cwd: Path | None, mount: str = "/mnt/") -> list[tuple
     if cwd is not None and _on_windows_drive(cwd, mount) and _real(cwd) not in {_real(p) for _, p in roots}:
         out.append((f"the current folder ({Path(cwd).as_posix()}) is on the Windows filesystem (slow, search can be incomplete)",
                     "move it into the Linux home, e.g. `~/code/...`"))
-    for tool in LINUX_TOOLS + (("codex",) if _codex_on() else ()):
+    for tool in (("claude",) if claude else ()) + LINUX_TOOLS + (("codex",) if _codex_on() else ()):
         found = runner.which(tool)
         if found and _on_windows_drive(Path(found), mount):
             out.append((f"{tool} resolves to the Windows program {found}",
                         "install it inside WSL and put its directory first in PATH, "
                         "or set `appendWindowsPath = false` in `/etc/wsl.conf`"))
-    if version == 2:
+    if version == 2 and claude:
         missing = [pkg for binary, pkg in SANDBOX if not runner.have(binary)]
         if missing:
             out.append((f"sandbox packages missing: {', '.join(missing)} (needed for Claude Code's sandbox)",

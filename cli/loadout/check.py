@@ -282,6 +282,29 @@ def _wsl() -> list[CheckResult]:
             *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in wsl.problems(version, wsl.current_dir()))]
 
 
+def _codex_side() -> list[CheckResult]:
+    """WSL only: the Windows Codex side, read-only (one loadout per side, ADR 0029)."""
+    from . import codex, targets
+    if wsl.detect() is None or not targets.codex_enabled():
+        return []
+    cs = wsl.codex_side()
+    out = []
+    if cs.shared_home:
+        out.append(CheckResult("Codex home", False, "CODEX_HOME points into Windows: one config serves both sides, "
+                               "and its commands fit only one", "unset CODEX_HOME in WSL (docs/how-to/wsl.md#codex)", "warn"))
+    if cs.windows_home is not None and cs.windows_used:
+        agents = cs.windows_home / ".codex" / "AGENTS.md"
+        try:
+            ok = codex.START in agents.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            ok = False
+        out.append(CheckResult("Codex (Windows side)", ok, "" if ok else
+                               "you use Codex on Windows too, and loadout has not set it up there",
+                               "in PowerShell on Windows: run loadout's bootstrap.ps1 with the same personal layer "
+                               "(docs/how-to/wsl.md#codex)", "warn"))
+    return out
+
+
 def _codex() -> list[CheckResult]:
     from . import codex
     return codex.checks()
@@ -310,7 +333,7 @@ def _legacy_state() -> list[CheckResult]:
 def run_checks() -> list[CheckResult]:
     from . import targets
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
-    return [*_python(), *_wsl(), *_legacy_state(),
+    return [*_python(), *_wsl(), *_codex_side(), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(), *_plugin_copies(), *(_connectors() if on else []), *_own(),
             *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
