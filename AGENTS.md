@@ -38,7 +38,7 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 
 - `__main__.py` CLI entry; `commands.py` registers subcommands; `ui.py` prompt helpers; `out.py` calm status lines and `--verbose`
 - `paths.py` locations from HOME; `runner.py` the only place external commands run; `jsonio.py` JSON and deep merge
-- `bootstrap.py` first-time setup; `adopt.py` migrate an existing machine; `maintenance.py` session hook and `update`
+- `bootstrap.py` first-time setup (`answers.py` checks its `--answers` file); `adopt.py` migrate an existing machine; `maintenance.py` session hook and `update`
 - `link.py` rule links and PATH; `settings_merge.py` three-way settings merge; `personal_mcp.py` personal MCP servers
 - `catalog.py`, `versions.py`, `pkgmgr.py` tool knowledge, versions, binary updates
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates

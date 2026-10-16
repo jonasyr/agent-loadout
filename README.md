@@ -54,6 +54,12 @@ cd agent-loadout
 
 Keep the folder where it is: the installed links point into it.
 
+**Or let your agent do it.** Paste this into Codex or Claude Code; it asks you a few questions, shows the command and runs it after your yes ([how](docs/how-to/install-with-an-agent.md)):
+
+```text
+Set up loadout for me by following https://raw.githubusercontent.com/jonasyr/agent-loadout/main/docs/how-to/install-with-an-agent.md
+```
+
 Bootstrap first asks for your personal layer, the folder for your own preferences and tools: paste the URL of your private repo for it, or press Enter for a starter you can [turn into one later](docs/how-to/personal-repo.md). Then it asks which coding agents to set up (Claude Code, Codex or both), unless your personal layer already chose.
 
 <details>

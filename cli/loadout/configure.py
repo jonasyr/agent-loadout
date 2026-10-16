@@ -212,20 +212,29 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
         print(text[:1].upper() + text[1:] + " to load the changes.")
 
 
-def _about_you(ask: Ask, bk: Backup) -> bool:
-    """True when a new me.md was written (its preference answers are then asked with defaults)."""
+ABOUT_QUESTIONS = (
+    ("name", "NAME", "Your name: ", "me"),
+    ("role", "ROLE", "Your role (e.g. backend developer, CS student): ", "developer"),
+    ("languages", "LANGUAGES", "Main languages/stacks: ", "(not specified)"),
+    ("preferences", "PREFERENCES", "Anything else about how you like to work (the next questions cover language, "
+                                   "commits and answer style): ", "(not specified)"),
+)
+
+
+def _about_you(ask: Ask, bk: Backup, given: dict | None = None, ask_missing: bool = True) -> bool:
+    """True when a new me.md was written (its preference answers are then asked with defaults).
+    given: answers from --answers; ask_missing False (no terminal, or --yes): the rest take defaults unasked."""
+    given = given or {}
     me = paths.personal_root() / "rules" / "me.md"
     if me.exists():
-        if not ui.confirm(ask, f"{me} already exists. Replace it with a new one? (the current one is backed up) [y/N] "):
+        if not ask_missing or not ui.confirm(
+                ask, f"{me} already exists. Replace it with a new one? (the current one is backed up) [y/N] "):
             print(f"kept {me}")
             return False
-    values = {
-        "NAME": ask("Your name: ").strip() or "me",
-        "ROLE": ask("Your role (e.g. backend developer, CS student): ").strip() or "developer",
-        "LANGUAGES": ask("Main languages/stacks: ").strip() or "(not specified)",
-        "PREFERENCES": ask("Anything else about how you like to work (the next questions cover language, "
-                           "commits and answer style): ").strip() or "(not specified)",
-    }
+    values = {}
+    for key, slot, question, default in ABOUT_QUESTIONS:
+        answer = given.get(key, "") or (ask(question).strip() if ask_missing and key not in given else "")
+        values[slot] = answer or default
     template = (paths.kit_root() / "templates/personal/rules/me.md").read_text(encoding="utf-8")
     me.parent.mkdir(parents=True, exist_ok=True)
     if me.exists():
@@ -236,33 +245,38 @@ def _about_you(ask: Ask, bk: Backup) -> bool:
     return True
 
 
-def _quick_defaults(ask: Ask) -> bool:
-    """First run: show the recommended preferences on one screen; Enter (or y) takes them all."""
+def _quick_defaults(ask: Ask, given: dict | None = None) -> bool:
+    """First run: show the recommended preferences on one screen (with the --answers ones); Enter (or y) takes them all."""
+    given = given or {}
     shown = [p for p in preferences.load() if not p.get("generator")]
     width = max(len(p["id"]) for p in shown)
     print("\n-- Working preferences (recommended)")
     for p in shown:
-        label = next((o["label"] for o in p["options"] if o["value"] == p["default"]), "")
-        print(f"  {p['id'].ljust(width)}  {p['default']}" + (f" — {label}" if label and label != p["default"] else ""))
+        value, text = given[p["id"]] if p["id"] in given else (p["default"], "")
+        label = text or next((o["label"] for o in p["options"] if o["value"] == value), "")
+        print(f"  {p['id'].ljust(width)}  {value}" + (f" — {label}" if label and label != value else ""))
     answer = ask("Use these? [Y/n] (n = choose each one; change them later: loadout configure prefs) ")
     return answer.strip().lower() in ("", "y", "yes")
 
 
-def ask_preferences(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup, quick: bool = False) -> None:
-    """quick (bootstrap's first run): offer the recommended answers on one screen before asking each."""
-    if quick and interactive and fill_defaults and _quick_defaults(ask):
+def ask_preferences(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup, quick: bool = False,
+                    given: dict | None = None) -> None:
+    """quick (bootstrap's first run): offer the recommended answers on one screen before asking each.
+    given: answers from --answers (id -> (value, text)), applied and not asked."""
+    if quick and interactive and fill_defaults and _quick_defaults(ask, given):
         # the same engine as a run without a terminal: unset answers take the default, auto mode is skipped
-        for line in preferences.ask_all(ask, fill_defaults=True, interactive=False, bk=bk):
+        for line in preferences.ask_all(ask, fill_defaults=True, interactive=False, bk=bk, given=given):
             (out.problem if out.PROBLEM.search(line) else out.detail)(line)
         out.detail("auto mode trust: not drafted (run `loadout configure prefs` to draft it)")
         return
     if interactive:
         print("\n-- Working preferences (enter = keep the current answer"
               + ("; new answers start at the recommended default)" if fill_defaults else ")"))
-    for line in preferences.ask_all(ask, fill_defaults=fill_defaults, interactive=interactive, bk=bk):
+    for line in preferences.ask_all(ask, fill_defaults=fill_defaults, interactive=interactive, bk=bk, given=given):
         print(f"  {line}")
     if not interactive and fill_defaults:
-        print("preferences: defaults applied (auto mode skipped); change them with `loadout configure prefs`")
+        applied = "your answers and the defaults applied" if given else "defaults applied"
+        print(f"preferences: {applied} (auto mode skipped); change them with `loadout configure prefs`")
 
 
 def prefs(ask: Ask, interactive: bool | None = None) -> int:

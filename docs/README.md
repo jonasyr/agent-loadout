@@ -19,6 +19,7 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 - [Write a personal profile](how-to/write-a-profile.md). Read this when you want your own preset of tools for a kind of project.
 - [Add a tool to the catalog](how-to/add-to-catalog.md). Read this when you want to propose a tool to the kit.
 - [Use loadout on Windows with WSL 2](how-to/wsl.md). Read this when you run loadout inside WSL.
+- [Set loadout up from inside an agent](how-to/install-with-an-agent.md). Read this (or give it to Codex or Claude Code) when you want your agent to install loadout for you.
 - [Troubleshooting](how-to/troubleshooting.md). Read this when a command fails or `loadout check` reports a problem.
 - [Run the skill evals](how-to/run-evals.md). Read this when you changed one of the plugin's skills.
 - [Uninstall loadout](how-to/uninstall.md). Read this when you want to remove loadout from a machine.

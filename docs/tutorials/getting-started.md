@@ -15,6 +15,8 @@ Optional, only if you turn on Claude Code's sandbox (Linux, WSL 2): `sudo apt-ge
 
 ## Step 1: Run bootstrap
 
+To let Codex or Claude Code run these steps for you, give it [Set loadout up from inside an agent](../how-to/install-with-an-agent.md).
+
 On Linux, macOS and WSL 2, run the one-liner. It clones the kit into `./agent-loadout` (to choose another folder, add `--dir PATH` after the `--`, for example `bash -s -- --install --dir ~/tools/agent-loadout`) and runs bootstrap:
 
 ```bash
@@ -74,7 +76,7 @@ Bootstrap is safe to re-run. It works in four steps, prints one status line for 
 
 Items you own that bootstrap removes or replaces go into a backup first. The end of the output names it and shows the undo command. See [Undo what loadout changed](../how-to/undo-and-restore.md).
 
-Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input) bootstrap skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates a starter personal layer with default preferences if none exists, merges settings, applies your MCP servers and sets up plugins. Pass `--yes` to apply adopt's default groups (remove, migrate, scope-down) plus moving plaintext secrets, without asking. The flags are in the [CLI reference](../reference/cli.md#loadout-bootstrap).
+Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input), or with `--yes`, bootstrap asks nothing. Without a terminal it also skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates the personal layer from `--personal` (a starter with default preferences, or your `--answers`, when not given), merges settings, applies your MCP servers and sets up plugins. Pass `--yes` to apply adopt's default groups (remove, migrate, scope-down) plus moving plaintext secrets, without asking. The flags are in the [CLI reference](../reference/cli.md#loadout-bootstrap).
 
 ## Log in
 
