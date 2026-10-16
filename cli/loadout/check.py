@@ -274,20 +274,36 @@ def _python() -> list[CheckResult]:
     return [CheckResult(f"Python {sys.version_info[0]}.{sys.version_info[1]}", True)]
 
 
-def _wsl() -> list[CheckResult]:
+def _wsl(cs=None) -> list[CheckResult]:
     version = wsl.detect()
     if version is None:
         return []
+    problems = wsl.problems(version, wsl.current_dir())
+    if _windows_only(cs):  # a Windows codex on PATH is the user's choice, not a problem
+        problems = [(p, f) for p, f in problems if not p.startswith("codex resolves")]
     return [CheckResult(f"WSL {version}", True),
-            *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in wsl.problems(version, wsl.current_dir()))]
+            *(CheckResult("WSL", False, problem, fix, "warn") for problem, fix in problems)]
 
 
-def _codex_side() -> list[CheckResult]:
-    """WSL only: the Windows Codex side, read-only (one loadout per side, ADR 0029)."""
-    from . import codex, targets
+def _wsl_codex_side():
+    """In WSL with Codex on: which side the user's Codex runs on (read once per check); else None."""
+    from . import targets
     if wsl.detect() is None or not targets.codex_enabled():
+        return None
+    return wsl.codex_side()
+
+
+def _windows_only(cs) -> bool:
+    """The user's only Codex is the Windows one: the WSL home is not theirs to check (ADR 0029)."""
+    return cs is not None and cs.side == "windows" and not cs.shared_home
+
+
+def _codex_side(cs=False) -> list[CheckResult]:
+    """WSL only: the Windows Codex side, read-only (one loadout per side, ADR 0029)."""
+    from . import codex
+    cs = _wsl_codex_side() if cs is False else cs
+    if cs is None:
         return []
-    cs = wsl.codex_side()
     out = []
     if cs.shared_home:
         out.append(CheckResult("Codex home", False, "CODEX_HOME points into Windows: one config serves both sides, "
@@ -305,8 +321,11 @@ def _codex_side() -> list[CheckResult]:
     return out
 
 
-def _codex() -> list[CheckResult]:
+def _codex(cs=None) -> list[CheckResult]:
     from . import codex
+    if _windows_only(cs) and codex.enabled():
+        return [CheckResult("Codex", True, "runs on Windows: loadout sets it up there with bootstrap.ps1 "
+                            "(docs/how-to/wsl.md#codex)")]
     return codex.checks()
 
 
@@ -333,9 +352,10 @@ def _legacy_state() -> list[CheckResult]:
 def run_checks() -> list[CheckResult]:
     from . import targets
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
-    return [*_python(), *_wsl(), *_codex_side(), *_legacy_state(),
+    cs = _wsl_codex_side()
+    return [*_python(), *_wsl(cs), *_codex_side(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
-            *_codex(), *_plugin_copies(), *(_connectors() if on else []), *_own(),
+            *_codex(cs), *_plugin_copies(), *(_connectors() if on else []), *_own(),
             *_binaries(), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
 
 

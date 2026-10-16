@@ -124,3 +124,30 @@ def test_init_with_two_profiles_notes_the_drive_once(wsl2, tmp_path, monkeypatch
     _empty_profile(monkeypatch)
     project.init(repo, ["web", "web"], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False)
     assert capsys.readouterr().out.count("Windows drive") == 1
+
+
+def test_a_program_that_cannot_start_is_a_result_not_a_crash(tmp_path, monkeypatch):
+    import os
+    import sys
+    from loadout import runner
+    if sys.platform.startswith("win"):
+        pytest.skip("POSIX exec")
+    bad = tmp_path / "bin" / "cmd.exe"
+    bad.parent.mkdir()
+    bad.write_bytes(b"MZ\x90\x00 not an ELF binary")  # what WSL sees when Windows interop is off
+    bad.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bad.parent) + os.pathsep + os.environ.get("PATH", ""))
+    res = runner.run(["cmd.exe", "/c", "echo", "%USERPROFILE%"])
+    assert res.returncode == 126 and "cmd.exe" in res.stderr
+
+
+def test_the_windows_side_choice_gets_one_line_not_a_wall_of_warnings(wsl2, tmp_path, monkeypatch):
+    targets.set_agents({"claude": False, "codex": True})
+    wsl2.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
+    home = tmp_path / "winhome"
+    (home / ".codex").mkdir(parents=True)
+    (home / ".codex" / "AGENTS.md").write_text(f"{codex.START}\nx\n{codex.END}\n")
+    monkeypatch.setattr(wsl, "codex_side", lambda **k: wsl.CodexSide("windows", ["x"], home, True, False))
+    rows = [r for r in check.run_checks() if "codex" in (r.name + r.detail).lower()]
+    assert [r.name for r in rows if not r.ok] == []
+    assert any(r.name == "Codex" and r.ok and "bootstrap.ps1" in r.detail for r in rows)

@@ -582,8 +582,12 @@ def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None) -> str | 
     if cs.side != "windows":
         return None
     if interactive:
-        if (ask("\n" + CODEX_SIDE_QUESTION).strip() or "1") != "1":
+        answer = ask("\n" + CODEX_SIDE_QUESTION).strip() or "1"
+        if answer == "2":
             return SKIPPED + WINDOWS_WAY
+        if answer != "1":
+            return (f"{SKIPPED}no such choice ({answer!r}). Re-run and answer 1 or 2, or pass "
+                    "--codex-side wsl or --codex-side windows")
         _offer_vscode(cs, ask, bk)
         return None
     return (f"Codex step skipped: {why}. Choose a side: --codex-side wsl (with --install, installs Codex in WSL), "

@@ -85,7 +85,7 @@ def windows_home() -> Path | None:
     if win and "%" not in win:
         conv = runner.run(["wslpath", "-u", win], timeout=15)
         path = Path(conv.stdout.strip()) if conv.ok and conv.stdout.strip() else None
-    if path is None and os.environ.get("USER"):
+    if (path is None or not path.is_dir()) and os.environ.get("USER"):  # cmd.exe garbles non-ASCII names
         path = drive / "Users" / os.environ["USER"]
     return path if path is not None and path.is_dir() else None
 
@@ -200,12 +200,36 @@ def set_vscode_wsl_mode(bk, home: Path) -> str:
     return f"VS Code: the Codex extension now runs Codex in WSL ({WIN_SETTING} = true; VS Code reloads)"
 
 
+_DATED = re.compile(r"\d{4}(/\d{2}){0,2}")
+
+
 def _recent(folder: Path, days: int = RECENT_DAYS) -> bool:
+    """A session file changed in the last `days` days. Codex files sessions under YYYY/MM/DD: walked newest
+    first, and an older dated folder ends the walk (one stat per file over drvfs is slow)."""
     cutoff = time.time() - days * 86400
-    try:
-        return any(f.stat().st_mtime >= cutoff for f in folder.rglob("*.jsonl"))
-    except OSError:
-        return False
+    limit = time.strftime("%Y/%m/%d", time.localtime(cutoff - 86400))
+
+    def walk(d: Path, rel: str) -> bool | None:
+        try:
+            entries = sorted(d.iterdir(), reverse=True)
+        except OSError:
+            return None
+        for e in entries:
+            r = f"{rel}/{e.name}" if rel else e.name
+            try:
+                is_dir = e.is_dir()
+                if not is_dir and e.suffix == ".jsonl" and e.stat().st_mtime >= cutoff:
+                    return True
+            except OSError:  # Codex on Windows can remove a file mid-walk
+                continue
+            if is_dir:
+                if _DATED.fullmatch(r) and r < limit[:len(r)]:
+                    return False
+                found = walk(e, r)
+                if found is not None:
+                    return found
+        return None
+    return walk(folder, "") is True
 
 
 def codex_side(mount: str | None = None) -> CodexSide:

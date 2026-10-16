@@ -210,3 +210,35 @@ def test_a_value_that_is_not_true_or_false_is_left_to_the_user(win):
     _vscode(win, text)
     line = wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
     assert wsl.MANUAL in line and wsl.vscode_settings(win).read_text() == text
+
+
+def test_a_name_cmd_exe_garbles_falls_back_to_the_user_name(tmp_path, fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setenv("USER", "u")
+    home = tmp_path / "mnt" / "c" / "Users" / "u"
+    home.mkdir(parents=True)
+    fake_runner.responses[("cmd.exe",)] = runner.Result(0, "C:\\Users\\J\ufffdrg\r\n", "")
+    fake_runner.responses[("wslpath",)] = runner.Result(0, str(tmp_path / "mnt" / "c" / "Users" / "J\ufffdrg") + "\n", "")
+    assert wsl.windows_home() == home
+
+
+def test_recent_sessions_are_found_newest_first(tmp_path):
+    root = tmp_path / "sessions"
+    for day in ("2025/01/01", "2026/10/15"):
+        f = root / day / "rollout.jsonl"
+        f.parent.mkdir(parents=True)
+        f.write_text("{}")
+    old = time.time() - 400 * 86400
+    os.utime(root / "2025/01/01/rollout.jsonl", (old, old))
+    seen = []
+    real_stat = type(root).stat
+
+    def spy(self, *a, **k):
+        if self.suffix == ".jsonl":
+            seen.append(self.parent.name)
+        return real_stat(self, *a, **k)
+    import pytest as _pytest
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(type(root), "stat", spy)
+        assert wsl._recent(root)
+    assert "01" not in seen and "15" in seen

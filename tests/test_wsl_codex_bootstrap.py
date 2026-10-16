@@ -183,3 +183,9 @@ def test_in_wsl_a_windows_codex_is_unavailable_for_every_caller(fake_home, fake_
     assert "the codex on PATH is the Windows one" in codex.unavailable()
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: None)
     assert codex.unavailable() is None
+
+
+def test_a_typo_in_the_side_question_stops_instead_of_choosing(fake_home, fake_runner, monkeypatch):
+    _side(monkeypatch, "windows")
+    line = bootstrap.codex_gate(None, ask=lambda q: "wsl", interactive=True)
+    assert "no such choice" in line and "--codex-side wsl" in line
