@@ -95,7 +95,7 @@ def _claude_logged_in() -> bool:
 PERSONAL_REPO_HOWTO = "docs/how-to/personal-repo.md"
 
 
-def still_to_do(key: str) -> list[str]:
+def still_to_do(key: str, codex_here: bool = True) -> list[str]:
     out = []
     if not runner.have("git"):
         out.append(f"install git: {MANUAL_STEPS['git'][key]}")
@@ -105,7 +105,7 @@ def still_to_do(key: str) -> list[str]:
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    out += codex.open_steps()
+    out += codex.open_steps() if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
@@ -766,7 +766,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                    "fail" if code else "warn" if bad else "ok")
         if bad:
             print(text)
-    todo = still_to_do(os_key())
+    here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
+    todo = still_to_do(os_key(), codex_here=here["codex"])
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
         print(f"\n{adopt.UNDO_LINE}")
     if path_changed and out.VERBOSE:
@@ -775,9 +776,11 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
-    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if chosen[a])
-    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if chosen[a])
-    if out.VERBOSE:
+    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if here[a])
+    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if here[a])
+    if not run:  # Codex only, and its step stopped: on Windows, or a CODEX_HOME shared with Windows
+        print(f"\nNext: {WINDOWS_WAY}." if WINDOWS_WAY in gate else "\nNext: settle Codex's side (see the Codex step above).")
+    elif out.VERBOSE:
         print(f"\nThen start {names}." if path_changed else f"\nRestart {names} to load plugins and rules.")
     else:
         print(f"\nNext: run {run} in a new terminal." if path_changed

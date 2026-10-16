@@ -298,6 +298,17 @@ def _windows_only(cs) -> bool:
     return cs is not None and cs.side == "windows" and not cs.shared_home
 
 
+def _without_codex(fn):
+    """Run a check as if Codex were off: with only the Windows Codex, the WSL Codex home is not the user's."""
+    from . import targets
+    old = targets.OVERRIDE
+    targets.OVERRIDE = {"claude": targets.claude_enabled(), "codex": False}
+    try:
+        return fn()
+    finally:
+        targets.OVERRIDE = old
+
+
 def _codex_side(cs=False) -> list[CheckResult]:
     """WSL only: the Windows Codex side, read-only (one loadout per side, ADR 0029)."""
     from . import codex
@@ -355,7 +366,7 @@ def run_checks() -> list[CheckResult]:
     cs = _wsl_codex_side()
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
-            *_codex(cs), *_plugin_copies(), *(_connectors() if on else []), *_own(),
+            *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
             *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
 
 

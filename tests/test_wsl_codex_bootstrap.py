@@ -237,3 +237,21 @@ def test_both_sides_without_a_terminal_names_the_manual_switch(fake_home, fake_r
     _side(monkeypatch, "both", windows_home=tmp_path, vscode_windows=True)
     assert bootstrap.codex_gate(None, ask=lambda q: pytest.fail(q), interactive=False) is None
     assert wsl.MANUAL in capsys.readouterr().out
+
+
+def test_the_windows_side_gets_no_wsl_codex_follow_ups(fake_home, fake_runner, monkeypatch, capsys):
+    _side(monkeypatch, "windows")
+    monkeypatch.setattr(codex, "open_steps", lambda: ["approve them in Codex: /hooks"])
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
+                        codex_side="windows")
+    out = capsys.readouterr().out
+    assert "/hooks" not in out and "Restart Codex" not in out and "bootstrap.ps1" in out.strip().splitlines()[-1]
+
+
+def test_both_agents_with_the_windows_side_name_only_claude_next(fake_home, fake_runner, monkeypatch, capsys):
+    _side(monkeypatch, "windows")
+    monkeypatch.setattr(codex, "open_steps", lambda: ["approve them in Codex: /hooks"])
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="claude,codex",
+                        codex_side="windows")
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert "Claude Code" in last and "Codex" not in last

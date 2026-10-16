@@ -160,3 +160,13 @@ def test_the_windows_side_choice_does_not_fail_binary_codex(wsl2, tmp_path, monk
     wsl2.paths["codex.exe"] = "/mnt/c/Program Files/codex/codex.exe"
     monkeypatch.setattr(wsl, "codex_side", lambda **k: wsl.CodexSide("windows", ["x"], None, False, False))
     assert not [r for r in check.run_checks() if r.name == "binary codex" and not r.ok]
+
+
+def test_the_windows_side_choice_leaves_the_wsl_codex_home_out_of_every_check(wsl2, monkeypatch):
+    targets.set_agents({"claude": True, "codex": True})
+    monkeypatch.setattr(wsl, "codex_side", lambda **k: wsl.CodexSide("windows", ["x"], None, False, False))
+    seen = {}
+    for name in ("_plugin_copies", "_own"):
+        monkeypatch.setattr(check, name, lambda name=name: [] if seen.setdefault(name, targets.codex_enabled()) is None else [])
+    check.run_checks()
+    assert seen == {"_plugin_copies": False, "_own": False} and targets.codex_enabled()
