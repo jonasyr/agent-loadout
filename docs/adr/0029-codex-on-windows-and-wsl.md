@@ -14,7 +14,7 @@ On a Windows machine with WSL there are two Codex homes. Codex on Windows reads 
 - In WSL, `wsl.codex_side()` reads which side the user's Codex runs on, read-only: a Linux `codex` on `PATH`, a Windows `codex` or `codex.exe` (one that resolves under `/mnt/<drive>/`), sessions from the last 30 days in the Windows Codex home, the VS Code setting and a `CODEX_HOME` under `/mnt/`.
 - Bootstrap in WSL does not set up the Linux home when the only Codex is the Windows one. In a terminal it asks which side to set up and, for WSL, offers to switch the VS Code setting (a text edit of that one key, after a yes, backup first). Without a terminal, or with `--yes`, `--codex-side wsl|windows` decides; without it, the Codex step stops with both ways. The side is settled before the prerequisites, so a Windows-side choice installs no Linux Codex.
 - A `CODEX_HOME` in WSL that points into Windows would be read by both sides. loadout warns and does not set it up without `--codex-side wsl`.
-- `loadout check` in WSL reports the Windows side read-only: a used Windows Codex home without loadout's block in its `AGENTS.md` is a warning that names `bootstrap.ps1`.
+- `loadout check` in WSL reports the Windows side read-only: a used Windows Codex home without loadout's block in its `AGENTS.md` is a warning that names `bootstrap.ps1`. With only the Windows Codex it does not check the WSL home: one `Codex` line points to `bootstrap.ps1`. A Windows `codex` on `PATH` is never used to set up the WSL home, also not by the daily sync or `configure`.
 
 ## Alternatives considered
 
@@ -25,7 +25,7 @@ On a Windows machine with WSL there are two Codex homes. Codex on Windows reads 
 ## Consequences
 
 - A user who runs Codex on both sides runs loadout on both sides. `loadout check` on the WSL side says when the Windows side is missing.
-- The VS Code edit keeps every other byte of `settings.json` (comments, trailing commas, CRLF). A copy is saved first, so `loadout restore` of that run puts it back. When the file is missing, is not an object, gives the key another value or cannot be written, loadout prints the manual step instead.
+- The VS Code edit keeps every other byte of `settings.json` (comments, trailing commas, CRLF). A copy is saved first, so `loadout restore` of that run puts it back. Without a `settings.json`, bootstrap does not ask. When the file is not an object, gives the key a value other than `true` or `false` or cannot be written, loadout prints the manual step instead.
 - Not covered yet: a Windows-side block older than the kit is not reported, and loadout on native Windows does not report the WSL side.
 
 ## In the code
