@@ -89,7 +89,7 @@ If you use Codex on Windows too, run loadout on both sides. `loadout check` in W
 
 ### A CODEX_HOME that points into Windows
 
-A WSL `CODEX_HOME` under `/mnt/<drive>/` is read by both sides, but the commands loadout writes fit only one. `loadout check` warns (`Codex home`), and bootstrap does not set it up unless you pass `--codex-side wsl`. Fix: unset `CODEX_HOME` in WSL and let each side keep its own home.
+A WSL `CODEX_HOME` under `/mnt/<drive>/` is read by both sides, but the commands loadout writes fit only one. `loadout check` warns (`Codex home`), and bootstrap does not set it up unless you pass `--codex-side wsl`. The daily sync and `loadout configure` never write it; after `--codex-side wsl`, re-run bootstrap with that flag to refresh it. Fix: unset `CODEX_HOME` in WSL and let each side keep its own home.
 
 ### Repos on /mnt/d
 
