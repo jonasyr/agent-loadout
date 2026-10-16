@@ -551,13 +551,6 @@ WINDOWS_WAY = ("Codex on Windows: run loadout's bootstrap.ps1 in PowerShell ther
 SKIPPED = "Codex step skipped: "
 
 
-def _windows_codex() -> str | None:
-    """In WSL, after the gate chose this side: the codex on PATH is still the Windows one."""
-    if wsl.detect() is None or not runner.have("codex") or not missing_binary("codex"):
-        return None
-    return f"the codex on PATH is the Windows one ({runner.which('codex')}): re-run with --install (installs Codex in WSL)"
-
-
 def codex_gate_needed(chosen: dict) -> bool:
     return bool(chosen.get("codex")) and wsl.detect() is not None
 
@@ -726,7 +719,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     if chosen["codex"]:
         _step("Codex")
-        problem = gate or _windows_codex() or codex.unavailable()
+        problem = gate or codex.unavailable()
         if problem:
             out.status("Codex", problem, "warn")
         else:

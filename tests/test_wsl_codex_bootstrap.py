@@ -173,3 +173,13 @@ def test_no_vscode_settings_means_no_question(fake_home, fake_runner, monkeypatc
     asked = []
     assert bootstrap.codex_gate(None, ask=lambda q: asked.append(q) or "1", interactive=True) is None
     assert len(asked) == 1
+
+
+def test_in_wsl_a_windows_codex_is_unavailable_for_every_caller(fake_home, fake_runner, monkeypatch):
+    from loadout import runner
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    fake_runner.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.170.0\n", "")
+    assert "the codex on PATH is the Windows one" in codex.unavailable()
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: None)
+    assert codex.unavailable() is None

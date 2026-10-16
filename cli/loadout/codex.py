@@ -35,6 +35,12 @@ def unavailable() -> str | None:
     """None when a usable codex is on PATH, else the reason in one line."""
     if not runner.have("codex"):
         return "codex not found on PATH"
+    from . import wsl
+    found = runner.which("codex")
+    if found and wsl.detect() is not None and wsl._on_windows_drive(Path(found), wsl.MOUNT):
+        # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
+        return (f"the codex on PATH is the Windows one ({found}): run bootstrap with --install to install Codex in "
+                "WSL, or set loadout up on Windows (docs/how-to/wsl.md#codex)")
     res = runner.run(["codex", "--version"], timeout=20)
     m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
     if not m:
