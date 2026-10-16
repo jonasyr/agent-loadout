@@ -163,3 +163,40 @@ def test_already_on_changes_nothing(win):
     _vscode(win, '{"chatgpt.runCodexInWindowsSubsystemForLinux": true}')
     bk = backup.Backup(description="t")
     assert "already" in wsl.set_vscode_wsl_mode(bk, win) and not bk.steps
+
+
+K = '"chatgpt.runCodexInWindowsSubsystemForLinux"'
+
+
+def test_a_failed_write_falls_back_to_the_manual_step(win, monkeypatch):
+    from loadout import jsonio
+    text = '{%s: false}' % K
+    _vscode(win, text)
+
+    def refuse(*a, **k):
+        raise PermissionError("in use by Code.exe")
+    monkeypatch.setattr(jsonio, "write_atomic_bytes", refuse)
+    line = wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert "could not change" in line and wsl.MANUAL in line and wsl.vscode_settings(win).read_text() == text
+
+
+def test_the_last_top_level_copy_wins_as_in_vscode(win):
+    _vscode(win, '{%s: true, %s: false}' % (K, K))
+    assert wsl.vscode_wsl_mode(win) is False
+    wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert wsl.vscode_settings(win).read_text() == '{%s: true, %s: true}' % (K, K)
+
+
+def test_a_nested_copy_is_neither_read_nor_edited(win):
+    text = '{"[python]": {%s: false}, "a": [{%s: false}]}' % (K, K)
+    _vscode(win, text)
+    assert wsl.vscode_wsl_mode(win) is None
+    wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert wsl.vscode_settings(win).read_text() == '{\n  %s: true,%s' % (K, text[1:])
+
+
+def test_a_value_that_is_not_true_or_false_is_left_to_the_user(win):
+    text = '{%s: null}' % K
+    _vscode(win, text)
+    line = wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert wsl.MANUAL in line and wsl.vscode_settings(win).read_text() == text

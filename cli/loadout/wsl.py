@@ -89,7 +89,8 @@ def vscode_settings(home: Path) -> Path:
     return home / "AppData" / "Roaming" / "Code" / "User" / "settings.json"
 
 
-_SETTING_RX = re.compile(r'"chatgpt\.runCodexInWindowsSubsystemForLinux"\s*:\s*(true|false)')
+_KEY_RX = re.compile(r'"chatgpt\.runCodexInWindowsSubsystemForLinux"\s*:\s*')
+_BOOL_RX = re.compile(r"(true|false)(?![\w$])")
 MANUAL = (f"in VS Code on Windows: Settings, search {WIN_SETTING}, tick it (VS Code reloads); then the Codex "
           "extension runs Codex in WSL")
 
@@ -126,27 +127,59 @@ def _read_settings(home: Path) -> str | None:
         return None
 
 
+def _string_depths(masked: str) -> dict[int, int]:
+    """Where each string starts in the comment-masked text, and how deep in {} and [] it is."""
+    depths, depth, i, n = {}, 0, 0, len(masked)
+    while i < n:
+        c = masked[i]
+        if c == '"':
+            depths[i] = depth
+            i += 1
+            while i < n and masked[i] != '"':
+                i += 2 if masked[i] == "\\" else 1
+        elif c in "{[":
+            depth += 1
+        elif c in "}]":
+            depth -= 1
+        i += 1
+    return depths
+
+
+def _top_setting(masked: str) -> tuple[int, int, bool | None] | None:
+    """The switch's value span and value at the top level; the last copy, as VS Code reads it. None when not set;
+    a value other than true/false is (start, start, None)."""
+    depths = _string_depths(masked)
+    keys = [m for m in _KEY_RX.finditer(masked) if depths.get(m.start()) == 1]
+    if not keys:
+        return None
+    start = keys[-1].end()
+    v = _BOOL_RX.match(masked, start)
+    return (start, start, None) if v is None else (start, v.end(), v.group(1) == "true")
+
+
 def vscode_wsl_mode(home: Path) -> bool | None:
     """The extension's WSL switch from VS Code's settings.json (JSONC: read by text); None when not set."""
     text = _read_settings(home)
-    m = None if text is None else _SETTING_RX.search(_mask_comments(text))
-    return None if m is None else m.group(1) == "true"
+    found = None if text is None else _top_setting(_mask_comments(text))
+    return None if found is None else found[2]
 
 
 def set_vscode_wsl_mode(bk, home: Path) -> str:
     """Set the extension's WSL switch by a text edit of VS Code's settings.json (JSONC), backup first;
     every other byte stays."""
-    from .jsonio import write_atomic_bytes
+    from . import jsonio
     path = vscode_settings(home)
     text = _read_settings(home)
     if text is None:
         return f"VS Code settings not found ({path}); {MANUAL}"
     masked = _mask_comments(text)
-    m = _SETTING_RX.search(masked)
-    if m is not None and m.group(1) == "true":
+    found = _top_setting(masked)
+    if found is not None and found[2] is True:
         return "VS Code already runs Codex in WSL"
-    if m is not None:
-        new = text[:m.start(1)] + "true" + text[m.end(1):]
+    if found is not None and found[2] is None:
+        return f"VS Code settings ({path}) give {WIN_SETTING} a value other than true or false; {MANUAL}"
+    if found is not None:
+        new = text[:found[0]] + "true" + text[found[1]:]
     else:
         brace = masked.find("{")
         if brace < 0:
@@ -154,8 +187,11 @@ def set_vscode_wsl_mode(bk, home: Path) -> str:
         nl = "\r\n" if "\r\n" in text else "\n"
         empty = masked[brace + 1:].lstrip().startswith("}")
         new = text[:brace + 1] + f'{nl}  "{WIN_SETTING}": true{nl if empty else ","}' + text[brace + 1:]
-    bk.save_copy(path, "VS Code settings.json before loadout switched the Codex extension to WSL")
-    write_atomic_bytes(path, new.encode("utf-8"))
+    try:
+        bk.save_copy(path, "VS Code settings.json before loadout switched the Codex extension to WSL")
+        jsonio.write_atomic_bytes(path, new.encode("utf-8"))
+    except OSError as exc:  # Windows can hold the file open; the switch is optional, the rest of setup goes on
+        return f"could not change VS Code settings ({exc}); {MANUAL}"
     return f"VS Code: the Codex extension now runs Codex in WSL ({WIN_SETTING} = true; VS Code reloads)"
 
 
