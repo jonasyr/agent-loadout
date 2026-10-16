@@ -27,10 +27,11 @@ def _private(path: Path, mode: int) -> None:
 
 
 class Backup:
-    def __init__(self, root: Path | None = None, description: str = ""):
+    def __init__(self, root: Path | None = None, description: str = "", repo: Path | None = None):
         self._fixed = root is not None
         self._root = root or paths.backups_root() / time.strftime("loadout-%Y%m%d-%H%M%S")
         self.description = description
+        self.repo = repo
         self.steps: list[dict] = []
 
     @property
@@ -116,6 +117,8 @@ class Backup:
         if not hasattr(self, "_created_at"):
             self._created_at = time.time()
         manifest = {"description": self.description, "created_at": self._created_at, "steps": self.steps}
+        if self.repo is not None:
+            manifest["repo"] = str(self.repo)
         save_json(self.root / "manifest.json", manifest, mode=PRIVATE_FILE)
 
 
