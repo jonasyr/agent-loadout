@@ -67,7 +67,7 @@ Bootstrap and `loadout check` in WSL look, read-only, at:
 
 - `codex` on `PATH`: a Linux one, or a Windows one under `/mnt/<drive>/` (such as the npm shim in `AppData/Roaming/npm`), and `codex.exe`;
 - sessions from the last 30 days in the Windows Codex home;
-- the VS Code setting `chatgpt.runCodexInWindowsSubsystemForLinux` in `AppData/Roaming/Code/User/settings.json` on Windows (`true`: the extension runs Codex in WSL; `false` or not set: on Windows);
+- the VS Code setting `chatgpt.runCodexInWindowsSubsystemForLinux` in `AppData/Roaming/Code/User/settings.json` on Windows (`true`: the extension runs Codex in WSL; `false`, or not set while the Codex extension is installed: on Windows). When you set up Codex in WSL but the extension still runs it on Windows, bootstrap offers the switch (without a terminal it prints the manual step);
 - `CODEX_HOME`, and whether it points into Windows.
 
 loadout finds the Windows home through `cmd.exe` and `wslpath`; without Windows interop it tries `/mnt/c/Users/$USER`.
