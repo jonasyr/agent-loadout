@@ -1,0 +1,90 @@
+"""Bootstrap in WSL never sets up a Codex home the active Codex does not read (spec PR B)."""
+import pytest
+
+from loadout import bootstrap, codex, wsl
+
+
+def _side(monkeypatch, side, **kw):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "codex_side", lambda **k: wsl.CodexSide(side, [f"reason {side}"], **kw))
+
+
+def test_outside_wsl_the_gate_is_open(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: None)
+    monkeypatch.setattr(wsl, "codex_side", lambda **k: pytest.fail("read the Codex side outside WSL"))
+    assert bootstrap.codex_gate(None, ask=lambda q: "", interactive=False) is None
+
+
+@pytest.mark.parametrize("side", ["wsl", "both", "none"])
+def test_a_wsl_side_is_set_up(fake_home, fake_runner, monkeypatch, side):
+    _side(monkeypatch, side)
+    assert bootstrap.codex_gate(None, ask=lambda q: "", interactive=False) is None
+
+
+def test_only_windows_without_a_terminal_stops_with_both_ways(fake_home, fake_runner, monkeypatch):
+    _side(monkeypatch, "windows")
+    line = bootstrap.codex_gate(None, ask=lambda q: "", interactive=False)
+    assert "--codex-side wsl" in line and "bootstrap.ps1" in line and "reason windows" in line
+
+
+def test_the_flag_decides(fake_home, fake_runner, monkeypatch):
+    _side(monkeypatch, "windows")
+    assert bootstrap.codex_gate("wsl", ask=lambda q: "", interactive=False) is None
+    assert "bootstrap.ps1" in bootstrap.codex_gate("windows", ask=lambda q: "", interactive=False)
+
+
+def test_the_question_decides(fake_home, fake_runner, monkeypatch):
+    _side(monkeypatch, "windows")
+    assert bootstrap.codex_gate(None, ask=lambda q: "1", interactive=True) is None
+    assert "bootstrap.ps1" in bootstrap.codex_gate(None, ask=lambda q: "2", interactive=True)
+
+
+def test_a_shared_codex_home_needs_the_flag(fake_home, fake_runner, monkeypatch):
+    _side(monkeypatch, "wsl", shared_home=True)
+    assert "CODEX_HOME" in bootstrap.codex_gate(None, ask=lambda q: "", interactive=True)
+    assert bootstrap.codex_gate("wsl", ask=lambda q: "", interactive=True) is None
+
+
+def test_a_windows_codex_on_path_still_gets_the_agent_question(fake_home, fake_runner, monkeypatch):
+    bootstrap.paths.personal_root().mkdir(parents=True)  # an existing layer that never chose
+    fake_runner.missing.add("codex")
+    fake_runner.paths["codex.exe"] = "/mnt/c/Program Files/codex/codex.exe"
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    asked = []
+    bootstrap._choose_agents(lambda q: asked.append(q) or "2", interactive=True, flag=None)
+    assert asked
+
+
+def test_codex_off_never_needs_the_gate(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    assert bootstrap.codex_gate_needed({"claude": True, "codex": False}) is False
+    assert bootstrap.codex_gate_needed({"claude": False, "codex": True}) is True
+
+
+def test_codex_off_bootstrap_never_reads_the_side(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "codex_side", lambda **k: pytest.fail("read the Codex side with Codex off"))
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="claude")
+
+
+def test_windows_only_bootstrap_skips_the_codex_step_and_keeps_going(fake_home, fake_runner, monkeypatch, capsys):
+    _side(monkeypatch, "windows")
+    monkeypatch.setattr(codex, "apply_all", lambda *a, **k: pytest.fail("set up the WSL Codex home"))
+    rc = bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex")
+    out = capsys.readouterr().out
+    assert "--codex-side wsl" in out and "bootstrap.ps1" in out
+    assert rc == bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False,
+                                     agents="codex", codex_side="windows")
+
+
+def test_install_replaces_a_windows_shim_with_a_linux_codex(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    fake_runner.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
+    assert bootstrap.missing_binary("codex") is True
+    fake_runner.paths["codex"] = "/home/u/.local/share/mise/shims/codex"
+    assert bootstrap.missing_binary("codex") is False
+
+
+def test_outside_wsl_a_codex_on_path_is_there(fake_home, fake_runner):
+    fake_runner.paths["codex"] = "/mnt/c/Users/u/AppData/Roaming/npm/codex"
+    assert bootstrap.missing_binary("codex") is False

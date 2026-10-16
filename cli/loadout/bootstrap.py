@@ -159,6 +159,16 @@ def _tail(res: runner.Result, limit: int = 400) -> str:
     return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
 
 
+def missing_binary(name: str) -> bool:
+    """Not on PATH, or (in WSL) a codex that resolves to the Windows one: --install then installs a Linux Codex."""
+    if not runner.have(name):
+        return True
+    if name != "codex" or wsl.detect() is None:
+        return False
+    found = runner.which(name)
+    return bool(found) and wsl._on_windows_drive(Path(found), "/mnt/")
+
+
 def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None) -> list[str]:
     """notes: collects the missing and failed lines for the caller to print under its status line (else printed now).
     Progress lines ("installing …") always print at once: an install can take minutes."""
@@ -176,13 +186,13 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
     prepend_tool_dirs()
     entries = catalog.install_order(catalog.binaries())
     # helpers are wanted only when a missing, wanted binary needs them
-    needed = {d for e in entries if not e.get("helper") and _wanted(e) and not runner.have(e["id"])
+    needed = {d for e in entries if not e.get("helper") and _wanted(e) and missing_binary(e["id"])
               for d in e.get("needs", [])}
     missing, failed = [], set()
     for entry in entries:
         name = entry["id"]
         wanted = name in needed if entry.get("helper") else _wanted(entry)
-        if not wanted or runner.have(name):
+        if not wanted or not missing_binary(name):
             continue
         cmds = catalog.platform_cmds(entry, "install")
         blocked = [d for d in entry.get("needs", []) if d in failed]
@@ -209,9 +219,9 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
                 runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals
                 prepend_tool_dirs()
-            if installed is not None and runner.have(name) and not entry.get("helper"):
+            if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
-        if not runner.have(name):
+        if missing_binary(name):
             failed.add(name)
             if not entry.get("helper"):
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
@@ -525,6 +535,40 @@ def choose_agents(ask, interactive: bool, flag) -> dict:
     return _choose_agents(ask, interactive, flag)[0]
 
 
+def _codex_seen() -> bool:
+    """A Codex on PATH, or (in WSL) a Windows codex.exe: worth asking which agents to set up."""
+    return runner.have("codex") or (wsl.detect() is not None and bool(runner.which("codex.exe")))
+
+
+CODEX_SIDE_QUESTION = ("Your Codex runs on Windows. Set loadout up for:  1) Codex in WSL (installs Codex here; switch the "
+                       "VS Code extension to WSL)  2) Codex on Windows (run bootstrap.ps1 in PowerShell)  [1] ")
+WINDOWS_WAY = ("Codex on Windows: run loadout's bootstrap.ps1 in PowerShell there, with the same personal layer "
+               "(docs/how-to/wsl.md#codex)")
+
+
+def codex_gate_needed(chosen: dict) -> bool:
+    return bool(chosen.get("codex")) and wsl.detect() is not None
+
+
+def codex_gate(flag, ask, interactive: bool) -> str | None:
+    """In WSL: None to set up this side's Codex, else the line that explains why not (one loadout per side, ADR 0029)."""
+    if wsl.detect() is None or flag == "wsl":
+        return None
+    if flag == "windows":
+        return WINDOWS_WAY
+    cs = wsl.codex_side()
+    why = "; ".join(cs.reasons)
+    if cs.shared_home:
+        return (f"Codex step skipped: {why}. One config would be read by both sides, but its commands fit only one. "
+                "Unset CODEX_HOME in WSL, or pass --codex-side wsl to set it up anyway")
+    if cs.side != "windows":
+        return None
+    if interactive:
+        return None if (ask("\n" + CODEX_SIDE_QUESTION).strip() or "1") == "1" else WINDOWS_WAY
+    return (f"Codex step skipped: {why}. Choose a side: --codex-side wsl (with --install, installs Codex in WSL), "
+            f"or {WINDOWS_WAY}")
+
+
 def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -> tuple[dict, bool]:
     """(choice, store it): --agents first, then a decided personal layer, then the question (interactive), else
     Claude Code as before. Only an explicit choice is stored: writing the default into an existing git-backed
@@ -537,9 +581,9 @@ def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -
         return stored, False
     if existing is None:
         existing = paths.personal_root().exists()
-    if not interactive or (existing and not runner.have("codex")):
+    if not interactive or (existing and not _codex_seen()):
         return {"claude": True, "codex": False}, False  # as before this change: no new question without Codex
-    default = "3" if runner.have("codex") else "1"
+    default = "3" if _codex_seen() else "1"
     answer = ask("\n" + AGENT_QUESTION.format(default=default)).strip() or default
     if answer not in _ANSWERS:
         print(f"no such choice ({answer!r}); using {default} (change it later: loadout configure set target)")
@@ -548,16 +592,16 @@ def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
-              agents: str | None = None) -> int:
+              agents: str | None = None, codex_side: str | None = None) -> int:
     from . import targets
     try:
-        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents)
+        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side)
     finally:
         targets.OVERRIDE = None
 
 
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
-               agents: str | None) -> int:
+               agents: str | None, codex_side: str | None = None) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -651,7 +695,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
     if chosen["codex"]:
         _step("Codex")
-        problem = codex.unavailable()
+        gate = codex_gate(codex_side, ask, interactive and not yes) if codex_gate_needed(chosen) else None
+        problem = gate or codex.unavailable()
         if problem:
             out.status("Codex", problem, "warn")
         else:

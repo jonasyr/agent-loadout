@@ -144,11 +144,13 @@ def _register_bootstrap(sub):
     p.add_argument("--no-adopt", action="store_true", help="skip reviewing the existing setup")
     p.add_argument("--verbose", action="store_true", help="print every detail of every step")
     p.add_argument("--agents", help="claude, codex or claude,codex (default: ask; Claude Code without a terminal)")
+    p.add_argument("--codex-side", choices=("wsl", "windows"),
+                   help="in WSL: set up Codex here (wsl) or leave it to bootstrap.ps1 on Windows (windows)")
 
     def run(a):
         if a.verbose:
             out.VERBOSE = True
-        return bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask, agents=a.agents)
+        return bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask, agents=a.agents, codex_side=a.codex_side)
 
     p.set_defaults(func=run)
 
