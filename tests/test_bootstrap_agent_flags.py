@@ -105,5 +105,6 @@ def test_personal_is_stripped(fake_home, fake_runner):
 
 
 def test_a_token_in_the_clone_url_is_not_printed(fake_home, fake_runner, capsys):
-    _run(personal="https://user:ghp_abcdefghijklmnopqrstuvwxyz0123456789@github.com/me/p.git")
-    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in capsys.readouterr().out
+    token = "ghp" + "_" + "a1b2c3d4e5" * 4  # built at runtime: no token-shaped text in the repo
+    _run(personal=f"https://user:{token}@github.com/me/p.git")
+    assert token not in capsys.readouterr().out
