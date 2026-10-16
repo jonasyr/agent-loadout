@@ -15,6 +15,8 @@ Optional, only if you turn on Claude Code's sandbox (Linux, WSL 2): `sudo apt-ge
 
 ## Step 1: Run bootstrap
 
+To let Codex or Claude Code run these steps for you, give it [Set loadout up from inside an agent](../how-to/install-with-an-agent.md).
+
 On Linux, macOS and WSL 2, run the one-liner. It clones the kit into `./agent-loadout` (to choose another folder, add `--dir PATH` after the `--`, for example `bash -s -- --install --dir ~/tools/agent-loadout`) and runs bootstrap:
 
 ```bash

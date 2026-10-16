@@ -38,7 +38,7 @@ Set up or repair this machine. Safe to re-run.
 
 ```
 loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [--agents LIST]
-                  [--codex-side wsl|windows]
+                  [--codex-side wsl|windows] [--personal new|URL] [--answers FILE]
 ```
 
 | Flag | Meaning |
@@ -49,11 +49,13 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [-
 | `--no-adopt` | Skip reviewing the existing setup. |
 | `--agents LIST` | `claude`, `codex` or `claude,codex`: the coding agents to set up, without asking. Stored in `<personal>/targets.json`; it wins over the personal layer's choice. |
 | `--codex-side wsl\|windows` | In WSL, with Codex on: set up the WSL Codex home (`wsl`) or leave Codex to `bootstrap.ps1` on Windows (`windows`), without asking. Needed without a terminal, or with `--yes`, when the only Codex is the Windows one, and always when `CODEX_HOME` points into Windows; otherwise the Codex step stops. Ignored outside WSL. See [Codex in WSL](../how-to/wsl.md#codex). |
+| `--personal new\|URL` | The personal layer without asking: `new` creates a starter layer, a git URL is cloned. Used only when no personal layer exists yet; otherwise bootstrap says so and keeps the one there. |
+| `--answers FILE` | A JSON file with the starter layer's answers: `about` (`name`, `role`, `languages`, `preferences`) and `preferences` (ids and values as in [Preferences format](preferences-format.md), free text as `other:<text>`). Checked before anything changes: an unknown key or value stops bootstrap. Used only for a new personal layer. Format and example: [Set loadout up from inside an agent](../how-to/install-with-an-agent.md#3-write-the-answers-file). |
 | `--verbose` | Print every detail of every step (links, commands, the full check list, the backup path). |
 
 By default bootstrap prints one status line per step (`✓`, `!` for a warning, `✗` for a failure), the adopt questions, and at the end the health-check count, `Undo any time: loadout restore --list` when it made a backup, and the next step. Problem lines (a failed install or plugin, a check that failed) are always printed in full. Without a terminal, colour is off (also with `NO_COLOR` or `TERM=dumb`, see [Environment variables](#environment-variables)); where the console cannot show `✓`, ASCII stands in.
 
-Without a terminal and without `--yes`, bootstrap skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates a starter personal layer with default preferences if none exists, merges settings, applies personal MCP servers and sets up plugins.
+Without a terminal, or with `--yes`, bootstrap asks nothing and never waits for input: the personal layer comes from `--personal` (else a starter layer), its answers from `--answers` (else the defaults), the agents from `--agents` (else the personal layer's choice, else Claude Code). Without a terminal and without `--yes`, bootstrap also skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, merges settings, applies personal MCP servers and sets up plugins.
 
 `--install` runs the catalog's install commands without a further prompt, including `curl … | sh` installers. See [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
 
