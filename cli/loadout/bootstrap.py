@@ -254,9 +254,6 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
     interactive = ui.is_interactive() if interactive is None else interactive
     root = paths.personal_root()
     if root.exists():
-        if personal is not None or given is not None:
-            return (f"personal layer: {root} exists; --personal/--answers apply only to a new one "
-                    "(change answers with loadout configure prefs)"), True
         return f"personal layer: {root}", True
     if personal is not None:
         url = "" if personal == "new" else personal
@@ -271,7 +268,7 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
         res = runner.run(["git", "clone", "--", url, str(root)], timeout=300,
                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         if res.ok:
-            return f"cloned {url} -> {root}", True
+            return f"cloned {redact(url)} -> {root}", True
         access = ("log in with `gh auth login`, then `gh auth setup-git`, or use an SSH URL" if runner.have("gh")
                   else "use an SSH URL, or install gh (bootstrap --install) and log in")
         return (f"clone failed: {redact(res.stderr.strip())}\n"
@@ -656,7 +653,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         interactive = ui.is_interactive()
     if agents is not None:
         targets.parse_agents(agents)  # a typo in --agents stops here, before any question or clone (ValueError)
-    if personal is not None and (not personal.strip() or personal.startswith("-")):
+    personal = personal.strip() if personal is not None else None
+    if personal is not None and (not personal or personal.startswith("-")):
         raise ValueError("--personal: give `new` or the git URL of your personal layer")
     from . import answers as answers_mod
     given = answers_mod.load(answers) if answers is not None else None  # a bad file stops here too
@@ -685,10 +683,14 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     message, personal_ok = ensure_personal(ask, bk, interactive, before_starter=decide, personal=personal,
                                            given=given, ask_missing=interactive and not yes)
     starter = fresh and personal_ok and paths.personal_root().exists() and not (paths.personal_root() / ".git").exists()
+    unused = (["--personal"] if personal is not None and not fresh else []) + (["--answers"] if given is not None and not starter else [])
     where = _tilde(paths.personal_root())
     if personal_ok:
         _report("Personal layer", f"created {where}" if starter else f"cloned into {where}" if fresh else f"using {where}",
                 [message])
+        if unused:  # shown in calm mode too: an agent that passed them must see they did nothing
+            out.problem(f"{' and '.join(unused)}: not used; they apply only to a new one, and this personal layer "
+                        "keeps its own answers (change them with loadout configure prefs)")
     else:
         out.status("Personal layer", "clone failed", "fail")
         out.problem(message)

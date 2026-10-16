@@ -82,3 +82,28 @@ def test_the_flags_reach_bootstrap_from_the_cli(fake_home, fake_runner, monkeypa
     monkeypatch.setattr(bootstrap, "bootstrap", lambda *a, **k: seen.update(k) or 0)
     main.main(["bootstrap", "--personal", "new", "--answers", "a.json"])
     assert seen["personal"] == "new" and seen["answers"] == "a.json"
+
+
+def test_unused_flags_are_named_in_calm_mode_too(fake_home, fake_runner, tmp_path, capsys, monkeypatch):
+    from loadout import out
+    monkeypatch.setattr(out, "VERBOSE", False)
+    paths.personal_root().mkdir(parents=True)
+    _run(personal="new", answers=_answers(tmp_path, {"about": {"name": "Jonas"}}))
+    assert "apply only to a new one" in capsys.readouterr().out
+
+
+def test_answers_with_a_cloned_layer_are_named_as_unused(fake_home, fake_runner, tmp_path, capsys, monkeypatch):
+    from loadout import out
+    monkeypatch.setattr(out, "VERBOSE", False)
+    _run(personal="git@github.com:me/personal.git", answers=_answers(tmp_path, {"about": {"name": "Jonas"}}))
+    assert "--answers" in capsys.readouterr().out
+
+
+def test_personal_is_stripped(fake_home, fake_runner):
+    _run(personal="  new ")
+    assert not [c for c in fake_runner.calls if c[:2] == ["git", "clone"]]
+
+
+def test_a_token_in_the_clone_url_is_not_printed(fake_home, fake_runner, capsys):
+    _run(personal="https://user:ghp_abcdefghijklmnopqrstuvwxyz0123456789@github.com/me/p.git")
+    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in capsys.readouterr().out
