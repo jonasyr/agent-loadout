@@ -21,6 +21,10 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 | No session notices, or the daily sync never runs | `loadout` must be on the `PATH` that the agent's hooks see (Claude Code, or Codex after you approved the hooks). The plugin's hook runner exits 0 silently when the command is missing (`plugins/loadout/hooks/run.sh`). Add `~/.local/bin` to the `PATH` of the environment the agent starts from, then restart it. |
 | A plugin or MCP server is missing in Claude Code | Restart Claude Code (for Codex, see [below](#codex)). Then `loadout check` lists what is missing and how to fix it. Enabled plugins install at the next Claude Code start. |
 | loadout skills or hooks are missing in a session that started before an update | Run `/reload-plugins` (loadout reminds you once per session), or start a new session. |
+| `Personal layer  clone failed` | Bootstrap could not clone your personal repo; the next line names git's error and how to get access (`gh auth login` and `gh auth setup-git`, or an SSH URL). Fix it and run bootstrap again with the same `--personal URL`: nothing was created in its place. |
+| `--personal: give \`new\` or the git URL of your personal layer` | The value after `--personal` is empty or starts with `-` (a flag that lost its value). Pass `--personal new` or the URL. Nothing changed. |
+| A line that starts with `--answers:` | The answers file has a problem; the line names the key. Fix it and run bootstrap again: it stops before it changes anything. The format is in [Set loadout up from inside an agent](install-with-an-agent.md#3-show-the-answers-file). For `looks like a secret`, remove the token or password from the file: secrets go in `secrets.env`, never in the personal layer. |
+| `--personal and --answers: not used` (or one of them) | A personal layer already exists, or bootstrap cloned yours, so there was nothing new to create. Your layer keeps its own answers; change them with `loadout configure prefs`. |
 
 ## Settings
 

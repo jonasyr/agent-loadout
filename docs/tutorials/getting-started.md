@@ -1,6 +1,6 @@
 # Getting started
 
-This tutorial takes you from nothing to a first session in Claude Code or Codex with loadout. It follows one path. For details on any step, follow the links to the how-to and reference pages.
+This tutorial takes you from nothing to a first session in Claude Code or Codex with loadout. It follows one path. For details on any step, follow the links to the how-to and reference pages. For Windows, WSL, Codex on the other side, or a machine or repo that already has parts set up, first find your path in [Find the path for your setup](../how-to/setups.md).
 
 ## Before you start
 

@@ -54,6 +54,8 @@ cd agent-loadout
 
 Keep the folder where it is: the installed links point into it.
 
+On Windows, in WSL, with Codex, or on a machine that already has parts set up: [Find the path for your setup](docs/how-to/setups.md).
+
 **Or let your agent do it.** Paste this into Codex or Claude Code; it asks you a few questions, shows the command and runs it after your yes ([how](docs/how-to/install-with-an-agent.md)):
 
 ```text
