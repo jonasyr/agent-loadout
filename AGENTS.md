@@ -43,7 +43,7 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 - `catalog.py`, `versions.py`, `pkgmgr.py` tool knowledge, versions, binary updates
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
 - `preferences.py`, `configure.py` structured preferences and the wizard
-- `own.py` your own tools; `new_skill.py` `configure new skill` (a SKILL.md stub in one of the three scopes); `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks
+- `own.py` your own tools; `new_skill.py` `configure new skill` (a SKILL.md stub in one of the three scopes); `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks, which side Codex runs on, the VS Code switch
 - `targets.py` which agents are on (`targets.json` in the personal layer); `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_hooks.py` Serena's hooks as owned entries in `~/.codex/hooks.json`; `codex_project.py` the Codex side of `init` and `profile`
 - `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker; `usage.py` `loadout usage` (tool-family counts from local transcripts)
 
