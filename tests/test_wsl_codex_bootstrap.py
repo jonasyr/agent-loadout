@@ -255,3 +255,13 @@ def test_both_agents_with_the_windows_side_name_only_claude_next(fake_home, fake
                         codex_side="windows")
     last = capsys.readouterr().out.strip().splitlines()[-1]
     assert "Claude Code" in last and "Codex" not in last
+
+
+def test_choosing_windows_against_the_detection_reaches_the_final_check(fake_home, fake_runner, monkeypatch, capsys):
+    _side(monkeypatch, "none")
+    fake_runner.missing.add("codex")
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
+                        codex_side="windows")
+    out = capsys.readouterr().out
+    assert not [line for line in out.splitlines() if "binary codex" in line]
+    assert any(line.startswith("[ok  ] Codex") for line in out.splitlines())

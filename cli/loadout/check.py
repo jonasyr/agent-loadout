@@ -360,10 +360,14 @@ def _legacy_state() -> list[CheckResult]:
                         f"compare with {paths.state_dir()} and delete them by hand", "warn")]
 
 
-def run_checks() -> list[CheckResult]:
+def run_checks(codex_windows: bool = False) -> list[CheckResult]:
+    """codex_windows: bootstrap chose the Windows side for Codex in this run, whatever the detection says."""
     from . import targets
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
     cs = _wsl_codex_side()
+    if codex_windows and cs is not None:
+        from dataclasses import replace
+        cs = replace(cs, side="windows", shared_home=False)
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),

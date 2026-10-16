@@ -755,7 +755,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     if not bk.empty:
         out.detail(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
-    results = check.run_checks()
+    results = check.run_checks(codex_windows=True) if gate and WINDOWS_WAY in gate else check.run_checks()
     if out.VERBOSE:
         text, code = check.format_results(results)
         print(text)
