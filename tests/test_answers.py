@@ -128,3 +128,13 @@ def test_the_one_screen_summary_shows_the_given_answers(fake_home, capsys):
                               quick=True, given={"answer_language": ("german", "")})
     import re
     assert re.search(r"answer_language\s+german", capsys.readouterr().out.split("Working preferences")[1])
+
+
+def test_the_one_screen_summary_shows_a_given_free_text_answer(fake_home, capsys):
+    paths.personal_root().mkdir(parents=True)
+    (paths.personal_root() / "settings.json").write_text("{}\n")
+    configure._about_you(lambda q: "", backup.Backup(description="t"), ask_missing=False)
+    configure.ask_preferences(lambda q: "", fill_defaults=True, interactive=True, bk=backup.Backup(description="t"),
+                              quick=True, given={"answer_language": ("other", "French")})
+    line = next(l for l in capsys.readouterr().out.split("Working preferences")[1].splitlines() if "answer_language" in l)
+    assert "French" in line

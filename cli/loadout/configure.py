@@ -252,8 +252,8 @@ def _quick_defaults(ask: Ask, given: dict | None = None) -> bool:
     width = max(len(p["id"]) for p in shown)
     print("\n-- Working preferences (recommended)")
     for p in shown:
-        value = given[p["id"]][0] if p["id"] in given else p["default"]
-        label = next((o["label"] for o in p["options"] if o["value"] == value), "")
+        value, text = given[p["id"]] if p["id"] in given else (p["default"], "")
+        label = text or next((o["label"] for o in p["options"] if o["value"] == value), "")
         print(f"  {p['id'].ljust(width)}  {value}" + (f" — {label}" if label and label != value else ""))
     answer = ask("Use these? [Y/n] (n = choose each one; change them later: loadout configure prefs) ")
     return answer.strip().lower() in ("", "y", "yes")
