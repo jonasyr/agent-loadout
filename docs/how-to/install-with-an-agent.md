@@ -42,9 +42,9 @@ Ask these, one at a time:
 4. **About them** (only with `--personal new`; a cloned layer has its own): their name, their role, their main languages, and anything else about how they like to work. Every answer is optional.
 5. **Working preferences** (only with `--personal new`): show the recommended answers from the table in [Preferences format](../reference/preferences-format.md) and ask whether to keep them or change some. `automode_trust` is not set here; the user can run `loadout configure prefs` later.
 
-## 3. Write the answers file
+## 3. Show the answers file
 
-Only with `--personal new`. Write a JSON file to an absolute path outside the kit, for example `/tmp/loadout-answers.json`, and show it to the user:
+Only with `--personal new`. Show the user the JSON you will write; write nothing yet:
 
 ```json
 {
@@ -55,13 +55,15 @@ Only with `--personal new`. Write a JSON file to an absolute path outside the ki
 
 `about` takes `name`, `role`, `languages` and `preferences`. `preferences` takes the ids and values from the table in [Preferences format](../reference/preferences-format.md); a free-text option is written as `other:<text>`, for example `"answer_language": "other:French"`. Leave out what the user did not answer: loadout uses the default. Bootstrap refuses an unknown key or value before it changes anything.
 
+After the yes in step 4, run `mktemp`, write the JSON to the new, empty file whose path it prints (an absolute path, outside the kit), and pass that path as `--answers`. A fresh file overwrites nothing.
+
 ## 4. Show the command, then run it after a yes
 
 A machine without loadout, with a new personal layer:
 
 ```bash
 git clone https://github.com/jonasyr/agent-loadout ~/agent-loadout
-~/agent-loadout/bootstrap.sh --install --agents <list> --personal new --answers /tmp/loadout-answers.json </dev/null
+~/agent-loadout/bootstrap.sh --install --agents <list> --personal new --answers <the mktemp path> </dev/null
 ```
 
 With the user's own personal layer, write `--personal <URL>` and leave out `--answers`.
@@ -69,7 +71,7 @@ With the user's own personal layer, write `--personal <URL>` and leave out `--an
 A machine with loadout but no personal layer yet (for example after a failed clone): the same flags, with `loadout bootstrap` instead of the script:
 
 ```bash
-loadout bootstrap --install --agents <list> --personal <new|URL> [--answers /tmp/loadout-answers.json] </dev/null
+loadout bootstrap --install --agents <list> --personal <new|URL> [--answers <the mktemp path>] </dev/null
 ```
 
 A machine with loadout and a personal layer (repair):
@@ -85,7 +87,7 @@ Before the user answers, say two things:
 - `--install` runs the installers for missing tools without a further prompt ([What runs when you ask](../explanation/security-and-trust.md#what-runs-when-you-ask)).
 - You do not add `--yes`: it would also apply the review of their existing setup without showing it. You review it in step 5 instead.
 
-Run the command after the yes. It takes a few minutes. Show the user its summary lines.
+Run the command after the yes (with `--answers`, write the file first, as in step 3). It takes a few minutes. Show the user its summary lines.
 
 ## 5. Review the existing setup
 
