@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from loadout import runner, wsl
+from loadout import backup, runner, wsl
 
 
 @pytest.fixture
@@ -94,3 +94,72 @@ def test_windows_home_from_cmd_and_wslpath(tmp_path, fake_home, fake_runner):
     fake_runner.responses[("cmd.exe",)] = runner.Result(0, "C:\\Users\\u\r\n", "")
     fake_runner.responses[("wslpath",)] = runner.Result(0, f"{target}\n", "")
     assert wsl.windows_home() == target
+
+
+def test_the_setting_is_flipped_by_a_text_edit(win):
+    text = '{\n  // keep me\n  "editor.tabSize": 2,\n  "chatgpt.runCodexInWindowsSubsystemForLinux": false,\n}\n'
+    _vscode(win, text)
+    bk = backup.Backup(description="t")
+    line = wsl.set_vscode_wsl_mode(bk, win)
+    assert wsl.vscode_settings(win).read_text() == text.replace(": false,", ": true,")
+    assert "VS Code" in line and bk.steps
+
+
+def test_the_setting_is_added_when_missing(win):
+    _vscode(win, '{\n  "editor.tabSize": 2\n}\n')
+    wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    text = wsl.vscode_settings(win).read_text()
+    assert wsl.vscode_wsl_mode(win) is True and '"editor.tabSize": 2' in text
+
+
+def test_no_settings_file_gives_the_manual_step(win):
+    line = wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert "Settings" in line and not wsl.vscode_settings(win).exists()
+
+
+def test_crlf_and_every_other_byte_stay(win):
+    raw = b'\xef\xbb\xbf{\r\n  "a": 1,\r\n  "chatgpt.runCodexInWindowsSubsystemForLinux": false\r\n}\r\n'
+    p = wsl.vscode_settings(win)
+    p.parent.mkdir(parents=True)
+    p.write_bytes(raw)
+    wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert p.read_bytes() == raw.replace(b": false", b": true")
+
+
+def test_an_added_line_uses_the_files_line_ending(win):
+    p = wsl.vscode_settings(win)
+    p.parent.mkdir(parents=True)
+    p.write_bytes(b'{\r\n  "a": 1\r\n}\r\n')
+    wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert p.read_bytes() == b'{\r\n  "chatgpt.runCodexInWindowsSubsystemForLinux": true,\r\n  "a": 1\r\n}\r\n'
+
+
+def test_an_empty_object_gets_no_trailing_comma(win):
+    _vscode(win, "{}")
+    wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert wsl.vscode_settings(win).read_text() == '{\n  "chatgpt.runCodexInWindowsSubsystemForLinux": true\n}'
+
+
+def test_a_commented_out_setting_is_neither_read_nor_edited(win):
+    text = ('// { "chatgpt.runCodexInWindowsSubsystemForLinux": true }\n{\n'
+            '  /* "chatgpt.runCodexInWindowsSubsystemForLinux": true */\n'
+            '  "chatgpt.runCodexInWindowsSubsystemForLinux": false\n}\n')
+    _vscode(win, text)
+    assert wsl.vscode_wsl_mode(win) is False
+    wsl.set_vscode_wsl_mode(backup.Backup(description="t"), win)
+    assert wsl.vscode_settings(win).read_text() == text[: text.rindex("false")] + "true\n}\n"
+
+
+def test_restore_puts_the_old_settings_back(win):
+    text = '{"chatgpt.runCodexInWindowsSubsystemForLinux": false}'
+    _vscode(win, text)
+    bk = backup.Backup(description="t")
+    wsl.set_vscode_wsl_mode(bk, win)
+    backup.restore(bk.root)
+    assert wsl.vscode_settings(win).read_text() == text
+
+
+def test_already_on_changes_nothing(win):
+    _vscode(win, '{"chatgpt.runCodexInWindowsSubsystemForLinux": true}')
+    bk = backup.Backup(description="t")
+    assert "already" in wsl.set_vscode_wsl_mode(bk, win) and not bk.steps

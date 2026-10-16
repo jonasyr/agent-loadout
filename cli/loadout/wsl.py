@@ -90,15 +90,73 @@ def vscode_settings(home: Path) -> Path:
 
 
 _SETTING_RX = re.compile(r'"chatgpt\.runCodexInWindowsSubsystemForLinux"\s*:\s*(true|false)')
+MANUAL = (f"in VS Code on Windows: Settings, search {WIN_SETTING}, tick it (VS Code reloads); then the Codex "
+          "extension runs Codex in WSL")
+
+
+def _mask_comments(text: str) -> str:
+    """The text with // and /* */ comments blanked (same length, so offsets still match): JSONC read by text."""
+    out, i, n = list(text), 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            out[i:end] = " " * (end - i)
+            i = end
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            out[i:end] = [ch if ch in "\r\n" else " " for ch in text[i:end]]
+            i = end
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _read_settings(home: Path) -> str | None:
+    try:  # bytes, not read_text: CRLF and a BOM stay as they are
+        return vscode_settings(home).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
 
 
 def vscode_wsl_mode(home: Path) -> bool | None:
     """The extension's WSL switch from VS Code's settings.json (JSONC: read by text); None when not set."""
-    try:
-        m = _SETTING_RX.search(vscode_settings(home).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
-        return None
+    text = _read_settings(home)
+    m = None if text is None else _SETTING_RX.search(_mask_comments(text))
     return None if m is None else m.group(1) == "true"
+
+
+def set_vscode_wsl_mode(bk, home: Path) -> str:
+    """Set the extension's WSL switch by a text edit of VS Code's settings.json (JSONC), backup first;
+    every other byte stays."""
+    from .jsonio import write_atomic_bytes
+    path = vscode_settings(home)
+    text = _read_settings(home)
+    if text is None:
+        return f"VS Code settings not found ({path}); {MANUAL}"
+    masked = _mask_comments(text)
+    m = _SETTING_RX.search(masked)
+    if m is not None and m.group(1) == "true":
+        return "VS Code already runs Codex in WSL"
+    if m is not None:
+        new = text[:m.start(1)] + "true" + text[m.end(1):]
+    else:
+        brace = masked.find("{")
+        if brace < 0:
+            return f"VS Code settings ({path}) are not an object; {MANUAL}"
+        nl = "\r\n" if "\r\n" in text else "\n"
+        empty = masked[brace + 1:].lstrip().startswith("}")
+        new = text[:brace + 1] + f'{nl}  "{WIN_SETTING}": true{nl if empty else ","}' + text[brace + 1:]
+    bk.save_copy(path, "VS Code settings.json before loadout switched the Codex extension to WSL")
+    write_atomic_bytes(path, new.encode("utf-8"))
+    return f"VS Code: the Codex extension now runs Codex in WSL ({WIN_SETTING} = true; VS Code reloads)"
 
 
 def _recent(folder: Path, days: int = RECENT_DAYS) -> bool:

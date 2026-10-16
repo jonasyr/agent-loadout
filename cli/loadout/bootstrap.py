@@ -562,7 +562,20 @@ def codex_gate_needed(chosen: dict) -> bool:
     return bool(chosen.get("codex")) and wsl.detect() is not None
 
 
-def codex_gate(flag, ask, interactive: bool) -> str | None:
+VSCODE_QUESTION = "Switch the VS Code Codex extension to WSL now (settings.json, backup first)? [y/N] "
+
+
+def _offer_vscode(cs, ask, bk) -> None:
+    """After choosing Codex in WSL: VS Code's extension still runs the Windows Codex until its switch is on."""
+    home = cs.windows_home
+    if home is None or not wsl.vscode_settings(home).is_file() or wsl.vscode_wsl_mode(home) is True:
+        return
+    if not ask(VSCODE_QUESTION).strip().lower().startswith("y"):
+        return
+    out.status("VS Code", wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL)
+
+
+def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None) -> str | None:
     """In WSL: None to set up this side's Codex, else the line that explains why not (one loadout per side, ADR 0029)."""
     if wsl.detect() is None or flag == "wsl":
         return None
@@ -576,7 +589,10 @@ def codex_gate(flag, ask, interactive: bool) -> str | None:
     if cs.side != "windows":
         return None
     if interactive:
-        return None if (ask("\n" + CODEX_SIDE_QUESTION).strip() or "1") == "1" else SKIPPED + WINDOWS_WAY
+        if (ask("\n" + CODEX_SIDE_QUESTION).strip() or "1") != "1":
+            return SKIPPED + WINDOWS_WAY
+        _offer_vscode(cs, ask, bk)
+        return None
     return (f"Codex step skipped: {why}. Choose a side: --codex-side wsl (with --install, installs Codex in WSL), "
             f"or {WINDOWS_WAY}")
 
@@ -659,7 +675,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     if personal_ok and store:
         targets.set_agents(chosen)
     # in WSL the Codex side is settled first: a Windows-side choice installs no Linux Codex (ADR 0029)
-    gate = codex_gate(codex_side, ask, interactive and not yes) if codex_gate_needed(chosen) else None
+    gate = codex_gate(codex_side, ask, interactive and not yes, bk) if codex_gate_needed(chosen) else None
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []

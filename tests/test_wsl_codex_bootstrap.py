@@ -132,3 +132,44 @@ def test_skipping_the_codex_step_keeps_the_exit_code(fake_home, fake_runner, mon
     open_gate = bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
                                     codex_side="wsl")
     assert skipped == open_gate
+
+
+def _windows_with_vscode(monkeypatch, tmp_path, text):
+    home = tmp_path / "winhome"
+    p = wsl.vscode_settings(home)
+    p.parent.mkdir(parents=True)
+    p.write_text(text)
+    _side(monkeypatch, "windows", windows_home=home)
+    return home
+
+
+def test_choosing_wsl_offers_the_vscode_switch_and_a_yes_makes_it(fake_home, fake_runner, monkeypatch, tmp_path):
+    from loadout import backup
+    home = _windows_with_vscode(monkeypatch, tmp_path, '{"chatgpt.runCodexInWindowsSubsystemForLinux": false}')
+    asked, bk = [], backup.Backup(description="t")
+    answers = iter(["1", "y"])
+    assert bootstrap.codex_gate(None, ask=lambda q: asked.append(q) or next(answers), interactive=True, bk=bk) is None
+    assert any("VS Code" in q for q in asked) and wsl.vscode_wsl_mode(home) is True and bk.steps
+
+
+def test_a_no_leaves_vscode_alone(fake_home, fake_runner, monkeypatch, tmp_path):
+    from loadout import backup
+    home = _windows_with_vscode(monkeypatch, tmp_path, '{"chatgpt.runCodexInWindowsSubsystemForLinux": false}')
+    answers = iter(["1", ""])
+    assert bootstrap.codex_gate(None, ask=lambda q: next(answers), interactive=True,
+                                bk=backup.Backup(description="t")) is None
+    assert wsl.vscode_wsl_mode(home) is False
+
+
+def test_without_a_backup_the_switch_is_the_manual_step(fake_home, fake_runner, monkeypatch, tmp_path, capsys):
+    home = _windows_with_vscode(monkeypatch, tmp_path, '{"chatgpt.runCodexInWindowsSubsystemForLinux": false}')
+    answers = iter(["1", "y"])
+    bootstrap.codex_gate(None, ask=lambda q: next(answers), interactive=True)
+    assert wsl.MANUAL in capsys.readouterr().out and wsl.vscode_wsl_mode(home) is False
+
+
+def test_no_vscode_settings_means_no_question(fake_home, fake_runner, monkeypatch, tmp_path):
+    _side(monkeypatch, "windows", windows_home=tmp_path / "winhome")
+    asked = []
+    assert bootstrap.codex_gate(None, ask=lambda q: asked.append(q) or "1", interactive=True) is None
+    assert len(asked) == 1
