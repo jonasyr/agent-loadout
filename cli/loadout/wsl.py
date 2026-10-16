@@ -75,14 +75,18 @@ class CodexSide:
 
 
 def windows_home() -> Path | None:
-    """The Windows user's home as a WSL path (/mnt/c/Users/<name>), via cmd.exe and wslpath; None without interop."""
-    cwd = "/mnt/c" if Path("/mnt/c").is_dir() else None  # cmd.exe warns about a Linux (UNC) working folder
+    """The Windows user's home as a WSL path (/mnt/c/Users/<name>), via cmd.exe and wslpath; without interop,
+    /mnt/c/Users/$USER when it exists; else None."""
+    drive = Path(MOUNT) / "c"
+    cwd = str(drive) if drive.is_dir() else None  # cmd.exe warns about a Linux (UNC) working folder
     res = runner.run(["cmd.exe", "/c", "echo", "%USERPROFILE%"], cwd=cwd, timeout=15)
     win = res.stdout.strip().splitlines()[-1].strip() if res.ok and res.stdout.strip() else ""
-    if not win or "%" in win:
-        return None
-    conv = runner.run(["wslpath", "-u", win], timeout=15)
-    path = Path(conv.stdout.strip()) if conv.ok and conv.stdout.strip() else None
+    path = None
+    if win and "%" not in win:
+        conv = runner.run(["wslpath", "-u", win], timeout=15)
+        path = Path(conv.stdout.strip()) if conv.ok and conv.stdout.strip() else None
+    if path is None and os.environ.get("USER"):
+        path = drive / "Users" / os.environ["USER"]
     return path if path is not None and path.is_dir() else None
 
 

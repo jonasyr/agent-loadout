@@ -83,9 +83,19 @@ def test_no_codex_anywhere_is_none(win):
     assert wsl.codex_side(mount=_mount(win)).side == "none"
 
 
-def test_windows_home_survives_a_missing_cmd_exe(fake_home, fake_runner):
+def test_windows_home_survives_a_missing_cmd_exe(tmp_path, fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
     fake_runner.responses[("cmd.exe",)] = runner.Result(127, "", "cmd.exe: not found")
     assert wsl.windows_home() is None
+
+
+def test_without_cmd_exe_the_windows_home_is_guessed_from_the_user_name(tmp_path, fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    monkeypatch.setenv("USER", "u")
+    home = tmp_path / "mnt" / "c" / "Users" / "u"
+    home.mkdir(parents=True)
+    fake_runner.responses[("cmd.exe",)] = runner.Result(127, "", "cmd.exe: not found")
+    assert wsl.windows_home() == home
 
 
 def test_windows_home_from_cmd_and_wslpath(tmp_path, fake_home, fake_runner):
