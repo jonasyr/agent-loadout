@@ -336,14 +336,15 @@ Exit codes: 0 when finished (a failed update command is printed but does not cha
 Undo a backup. What it replaces goes into a new backup, so a restore can be undone too.
 
 ```
-loadout restore [--list] [--last] [--repo PATH] [--force] [BACKUP_DIR]
+loadout restore [--list] [--last] [--repo PATH] [--show] [--force] [BACKUP_DIR]
 ```
 
 | Flag | Meaning |
 |---|---|
 | `BACKUP_DIR` | A directory printed by bootstrap, adopt, `init`, `profile` or `configure new skill --to repo`, for example `~/.local/state/loadout/backups/loadout-<timestamp>`. A path from before the move, `~/.claude/backups/loadout-<timestamp>`, still works. |
 | `--list` | List backups, newest first, with their paths (for agents and scripts). |
-| `--last` | Restore the newest backup; it first prints what goes back. |
+| `--last` | Restore the newest backup of any kind (a later command's backup, or a restore's own, is newer than the one you may mean); it first prints what goes back and, in a terminal, asks `Restore this? [y/N]`. |
+| `--show` | With `BACKUP_DIR`: print what that backup puts back (each file, each undo command, secrets masked) and change nothing. |
 | `--repo PATH` | Only the backups made for that repo (with `--list`, `--last` or the pick). |
 | `--force` | Replay a backup that was already restored. |
 

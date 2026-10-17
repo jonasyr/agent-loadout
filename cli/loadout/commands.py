@@ -11,12 +11,14 @@ def _register_restore(sub):
     p.add_argument("--list", action="store_true", help="list backups, newest first")
     p.add_argument("--last", action="store_true", help="restore the newest backup (with --repo: the repo's newest)")
     p.add_argument("--repo", metavar="PATH", help="only the backups made for this repo")
+    p.add_argument("--show", action="store_true", help="print what the backup at BACKUP_DIR puts back; change nothing")
     p.add_argument("--force", action="store_true", help="replay a backup that was already restored")
 
     def run(args):
         from . import restore_cmd, ui
         from .__main__ import _ask
-        return restore_cmd.run(args.backup_dir, args.list, args.last, args.repo, args.force, _ask, ui.is_interactive())
+        return restore_cmd.run(args.backup_dir, args.list, args.last, args.repo, args.force, _ask, ui.is_interactive(),
+                               show=args.show)
 
     p.set_defaults(func=run)
 

@@ -22,7 +22,8 @@ Backups can hold old configs and undo commands with secrets in them. On Linux an
 
 ```bash
 loadout restore                 # pick one by number, see what goes back, confirm
-loadout restore --last          # the newest
+loadout restore --last          # the newest backup of any kind; asks in a terminal
+loadout restore --show <path>   # what a backup puts back, nothing changed
 loadout restore --list          # paths, for agents and scripts
 loadout restore ~/.local/state/loadout/backups/loadout-<timestamp>
 ```
@@ -66,7 +67,7 @@ Bootstrap and adopt save the snapshot in the backup, so restoring `settings.json
 
 | I want to | Do |
 |---|---|
-| Undo the last adopt | `loadout restore` and pick it (number 1 is the newest), or `loadout restore --last` |
+| Undo the last adopt | `loadout restore` and pick the adopt backup by its command and age (a later command or restore may have made a newer one) |
 | Bring back one tool I removed | Restore replays a whole backup; it cannot pick single items. Reinstall one tool with its own command if you do not want the rest back |
 | Undo a restore | `loadout restore <pre-restore backup path>` (it is printed), or pick it in `loadout restore` |
 | See what a backup holds | Open `~/.local/state/loadout/backups/loadout-<timestamp>/manifest.json`. Do not share it: it can contain secrets |

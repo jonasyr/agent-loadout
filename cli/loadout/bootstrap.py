@@ -574,10 +574,17 @@ def _offer_vscode(cs, ask, bk) -> None:
         return
     if not ask(VSCODE_QUESTION).strip().lower().startswith("y"):
         return
-    out.status("VS Code", wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL)
+    message = wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL
+    out.status("VS Code", message, _vscode_level(message))
 
 
 VSCODE_FLAG_HINT = "or run bootstrap again with --vscode-wsl"
+VSCODE_DONE = ("VS Code: the Codex extension now runs", "VS Code already runs Codex in WSL")
+
+
+def _vscode_level(message: str) -> str:
+    """ok only when the switch is on now; every other answer (no settings, another value, a write error) is a warning."""
+    return "ok" if message.startswith(VSCODE_DONE) else "warn"
 
 
 def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
@@ -588,7 +595,8 @@ def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
         if home is None:
             out.status("VS Code", f"Windows home not found; {wsl.MANUAL}", "warn")
         else:
-            out.status("VS Code", wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL)
+            message = wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL
+            out.status("VS Code", message, _vscode_level(message))
         return
     if interactive:
         _offer_vscode(cs, ask, bk)

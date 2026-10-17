@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import filecmp
 import json
+import math
 import os
 import shutil
 import stat
@@ -363,6 +364,12 @@ def backups(repo: Path | None = None) -> list[BackupInfo]:
     manifest is left out (restore refuses it too)."""
     root = paths.backups_root()
     want = os.path.realpath(repo) if repo is not None else None
+
+    def same(rep: str) -> bool:
+        try:
+            return os.path.realpath(rep) == want
+        except (OSError, ValueError):  # a damaged repo path (a NUL byte) matches nothing
+            return False
     found = []
     for d in root.iterdir() if root.is_dir() else []:
         if d.is_symlink() or not (d / "manifest.json").is_file():
@@ -375,9 +382,10 @@ def backups(repo: Path | None = None) -> list[BackupInfo]:
         if not isinstance(steps, list):
             continue
         created = data.get("created_at")
-        created = created if isinstance(created, (int, float)) and created > 0 else (d / "manifest.json").stat().st_mtime
+        ok = isinstance(created, (int, float)) and not isinstance(created, bool) and math.isfinite(created) and created > 0
+        created = created if ok else (d / "manifest.json").stat().st_mtime
         rep = data.get("repo") if isinstance(data.get("repo"), str) else None
-        if want is not None and (rep is None or os.path.realpath(rep) != want):
+        if want is not None and (rep is None or not same(rep)):
             continue
         restored = data.get("restored_at")
         found.append(BackupInfo(d, created, str(data.get("description") or ""), rep,

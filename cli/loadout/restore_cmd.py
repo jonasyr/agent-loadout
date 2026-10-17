@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import backup, ui
+from .out import printable
 
 PAGE = 10
 QUESTION = "Restore which? [1-{n}, m = more, Enter = cancel] "
@@ -14,7 +15,7 @@ NO_TERMINAL = "no terminal: nothing picked. Restore one with `loadout restore <p
 def _restore(root: Path, force: bool) -> int:
     lines, ok, pre = backup.restore(root, force=force)
     for line in lines:
-        print(line)
+        print(printable(line))
     if pre is not None:
         print(f"\nthe state this restore replaced is in {pre}  (undo this restore: loadout restore {pre})")
     return 0 if ok else 1
@@ -22,17 +23,35 @@ def _restore(root: Path, force: bool) -> int:
 
 def _row(i: int, b: backup.BackupInfo, now) -> str:
     state = f"  restored {backup._stamp(b.restored_at)}" if b.restored_at else ""
-    return (f"{i:>3}  {backup.age(b.created, now)} ({backup._stamp(b.created)})  {b.description or '(no description)'}"
+    return printable(f"{i:>3}  {backup.age(b.created, now)} ({backup._stamp(b.created)})  {b.description or '(no description)'}"
             f"  {backup.where(b)}  {backup.summary(b)}{state}")
 
 
 def _show(b: backup.BackupInfo) -> None:
-    print(f"{backup._shown(b.path)} ({b.description or 'no description'}) does this:")
+    print(printable(f"{backup._shown(b.path)} ({b.description or 'no description'}) does this:"))
     for line in backup.contents(b) or ["nothing to undo"]:
-        print(f"  {line}")
+        print(printable(f"  {line}"))  # paths and labels come from the manifest
 
 
-def run(path, list_only: bool, last: bool, repo, force: bool, ask, interactive: bool, now=None) -> int:
+def _info(path: Path):
+    """The listed backup at `path` (resolved), else None."""
+    try:
+        want = path.expanduser().resolve()
+    except (OSError, ValueError):
+        return None
+    return next((b for b in backup.backups() if b.path.resolve() == want), None)
+
+
+def run(path, list_only: bool, last: bool, repo, force: bool, ask, interactive: bool, now=None, show: bool = False) -> int:
+    """show: print what the backup at `path` puts back, change nothing (for agents, before asking the user)."""
+    if show:
+        b = _info(Path(path)) if path else None
+        if b is None:
+            print(printable(f"no loadout backup at {path} (see loadout restore --list)" if path
+                            else "--show needs a backup path (see loadout restore --list)"))
+            return 1
+        _show(b)
+        return 0
     if path:
         return _restore(Path(path).expanduser(), force)
     found = backup.backups(Path(repo).expanduser() if repo else None)
@@ -40,14 +59,19 @@ def run(path, list_only: bool, last: bool, repo, force: bool, ask, interactive: 
         print(f"no backups for repo {repo}" if repo else "no backups yet")
         return 0
     if list_only:
-        print("\n".join(backup.list_backups(Path(repo).expanduser() if repo else None)))
+        for row in backup.list_backups(Path(repo).expanduser() if repo else None):
+            print(printable(row))
         print("\nundo one: loadout restore <path from the first column>")
         return 0
-    if last:
+    if last:  # the newest of any kind (a later command's or a restore's own backup too): in a terminal, ask
         _show(found[0])
+        if interactive and not ui.confirm(ask, CONFIRM):
+            print("nothing restored")
+            return 0
         return _restore(found[0].path, force)
     if not interactive:
-        print("\n".join(backup.list_backups(Path(repo).expanduser() if repo else None)))
+        for row in backup.list_backups(Path(repo).expanduser() if repo else None):
+            print(printable(row))
         print(NO_TERMINAL)
         return 0
     shown, wrong = 0, 0
@@ -68,7 +92,7 @@ def run(path, list_only: bool, last: bool, repo, force: bool, ask, interactive: 
                 print("\n".join(_row(shown + i + 1, b, now) for i, b in enumerate(more)))
                 shown += len(more)
             continue
-        if answer.isdigit() and 1 <= int(answer) <= shown:
+        if answer.isascii() and answer.isdecimal() and 1 <= int(answer) <= shown:
             pick = found[int(answer) - 1]
             break
         wrong += 1
