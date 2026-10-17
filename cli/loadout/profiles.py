@@ -92,7 +92,7 @@ def repo_off_notes(profile: Profile, project: Path) -> list[str]:
     files = [rel.as_posix() for attr, rel in CLAUDE_FILES if getattr(profile, attr)]
     if not files:
         return []
-    chosen = repo_config.load(project).agents is not None
+    chosen = str(project) in repo_config._PENDING or repo_config.load(project).agents is not None
     why = ("this repo is for Codex only (.loadout.json; add Claude Code with loadout init --agents claude,codex)"
            if chosen else "Claude Code is off for you (turn it on and run loadout profile "
            f"{profile.name} again, or choose the repo's agents with loadout init --agents claude,codex)")

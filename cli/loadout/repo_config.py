@@ -44,7 +44,8 @@ def load(project: Path) -> RepoConfig:
         raise Invalid(f"{FILE}: must be a JSON object")
     agents = data.get("agents")
     if agents is not None:
-        if (not isinstance(agents, list) or not agents or len(set(agents)) != len(agents)
+        if (not isinstance(agents, list) or not agents or not all(isinstance(a, str) for a in agents)
+                or len(set(agents)) != len(agents)
                 or not all(a in AGENTS for a in agents)):
             raise Invalid(f'{FILE}: agents must be a list of "claude" and "codex" (each once)')
         agents = frozenset(agents)

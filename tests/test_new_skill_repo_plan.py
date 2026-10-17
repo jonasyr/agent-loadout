@@ -18,10 +18,10 @@ def test_a_codex_only_repo_gets_the_skill_in_agents_skills(repo):
     assert (repo / ".agents" / "skills" / "notes" / "SKILL.md").is_file() and not (repo / ".claude").exists()
 
 
-def test_manage_false_refuses(repo):
+def test_manage_false_writes_nothing(repo):
     (repo / ".loadout.json").write_text('{"manage": false}')
-    with pytest.raises(new_skill.Refused, match="manage is false"):
-        new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=lambda plan: True)
+    assert new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=lambda plan: True) == [
+        "manage is false in .loadout.json: nothing written"]
     assert not (repo / ".claude").exists() and not (repo / ".agents").exists()
 
 

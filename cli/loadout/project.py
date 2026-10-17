@@ -138,6 +138,9 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> tu
             if line.startswith(("added", "enabled", "would")):
                 continue
             (failures if line.startswith("skipped") or any(b in line for b in CODEX_BAD) else notes).append(line)
+        if install and not targets.codex_enabled() and codex_project._wanted(prof)[1]:
+            notes.append(f"Codex plugins of profile {prof.name}: not installed for Codex, which is off for you "
+                         "(a Codex user installs them with loadout profile here)")
         if install and targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: installed in your Codex (outside this repo, "
                          "with their own backup)")
@@ -153,8 +156,11 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
     problems += [l for l in late if "not linked" in l or "left as is" in l]
     if repo_config.agents(project)["codex"] and targets.codex_enabled():
         if install:
-            problems += [l for l in codex_project.plugins(prof, False) if l.startswith("skipped") or any(
-                s in l for s in (": failed", "not installed", "no Codex route"))]
+            for line in codex_project.plugins(prof, False):
+                if line.startswith("backup: "):  # Codex's own backup: its undo line must reach the user
+                    notes.append(line)
+                elif line.startswith("skipped") or any(s in line for s in (": failed", "not installed", "no Codex route")):
+                    problems.append(line)
         tables, plugins_, _ = codex_project._wanted(prof)
         if (tables or plugins_ or any((project / ".agents" / "skills").glob("*"))) and not codex_project._trusted(project):
             if codex_project.TRUST_NOTE not in notes:

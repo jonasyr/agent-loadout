@@ -143,7 +143,7 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup, approve=None) -> l
     except repo_config.Invalid as exc:
         raise Refused(str(exc)) from None
     if not cfg.manage:
-        raise Refused(project_mod.MANAGE_OFF)
+        return [project_mod.MANAGE_OFF]  # nothing written; exit 0, as for init and profile
     from . import profiles
     src_root, dest_root = profiles.repo_skill_dirs(root)  # the real folder, and the link folder (both agents on)
     if Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):

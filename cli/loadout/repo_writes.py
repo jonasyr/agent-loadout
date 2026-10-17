@@ -39,12 +39,28 @@ def _json_diff(old: str, new: str) -> list[str] | None:
         a, b = _flat(json.loads(old or "{}")), _flat(json.loads(new))
     except ValueError:
         return None
+    def secret(key, value) -> bool:
+        if not isinstance(value, str):
+            return False
+        if "=" in value:  # --token=VALUE
+            k, _, v = value.partition("=")
+            if secrets.looks_secret(k.lstrip("-"), v, keyed_arg=True):
+                return True
+        return (secrets.looks_secret(key, value) or secrets._pair_secret(key, value) or redact(value) != value
+                or secrets.high_entropy(value))
+
+    def masked(key, value):
+        if isinstance(value, list):  # args lists: the value after a key-like flag, and any secret-looking item
+            out, prev = [], None
+            for item in value:
+                flag = isinstance(prev, str) and prev.startswith("-") and secrets.SECRET_KEY.search(prev)
+                out.append(secrets.MASK if isinstance(item, str) and (flag or secret(key, item)) else item)
+                prev = item
+            return out
+        return secrets.MASK if secret(key, value) else value
+
     def shown(key, value):
-        last = key.rsplit(".", 1)[-1]
-        if isinstance(value, str) and (secrets.looks_secret(last, value) or secrets._pair_secret(last, value)
-                                       or redact(value) != value):
-            return json.dumps(secrets.MASK)
-        return json.dumps(value, ensure_ascii=False)
+        return json.dumps(masked(key.rsplit(".", 1)[-1], value), ensure_ascii=False)
 
     lines = []
     for key in b:
