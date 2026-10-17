@@ -219,7 +219,7 @@ A committed file at the repo root. `init` and `profile` write it; you can edit i
 
 Other keys are kept when loadout rewrites the file. An invalid file stops every repo-writing command before anything changes: it prints the reason, for example `.loadout.json: agents must be a list of "claude" and "codex" (each once)`, and exits 1. A `.loadout.json` that is a link leading outside the repo is refused the same way.
 
-Changing the list with `init --agents`: an added agent gets its missing files and skill links. A removed agent's files stay; the plan lists them as no longer needed, and removing them is yours to do. `loadout adopt` applies a profile to a repo with the same rules, but does not create `.loadout.json`. loadout writes none of this at session start or in the daily sync.
+Changing the list with `init --agents`: an added agent gets its missing files and skill links. A removed agent's files stay; the plan lists them as no longer needed, and removing them is yours to do. `loadout adopt` applies a profile to a repo the same way: it shows the plan and asks before it writes. loadout writes none of this at session start or in the daily sync.
 
 ## Repo writes
 

@@ -161,6 +161,7 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup, approve=None) -> l
     from .repo_writes import RepoWrites
     skill_md = src_root / name / "SKILL.md"
     w = RepoWrites(root)
+    w.watch(root / repo_config.FILE)  # the agent choice the plan was made for
     w.create(skill_md, stub(name, description), "your new repo skill")
     if dest_root is not None:
         w.link(dest_root / name, os.path.join("..", "..", ".claude", "skills", name), f"skill {name} for Codex")

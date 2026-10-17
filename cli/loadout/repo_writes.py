@@ -95,6 +95,7 @@ class RepoWrites:
         self.project, self.now, self.bk = project, now, bk
         self._changes: list[Change] = []
         self._watched: dict = {}
+        self.stale = False  # set by apply when a watched path changed: nothing was written, nothing may follow
 
     def watch(self, path: Path) -> None:
         """The plan depends on `path` (e.g. .loadout.json): if it changes before apply, nothing is applied."""
@@ -179,6 +180,7 @@ class RepoWrites:
         plan, not that version). hold: paths the caller writes itself later (e.g. after installs)."""
         for path, seen in self._watched.items():
             if _snapshot(path) != seen:
+                self.stale = True
                 return [f"{self._rel(path)}: changed since the plan, so the plan no longer fits; nothing written "
                         "(run the command again for a new plan)"]
         problems = []

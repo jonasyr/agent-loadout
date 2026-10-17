@@ -253,6 +253,8 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     bk = backup.Backup(description=f"loadout profile {name} in {project}", repo=project)
     hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
     problems = failures + w.apply(bk, hold=hold)
+    if w.stale:  # .loadout.json changed after the plan: no dependent step runs either
+        return _report(f"Profile {name}", bk, [], problems[-1:])
     notes = [n for n in notes if not n.startswith(("Codex plugins of profile",))]
     _after_apply(prof, project, bk, install, drive_note, notes, problems, approve=approve)
     return _report(f"Profile {name}", bk, notes, problems)
@@ -421,6 +423,8 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     bk = backup.Backup(description=f"loadout init in {project}", repo=project)
     hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
     problems = failures + w.apply(bk, hold=hold)
+    if w.stale:  # .loadout.json changed after the plan: no dependent step runs either
+        return _report("Init", bk, [], problems[-1:])
     notes = [n for n in notes if not n.startswith("Codex plugins of profile")]
     for i, prof in enumerate(profs):
         _after_apply(prof, project, bk, install, i == 0, notes, problems, approve=approver(yes, ask, interactive))

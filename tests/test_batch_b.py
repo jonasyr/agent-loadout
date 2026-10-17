@@ -265,7 +265,7 @@ def _known_repos(machine, *repos):
 def _offer(machine, monkeypatch, answers):
     from loadout import project
     applied, asked = [], []
-    monkeypatch.setattr(project, "add_profile", lambda repo, name: applied.append((repo, name)))
+    monkeypatch.setattr(project, "add_profile", lambda repo, name, **k: applied.append((repo, name)))
     it = iter(answers)
 
     def ask(q):

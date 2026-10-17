@@ -53,7 +53,7 @@ Catalog plugins that adopt would disable globally accept `global` ("keep global"
 
 A profile name that matches a kit profile (for example `db`) starts as a copy of that kit profile and replaces it for you. Later changes to the kit profile no longer reach you. Adopt prints a note when this happens. See [Personal and kit profiles](../reference/profile-format.md#personal-and-kit-profiles).
 
-After `project` choices, interactive adopt offers to apply the profile to repos. The default is none. It suggests repos known to Claude Code (`~/.claude.json`) whose project config mentions the item, or you type paths. Applying a profile is the same as running `loadout profile` in that repo: it writes the repo's committed files, with a backup (see [Repo writes](../reference/cli.md#repo-writes)). It does not create `.loadout.json`. `--own` never applies profiles to repos.
+After `project` choices, interactive adopt offers to apply the profile to repos. The default is none. It suggests repos known to Claude Code (`~/.claude.json`) whose project config mentions the item, or you type paths. Applying a profile is the same as running `loadout profile` in that repo: it shows the plan, asks `Apply these changes? [y/N]`, and writes the repo's committed files with a backup (see [Repo writes](../reference/cli.md#repo-writes)). `--own` never applies profiles to repos.
 
 When something was recorded or removed, adopt and `configure set own` end with a restart line for the agents that are on: "Restart Claude Code (or run /reload-plugins) and Codex to load the changes." with both, "Restart Codex to load the changes." with Codex only, "Restart Claude Code (or run /reload-plugins) to load the changes." with Claude Code only.
 

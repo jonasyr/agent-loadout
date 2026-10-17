@@ -77,3 +77,38 @@ def test_manage_false_new_skill_shows_the_plan_first(repo):
     lines = new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=lambda plan: True)
     assert lines[-1] == project.MANAGE_OFF and any("SKILL.md" in l for l in lines[:-1])
     assert not (repo / ".claude").exists() and not (repo / ".agents").exists()
+
+
+def test_a_changed_agent_choice_also_stops_the_steps_after_the_plan(repo, monkeypatch):
+    targets.set_agents({"claude": False, "codex": True})
+    prof = profiles.Profile(name="thesis", description="", install=["x@claude-plugins-official"])
+    monkeypatch.setattr(profiles, "load_profile", lambda n: prof)
+    ran = []
+    monkeypatch.setattr(codex_project, "plugins", lambda p, dry_run: ran.append(p.name) or [])
+
+    def approve(plan):
+        (repo / ".loadout.json").write_text('{"manage": false}')
+        return True
+    assert project.add_profile(repo, "thesis", approve=approve) == 1
+    assert ran == [] and not (repo / ".codex").exists()
+
+
+def test_new_skill_stops_when_the_agent_choice_changed(repo):
+    from loadout import new_skill
+    targets.set_agents({"claude": True, "codex": True})
+
+    def approve(plan):
+        (repo / ".loadout.json").write_text('{\n  "agents": [\n    "codex"\n  ]\n}\n')
+        return True
+    lines = new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=approve)
+    assert any("changed since the plan" in l for l in lines)
+    assert not (repo / ".claude").exists() and not (repo / ".agents").exists()
+
+
+def test_adopt_shows_the_profile_plan_before_writing(repo, monkeypatch, capsys):
+    from loadout import adopt, own
+    monkeypatch.setattr(profiles, "load_profile", lambda n: profiles.Profile(name="mine", description="", settings={"a": 1}))
+    monkeypatch.setattr(own, "candidate_repos", lambda item: [repo])
+    answers = iter(["y", "n"])  # apply to the detected repo: yes; the plan: no
+    adopt._offer_profiles({"mine": [object()]}, lambda q: next(answers))
+    assert "Plan for" in capsys.readouterr().out and not (repo / ".claude").exists()
