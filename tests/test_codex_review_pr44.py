@@ -112,3 +112,31 @@ def test_adopt_shows_the_profile_plan_before_writing(repo, monkeypatch, capsys):
     answers = iter(["y", "n"])  # apply to the detected repo: yes; the plan: no
     adopt._offer_profiles({"mine": [object()]}, lambda q: next(answers))
     assert "Plan for" in capsys.readouterr().out and not (repo / ".claude").exists()
+
+
+def test_a_new_json_file_shows_no_removed_entry(repo):
+    w = repo_writes.RepoWrites(repo)
+    w.create(repo / "a.json", '{\n  "x": 1\n}\n', "p")
+    assert not any(l.strip() == "-" or l.strip().startswith("- ") for l in w.render())
+
+
+def test_the_follow_up_plan_stops_when_the_agent_choice_changed(repo, monkeypatch):
+    targets.set_agents({"claude": True, "codex": True})
+    prof = profiles.Profile(name="web", description="", commands=[["installer"]])
+    monkeypatch.setattr(profiles, "load_profile", lambda n: prof)
+
+    def run(cmd, **k):
+        if cmd[0] == "installer":
+            (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
+        from loadout import runner
+        return runner.Result(0, "", "")
+    monkeypatch.setattr(repo_writes.runner, "run", run)
+    answers = []
+
+    def approve(plan):
+        answers.append(plan)
+        if len(answers) == 2:
+            (repo / ".loadout.json").write_text('{"manage": false}')
+        return True
+    assert project.add_profile(repo, "web", approve=approve) == 1
+    assert len(answers) == 2 and not (repo / ".agents").exists()

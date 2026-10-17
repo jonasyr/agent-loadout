@@ -58,7 +58,7 @@ def test_a_link_leading_outside_the_repo_is_refused(repo, tmp_path):
 
 def test_new_text_creates_and_keeps_other_keys(repo):
     assert repo_config.new_text(repo, frozenset({"codex", "claude"})) == '{\n  "agents": [\n    "claude",\n    "codex"\n  ]\n}\n'
-    (repo / ".loadout.json").write_text('{\r\n    "team": "x",\r\n    "agents": [\r\n        "codex"\r\n    ]\r\n}\r\n')
+    (repo / ".loadout.json").write_bytes(b'{\r\n    "team": "x",\r\n    "agents": [\r\n        "codex"\r\n    ]\r\n}\r\n')
     assert repo_config.new_text(repo, frozenset({"codex"})) is None
     assert repo_config.new_text(repo, frozenset({"claude", "codex"})) == (
         '{\r\n    "team": "x",\r\n    "agents": [\r\n        "claude",\r\n        "codex"\r\n    ]\r\n}\r\n')

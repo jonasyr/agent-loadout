@@ -155,12 +155,13 @@ def _codex_after_installs(project: Path, install: bool) -> bool:
 
 
 def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive_note: bool,
-                 notes: list[str], problems: list[str], approve=None) -> None:
+                 notes: list[str], problems: list[str], approve=None) -> bool:
     """After the plan's files and commands: a follow-up plan for skills the commands installed, then the Codex
     plugins and the repo's Codex config without the plugins that failed."""
     from . import codex_project, repo_config, targets, wsl
     from .repo_writes import RepoWrites
     later = RepoWrites(project)
+    later.watch(project / repo_config.FILE)  # the follow-up question is a second window for a change
     late = profiles.link_skills(project, False, w=later)
     problems += [l for l in late if "not linked" in l or "left as is" in l]
     if later.changes:
@@ -169,6 +170,8 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
         print("\n".join(follow))
         if approve is None or approve(follow):
             problems += later.apply(bk)
+            if later.stale:  # .loadout.json changed: nothing after this may run
+                return False
         else:
             notes.append(f"skills the commands added are not linked; run loadout profile {prof.name} again to link them")
     if repo_config.agents(project)["codex"] and targets.codex_enabled():
@@ -194,6 +197,7 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
         notes.append(note)
     if prof.notes:
         notes.append(f"note ({prof.name}): {prof.notes}")
+    return True
 
 
 def _report(title: str, bk, notes: list[str], problems: list[str]) -> int:
@@ -427,7 +431,8 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         return _report("Init", bk, [], problems[-1:])
     notes = [n for n in notes if not n.startswith("Codex plugins of profile")]
     for i, prof in enumerate(profs):
-        _after_apply(prof, project, bk, install, i == 0, notes, problems, approve=approver(yes, ask, interactive))
+        if not _after_apply(prof, project, bk, install, i == 0, notes, problems, approve=approver(yes, ask, interactive)):
+            break
     rc = _report("Init", bk, notes, problems) or rc
     from . import targets
     on = repo_config.agents(project)

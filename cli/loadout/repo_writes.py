@@ -36,6 +36,8 @@ def _snapshot(path: Path):
 
 
 def _flat(value, prefix=""):
+    if value == {} and not prefix:  # an empty file or object holds no entries
+        return {}
     if isinstance(value, dict) and value:
         out = {}
         for k, v in value.items():
