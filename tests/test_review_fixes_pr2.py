@@ -126,3 +126,22 @@ def test_the_plan_never_prints_terminal_escapes_from_a_repo(repo, monkeypatch, c
     run(repo)
     out = capsys.readouterr().out
     assert "\x1b" not in out and "\x07" not in out
+
+
+def test_explain_survives_a_gitignore_that_is_not_utf8(repo, capsys):
+    from loadout import explain
+    (repo / ".gitignore").write_bytes(b"# loadout\n\xff\xfe\n")
+    assert explain.explain(".gitignore", cwd=repo) == 1
+    assert "not UTF-8" in capsys.readouterr().out
+
+
+def test_explain_does_not_read_through_a_link_out_of_the_repo(repo, tmp_path, capsys):
+    from loadout import explain
+    secret = tmp_path / "outside.json"
+    secret.write_text('{"env": {"A": "private"}}')
+    (repo / ".loadout.json").write_text(json.dumps(
+        {"agents": ["claude"], "profiles": {"web": {".mcp.json": {"env/A": "x"}}}}, indent=2) + "\n")
+    (repo / ".mcp.json").symlink_to(secret)
+    assert explain.explain(".mcp.json", cwd=repo) == 1
+    out = capsys.readouterr().out
+    assert "private" not in out and "outside the repo" in out

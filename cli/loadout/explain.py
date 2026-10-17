@@ -65,7 +65,14 @@ def _gitignore(path: Path) -> int:
     if not path.is_file():
         _say(".gitignore: no such file")
         return 1
-    lines = path.read_text(encoding="utf-8").splitlines()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError:
+        _say(".gitignore: not UTF-8 text; loadout cannot read it")
+        return 1
+    except OSError as exc:
+        _say(f".gitignore: cannot read it ({exc.strerror or exc})")
+        return 1
     if "# loadout" not in [l.strip() for l in lines]:
         _say(".gitignore: no lines from loadout (it adds them under a '# loadout' line)")
         return 0
@@ -92,6 +99,10 @@ def explain(target: str, cwd: Path | None = None) -> int:
         _say(exc)
         return 1
     rel = path.relative_to(root).as_posix()
+    from . import paths
+    if (path.exists() or path.is_symlink()) and not (paths.inside(path, root) and paths.inside(path.parent, root)):
+        _say(f"{rel}: it is a link that leads outside the repo; loadout does not read it")
+        return 1
     if rel == repo_config.FILE:
         return _own(cfg)
     if rel == ".gitignore":
