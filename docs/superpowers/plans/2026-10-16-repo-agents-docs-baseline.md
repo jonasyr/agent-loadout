@@ -1,6 +1,7 @@
 # Docs baseline for the repo-agents change (Part 7, before PR 1)
 
 B: done in repo-agents PR 2.
+E: done in repo-agents PR 4.
 
 Audit of `main` at da5db5c: every place that states the old model. Categories: A repo files follow the user's agents (ADR 0027); B profiles deep-merge, the profile wins; C repo writes have no backup, restore does not undo them; D `--dry-run` omits the settings diff; E restore needs a copied path / `--list`; F init/profile write without a preview or a yes; G loadout keeps no per-repo state. Owner PR: A, C, D, F, G → PR 1; B → PR 2; E → PR 4 (Part 6). Each PR updates the lines of its categories; PR 5 re-audits everything.
 

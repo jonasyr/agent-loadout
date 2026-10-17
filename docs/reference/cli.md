@@ -38,7 +38,7 @@ Set up or repair this machine. Safe to re-run.
 
 ```
 loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [--agents LIST]
-                  [--codex-side wsl|windows] [--personal new|URL] [--answers FILE]
+                  [--codex-side wsl|windows] [--vscode-wsl] [--personal new|URL] [--answers FILE]
 ```
 
 | Flag | Meaning |
@@ -48,7 +48,8 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [-
 | `--no-plugins` | Skip adding marketplaces and installing plugins (offline or CI). |
 | `--no-adopt` | Skip reviewing the existing setup. |
 | `--agents LIST` | `claude`, `codex` or `claude,codex`: the coding agents to set up, without asking. Stored in `<personal>/targets.json`; it wins over the personal layer's choice. |
-| `--codex-side wsl\|windows` | In WSL, with Codex on: set up the WSL Codex home (`wsl`) or leave Codex to `bootstrap.ps1` on Windows (`windows`), without asking. Needed without a terminal, or with `--yes`, when the only Codex is the Windows one, and always when `CODEX_HOME` points into Windows; otherwise the Codex step stops. Ignored outside WSL. See [Codex in WSL](../how-to/wsl.md#codex). |
+| `--codex-side wsl\|windows` | In WSL, with Codex on: set up the WSL Codex home (`wsl`) or leave Codex to `bootstrap.ps1` on Windows (`windows`), without asking. Needed without a terminal, or with `--yes`, when the only Codex is the Windows one, and always when `CODEX_HOME` points into Windows; otherwise the Codex step stops. Ignored outside WSL. With `wsl` in a terminal, bootstrap also asks whether to switch VS Code's Codex extension to WSL. See [Codex in WSL](../how-to/wsl.md#codex). |
+| `--vscode-wsl` | In WSL with Codex: switch VS Code's Codex extension to WSL without asking. It edits only `chatgpt.runCodexInWindowsSubsystemForLinux` in VS Code's `settings.json` on Windows, saves a copy first, and `loadout restore` undoes it. Without it and without a terminal, bootstrap prints the manual step. Outside WSL, or when Codex is not set up in WSL in that run, it changes nothing and says so. |
 | `--personal new\|URL` | The personal layer without asking: `new` creates a starter layer, a git URL is cloned. Used only when no personal layer exists yet; otherwise bootstrap says so and keeps the one there. |
 | `--answers FILE` | A JSON file with the starter layer's answers: `about` (`name`, `role`, `languages`, `preferences`) and `preferences` (ids and values as in [Preferences format](preferences-format.md), free text as `other:<text>`). Give an absolute path: `bootstrap.sh` and `bootstrap.ps1` run bootstrap from the kit's folder. Checked before anything changes: an unknown key or value, or a value that looks like a secret, stops bootstrap. Used only for a new personal layer; otherwise bootstrap says the flag was not used. Format and example: [Set loadout up from inside an agent](../how-to/install-with-an-agent.md#3-show-the-answers-file). |
 | `--verbose` | Print every detail of every step (links, commands, the full check list, the backup path). |
@@ -239,7 +240,7 @@ Changing the list with `init --agents`: an added agent gets its missing files an
 
 ## loadout check
 
-Verify this machine. Read-only: it reports problems and names the fix, and never changes anything. Inside a git repo, a `repo skill links` warning names committed skill links that the checkout wrote as plain files (Git without symlinks), with the fix; loadout changes nothing. With Claude Code switched off in `targets.json`, the Claude Code rows are skipped (the links under `~/.claude`, `settings.json` and its drift, the enabled-plugins check and the claude.ai connector check); with Codex off, the Codex rows are. See [personal-layer](personal-layer.md).
+Verify this machine. Read-only: it reports problems and names the fix, and never changes anything. Inside a git repo, a `repo skill links` warning names committed skill links that the checkout wrote as plain files (Git without symlinks), with the fix; loadout changes nothing. With Claude Code switched off in `targets.json`, the Claude Code rows are skipped (the links under `~/.claude`, `settings.json` and its drift, the enabled-plugins check and the claude.ai connector check); with Codex off, the Codex rows are. See [personal-layer](personal-layer.md). In WSL with Codex in WSL, a `VS Code` row warns when VS Code's Codex extension still runs Codex on Windows; the fix is `loadout bootstrap --codex-side wsl --vscode-wsl` or the manual step.
 
 ```
 loadout check [--verbose]
@@ -335,20 +336,22 @@ Exit codes: 0 when finished (a failed update command is printed but does not cha
 Undo a backup. What it replaces goes into a new backup, so a restore can be undone too.
 
 ```
-loadout restore [--list] [--force] [BACKUP_DIR]
+loadout restore [--list] [--last] [--repo PATH] [--force] [BACKUP_DIR]
 ```
 
 | Flag | Meaning |
 |---|---|
 | `BACKUP_DIR` | A directory printed by bootstrap, adopt, `init`, `profile` or `configure new skill --to repo`, for example `~/.local/state/loadout/backups/loadout-<timestamp>`. A path from before the move, `~/.claude/backups/loadout-<timestamp>`, still works. |
-| `--list` | List backups, newest first. |
+| `--list` | List backups, newest first, with their paths (for agents and scripts). |
+| `--last` | Restore the newest backup; it first prints what goes back. |
+| `--repo PATH` | Only the backups made for that repo (with `--list`, `--last` or the pick). |
 | `--force` | Replay a backup that was already restored. |
 
-Without `BACKUP_DIR` it lists the backups, like `--list`.
+In a terminal, `loadout restore` without a folder shows the last 10 backups, numbered, newest first: how long ago and when, the command that made it, where (`home` or `repo <path>`), what it holds (`3 files, 2 commands`) and `restored <date>` if it was. Answer a number (`m` shows 10 more, Enter cancels); loadout then shows exactly what goes back (each file and each undo command, secrets masked) and asks `Restore this? [y/N]`. A wrong answer is asked again, at most three times; then nothing is restored. A backup that was already restored is refused with the `--force` command to replay it. Without a terminal nothing is picked: loadout lists the backups and names `loadout restore <path>` and `--last`.
 
 Backups are kept in `~/.local/state/loadout/backups`, for every user, Codex-only setups included; see [loadout's own files](../explanation/architecture.md#loadouts-own-files). Backups taken before the move restore from the new place. If the old `~/.claude/backups` folder still exists, restore names it: the move has not finished, or a different backup of the same name was kept in both places. Restore only accepts folders under the backups location and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
 
-Exit codes: 0 when listing or when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed.
+Exit codes: 0 when listing, when nothing was picked or the pick was declined, and when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed.
 
 ## loadout explain
 

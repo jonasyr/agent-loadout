@@ -10,7 +10,7 @@ Before loadout removes or replaces a tool, file or link you own, it moves the ol
 Undo any time: loadout restore --list
 ```
 
-`loadout restore --list` shows the backup with its path. With `--verbose`, bootstrap and adopt print the path directly, and `configure`, `update` and the maintenance always do:
+`loadout restore` in a terminal lets you pick it from a numbered list; `--list` shows the backups with their paths. With `--verbose`, bootstrap and adopt print the path directly, and `configure`, `update` and the maintenance always do:
 
 ```
 backup: ~/.local/state/loadout/backups/loadout-20261010-093000  (undo: loadout restore ~/.local/state/loadout/backups/loadout-20261010-093000)
@@ -21,11 +21,13 @@ Backups can hold old configs and undo commands with secrets in them. On Linux an
 ## List and restore
 
 ```bash
-loadout restore --list
+loadout restore                 # pick one by number, see what goes back, confirm
+loadout restore --last          # the newest
+loadout restore --list          # paths, for agents and scripts
 loadout restore ~/.local/state/loadout/backups/loadout-<timestamp>
 ```
 
-`--list` shows backups newest first, with the number of steps and whether each was restored. `loadout restore` without a folder lists them too. Flags and exit codes: [CLI reference](../reference/cli.md#loadout-restore).
+In a terminal, `loadout restore` without a folder shows the last 10 backups, numbered, newest first: how long ago and when, the command that made it, where (`home` or `repo <path>`), what it holds (`3 files, 2 commands`) and `restored <date>` if it was. Answer a number (`m` shows 10 more, Enter cancels); loadout then shows exactly what goes back (each file and each undo command, secrets masked) and asks `Restore this? [y/N]`. `--repo PATH` keeps only one repo's backups. Without a terminal nothing is picked: give a path or `--last`. Flags and exit codes: [CLI reference](../reference/cli.md#loadout-restore).
 
 Backups made before loadout moved its files out of `~/.claude` restore from the new place, and an old printed command such as `loadout restore ~/.claude/backups/loadout-<timestamp>` still works. If the old `~/.claude/backups` folder still exists, restore says so: the move has not finished, or a different backup of the same name was kept in both places.
 
@@ -64,7 +66,7 @@ Bootstrap and adopt save the snapshot in the backup, so restoring `settings.json
 
 | I want to | Do |
 |---|---|
-| Undo the last adopt | `loadout restore --list` (newest first), then `loadout restore <that path>` |
+| Undo the last adopt | `loadout restore` and pick it (number 1 is the newest), or `loadout restore --last` |
 | Bring back one tool I removed | Restore replays a whole backup; it cannot pick single items. Reinstall one tool with its own command if you do not want the rest back |
-| Undo a restore | `loadout restore <pre-restore backup path>` (it is printed, and listed by `--list`) |
+| Undo a restore | `loadout restore <pre-restore backup path>` (it is printed), or pick it in `loadout restore` |
 | See what a backup holds | Open `~/.local/state/loadout/backups/loadout-<timestamp>/manifest.json`. Do not share it: it can contain secrets |

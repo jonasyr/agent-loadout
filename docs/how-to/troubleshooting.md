@@ -38,7 +38,7 @@ Start with `loadout check`. It is read-only, names what is wrong and prints the 
 
 | Symptom | Fix |
 |---|---|
-| Something went wrong after adopt | `loadout restore --list` shows the backups newest first, with their paths; then `loadout restore <that path>`. Adopt prints the path itself only with `--verbose`. See [Undo what loadout changed](undo-and-restore.md). |
+| Something went wrong after adopt | `loadout restore` lists the recent backups by number, shows what one puts back and asks; `loadout restore --last` takes the newest. Adopt prints the path itself only with `--verbose`. See [Undo what loadout changed](undo-and-restore.md). |
 
 ## Your own tools
 
