@@ -24,6 +24,7 @@ class Change:
     target: str | None = None
     cmd: list | None = None
     touches: tuple = ()
+    absent: tuple = ()        # paths that must still be absent when a `run` step starts (git init and .git)
     pre: object = None        # what the path held when the plan was made (see _snapshot)
 
 
@@ -152,8 +153,8 @@ class RepoWrites:
     def link(self, dest: Path, target: str, why: str) -> None:
         self._add(Change("link", dest, why, target=target))
 
-    def run(self, cmd: list, why: str, touches: tuple = ()) -> None:
-        self._add(Change("run", None, why, cmd=list(cmd), touches=tuple(touches)))
+    def run(self, cmd: list, why: str, touches: tuple = (), absent: tuple = ()) -> None:
+        self._add(Change("run", None, why, cmd=list(cmd), touches=tuple(touches), absent=tuple(absent)))
 
     def _rel(self, path: Path) -> str:
         try:
@@ -241,6 +242,9 @@ class RepoWrites:
 
     def _do(self, c: Change, bk) -> str | None:
         if c.kind == "run":
+            here = [p for p in c.absent if p.exists() or p.is_symlink()]
+            if here:  # e.g. .git appeared since the plan: git init would follow it
+                return f"{c.cmd[0]}: not run, {self._rel(here[0])} exists now (run the command again for a new plan)"
             for path in c.touches:
                 if bk is not None:
                     self._record_touch(path, c.cmd[0], bk)

@@ -383,7 +383,8 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     notes: list[str] = []
     failures: list[str] = []
     if git_init:
-        w.run(["git", "init"], "init: make this folder a git repository")
+        w.run(["git", "init"], "init: make this folder a git repository", absent=(git_dir,))
+        w.watch(git_dir)
     if agents is not None:
         try:
             text = repo_config.new_text(project, agents)

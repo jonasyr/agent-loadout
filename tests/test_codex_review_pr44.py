@@ -173,3 +173,31 @@ def test_a_dotted_key_and_a_nested_path_stay_distinct(repo):
     w = repo_writes.RepoWrites(repo)
     w.modify(repo / "d.json", '{\n  "a.b": 2,\n  "a": {\n    "b": 2\n  }\n}\n', "p")
     assert any(l.strip().startswith("+ a.b") for l in w.render())
+
+
+def test_git_init_does_not_run_when_git_appeared_after_the_plan(fake_home, fake_runner, tmp_path):
+    proj = tmp_path / "p"
+    proj.mkdir()
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+
+    def ask(q):
+        if "Apply" in q:
+            (proj / ".git").symlink_to(outside, target_is_directory=True)  # appeared while the question was open
+            return "y"
+        return "-"
+    import os
+    if os.name == "nt":
+        pytest.skip("POSIX symlink")
+    project.init(proj, [], yes=False, install=False, dry_run=False, ask=ask, interactive=True)
+    assert ["git", "init"] not in fake_runner.calls
+
+
+def test_a_git_init_step_refuses_when_git_exists_at_run_time(repo, fake_runner, tmp_path):
+    proj = tmp_path / "q"
+    proj.mkdir()
+    w = repo_writes.RepoWrites(proj)
+    w.run(["git", "init"], "init", absent=(proj / ".git",))
+    (proj / ".git").mkdir()
+    problems = w.apply(backup.Backup(description="t", repo=proj))
+    assert ["git", "init"] not in fake_runner.calls and problems
