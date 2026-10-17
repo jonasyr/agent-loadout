@@ -40,7 +40,7 @@ def test_unhashable_or_odd_agents_are_refused_not_a_traceback(repo, agents):
 
 def test_manage_false_new_skill_prints_the_plan_and_exits_0(repo, capsys):
     (repo / ".loadout.json").write_text('{"manage": false}')
-    assert new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=lambda plan: True) == [project.MANAGE_OFF]
+    assert new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=lambda plan: True)[-1] == project.MANAGE_OFF
     assert not (repo / ".claude").exists() and not (repo / ".agents").exists()
 
 

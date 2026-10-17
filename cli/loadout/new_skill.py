@@ -142,8 +142,6 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup, approve=None) -> l
         cfg = repo_config.load(root)
     except repo_config.Invalid as exc:
         raise Refused(str(exc)) from None
-    if not cfg.manage:
-        return [project_mod.MANAGE_OFF]  # nothing written; exit 0, as for init and profile
     from . import profiles
     src_root, dest_root = profiles.repo_skill_dirs(root)  # the real folder, and the link folder (both agents on)
     if Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
@@ -166,6 +164,8 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup, approve=None) -> l
     w.create(skill_md, stub(name, description), "your new repo skill")
     if dest_root is not None:
         w.link(dest_root / name, os.path.join("..", "..", ".claude", "skills", name), f"skill {name} for Codex")
+    if not cfg.manage:  # the plan, then the refusal: nothing written; exit 0, as for init and profile
+        return w.render() + [project_mod.MANAGE_OFF]
     if approve is not None and not approve(w.render()):
         return ["nothing changed"]
     if bk.repo is None:

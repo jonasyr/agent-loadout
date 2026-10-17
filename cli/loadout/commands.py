@@ -234,7 +234,7 @@ def _register_configure(sub):
             if not bk.empty:
                 print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
             from .project import MANAGE_OFF
-            if lines in (["nothing changed"], [MANAGE_OFF]):
+            if lines == ["nothing changed"] or lines[-1:] == [MANAGE_OFF]:
                 return 0
             print(f"Fill in SKILL.md. {targets.restart_hint()}")
             if a.to != "repo":

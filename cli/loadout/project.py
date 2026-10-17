@@ -232,6 +232,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             print(f"undo: loadout restore {bk.root}")
         return rc
     w = RepoWrites(project)
+    w.watch(project / repo_config.FILE)  # the agent choice the plan was made for
     notes: list[str] = []
     if not cfg.exists:
         mine = frozenset(a for a, on in repo_config.user_agents().items() if on)
@@ -372,6 +373,7 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
             for name in chosen:
                 profiles.load_profile(name)
     w = RepoWrites(project)
+    w.watch(project / repo_config.FILE)  # the agent choice the plan was made for
     notes: list[str] = []
     failures: list[str] = []
     if git_init:

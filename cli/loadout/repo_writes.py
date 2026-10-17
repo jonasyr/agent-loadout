@@ -94,6 +94,11 @@ class RepoWrites:
     def __init__(self, project: Path, now: bool = False, bk=None):
         self.project, self.now, self.bk = project, now, bk
         self._changes: list[Change] = []
+        self._watched: dict = {}
+
+    def watch(self, path: Path) -> None:
+        """The plan depends on `path` (e.g. .loadout.json): if it changes before apply, nothing is applied."""
+        self._watched[path] = _snapshot(path)
 
     @property
     def changes(self) -> list[Change]:
@@ -172,6 +177,10 @@ class RepoWrites:
         """Apply every collected change in order; each is recorded in `bk` before it acts. One failing change is a
         problem line; the rest still run. A file that changed since the plan is left as is (the user approved the
         plan, not that version). hold: paths the caller writes itself later (e.g. after installs)."""
+        for path, seen in self._watched.items():
+            if _snapshot(path) != seen:
+                return [f"{self._rel(path)}: changed since the plan, so the plan no longer fits; nothing written "
+                        "(run the command again for a new plan)"]
         problems = []
         for c in self._ordered():
             if c.path is not None and c.path in hold:
