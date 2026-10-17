@@ -158,7 +158,10 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
                 w.run(cmd, profiles.reason(prof))
             else:
                 failures.append(f"command {cmd!r}: not a list of words, skipped")
-    failures += [l for l in profiles.link_skills(project, False, w=w) if "not linked" in l or "left as is" in l]
+    from . import skill_links
+    links = profiles.link_skills(project, False, w=w)
+    failures += [l for l in links if "not linked" in l or "left as is" in l]
+    notes += [l for l in links if l.startswith(skill_links.PREFIX)]
     if on["codex"]:
         held = _codex_after_installs(project, install)
         for line in codex_project.config(prof, project, False, w=w, record=not held):
@@ -197,6 +200,8 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
     later.watch(project / repo_config.FILE)  # the follow-up question is a second window for a change
     late = profiles.link_skills(project, False, w=later)
     problems += [l for l in late if "not linked" in l or "left as is" in l]
+    from . import skill_links
+    notes += [l for l in late if l.startswith(skill_links.PREFIX) and l not in notes]
     if later.changes:
         follow = [f"The commands of profile {prof.name} added skills; link them for the repo's other agent:"]
         follow += later.render()
@@ -346,6 +351,10 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
     links_ok = True
     for line in profiles.link_skills(project, dry_run, w=w):  # after the commands, which may install skills
         bad = "not linked" in line or "left as is" in line
+        from . import skill_links
+        if line.startswith(skill_links.PREFIX):
+            (steps.append if calm else info)(line)
+            continue
         (warn if bad else info)(line)
         links_ok = links_ok and not bad
         if line.startswith("linked skill"):
@@ -386,7 +395,7 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
 def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: bool, ask: Ask,
          interactive: bool | None = None, agents: frozenset | None = None) -> int:
     """Plan the repo's setup (agents, profiles, scaffold, .gitignore), show it, and apply it after a yes."""
-    from . import backup, repo_config
+    from . import backup, repo_config, skill_links
     from .repo_writes import RepoWrites
     if interactive is None:
         interactive = ui.is_interactive()
@@ -450,8 +459,9 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         for prof in profs:
             planned_notes, planned_failures = _plan_profile(prof, project, w, install,
                                                             chooser(False, ask, interactive and not yes, dry_run))
-            notes += planned_notes
+            notes += [n for n in planned_notes if not (n.startswith(skill_links.PREFIX) and n in notes)]
             failures += planned_failures
+        notes += [l for l in skill_links.report(skill_links.plain_files(project)) if l not in notes]
         _, scaffold_notes = scaffold.scaffold(project, w=w)
         if not paths.inside(project / ".gitignore", project):
             notes.append("skipped .gitignore: it points outside the repo")
