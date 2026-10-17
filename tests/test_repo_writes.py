@@ -103,3 +103,108 @@ def test_now_mode_writes_at_once(repo):
     w = repo_writes.RepoWrites(repo, now=True)
     w.create(repo / "AGENTS.md", "x\n", "init")
     assert (repo / "AGENTS.md").read_text() == "x\n"
+
+
+# --- task-3 review fixes ---
+
+def test_restore_keeps_a_user_file_in_a_folder_loadout_created(repo):
+    w = repo_writes.RepoWrites(repo)
+    w.create(repo / ".claude" / "settings.json", "{}\n", "profile web")
+    bk = backup.Backup(description="t", repo=repo)
+    assert w.apply(bk) == []
+    (repo / ".claude" / "settings.local.json").write_text("mine\n")  # written later by Claude Code or the user
+    lines, ok, _ = backup.restore(bk.root)
+    assert ok, lines
+    assert (repo / ".claude" / "settings.local.json").read_text() == "mine\n"
+    assert not (repo / ".claude" / "settings.json").exists()
+    assert any("kept" in l and ".claude" in l for l in lines)
+
+
+def test_restore_removes_an_emptied_created_folder(repo):
+    w = repo_writes.RepoWrites(repo)
+    w.create(repo / "docs" / "adr" / "README.md", "x\n", "init")
+    bk = backup.Backup(description="t", repo=repo)
+    w.apply(bk)
+    assert backup.restore(bk.root)[1]
+    assert not (repo / "docs").exists()
+
+
+@pytest.mark.parametrize("key", ["DB_PASSWORD", "API_KEY", "token"])
+def test_a_generic_secret_value_is_masked_in_the_json_diff(repo, key):
+    value = "Zq8xLp2Vt9" * 3
+    (repo / ".mcp.json").write_text('{\n  "a": 1\n}\n')
+    w = repo_writes.RepoWrites(repo)
+    w.modify(repo / ".mcp.json", '{\n  "a": 1,\n  "env": {\n    "%s": "%s"\n  }\n}\n' % (key, value), "profile x")
+    w.create(repo / "new.json", '{\n  "%s": "%s"\n}\n' % (key, value), "profile x")
+    text = "\n".join(w.render())
+    assert value not in text and f"env.{key}" in text
+
+
+def test_a_secret_in_a_text_diff_line_is_masked(repo):
+    (repo / "app.ini").write_text("a = 1\n")
+    w = repo_writes.RepoWrites(repo)
+    w.modify(repo / "app.ini", "a = 1\npassword = hunter2hunter2x\n", "profile x")
+    assert "hunter2hunter2x" not in "\n".join(w.render())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink")
+def test_a_write_through_a_link_leading_outside_the_repo_is_refused(repo, tmp_path):
+    outside = tmp_path / "bashrc"
+    outside.write_text("mine\n")
+    (repo / ".gitignore").symlink_to(outside)
+    (repo / "AGENTS.md").symlink_to(tmp_path / "dangling.md")
+    (repo / ".claude").symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+    (tmp_path / "elsewhere").mkdir()
+    w = repo_writes.RepoWrites(repo)
+    w.modify(repo / ".gitignore", "x\n", "init")
+    w.create(repo / "AGENTS.md", "x\n", "init")
+    w.create(repo / ".claude" / "settings.json", "{}\n", "profile")
+    problems = w.apply(backup.Backup(description="t", repo=repo))
+    assert len(problems) == 3 and all("outside the repo" in p for p in problems)
+    assert outside.read_text() == "mine\n" and not (tmp_path / "dangling.md").exists()
+    assert list((tmp_path / "elsewhere").iterdir()) == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink")
+def test_a_failed_link_leaves_no_unrecorded_folder(repo, monkeypatch):
+    def refuse(*a, **k):
+        raise OSError(1, "no symlink rights")
+    monkeypatch.setattr(repo_writes.os, "symlink", refuse)
+    w = repo_writes.RepoWrites(repo)
+    w.link(repo / ".agents" / "skills" / "pw", "../../.claude/skills/pw", "skill pw")
+    bk = backup.Backup(description="t", repo=repo)
+    assert any("not linked" in p for p in w.apply(bk))
+    backup.restore(bk.root)
+    assert not (repo / ".agents").exists()
+
+
+def test_create_on_a_file_that_appeared_keeps_its_bytes(repo):
+    w = repo_writes.RepoWrites(repo)
+    w.create(repo / "AGENTS.md", "loadout\n", "init")
+    (repo / "AGENTS.md").write_bytes(b"theirs\r\n")  # appeared between plan and apply
+    bk = backup.Backup(description="t", repo=repo)
+    w.apply(bk)
+    assert backup.restore(bk.root)[1]
+    assert (repo / "AGENTS.md").read_bytes() == b"theirs\r\n"
+
+
+def test_modify_on_a_missing_file_creates_it_and_one_failure_does_not_stop_the_rest(repo, tmp_path):
+    w = repo_writes.RepoWrites(repo)
+    w.modify(repo / ".gitignore", "x\n", "init")
+    (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
+    w.copytree(tmp_path, repo / ".claude" / "skills" / "pw", "skill pw")  # destination exists now
+    w.create(repo / "AGENTS.md", "x\n", "init")
+    problems = w.apply(backup.Backup(description="t", repo=repo))
+    assert (repo / ".gitignore").read_text() == "x\n" and (repo / "AGENTS.md").exists()
+    assert len(problems) == 1 and "exists" in problems[0]
+
+
+def test_now_mode_redacts_its_error(repo, monkeypatch):
+    token = "ghp" + "_" + "a1b2c3d4e5" * 4
+
+    class Res:
+        ok, stderr = False, f"bad token {token}"
+    monkeypatch.setattr(repo_writes.runner, "run", lambda *a, **k: Res())
+    with pytest.raises(OSError) as exc:
+        repo_writes.RepoWrites(repo, now=True).run(["tool"], "x")
+    assert token not in str(exc.value)

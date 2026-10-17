@@ -8,7 +8,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import runner
+from . import paths, runner, secrets
 from .jsonio import write_atomic
 from .secrets import redact
 
@@ -25,16 +25,6 @@ class Change:
     touches: tuple = ()
 
 
-def _top_missing(path: Path, project: Path) -> Path:
-    """The highest folder (or the path itself) that does not exist yet: what restore has to take away again."""
-    top = path
-    for parent in path.parents:
-        if parent == project or parent.exists() or parent.is_symlink():
-            break
-        top = parent
-    return top
-
-
 def _flat(value, prefix=""):
     if isinstance(value, dict) and value:
         out = {}
@@ -49,19 +39,29 @@ def _json_diff(old: str, new: str) -> list[str] | None:
         a, b = _flat(json.loads(old or "{}")), _flat(json.loads(new))
     except ValueError:
         return None
+    def shown(key, value):
+        last = key.rsplit(".", 1)[-1]
+        if isinstance(value, str) and (secrets.looks_secret(last, value) or secrets._pair_secret(last, value)
+                                       or redact(value) != value):
+            return json.dumps(secrets.MASK)
+        return json.dumps(value, ensure_ascii=False)
+
     lines = []
     for key in b:
         if key not in a:
-            lines.append(f"+ {key}: {json.dumps(b[key], ensure_ascii=False)}")
+            lines.append(f"+ {key}: {shown(key, b[key])}")
         elif a[key] != b[key]:
-            lines.append(f"~ {key}: {json.dumps(a[key], ensure_ascii=False)} -> {json.dumps(b[key], ensure_ascii=False)}")
+            lines.append(f"~ {key}: {shown(key, a[key])} -> {shown(key, b[key])}")
     lines += [f"- {key}" for key in a if key not in b]
     return lines
 
 
 def _text_diff(old: str, new: str) -> list[str]:
-    return [l for l in difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm="", n=0)
-            if not l.startswith(("---", "+++", "@@"))]
+    lines = [l[0] + redact(l[1:]) for l in difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm="", n=0)
+             if not l.startswith(("---", "+++", "@@"))]
+    if not lines and old != new:
+        lines = ["~ line endings or whitespace change"]
+    return lines
 
 
 class RepoWrites:
@@ -77,7 +77,7 @@ class RepoWrites:
         if self.now:
             problem = self._do(change, self.bk)
             if problem:
-                raise OSError(problem)
+                raise OSError(redact(problem))
         else:
             self._changes.append(change)
 
@@ -126,40 +126,81 @@ class RepoWrites:
         return [redact(l) for l in out]
 
     def apply(self, bk) -> list[str]:
-        """Apply every collected change in order; each is recorded in `bk` before or as it happens."""
+        """Apply every collected change in order; each is recorded in `bk` before it acts. One failing change is a
+        problem line; the rest still run."""
         problems = []
         for c in self._changes:
-            problem = self._do(c, bk)
+            try:
+                problem = self._do(c, bk)
+            except OSError as exc:
+                problem = f"{self._rel(c.path) if c.path else c.cmd[0]}: {exc.strerror or exc}"
             if problem:
                 problems.append(redact(problem))
         return problems
 
+    def _outside(self, path: Path, follow: bool) -> bool:
+        """True when writing `path` would land outside the repo: through a linked parent folder, or (follow) through
+        the path itself when it is a link."""
+        if not paths.inside(path.parent, self.project):
+            return True
+        return follow and path.is_symlink() and not paths.inside(path, self.project)
+
+    def _record_parents(self, path: Path, bk) -> None:
+        """Record each folder that does not exist yet, top down, before it is made."""
+        missing = []
+        for parent in path.parents:
+            if parent == self.project or parent.exists() or parent.is_symlink():
+                break
+            missing.append(parent)
+        for folder in reversed(missing):
+            if bk is not None:
+                bk.record_created_dir(folder, f"{self._rel(folder)}/ (created by loadout)")
+
     def _do(self, c: Change, bk) -> str | None:
         if c.kind == "run":
             for path in c.touches:
-                if bk is not None:
-                    if path.exists():
-                        bk.save_copy(path, f"{self._rel(path)} before {c.cmd[0]}")
-                    else:
-                        bk.record_created(_top_missing(path, self.project), f"{self._rel(path)} (created by {c.cmd[0]})")
+                if bk is None:
+                    continue
+                if path.exists():
+                    bk.save_copy(path, f"{self._rel(path)} before {c.cmd[0]}")
+                else:
+                    self._record_parents(path, bk)
+                    bk.record_created(path, f"{self._rel(path)} (created by {c.cmd[0]})")
             res = runner.run(c.cmd, cwd=str(self.project))
             return None if res.ok else f"{c.cmd[0]}: failed: {res.stderr.strip()}"
-        if c.kind == "modify":
-            if bk is not None:
-                bk.save_copy(c.path, f"{self._rel(c.path)} before loadout changed it")
+        if self._outside(c.path, follow=c.kind in ("create", "modify")) or (c.kind == "create" and c.path.is_symlink()):
+            return f"{self._rel(c.path)}: not written, it leads outside the repo (a link)"
+        if c.kind in ("create", "modify"):
+            if c.path.exists():  # a create whose file appeared since the plan is a change: its bytes are saved first
+                if bk is not None:
+                    bk.save_copy(c.path, f"{self._rel(c.path)} before loadout changed it")
+            else:
+                self._record_parents(c.path, bk)
+                if bk is not None:
+                    bk.record_created(c.path, f"{self._rel(c.path)} (created by loadout)")
+            c.path.parent.mkdir(parents=True, exist_ok=True)
             write_atomic(c.path, c.text)
             return None
-        top = _top_missing(c.path, self.project)
-        c.path.parent.mkdir(parents=True, exist_ok=True)
-        if c.kind == "create":
-            write_atomic(c.path, c.text)
-        elif c.kind == "copy":
+        if c.path.exists() or c.path.is_symlink():
+            return f"{self._rel(c.path)}: exists now, left as is"
+        self._record_parents(c.path, bk)
+        if c.kind == "copy":
+            if bk is not None:
+                bk.record_created_dir(c.path, f"{self._rel(c.path)}/ (created by loadout)")
+                for item in sorted(c.src.rglob("*")):
+                    dest = c.path / item.relative_to(c.src)
+                    if item.is_dir() and not item.is_symlink():
+                        bk.record_created_dir(dest, f"{self._rel(dest)}/ (created by loadout)")
+                    else:
+                        bk.record_created(dest, f"{self._rel(dest)} (created by loadout)")
+            c.path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(c.src, c.path, symlinks=True)
-        else:
-            try:
-                os.symlink(c.target, c.path, target_is_directory=True)
-            except OSError as exc:  # e.g. Windows without symlink rights
-                return f"{self._rel(c.path)}: not linked ({exc.strerror or exc})"
+            return None
         if bk is not None:
-            bk.record_created(top, f"{self._rel(top)} (created by loadout)")
+            bk.record_created(c.path, f"{self._rel(c.path)} (created by loadout)")
+        c.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.symlink(c.target, c.path, target_is_directory=True)
+        except OSError as exc:  # e.g. Windows without symlink rights
+            return f"{self._rel(c.path)}: not linked ({exc.strerror or exc})"
         return None
