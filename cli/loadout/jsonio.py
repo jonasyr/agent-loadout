@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -110,3 +111,34 @@ def deep_merge(base: Any, overlay: Any) -> Any:
     if isinstance(base, list) and isinstance(overlay, list):
         return copy.deepcopy(base) + [copy.deepcopy(x) for x in overlay if x not in base]
     return copy.deepcopy(overlay)
+
+
+@dataclass(frozen=True)
+class JsonStyle:
+    indent: int | str
+    newline: str
+    final_newline: bool
+
+
+def json_style(text: str) -> JsonStyle | None:
+    """The layout of `text` when it is exactly what json.dumps(indent=2, 4 or a tab) writes, with one kind of line
+    ending; None for any other layout, which loadout then never rewrites (the user's bytes stay theirs)."""
+    newline = "\r\n" if "\r\n" in text else "\n"
+    body = text.replace("\r\n", "\n")
+    if newline == "\r\n" and body.count("\n") != text.count("\r\n"):  # mixed endings
+        return None
+    final = body.endswith("\n")
+    core = body[:-1] if final else body
+    try:
+        data = json.loads(core)
+    except ValueError:
+        return None
+    for indent in (2, 4, "\t"):
+        if json.dumps(data, indent=indent, ensure_ascii=False) == core:
+            return JsonStyle(indent, newline, final)
+    return None
+
+
+def dumps_like(style: JsonStyle, data) -> str:
+    text = json.dumps(data, indent=style.indent, ensure_ascii=False) + ("\n" if style.final_newline else "")
+    return text.replace("\n", style.newline)

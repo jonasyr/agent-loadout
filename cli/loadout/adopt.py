@@ -587,8 +587,8 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
     from . import project
 
     if new_profiles:
-        print("\n(applying writes the repo's committed .claude/settings.json / .mcp.json "
-              "and is not undone by loadout restore)")
+        print("\n(applying writes the repo's committed files, such as .claude/settings.json and .mcp.json; "
+              "each run prints its `loadout restore` line)")
     for name, items in new_profiles.items():
         found = sorted({repo for item in items for repo in own.candidate_repos(item)})
         print(f"\nprofile {name} is in your personal layer. Apply it to repos now?")
@@ -609,8 +609,11 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
                 print(f"  {repo.resolve()}: not a folder, skipped")
                 continue
             try:
-                ok = project.add_profile(repo, name) == 0
-                print(f"  {repo.resolve()}: profile {name} " + ("applied" if ok else "applied with problems (see above)"))
+                done: dict = {}
+                ok = project.add_profile(repo, name, approve=project.approver(False, ask, True), result=done) == 0  # plan, yes
+                state = ("applied" if ok else "applied with problems (see above)") if done.get("applied") else (
+                    "not applied" if ok else "not applied (see above)")
+                print(f"  {repo.resolve()}: profile {name} {state}")
             except (OSError, InvalidJSON, ValueError) as exc:
                 print(redact(f"  {repo.resolve()}: failed: {exc}"))
 

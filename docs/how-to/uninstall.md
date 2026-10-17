@@ -29,7 +29,7 @@ First run `loadout configure set target codex on` once. It brings loadout's reco
    ```
 
    Plugins you enabled for Claude Code were installed in Codex from their marketplaces too. Remove each the same way if you want: `codex plugin remove NAME@MARKET`, then `codex plugin marketplace remove MARKET`.
-5. In each repo where you ran `loadout init` or `loadout profile`: remove the sections loadout added to `.codex/config.toml` and the links in `.agents/skills` that point to `../../.claude/skills/NAME` (and in `.claude/skills` the links to `../../.agents/skills/NAME`). Use git there.
+5. In each repo where you ran `loadout init` or `loadout profile`: delete `.loadout.json` if you do not want to keep it, remove the sections loadout added to `.codex/config.toml` and the links in `.agents/skills` that point to `../../.claude/skills/NAME` (and in `.claude/skills` the links to `../../.agents/skills/NAME`). Use git there.
 
 Then continue with [Remove the kit](#remove-the-kit), which deletes `~/.local/state/loadout`. If you restore from a backup instead, `loadout restore` removes the plugins and marketplaces it recorded and puts back the saved `AGENTS.md` and `config.toml` ([Undo](undo-and-restore.md#codex)).
 
@@ -65,7 +65,7 @@ You can then delete the clone: the folder `loadout kit-path` printed at the star
 - **Your personal layer and `secrets.env`** under `~/.config/loadout/` are never touched. Delete them yourself if you want them gone.
 - **Backups** in `~/.local/state/loadout/backups/` stay unless you deleted the whole state folder above. They can hold old configs with secrets, so delete them when you no longer need them.
 - **Old state in `~/.claude`.** `~/.claude/.loadout`, and `loadout-<timestamp>` folders in `~/.claude/backups`, are old copies: they go by themselves about ten minutes after loadout copied them, unless both places changed, in which case `loadout check` names them. When you uninstall, delete them by hand. Leave the rest of `~/.claude/backups` alone: Claude Code keeps its own `.claude.json` copies there.
-- **Profiles applied to repos** stay: they are normal files in the repo's `.claude/settings.json` and `.mcp.json`, and with Codex on also `.codex/config.toml` and `.agents/skills`.
+- **Profiles applied to repos** stay: `.loadout.json` and the normal files in the repo's `.claude/settings.json` and `.mcp.json`, and for a Codex repo `.codex/config.toml` and `.agents/skills`. `loadout restore` can undo a recent run before you uninstall (the backup is in the state folder above).
 
 ## If you recorded own tools as global
 

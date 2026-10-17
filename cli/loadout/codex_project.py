@@ -31,9 +31,10 @@ def _wanted(prof: profiles.Profile) -> tuple[dict[str, str], list[str], list[str
     return tables, plugins, skipped
 
 
-def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset = frozenset()) -> list[str]:
+def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset = frozenset(), w=None) -> list[str]:
     """Add the profile's servers and plugin switches to the repo's .codex/config.toml. Only adds tables; a table of
-    the same name is the user's and stays. skip: plugins that did not install, so the repo does not name them."""
+    the same name is the user's and stays. skip: plugins that did not install, so the repo does not name them. With a
+    collector `w` the change is only planned."""
     path = project / ".codex" / "config.toml"
     if not paths.inside(path.parent, project) or not paths.inside(path, project):
         return [f"skipped {path}: it points outside {project} (a symlinked .codex or config.toml)"]
@@ -42,7 +43,8 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
     plugins = [p for p in plugins if p not in skip]
     if not tables and not plugins:
         return lines
-    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    planned = w.planned(path) if w is not None and hasattr(w, "planned") else None
+    old = planned if planned is not None else (path.read_bytes().decode("utf-8") if path.exists() else "")  # CRLF stays
     try:
         before = tl.loads(old)
     except Exception as exc:
@@ -69,16 +71,17 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
         lines.append(("would enable" if dry_run else "enabled") + f" plugin {pid} in {path}")
     if not added or dry_run:
         return lines
-    new = (old.rstrip("\n") + "\n\n" if old.strip() else "") + "\n".join(added)
+    nl = "\r\n" if "\r\n" in old else "\n"  # the new tables take the file's line endings
+    new = (old.rstrip("\r\n") + nl + nl if old.strip() else "") + "\n".join(added).replace("\n", nl)
     try:
         after = tl.loads(new)
     except Exception as exc:
         return lines + [f"skipped {path}: the result would not parse ({exc}); nothing written"]
     if codex._without_owned(before, set(tables), keys, tl) != codex._without_owned(after, set(tables), keys, tl):
         return lines + [f"skipped {path}: the edit would change entries loadout does not own; nothing written"]
-    from .jsonio import write_atomic
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_atomic(path, new)
+    from .repo_writes import RepoWrites
+    writes = w if w is not None else RepoWrites(project, now=True)
+    (writes.modify if path.exists() else writes.create)(path, new, profiles.reason(prof))
     return lines
 
 
@@ -150,11 +153,14 @@ def failed_plugins(prof: profiles.Profile, lines: list[str]) -> frozenset:
                             for l in lines))
 
 
-def apply(prof: profiles.Profile, project: Path, install: bool, dry_run: bool) -> list[str]:
-    lines = plugins(prof, dry_run) if install else []
-    lines = config(prof, project, dry_run, skip=failed_plugins(prof, lines)) + lines  # skills: profiles.link_skills
+def apply(prof: profiles.Profile, project: Path, install: bool, dry_run: bool, w=None,
+          user_codex: bool = True) -> list[str]:
+    """The repo's Codex side. user_codex False (a repo for Codex, a user without it): the repo's file only, no
+    installs and no trust note."""
+    lines = plugins(prof, dry_run) if install and user_codex else []
+    lines = config(prof, project, dry_run, skip=failed_plugins(prof, lines), w=w) + lines  # skills: link_skills
     tables, plugins_, _ = _wanted(prof)
     has_codex_parts = bool(tables or plugins_) or any((project / ".agents" / "skills").glob("*"))
-    if has_codex_parts and not dry_run and not _trusted(project):  # on every run until trusted, not only on changes
+    if user_codex and has_codex_parts and not dry_run and not _trusted(project):  # every run until trusted
         lines.append(TRUST_NOTE)
     return lines

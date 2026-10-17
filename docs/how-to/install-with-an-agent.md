@@ -99,4 +99,4 @@ Without a terminal, bootstrap skips the review of what was installed before load
 - **Claude Code:** they restart it, or run `/reload-plugins`.
 - **Logins:** bootstrap's "Still to do" list names the logins that are missing.
 - Run `loadout check`. For each `warn` or `FAIL` line, give the user the fix from [Troubleshooting](troubleshooting.md), in one line each.
-- For a new repo, they can run `loadout init` there; for later changes, they ask you, and you use the `loadout:configure` skill.
+- For a new repo, they can run `loadout init` there. Without a terminal that is two steps: you run `loadout init --dry-run --agents claude`, `codex` or `claude,codex` (the repo's agents; ask which) and show the plan, then run `loadout init --yes --agents …` after their yes. For later changes, they ask you, and you use the `loadout:configure` skill.

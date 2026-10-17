@@ -191,6 +191,7 @@ def _register_configure(sub):
     p.add_argument("--all", action="store_true", help="with own: also list the tools you left on this machine")
     p.add_argument("--to", default="global", help="with new skill: global (default), project:<profile> or repo")
     p.add_argument("--description", help="with new skill: one line saying when an agent should use the skill")
+    p.add_argument("--yes", action="store_true", help="with new skill --to repo: create it without asking (needed without a terminal)")
     p.add_argument("--first-run", action="store_true", help="also ask the 'about you' questions again (keeps your me.md unless you agree)")
 
     def run(a):
@@ -213,8 +214,16 @@ def _register_configure(sub):
             from .backup import Backup
             from .secrets import redact
             bk = Backup(description=f"configure new skill {redact(a.name)}")
+            approve = None
+            if a.to == "repo":
+                from . import project, ui
+                ask_yes = project.approver(a.yes, _ask, ui.is_interactive())
+
+                def approve(plan):
+                    print("\n".join(plan))
+                    return ask_yes(plan)
             try:
-                lines = new_skill.create(a.name, a.to, a.description, bk=bk)
+                lines = new_skill.create(a.name, a.to, a.description, bk=bk, approve=approve)
             except new_skill.BadInput as exc:
                 print(f"loadout: {redact(str(exc))}", file=sys.stderr)
                 return 2
@@ -222,7 +231,11 @@ def _register_configure(sub):
                 print(f"loadout: {redact(str(exc))}", file=sys.stderr)
                 return 1
             print("\n".join(lines))
-            print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+            if not bk.empty:
+                print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+            from .project import MANAGE_OFF
+            if lines == ["nothing changed"] or lines[-1:] == [MANAGE_OFF]:
+                return 0
             print(f"Fill in SKILL.md. {targets.restart_hint()}")
             if a.to != "repo":
                 configure.offer_commit(_ask)

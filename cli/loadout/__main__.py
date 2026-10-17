@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import project
+from . import project, repo_config, ui
 from .jsonio import InvalidJSON
 
 
@@ -45,19 +45,27 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
     p = sub.add_parser("init", help="set up the current project",
-                       description="Prepare the current project: AGENTS.md, CLAUDE.md, docs/, .gitignore entries, profiles. Never overwrites files.")
+                       description="Prepare the current project: .loadout.json, AGENTS.md, CLAUDE.md, docs/, .gitignore entries, "
+                                   "profiles. Shows the plan and asks before it changes anything; never overwrites files.")
     p.add_argument("profiles", nargs="*", help="profiles to apply (default: suggest from the project and ask)")
-    p.add_argument("--yes", action="store_true", help="no questions: git init if needed, apply the suggested profiles")
+    p.add_argument("--agents", metavar="claude|codex|claude,codex", help="which agents this repo is for (written to .loadout.json)")
+    p.add_argument("--yes", action="store_true", help="no questions: git init if needed, the suggested profiles, apply the plan")
     p.add_argument("--no-install", action="store_true", help="do not install the profiles' plugins or run their commands")
     p.add_argument("--dry-run", action="store_true", help="show what would change, change nothing")
     p.add_argument("--verbose", action="store_true", help="every file, command and note, not only the summary")
-    p.set_defaults(func=lambda a: _verbose(a) or project.init(Path.cwd(), a.profiles, a.yes, not a.no_install, a.dry_run, _ask))
+    p.set_defaults(func=lambda a: _verbose(a) or project.init(
+        Path.cwd(), a.profiles, a.yes, not a.no_install, a.dry_run, _ask,
+        agents=repo_config.parse_agents(a.agents) if a.agents else None))
 
     p = sub.add_parser("profile", help="add a profile to the current project")
     p.add_argument("name", help="profile name, e.g. thesis, web, db, sonar, android (or one in <personal>/profiles)")
     p.add_argument("--no-install", action="store_true", help="do not install the profile's plugins or run its commands")
+    p.add_argument("--dry-run", action="store_true", help="show the plan, change nothing")
+    p.add_argument("--yes", action="store_true", help="apply the plan without asking (needed without a terminal)")
     p.add_argument("--verbose", action="store_true", help="every file, command and note, not only the summary")
-    p.set_defaults(func=lambda a: _verbose(a) or project.add_profile(Path.cwd(), a.name, install=not a.no_install))
+    p.set_defaults(func=lambda a: _verbose(a) or project.add_profile(
+        Path.cwd(), a.name, install=not a.no_install, dry_run=a.dry_run,
+        approve=project.approver(a.yes, _ask, ui.is_interactive())))
 
     for register in EXTRA_COMMANDS:
         register(sub)

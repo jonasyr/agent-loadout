@@ -134,6 +134,13 @@ Type "cd ~/my-app && loadout init"
 Sleep 300ms
 Enter
 Sleep 2000ms
+# which agents (Enter: yours), which profiles (Enter: the suggested), then the plan and "Apply these changes? [y/N]"
+Enter
+Sleep 1500ms
+Enter
+Sleep 3500ms
+Type "y"
+Sleep 300ms
 Enter
 Sleep 7s
 

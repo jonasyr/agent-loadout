@@ -50,7 +50,7 @@ def test_commands_the_agent_runs_after_a_yes_need_no_terminal():
     # the agent's shell has no terminal: a command that asks again would skip silently
     assert "`loadout update --yes`" in SKILL
     assert "`loadout adopt --apply --groups" in SKILL
-    assert "`loadout init <names> --yes`" in SKILL  # otherwise no git init and no profile
+    assert "`loadout init <names> --agents" in SKILL and "`--dry-run` first" in SKILL and "with `--yes` instead" in SKILL  # plan, then --yes: no terminal to ask
     assert "also moves the plaintext secrets" not in SKILL  # the workaround is gone
     assert ",secrets`" in SKILL and "include `update` or `install`, add `--yes`" in SKILL
     assert "naming `secrets` is its consent" in SKILL  # adopt.py: a named group is the consent, no --yes

@@ -2,5 +2,8 @@
   "description": "Android / Kotlin",
   "install": ["kotlin-lsp@claude-plugins-official"],
   "settings": { "enabledPlugins": { "kotlin-lsp@claude-plugins-official": true } },
+  "why": {
+    "settings.enabledPlugins": "turns on the Kotlin language server plugin for this repo (needs the kotlin-lsp binary)"
+  },
   "notes": "Requires the kotlin-lsp binary (see the plugin README)."
 }

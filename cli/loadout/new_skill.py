@@ -84,7 +84,7 @@ def _global(name: str, description: str, bk: Backup) -> list[str]:
 
 
 def create(name: str, to: str = "global", description: str | None = None, cwd: Path | None = None,
-           bk: Backup | None = None) -> list[str]:
+           bk: Backup | None = None, approve=None) -> list[str]:
     """Write the stub where `to` says (global, project:<profile>, repo) and link it for the agents that are on."""
     if secrets.redact(name or "") != (name or ""):  # it would become a folder name, a manifest label and output
         raise Refused("the skill name looks like a secret; choose a plain name")
@@ -106,7 +106,7 @@ def create(name: str, to: str = "global", description: str | None = None, cwd: P
     if to.startswith("project:"):
         return _project(name, to.split(":", 1)[1], text, bk)
     if to == "repo":
-        return _repo(name, text, cwd or Path.cwd(), bk)
+        return _repo(name, text, cwd or Path.cwd(), bk, approve)
     raise BadInput(f"--to {to}: use global, project:<profile> or repo")
 
 
@@ -132,11 +132,16 @@ def _project(name: str, profile: str, description: str, bk: Backup) -> list[str]
             f"(apply it to a repo with `loadout profile {profile}`)"]
 
 
-def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
+def _repo(name: str, description: str, cwd: Path, bk: Backup, approve=None) -> list[str]:
     import os
     root = repo_root(Path(os.path.abspath(cwd)))
     if root is None:
         raise Refused(f"--to repo: {cwd} is not inside a git repo")
+    from . import project as project_mod, repo_config
+    try:
+        cfg = repo_config.load(root)
+    except repo_config.Invalid as exc:
+        raise Refused(str(exc)) from None
     from . import profiles
     src_root, dest_root = profiles.repo_skill_dirs(root)  # the real folder, and the link folder (both agents on)
     if Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
@@ -153,17 +158,32 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup) -> list[str]:
             if (part.exists() or part.is_symlink()) and not part.is_dir():
                 raise Refused(f"--to repo: {part} is not a folder; nothing written")
     _refuse_taken(name, [root / rel for rel in profiles.REPO_SKILLS])  # whatever is on: one skill per name
-    skill_md = _write(src_root, name, description, bk)
+    from .repo_writes import RepoWrites
+    skill_md = src_root / name / "SKILL.md"
+    w = RepoWrites(root)
+    w.watch(root / repo_config.FILE)  # the agent choice the plan was made for
+    w.create(skill_md, stub(name, description), "your new repo skill")
+    if dest_root is not None:
+        w.link(dest_root / name, os.path.join("..", "..", ".claude", "skills", name), f"skill {name} for Codex")
+    if not cfg.manage:  # the plan, then the refusal: nothing written; exit 0, as for init and profile
+        return w.render() + [project_mod.MANAGE_OFF]
+    if approve is not None and not approve(w.render()):
+        return ["nothing changed"]
+    if bk.repo is None:
+        bk.repo = root
+    problems = w.apply(bk)
+    if w.stale or any("not linked" not in p for p in problems):  # nothing (or not the skill) was written
+        raise Refused("; ".join(problems))
     out = [f"skill {name}: created {skill_md} (commit it to share it with this repo)"]
     if dest_root is not None:
         dest = dest_root / name
-        dest_root.mkdir(parents=True, exist_ok=True)
-        try:
-            os.symlink(os.path.join("..", "..", ".claude", "skills", name), dest, target_is_directory=True)  # Windows: its own separator
-        except OSError as exc:  # e.g. Windows without symlink rights
-            return out + [f"skill {name}: not linked for Codex ({exc.strerror or exc})"]
-        bk.record_created(dest, f"Codex link for skill {name}")
-        out.append(f"linked {dest} -> ../../.claude/skills/{name}")
+        link_problem = next((p for p in problems if "not linked" in p), None)
+        if link_problem:
+            reason = link_problem[link_problem.index("(") + 1:link_problem.rindex(")")]
+            out.append(f"skill {name}: not linked for Codex ({reason})")
+        elif not problems:
+            out.append(f"linked {dest} -> ../../.claude/skills/{name}")
+    out += [p for p in problems if "not linked" not in p]
     return out
 
 

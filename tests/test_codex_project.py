@@ -114,7 +114,7 @@ def test_a_plugin_already_on_everywhere_is_not_made_project_only(repo, fake_runn
 
 def test_add_profile_runs_codex_only_when_codex_is_on(repo, fake_runner, monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: calls.append(prof.name) or [])
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run, **k: calls.append(prof.name) or [])
     monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
     monkeypatch.setattr(targets, "codex_enabled", lambda: False)
     project.add_profile(repo, "web", install=False)
@@ -125,7 +125,7 @@ def test_add_profile_runs_codex_only_when_codex_is_on(repo, fake_runner, monkeyp
 
 
 def test_trust_note_unless_the_project_is_trusted(repo, monkeypatch):
-    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run, skip=frozenset(): ["x"])
+    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run, skip=frozenset(), **k: ["x"])
     assert codex_project.TRUST_NOTE in codex_project.apply(WEB, repo, install=False, dry_run=False)
     cfg = paths.codex_home() / "config.toml"
     cfg.parent.mkdir(parents=True)
@@ -185,7 +185,7 @@ def test_codex_only_machine_never_runs_claude_plugin_install(repo, fake_runner, 
     monkeypatch.setattr(profiles, "load_profile", lambda name: THESIS)
     monkeypatch.setattr(targets, "claude_enabled", lambda: False)
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
-    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: [])
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run, **k: [])
     project.add_profile(repo, "thesis", install=True)
     assert not any(c[:2] == ["claude", "plugin"] for c in fake_runner.calls)
 
@@ -202,7 +202,7 @@ def test_a_failed_plugin_list_makes_nothing_project_only(repo, fake_runner, monk
 
 
 def test_trust_note_repeats_on_a_second_run_while_untrusted(repo, monkeypatch):
-    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run, skip=frozenset(): [])
+    monkeypatch.setattr(codex_project, "config", lambda prof, p, dry_run, skip=frozenset(), **k: [])
     assert codex_project.TRUST_NOTE in codex_project.apply(WEB, repo, install=False, dry_run=False)
     empty = profiles.Profile(name="empty", description="")
     assert codex_project.TRUST_NOTE not in codex_project.apply(empty, repo, install=False, dry_run=False)
@@ -290,7 +290,7 @@ def test_a_failed_marketplace_skips_only_its_own_plugins(repo, fake_runner, monk
 def test_conflicts_left_as_is_fail_the_profile(repo, monkeypatch):
     monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
-    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: [
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run, **k: [
         "mcp chrome-devtools: left as is in x (a server of that name is already there)"])
     assert project.add_profile(repo, "web", install=False) == 1
 
@@ -299,20 +299,21 @@ def test_no_codex_route_makes_profile_exit_1(repo, fake_runner, monkeypatch):
     monkeypatch.setattr(profiles, "load_profile", lambda name: THESIS)
     monkeypatch.setattr(targets, "claude_enabled", lambda: False)
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
-    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: ["plugin x@y: no Codex route (its marketplace is not on GitHub)"])
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run, **k: ["plugin x@y: no Codex route (its marketplace is not on GitHub)"])
     assert project.add_profile(repo, "thesis") == 1
 
 
-def test_init_exits_1_when_a_profile_failed(repo, monkeypatch):
-    monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
-    monkeypatch.setattr(project, "add_profile", lambda *a, **k: 1)
-    assert project.init(repo, ["web"], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False) == 1
+def test_init_exits_1_when_a_profile_failed(repo, fake_runner, monkeypatch):
+    failing = profiles.Profile(name="web", description="", commands=[["tool", "x"]])
+    monkeypatch.setattr(profiles, "load_profile", lambda name: failing)
+    fake_runner.responses[("tool",)] = runner.Result(1, "", "boom")
+    assert project.init(repo, ["web"], yes=True, install=True, dry_run=False, ask=lambda q: "", interactive=False) == 1
 
 
 def test_failed_skill_links_make_profile_exit_1(repo, monkeypatch):
     monkeypatch.setattr(profiles, "load_profile", lambda name: WEB)
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
-    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run: ["skill pw: not linked for Codex (denied)"])
+    monkeypatch.setattr(codex_project, "apply", lambda prof, p, install, dry_run, **k: ["skill pw: not linked for Codex (denied)"])
     assert project.add_profile(repo, "web", install=False) == 1
 
 

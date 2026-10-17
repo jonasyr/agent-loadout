@@ -27,10 +27,11 @@ def _private(path: Path, mode: int) -> None:
 
 
 class Backup:
-    def __init__(self, root: Path | None = None, description: str = ""):
+    def __init__(self, root: Path | None = None, description: str = "", repo: Path | None = None):
         self._fixed = root is not None
         self._root = root or paths.backups_root() / time.strftime("loadout-%Y%m%d-%H%M%S")
         self.description = description
+        self.repo = repo
         self.steps: list[dict] = []
 
     @property
@@ -103,6 +104,11 @@ class Backup:
         self._ensure_root()
         self._add(label, {"created": str(path)})
 
+    def record_created_dir(self, path: Path, label: str) -> None:
+        """A folder the kit created: undo removes it only when it is empty again, so files others put there stay."""
+        self._ensure_root()
+        self._add(label, {"created-dir": str(path)})
+
     def record_command(self, label: str, undo_cmd: list[str], **info) -> None:
         """info: extra facts kept in the manifest for the user (e.g. a marketplace's full source)."""
         self._ensure_root()
@@ -116,6 +122,8 @@ class Backup:
         if not hasattr(self, "_created_at"):
             self._created_at = time.time()
         manifest = {"description": self.description, "created_at": self._created_at, "steps": self.steps}
+        if self.repo is not None:
+            manifest["repo"] = str(self.repo)
         save_json(self.root / "manifest.json", manifest, mode=PRIVATE_FILE)
 
 
@@ -247,6 +255,16 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
             return f"skipped (already gone): {path}"
         pre.move(path, f"{path} (created by loadout)", replace=True)
         return f"moved aside: {path}"
+    elif "created-dir" in undo:
+        path = Path(undo["created-dir"])
+        if not _exists(path):
+            return f"skipped (already gone): {path}"
+        if path.is_symlink() or not path.is_dir():
+            return f"kept: {path} (no longer the folder loadout created)"
+        if any(path.iterdir()):
+            return f"kept: {path} (it holds files loadout did not create)"
+        path.rmdir()
+        return f"removed: {path} (empty folder loadout created)"
     elif "kept" in undo:
         return f"not restored automatically: {label}; the old value is in {undo['kept']}, restore it by hand"
     elif "run" in undo:
