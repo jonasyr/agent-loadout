@@ -2,7 +2,7 @@
 
 `loadout` is the command-line tool of the kit. Run `loadout --help` or `loadout <command> --help` for the built-in help. The flag tables below match that help.
 
-The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update`, `restore`, `usage` and `kit-path`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They are not listed in `loadout --help` and are not meant to be run by hand.
+The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update`, `restore`, `usage`, `explain` and `kit-path`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They are not listed in `loadout --help` and are not meant to be run by hand.
 
 `loadout --version` prints the release and the kit's commit, for example `loadout 0.1.0 (54af5b7)`; the commit is left out when the kit is not a git clone. Bug reports ask for it.
 
@@ -179,7 +179,7 @@ Exit codes: 0 on success, and also when the plan was declined, when there was no
 Add one profile to the current project. It does what `init` does for a single profile, without the scaffolding.
 
 ```
-loadout profile [--no-install] [--dry-run] [--yes] [--verbose] NAME
+loadout profile [--no-install] [--dry-run] [--yes] [--take-profile] [--verbose] NAME
 ```
 
 | Flag | Meaning |
@@ -188,7 +188,10 @@ loadout profile [--no-install] [--dry-run] [--yes] [--verbose] NAME
 | `--no-install` | Do not install the profile's plugins or run its commands. |
 | `--dry-run` | Print the plan and change nothing. |
 | `--yes` | Apply the plan without asking. Needed without a terminal; without it the plan is shown and nothing is written. |
+| `--take-profile` | Where someone changed an entry the profile set, use the profile's value. Without it, a terminal asks once (`Use the profile's values for these? [y/N]`); without a terminal the repo's values stay. |
 | `--verbose` | Print every file, command and note instead of the one status line. |
+
+A re-run merges three-way against what the profile wrote last time ([Applying a profile](profile-format.md#what-applying-a-profile-does), [ADR 0031](../adr/0031-repo-profile-entries-merge-three-way.md)): updates apply by themselves, a teammate's changes stay unless you say yes, and a value you declined is not asked about again.
 
 What `init` and `profile` write in the repo, per agent. The repo's agents come from [`.loadout.json`](#loadoutjson); without that file, from the agents that are on for you.
 
@@ -215,9 +218,10 @@ A committed file at the repo root. `init` and `profile` write it; you can edit i
 | Key | Meaning |
 |---|---|
 | `agents` | The agents the repo is for: `"claude"`, `"codex"` or both, each once. `init`, `profile` and `configure new skill --to repo` write the files of these agents, whichever agents are on for the user running them. Missing: the agents that are on for the user decide, and the first `init` or `profile` adds the file to its plan. |
+| `profiles` | Written by loadout: per profile and file, the entries it wrote (JSON-pointer paths such as `env/MODE`; for a list, the entries loadout added; a value that looks like a secret only as `sha256:…`). Re-runs merge against it; `loadout explain` reads it. Commit it with the files. |
 | `manage` | `false` makes every loadout command refuse to write in the repo: it prints its plan, then `manage is false in .loadout.json: nothing written`, and exits 0. Default `true`. |
 
-Other keys are kept when loadout rewrites the file. An invalid file stops every repo-writing command before anything changes: it prints the reason, for example `.loadout.json: agents must be a list of "claude" and "codex" (each once)`, and exits 1. A `.loadout.json` that is a link leading outside the repo is refused the same way.
+Other keys are kept when loadout rewrites the file. An invalid file stops every repo-writing command before anything changes: it prints the reason, for example `.loadout.json: agents must be a list of "claude" and "codex" (each once)` or `.loadout.json: profiles must map each profile to its files and their entries …`, and exits 1. A `.loadout.json` in a layout loadout cannot reproduce is left byte for byte: the other files are written, the record is not, and the plan says so. A `.loadout.json` that is a link leading outside the repo is refused the same way.
 
 Changing the list with `init --agents`: an added agent gets its missing files and skill links. A removed agent's files stay; the plan lists them as no longer needed, and removing them is yours to do. `loadout adopt` applies a profile to a repo the same way: it shows the plan and asks before it writes. loadout writes none of this at session start or in the daily sync.
 
@@ -345,6 +349,16 @@ Without `BACKUP_DIR` it lists the backups, like `--list`.
 Backups are kept in `~/.local/state/loadout/backups`, for every user, Codex-only setups included; see [loadout's own files](../explanation/architecture.md#loadouts-own-files). Backups taken before the move restore from the new place. If the old `~/.claude/backups` folder still exists, restore names it: the move has not finished, or a different backup of the same name was kept in both places. Restore only accepts folders under the backups location and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
 
 Exit codes: 0 when listing or when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed.
+
+## loadout explain
+
+```
+loadout explain FILE
+```
+
+Read-only. For a file in the current repo, it lists the entries loadout wrote there (from the `profiles` record in [`.loadout.json`](#loadoutjson)), from which profile, and the state of each: `loadout's value`, `changed in this repo (now …)`, `removed in this repo`, or `cannot compare, the file does not parse`. A value that looks like a secret is shown as `(a secret value, not shown)`. Everything else in the file is yours. For `.loadout.json` it prints the repo's agents, `manage` and how many entries each profile recorded; for `.gitignore`, the lines under its `# loadout` line. A file without recorded entries says so (files `init` created are yours once they exist). Text from the repo is printed with control characters made visible, so a file cannot drive your terminal.
+
+Exit codes: 0 when it printed the entries (or that there are none). 1 outside a git repo, for a missing file without a record, and for an invalid `.loadout.json`.
 
 ## loadout kit-path
 

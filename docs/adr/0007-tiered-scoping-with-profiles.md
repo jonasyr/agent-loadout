@@ -1,6 +1,6 @@
 # 0007. Tiered scoping: core tools global, domain tools per project
 
-- Status: Accepted
+- Status: Accepted; its merge rule is superseded by [0031](0031-repo-profile-entries-merge-three-way.md)
 - Date: 2026-10-08
 - Source: [Design spec, decision D7 and section 4.2](../superpowers/specs/2026-10-08-agent-loadout-design.md#2-decisions)
 

@@ -24,7 +24,7 @@ To write a new skill yourself instead, see [Create a skill of your own](#create-
 | Files | `<personal>/skills/`, `mcp.json`, `settings.json` | `<personal>/profiles/<profile>.json` and `profiles/skills/` | the repo's `.claude/skills/`, `.mcp.json`, `.codex/config.toml` |
 | Which machines | every machine with your personal layer | every machine, but only in repos you apply the profile to | every clone of that repo |
 | Who else | nobody | nobody | everyone who clones the repo |
-| Claude Code gets it | linked into `~/.claude/skills`, servers through `claude mcp`, settings merged | `loadout profile <profile>` copies the skills into the repo and merges servers and settings into its `.mcp.json` and `.claude/settings.json` | reads the repo's files |
+| Claude Code gets it | linked into `~/.claude/skills`, servers through `claude mcp`, settings merged | `loadout profile <profile>` copies the skills into the repo and merges servers and settings (three-way, keeping a teammate's changes) into its `.mcp.json` and `.claude/settings.json` | reads the repo's files |
 | Codex gets it | linked into `~/.agents/skills`, servers in `~/.codex/config.toml` | `loadout profile` links `.agents/skills` and writes `.codex/config.toml` (when the repo is for Codex) | the repo's `.agents/skills` links (made by `loadout profile`, by `init` when it applies a profile, or by `new skill --to repo`) and `.codex/config.toml` |
 | Undo | `loadout restore` | `loadout restore` (the repo's copy stays; it is a copy) | `loadout restore` for what `new skill --to repo`, `init` and `profile` wrote (not their `commands`); your commits are yours to revert ([what restore does not undo](undo-and-restore.md#what-restore-does-not-undo)) |
 
