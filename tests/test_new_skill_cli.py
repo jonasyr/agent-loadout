@@ -34,7 +34,7 @@ def test_repo_target_offers_no_commit(fake_home, fake_runner, monkeypatch, tmp_p
     repo = tmp_path / "r"
     (repo / ".git").mkdir(parents=True)
     monkeypatch.chdir(repo)
-    assert main(["configure", "new", "skill", "notes", "--to", "repo"]) == 0
+    assert main(["configure", "new", "skill", "notes", "--to", "repo", "--yes"]) == 0
     assert offered == []
 
 
@@ -50,7 +50,7 @@ def test_repo_skill_codex_cannot_see_exits_1(fake_home, fake_runner, monkeypatch
     def no_symlinks(*a, **k):
         raise OSError(1, "A required privilege is not held by the client")
     monkeypatch.setattr(os, "symlink", no_symlinks)
-    assert main(["configure", "new", "skill", "notes", "--to", "repo"]) == 1
+    assert main(["configure", "new", "skill", "notes", "--to", "repo", "--yes"]) == 1
     assert (repo / ".claude" / "skills" / "notes" / "SKILL.md").is_file()
 
 
