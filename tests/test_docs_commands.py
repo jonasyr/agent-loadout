@@ -109,3 +109,9 @@ def test_agent_walkthrough_keeps_the_side_answer_and_section_4():
 def test_init_without_a_terminal_names_the_repo_agents_first():
     text = (ROOT / "docs/reference/cli.md").read_text(encoding="utf-8")
     assert "Without a terminal it takes your agents," not in text
+
+
+def test_walkthrough_does_not_overstate_openais_guidance():
+    # OpenAI offers WSL2 for Linux tooling, a workflow already in WSL2, or a Windows sandbox that falls short
+    text = (ROOT / "docs/how-to/setups.md").read_text(encoding="utf-8")
+    assert "OpenAI's recommended" not in text

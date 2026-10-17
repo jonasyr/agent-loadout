@@ -33,7 +33,7 @@ Not supported either: one loadout that writes both Codex homes, and a WSL `CODEX
 
 ## Codex only on Windows with VS Code
 
-This is OpenAI's recommended setup ([Codex on Windows with WSL](https://learn.chatgpt.com/docs/windows/wsl)): Codex and loadout in WSL, repos in the Linux home, VS Code opened from WSL so its Codex extension runs the Codex in WSL. For an agent, the same steps are in [Set loadout up from inside an agent](install-with-an-agent.md#codex-only-on-windows-with-vs-code).
+loadout recommends WSL 2 on Windows ([why](wsl.md)). OpenAI names WSL2 for Codex when you need Linux-native tooling, your repos and workflow already live in WSL2, or the Windows sandbox does not meet your needs, and describes this layout ([Codex on Windows with WSL](https://learn.chatgpt.com/docs/windows/wsl)): Codex and loadout in WSL, repos in the Linux home, VS Code opened from WSL so its Codex extension runs the Codex in WSL. For an agent, the same steps are in [Set loadout up from inside an agent](install-with-an-agent.md#codex-only-on-windows-with-vs-code).
 
 1. **WSL 2:** in PowerShell, `wsl -l -v` shows version 2 ([WSL 2](wsl.md#1-use-wsl-2-not-wsl-1)). Then open the WSL terminal and run `cd ~`.
 2. **bootstrap** inside WSL, as [Getting started](../tutorials/getting-started.md#step-1-run-bootstrap) shows it, with `--install --agents codex --codex-side wsl --vscode-wsl`. `--codex-side wsl` sets up Codex in WSL even when a Windows Codex exists, and `--vscode-wsl` switches VS Code's Codex extension to it, with a backup ([which side, the switch](wsl.md#when-your-only-codex-is-the-windows-one)). Leave out `--vscode-wsl` if you do not use VS Code.
