@@ -4,7 +4,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import backup, ui
-from .out import printable
+from .out import printable as _printable
+from .secrets import redact
+
+
+def printable(text: str) -> str:
+    """Manifest text for the terminal: secrets masked (a token in a repo folder's name), control characters escaped."""
+    return _printable(redact(text))
 
 PAGE = 10
 QUESTION = "Restore which? [1-{n}, m = more, Enter = cancel] "
@@ -52,6 +58,9 @@ def run(path, list_only: bool, last: bool, repo, force: bool, ask, interactive: 
             return 1
         _show(b)
         return 0
+    if path and (list_only or last):  # a read-only-looking --list must never replay the backup it names
+        print("a backup path goes with --show or alone, not with --list or --last; nothing restored")
+        return 2
     if path:
         return _restore(Path(path).expanduser(), force)
     found = backup.backups(Path(repo).expanduser() if repo else None)

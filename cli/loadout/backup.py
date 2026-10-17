@@ -451,7 +451,7 @@ def contents(info: BackupInfo) -> list[str]:
             what = "nothing automatic: the old value is kept in the backup"
         else:
             what = "unknown step, left as is"
-        out.append(f"{what}  [{label}]{done}")
+        out.append(redact(f"{what}  [{label}]{done}"))  # target paths can hold a token (a repo folder's name)
     return out
 
 

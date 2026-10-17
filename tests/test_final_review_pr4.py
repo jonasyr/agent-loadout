@@ -73,3 +73,29 @@ def test_an_infinite_or_odd_manifest_is_listed_without_a_crash(fake_home, fake_r
     assert [b.description for b in infos] == ["odd"]
     assert isinstance(backup.age(infos[0].created, NOW), str)
     assert backup.backups(tmp_path / "repo") == []
+
+
+@pytest.mark.parametrize("flags", [dict(list_only=True), dict(last=True)])
+def test_a_path_with_list_or_last_restores_nothing(fake_home, fake_runner, tmp_path, capsys, flags):
+    f, bk = make("a", 60, tmp_path)
+    kw = {"list_only": False, "last": False, **flags}
+    rc = restore_cmd.run(str(bk.root), kw["list_only"], kw["last"], None, False, lambda q: pytest.fail("asked"), True, now=NOW)
+    assert rc == 2 and f.exists() and "nothing restored" in capsys.readouterr().out
+
+
+def test_the_cli_list_with_a_path_restores_nothing(fake_home, fake_runner, tmp_path, monkeypatch):
+    f, bk = make("a", 60, tmp_path)
+    assert cli.main(["restore", "--list", str(bk.root)]) == 2 and f.exists()
+
+
+def test_previews_and_rows_mask_a_token_in_a_path(fake_home, fake_runner, tmp_path, capsys):
+    token = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    repo = tmp_path / f"repo-{token}"
+    bk = backup.Backup(description="x", repo=repo)
+    bk._created_at = NOW - 60
+    bk.record_created(repo / "f.txt", "f")
+    assert all(token not in line for line in backup.contents(backup.backups()[0]))
+    restore_cmd.run(None, False, False, None, False, lambda q: "", True, now=NOW)
+    restore_cmd.run(str(bk.root), False, False, None, False, lambda q: "", True, now=NOW, show=True)
+    restore_cmd.run(None, True, False, None, False, lambda q: "", False, now=NOW)
+    assert token not in capsys.readouterr().out
