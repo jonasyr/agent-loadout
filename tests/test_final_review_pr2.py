@@ -95,3 +95,20 @@ def test_profile_yes_in_a_terminal_does_not_ask_the_take_question(repo, monkeypa
     monkeypatch.setattr("loadout.ui.is_interactive", lambda: True)
     assert cli.main(["profile", "web", "--yes", "--no-install"]) == 0
     assert json.loads((repo / ".claude" / "settings.json").read_text())["env"]["A"] == "9"
+
+
+def test_problem_lines_keep_their_line_breaks_and_lose_escapes(capsys):
+    out.problem("clone failed: denied\n  check your access, then re-run bootstrap\x1b[2J")
+    printed = capsys.readouterr().out
+    assert "denied\n  check your access" in printed and "\\x0a" not in printed
+    assert "\x1b" not in printed and "\\x1b" in printed
+
+
+def test_the_profile_report_keeps_a_failed_commands_stderr_lines(repo, monkeypatch, fake_runner, capsys):
+    from loadout import runner
+    monkeypatch.setattr(profiles, "load_profile", lambda n: profiles.Profile(
+        name=n, description="d", settings={"env": {"A": "1"}}, commands=[["tool", "setup"]]))
+    fake_runner.responses[("tool",)] = runner.Result(1, "", "line one\nline two")
+    project.add_profile(repo, "web", install=True, approve=lambda plan: True)
+    printed = capsys.readouterr().out
+    assert "line one\n" in printed and "\\x0a" not in printed

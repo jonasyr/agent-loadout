@@ -240,7 +240,7 @@ def _report(title: str, bk, notes: list[str], problems: list[str]) -> int:
     from . import out
     out.status(title, "applied" if not problems else "applied with problems (below)", "ok" if not problems else "warn")
     for line in problems + notes:
-        out.problem(out.printable(secrets.redact(line)))
+        out.problem(secrets.redact(line))  # problem() escapes control characters, keeping line breaks
     if not bk.empty:
         print(f"undo: loadout restore {bk.root}")
     return 1 if problems else 0
