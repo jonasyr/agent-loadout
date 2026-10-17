@@ -270,6 +270,21 @@ def _repos() -> list[CheckResult]:
     return out
 
 
+def _repo_skill_links() -> list[CheckResult]:
+    """The repo of the current folder: committed skill links this checkout wrote as plain files (spec Part 3)."""
+    from . import skill_links
+    from .new_skill import repo_root
+    root = repo_root(Path(os.path.abspath(Path.cwd())))
+    if root is None or Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
+        return []  # outside a repo, or a dotfiles repo in the home folder (.claude/skills there is Claude Code's own)
+    lines = skill_links.report(skill_links.plain_files(root))
+    if not lines:
+        return []
+    text = [l[len(skill_links.PREFIX):] for l in lines]
+    return [CheckResult("repo skill links", False, f"{root}: " + "; ".join(text[:-1]),
+                        text[-1].removeprefix("fix: "), "warn")]
+
+
 def _python() -> list[CheckResult]:
     return [CheckResult(f"Python {sys.version_info[0]}.{sys.version_info[1]}", True)]
 
@@ -371,7 +386,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos()]
+            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
