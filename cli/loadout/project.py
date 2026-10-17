@@ -93,6 +93,8 @@ def _show(project: Path, title: str, w, notes: list[str]) -> list[str]:
 
 
 CODEX_BAD = (": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is")
+RECORD_LATER = (".loadout.json: the record of profile {name}'s .codex/config.toml entries is written after the Codex "
+                "plugin installs, naming only what was added")
 
 
 def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decide=None) -> tuple[list[str], list[str]]:
@@ -134,10 +136,13 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
                 failures.append(f"command {cmd!r}: not a list of words, skipped")
     failures += [l for l in profiles.link_skills(project, False, w=w) if "not linked" in l or "left as is" in l]
     if on["codex"]:
-        for line in codex_project.config(prof, project, False, w=w):
+        held = _codex_after_installs(project, install)
+        for line in codex_project.config(prof, project, False, w=w, record=not held):
             if line.startswith(("added", "enabled", "would")):
                 continue
             (failures if line.startswith("skipped") or any(b in line for b in CODEX_BAD) else notes).append(line)
+        if held and any(codex_project._wanted(prof)[:2]):
+            notes.append(RECORD_LATER.format(name=prof.name))
         if install and not targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: not installed for Codex, which is off for you "
                          "(a Codex user installs them with loadout profile here)")
