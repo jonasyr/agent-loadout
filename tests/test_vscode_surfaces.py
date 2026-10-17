@@ -62,6 +62,7 @@ def test_remote_path_adds_what_server_env_setup_exports(vs):
 def test_findable(tmp_path):
     (tmp_path / "bin").mkdir()
     (tmp_path / "bin" / "serena").write_text("x")
+    (tmp_path / "bin" / "serena").chmod(0o755)
     assert vscode.findable("serena", [str(tmp_path / "bin")])
     assert vscode.findable(str(tmp_path / "bin" / "serena"), [])
     assert not vscode.findable("uvx", [str(tmp_path / "bin")])

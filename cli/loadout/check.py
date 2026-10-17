@@ -399,8 +399,7 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                              "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
                              "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
                              "VS Code on Windows (its Remote-WSL copy stays)"))
-        elif ext.binary is None and not runner.have("claude") and not vscode.setting(
-                ext.install, "claudeCode.claudeProcessWrapper"):
+        elif ext.binary is None and not runner.have("claude") and vscode.wrapper(ext.install) is None:
             gaps.append(("the extension has no bundled Claude Code for this platform and no claude is on PATH",
                          "install Claude Code (loadout bootstrap --install), or set claudeCode.claudeProcessWrapper "
                          "to its path in VS Code's settings"))

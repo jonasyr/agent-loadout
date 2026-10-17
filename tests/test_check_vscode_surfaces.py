@@ -92,7 +92,10 @@ def test_claude_extension_without_a_binary_but_with_a_wrapper_is_ok(vs, fake_run
     _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
     user = vscode._user_dir(vs, sys.platform)  # where this OS keeps VS Code's user settings
     user.mkdir(parents=True)
-    (user / "settings.json").write_text('{"claudeCode.claudeProcessWrapper": "/opt/claude"}')
+    wrapper = vs / "opt" / "claude"
+    wrapper.parent.mkdir()
+    wrapper.write_text("x")
+    (user / "settings.json").write_text(json.dumps({"claudeCode.claudeProcessWrapper": str(wrapper)}))
     fake_runner.missing.add("claude")
     (row,) = check._vscode_surfaces()
     assert row.ok
@@ -146,6 +149,7 @@ def test_remote_wsl_absolute_command_that_exists_is_fine(vs, fake_runner, monkey
     serena = vs / ".local" / "bin" / "serena"
     serena.parent.mkdir(parents=True)
     serena.write_text("x")
+    serena.chmod(0o755)
     (vs / ".codex").mkdir()
     (vs / ".codex" / "config.toml").write_text(f'[mcp_servers.serena]\ncommand = "{serena.as_posix()}"\n')
     assert [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"] == []

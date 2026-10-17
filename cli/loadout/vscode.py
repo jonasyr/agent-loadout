@@ -113,9 +113,12 @@ def _binary(agent: str, folder: Path, os_name: str = "linux") -> Path | None:
             dirs = sorted((folder / "bin").iterdir())
         except OSError:
             dirs = []
+        known = tuple(n for names in _OS_NAMES.values() for n in names)
         own = [d for d in dirs if d.name.lower().startswith(_OS_NAMES[os_name])]
+        if not own and not any(d.name.lower().startswith(known) for d in dirs):
+            own = dirs  # a layout without OS names: take what is there
         exe = ("codex.exe", "codex") if os_name == "windows" else ("codex", "codex.exe")
-        candidates = [d / n for d in own + [d for d in dirs if d not in own] for n in exe]
+        candidates = [d / n for d in own for n in exe]  # another OS's build is no bundled Codex for this one
     return next((p for p in candidates if _is_file(p)), None)
 
 
@@ -227,10 +230,24 @@ def remote_path_dirs() -> list[str]:
     return dirs
 
 
+def _runnable(path: Path) -> bool:
+    return _is_file(path) and os.access(path, os.X_OK)
+
+
 def findable(command: str, dirs: list[str]) -> bool:
+    """The command starts from one of dirs (or is an absolute path): a file with execute permission."""
     if os.path.isabs(command):
-        return _is_file(Path(command))
-    return any(_is_file(Path(d) / command) for d in dirs)
+        return _runnable(Path(command))
+    return any(_runnable(Path(d) / command) for d in dirs)
+
+
+def wrapper(install: Install) -> Path | None:
+    """claudeCode.claudeProcessWrapper when it names a file that exists; anything else launches nothing."""
+    value = setting(install, "claudeCode.claudeProcessWrapper")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    path = Path(value).expanduser()
+    return path if _is_file(path) else None
 
 
 def _commands(servers) -> dict[str, str]:

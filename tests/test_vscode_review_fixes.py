@@ -126,3 +126,37 @@ def test_deeply_nested_settings_give_none(tmp_path):
 def test_fixtures_hide_the_real_vscode_variables():
     import os
     assert not any(os.environ.get(v) for v in ("APPDATA", "XDG_CONFIG_HOME", "VSCODE_EXTENSIONS"))
+
+
+def test_only_the_target_platforms_codex_counts(vs, tmp_path):
+    folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/windows-x86_64/codex.exe")
+    assert vscode._binary("codex", folder, "linux") is None  # a foreign build is "no bundled Codex for this platform"
+    assert vscode._binary("codex", folder, "windows").name == "codex.exe"
+
+
+def test_unknown_bin_layout_still_finds_codex(vs, tmp_path):
+    folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/x86_64/codex")
+    assert vscode._binary("codex", folder, "linux").name == "codex"
+
+
+@pytest.mark.parametrize("value", ["/no/such/claude", 3, "", None, "DIR"])
+def test_a_wrapper_that_is_not_a_file_does_not_count(vs, fake_runner, tmp_path, value):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
+    user = vscode._user_dir(vs, sys.platform)
+    user.mkdir(parents=True)
+    value = str(tmp_path) if value == "DIR" else value
+    (user / "settings.json").write_text(json.dumps({"claudeCode.claudeProcessWrapper": value}))
+    fake_runner.missing.add("claude")
+    (row,) = check._vscode_surfaces()
+    assert not row.ok
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="execute permission is POSIX")
+def test_a_command_without_execute_permission_is_not_findable(tmp_path):
+    cmd = tmp_path / "serena"
+    cmd.write_text("x")
+    cmd.chmod(0o644)
+    assert not vscode.findable(str(cmd), []) and not vscode.findable("serena", [str(tmp_path)])
+    cmd.chmod(0o755)
+    assert vscode.findable(str(cmd), []) and vscode.findable("serena", [str(tmp_path)])
