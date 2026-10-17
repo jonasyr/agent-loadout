@@ -26,11 +26,11 @@ Define the project yourself; do not hand off to another workflow skill here.
    - **Stack:** language, framework, package manager, test runner (suggest a default that fits the answers so far).
    - **Constraints:** deadlines, hosting, licences, performance, things to avoid.
 2. Summarise the answers in a few lines and get a yes.
-3. Write the project definition (`loadout init` already created skeletons; fill them in, do not create second copies):
+3. Write the project definition (`loadout init` created `AGENTS.md`, `docs/README.md` and `docs/adr/README.md`, and `CLAUDE.md` for a repo with Claude Code, where they were missing; fill them in, create only the ones that are absent, never second copies):
    - `docs/adr/0001-<stack-decision>.md` (Context, Decision, Consequences, Status: accepted);
    - `AGENTS.md`: purpose (one paragraph), commands (install/test/run for the chosen stack), hard conventions, map;
    - `docs/README.md`: the index, linking the ADR.
-4. Suggest profiles for the stack (`loadout profile <name>`: web, db, android, thesis, sonar) and run the ones the user accepts (`loadout profile <name> --dry-run` and show the plan first; after the user's yes, `loadout profile <name> --yes`, because an agent has no terminal). For a web stack, suggest `@playwright/test` for E2E tests.
+4. Suggest profiles for the stack (`loadout profile <name>`: web, db, android, thesis, sonar) and run the ones the user accepts (`loadout profile <name> --dry-run` and show the plan first, including any step it says `loadout restore` cannot undo; after the user's yes, `loadout profile <name> --yes`, because an agent has no terminal). For a web stack, suggest `@playwright/test` for E2E tests.
 5. Create the minimal skeleton the stack's conventions call for, such as package manifest, `src/`, `tests/` and a first passing test.
 6. Show the diff and commit after approval.
 
