@@ -237,3 +237,15 @@ def test_a_relative_repo_path_is_recorded_absolute(repo, monkeypatch):
     data = load_json(manifest)
     assert data["repo"] == str(repo.resolve())
     assert all(__import__("os").path.isabs(v) for st in data["steps"] for v in (st["undo"].get("created"), ) if v)
+
+
+def test_init_adding_codex_names_only_installed_plugins(repo, monkeypatch):
+    targets.set_agents({"claude": True, "codex": True})
+    (repo / ".loadout.json").write_text('{\n  "agents": [\n    "claude"\n  ]\n}\n')
+    prof = profiles.Profile(name="thesis", description="", install=["x@claude-plugins-official"])
+    monkeypatch.setattr(profiles, "load_profile", lambda n: prof)
+    monkeypatch.setattr(codex_project, "plugins", lambda p, dry_run: ["plugin x@claude-plugins-official: failed: boom"])
+    project.init(repo, ["thesis"], yes=True, install=True, dry_run=False, ask=lambda q: "", interactive=False,
+                 agents=frozenset({"claude", "codex"}))
+    cfg = repo / ".codex" / "config.toml"
+    assert not cfg.exists() or "x@claude-plugins-official" not in cfg.read_text()

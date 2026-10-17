@@ -406,6 +406,7 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
             notes.append(f"no longer needed for this repo's agents (yours to remove): {', '.join(left)}")
     profs = [profiles.load_profile(name) for name in chosen]
     with repo_config.pending(project, agents):
+        hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
         for prof in profs:
             planned_notes, planned_failures = _plan_profile(prof, project, w, install)
             notes += planned_notes
@@ -431,7 +432,6 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         print(DECLINED)
         return 0
     bk = backup.Backup(description=f"loadout init in {project}", repo=project)
-    hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
     problems = failures + w.apply(bk, hold=hold)
     if w.stale:  # .loadout.json changed after the plan: no dependent step runs either
         return _report("Init", bk, [], problems[-1:])
