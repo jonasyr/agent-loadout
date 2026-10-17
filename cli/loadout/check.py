@@ -1,6 +1,7 @@
 """`loadout check`: report problems, never fix them; every failure names its fix."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import stat
@@ -362,6 +363,110 @@ def _vscode(cs) -> list[CheckResult]:
     return []
 
 
+CODEX_GAP = ("plugins do not load in VS Code's Codex extension (loadout's skills such as loadout:configure, "
+             "superpowers, plugin hooks), and it has no /hooks, so Serena's hooks wait for your approval")
+CODEX_GAP_FIX = ("use the Codex CLI alongside VS Code: loadout bootstrap --install installs it; run codex once in "
+                 "VS Code's terminal and approve the hooks in /hooks, and use it there when you need the plugin skills")
+_HOME_PATH = re.compile(r"(?:^|=)(/home/[^/\s]+/|/Users/[^/\s]+/|[A-Za-z]:[\\/]Users[\\/][^\\/\s]+[\\/])")
+
+
+def _surface_rows(ext) -> list[CheckResult]:
+    """One extension in one window type: what it lacks, each with its fix; one ok row when nothing."""
+    from . import vscode
+    name, gaps = vscode.row_name(ext), []
+    if ext.agent == "codex":
+        if ext.binary is None:
+            gaps.append(("the extension has no bundled Codex for this platform", "reinstall the Codex extension in VS Code"))
+        else:
+            version = vscode.bundled_version(ext)
+            if version is not None and vscode.too_old(version):
+                gaps.append((f"its bundled Codex is {version}; loadout's Codex setup needs 0.161 or newer",
+                             "update the Codex extension in VS Code (Extensions view)"))
+        if ext.install.where != "windows" and not runner.have("codex"):
+            gaps.append((CODEX_GAP, CODEX_GAP_FIX))  # a Windows window: its side and home are the "VS Code" row's
+    else:
+        if ext.install.where == "windows":
+            gaps.append((f"the Claude Code extension in a Windows window reads {vscode.reads_home(ext)}, which "
+                         "loadout in WSL does not set up",
+                         "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
+                         "with bootstrap.ps1"))
+        elif ext.binary is None and not runner.have("claude") and not vscode.setting(
+                ext.install, "claudeCode.claudeProcessWrapper"):
+            gaps.append(("the extension has no bundled Claude Code for this platform and no claude is on PATH",
+                         "install Claude Code (loadout bootstrap --install), or set claudeCode.claudeProcessWrapper "
+                         "to its path in VS Code's settings"))
+    if not gaps:
+        return [CheckResult(name, True)]
+    return [CheckResult(name, False, detail, fix, "warn") for detail, fix in gaps]
+
+
+def _vscode_path(found) -> list[CheckResult]:
+    """A Remote-WSL window runs no shell startup file: an MCP server's command may not be on its PATH."""
+    from . import vscode
+    if not any(e.agent == "codex" and e.install.where == "remote-wsl" for e in found):
+        return []  # Claude Code's extension takes PATH from the login shell; Codex's takes VS Code's
+    dirs = vscode.remote_path_dirs()
+    missing = sorted(n for n, cmd in vscode.mcp_commands("codex").items() if not vscode.findable(cmd, dirs))
+    if not missing:
+        return []
+    return [CheckResult("VS Code PATH", False,
+                        f"in a Remote-WSL window the Codex extension may not find the command of the MCP servers "
+                        f"{', '.join(missing)}: no shell startup files run there",
+                        "use an absolute command in the server entry, or put its folder on PATH in "
+                        f"~/{vscode.SERVER_ENV} (export PATH=\"$HOME/.local/bin:$PATH\"), then run WSL: Restart",
+                        "warn")]
+
+
+def _vscode_surfaces(cs=None) -> list[CheckResult]:
+    """VS Code's agent extensions, per window type, for the agents that are on (spec Part 4)."""
+    from . import targets, vscode
+    on = {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
+    found = vscode.extensions(on, win_home=getattr(cs, "windows_home", None))
+    return [*(row for ext in found for row in _surface_rows(ext)), *_vscode_path(found)]
+
+
+def _repo_mcp_paths() -> list[CheckResult]:
+    """The current repo's committed .mcp.json: a server whose command or arguments sit in one person's home cannot
+    start for teammates. Reported, never changed; only server names and the home prefix are printed."""
+    from .new_skill import repo_root
+    try:
+        root = repo_root(Path(os.path.abspath(Path.cwd())))
+    except OSError:
+        return []
+    if root is None or Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
+        return []
+    path = root / ".mcp.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    servers = data.get("mcpServers") if isinstance(data, dict) else None
+    if not isinstance(servers, dict):
+        return []
+    hits = {}
+    for name, srv in servers.items():
+        if not isinstance(srv, dict):
+            continue
+        args = srv.get("args") if isinstance(srv.get("args"), list) else []
+        for value in [srv.get("command"), *args]:
+            m = _HOME_PATH.search(value) if isinstance(value, str) else None
+            if m:
+                hits[name] = m.group(1)
+                break
+    if not hits:
+        return []
+    res = runner.run(["git", "-C", str(root), "ls-files", "--error-unmatch", ".mcp.json"], timeout=20)
+    if not res.ok:
+        return []  # not committed: the person's own file
+    names = ", ".join(sorted(hits))
+    prefix = sorted(set(hits.values()))[0]
+    return [CheckResult("repo .mcp.json", False,
+                        f"{root}: the committed .mcp.json starts {names} from a path in one person's home ({prefix}…), "
+                        "so teammates' agents cannot start it",
+                        "move it to local scope (claude mcp add --scope local …) or a user-level server; "
+                        "loadout does not change the file", "warn")]
+
+
 def _codex(cs=None) -> list[CheckResult]:
     from . import codex
     if _windows_only(cs) and codex.enabled():
@@ -398,10 +503,10 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     if codex_windows and cs is not None:
         from dataclasses import replace
         cs = replace(cs, side="windows", shared_home=False)
-    return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_legacy_state(),
+    return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links()]
+            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
