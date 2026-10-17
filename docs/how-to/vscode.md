@@ -14,7 +14,7 @@ Both extensions bring their own copy of the agent and do not use the `claude` or
 
 ### The Codex CLI alongside VS Code
 
-`loadout check` shows `VS Code (Codex)` with the warning "plugins do not load" when the Codex CLI is missing. The fix: install the Codex CLI with `loadout bootstrap --install`, open VS Code's terminal, run `codex` once and approve loadout's hooks in `/hooks`. Use `codex` in that terminal whenever you need a plugin skill; the extension and the CLI share your settings and login.
+`loadout check` shows `VS Code (Codex)` with the warning "plugins do not load" when the Codex CLI is missing (for a local or Remote-WSL window). The fix: install the Codex CLI with `loadout bootstrap --install`, open VS Code's terminal, run `codex` once and approve loadout's hooks in `/hooks`. Use `codex` in that terminal whenever you need a plugin skill; the extension and the CLI share your settings and login.
 
 `loadout check` also warns when the extension's own Codex is older than 0.161: update the extension in VS Code's Extensions view.
 
@@ -27,7 +27,7 @@ Which home an extension reads depends on the window:
 | A Remote-WSL window (`code .` from WSL) | the WSL `~/.claude` | the WSL `~/.codex` |
 | A local Windows window | `%USERPROFILE%\.claude` | `%USERPROFILE%\.codex`, or the WSL `~/.codex` when `chatgpt.runCodexInWindowsSubsystemForLinux` is on ([the switch](wsl.md#when-your-only-codex-is-the-windows-one)) |
 
-With loadout in WSL, open your repos with `code .` from WSL, so both extensions read what loadout set up. `loadout check` in WSL warns `VS Code (Claude Code, Windows window)` when the Claude Code extension is installed in VS Code on Windows, and the `VS Code` row when the Codex extension still runs the Windows Codex. To use the Windows window instead, set loadout up on Windows too with `bootstrap.ps1` ([Codex on both sides](wsl.md#codex-on-both-sides)).
+With loadout in WSL, open your repos with `code .` from WSL, so both extensions read what loadout set up. `loadout check` in WSL warns `VS Code (Claude Code, Windows window)` when the Claude Code extension is installed in VS Code on Windows and loadout has not set up Windows (if you use only Remote-WSL windows, uninstall that Windows copy), and the `VS Code` row when the Codex extension still runs the Windows Codex. To use the Windows window instead, set loadout up on Windows too with `bootstrap.ps1` ([Codex on both sides](wsl.md#codex-on-both-sides)).
 
 ### MCP servers in a Remote-WSL window
 
@@ -37,7 +37,7 @@ A Remote-WSL window runs no shell startup file, so folders that your shell adds 
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 ```
 
-Then run "WSL: Restart" in VS Code, or reconnect. The Claude Code extension takes PATH from your login shell.
+Then run "WSL: Restart" in VS Code, or reconnect. The Claude Code extension takes PATH from your login shell, according to its current code; the live tour confirms it.
 
 ## A committed .mcp.json with your own path
 

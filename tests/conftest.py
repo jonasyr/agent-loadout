@@ -43,6 +43,8 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("LOADOUT_PERSONAL", raising=False)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)  # state_dir() follows the throwaway HOME
+    for var in ("APPDATA", "XDG_CONFIG_HOME", "VSCODE_EXTENSIONS"):  # never the real VS Code folders
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("PATH", os.environ.get("PATH", ""))  # teardown restores it: nothing leaks a fake tool dir into later tests
     monkeypatch.setenv("LOADOUT_REEXEC", "1")  # bin/loadout never re-execs the test process through a real uv
 

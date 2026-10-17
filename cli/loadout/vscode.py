@@ -44,19 +44,27 @@ def _user_dir(home: Path, platform: str) -> Path:
     return Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "Code" / "User"
 
 
+def _is_dir(path: Path) -> bool:
+    return os.path.isdir(path)  # never raises: a reparse point or an unreadable folder on /mnt/c is just "no"
+
+
+def _is_file(path: Path) -> bool:
+    return os.path.isfile(path)
+
+
 def _exists(install: Install) -> bool:
-    return install.extensions.is_dir() or (install.user_dir is not None and install.user_dir.is_dir())
+    return _is_dir(install.extensions) or (install.user_dir is not None and _is_dir(install.user_dir))
 
 
-def installs(platform: str | None = None, win_home: Path | None = None) -> list[Install]:
+def installs(platform: str | None = None, win_home: Path | None = None, look: bool = True) -> list[Install]:
     """VS Code installs this loadout can see: the local one; in WSL also VS Code on Windows (win_home, else found
-    through wsl.windows_home) and its Remote-WSL server."""
+    through wsl.windows_home unless look is False: a caller that already looked) and its Remote-WSL server."""
     platform = platform or sys.platform
     home = paths.home()
     ext_env = os.environ.get("VSCODE_EXTENSIONS")
     found = [Install("local", _user_dir(home, platform), Path(ext_env) if ext_env else home / ".vscode" / "extensions")]
     if wsl.detect() is not None:
-        win = win_home or wsl.windows_home()
+        win = win_home or (wsl.windows_home() if look else None)
         if win is not None:
             found.append(Install("windows", wsl.vscode_settings(win).parent, win / ".vscode" / "extensions"))
         found.append(Install("remote-wsl", None, home / ".vscode-server" / "extensions"))
@@ -75,7 +83,7 @@ def newest(folder: Path, ext_id: str) -> tuple[Path, str] | None:
         if not name.startswith(ext_id + "-"):
             continue
         m = _FOLDER_VERSION.match(name[len(ext_id) + 1:])
-        if not m or not entry.is_dir():
+        if not m or not _is_dir(entry):
             continue
         key = tuple(int(x) for x in m.group(1).split("."))
         if best is None or key > best[0]:
@@ -83,27 +91,49 @@ def newest(folder: Path, ext_id: str) -> tuple[Path, str] | None:
     return None if best is None else (best[1], best[2])
 
 
-def _binary(agent: str, folder: Path) -> Path | None:
+def _os_of(where: str, platform: str) -> str:
+    """The OS an install's agent binary runs on: VS Code on Windows seen from WSL runs Windows programs, the
+    Remote-WSL server Linux ones, a local install the host's."""
+    if where == "windows":
+        return "windows"
+    if where == "remote-wsl":
+        return "linux"
+    return {"win32": "windows", "darwin": "darwin"}.get(platform, "linux")
+
+
+_OS_NAMES = {"windows": ("windows", "win32"), "darwin": ("darwin", "macos", "mac"), "linux": ("linux",)}
+
+
+def _binary(agent: str, folder: Path, os_name: str = "linux") -> Path | None:
+    """The bundled agent binary for os_name; a Codex build can hold one folder per OS under bin/."""
     if agent == "claude":
         candidates = [folder / "resources" / "native-binary" / n for n in ("claude", "claude.exe")]
     else:
         try:
-            candidates = [d / n for d in sorted((folder / "bin").iterdir()) for n in ("codex", "codex.exe")]
+            dirs = sorted((folder / "bin").iterdir())
         except OSError:
-            candidates = []
-    return next((p for p in candidates if p.is_file()), None)
+            dirs = []
+        own = [d for d in dirs if d.name.lower().startswith(_OS_NAMES[os_name])]
+        exe = ("codex.exe", "codex") if os_name == "windows" else ("codex", "codex.exe")
+        candidates = [d / n for d in own + [d for d in dirs if d not in own] for n in exe]
+    return next((p for p in candidates if _is_file(p)), None)
 
 
-def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path | None = None) -> list[Extension]:
+def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path | None = None,
+               look: bool = True) -> list[Extension]:
     """The agent extensions of the agents that are on, one per install that has it."""
+    if not any(on.values()):
+        return []  # nothing of an agent that is off is read, and no Windows lookup for nothing
+    platform = platform or sys.platform
     out = []
-    for install in installs(platform, win_home):
+    for install in installs(platform, win_home, look):
         for agent, ext_id in EXT_ID.items():
             if not on.get(agent):
                 continue  # an agent that is off: nothing of it is read
             hit = newest(install.extensions, ext_id)
             if hit is not None:
-                out.append(Extension(agent, install, hit[0], hit[1], _binary(agent, hit[0])))
+                out.append(Extension(agent, install, hit[0], hit[1],
+                                     _binary(agent, hit[0], _os_of(install.where, platform))))
     return out
 
 
@@ -138,7 +168,7 @@ def read_jsonc(path: Path) -> dict | None:
     pieces.append(_TRAILING_COMMA.sub(r"\1", masked[last:]))
     try:
         data = json.loads("".join(pieces))
-    except ValueError:
+    except (ValueError, RecursionError):  # RecursionError: a pathologically nested file
         return None
     return data if isinstance(data, dict) else None
 
@@ -199,15 +229,16 @@ def remote_path_dirs() -> list[str]:
 
 def findable(command: str, dirs: list[str]) -> bool:
     if os.path.isabs(command):
-        return Path(command).is_file()
-    return any((Path(d) / command).is_file() for d in dirs)
+        return _is_file(Path(command))
+    return any(_is_file(Path(d) / command) for d in dirs)
 
 
 def _commands(servers) -> dict[str, str]:
     if not isinstance(servers, dict):
         return {}
     return {name: s["command"] for name, s in servers.items()
-            if isinstance(s, dict) and isinstance(s.get("command"), str) and s["command"]}
+            if isinstance(s, dict) and isinstance(s.get("command"), str) and s["command"]
+            and s.get("enabled") is not False}  # a switched-off Codex server starts nothing
 
 
 def mcp_commands(agent: str) -> dict[str, str]:

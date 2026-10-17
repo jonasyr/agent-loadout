@@ -1,0 +1,128 @@
+"""Final-review findings for VS Code PR 1: each pinned by a test that failed first."""
+import json
+from pathlib import Path
+
+import pytest
+
+from loadout import check, paths, runner, targets, vscode, wsl
+
+
+@pytest.fixture
+def vs(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": True})
+    return fake_home
+
+
+def _ext(root: Path, name: str, *binaries: str) -> Path:
+    folder = root / name
+    folder.mkdir(parents=True)
+    for b in binaries:
+        (folder / b).parent.mkdir(parents=True, exist_ok=True)
+        (folder / b).write_text("bin")
+    return folder
+
+
+def _cs(win, side="wsl"):
+    return type("CS", (), {"windows_home": win, "side": side, "shared_home": False})()
+
+
+def test_claude_windows_window_is_ok_once_loadout_set_up_windows(vs, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    _ext(win / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-win32-x64", "resources/native-binary/claude.exe")
+    (win / ".claude" / "rules" / "loadout").mkdir(parents=True)  # bootstrap.ps1 linked the kit's rules there
+    (row,) = check._vscode_surfaces(_cs(win))
+    assert row.ok
+
+
+def test_claude_windows_window_fix_names_the_remote_wsl_only_case(vs, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    _ext(win / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-win32-x64", "resources/native-binary/claude.exe")
+    (row,) = check._vscode_surfaces(_cs(win))
+    assert not row.ok and "only Remote-WSL windows" in row.fix
+
+
+def test_windows_only_codex_remote_wsl_row_and_no_wsl_codex_config_read(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    win.mkdir(parents=True)
+    _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", "bin/linux-x86_64/codex")
+    fake_runner.missing.add("codex")
+    monkeypatch.setattr(vscode, "mcp_commands", lambda agent: pytest.fail("read the WSL Codex config"))
+    rows = check._vscode_surfaces(_cs(win, side="windows"))
+    assert [r.name for r in rows] == ["VS Code (Codex, Remote-WSL window)"]
+    assert "does not set up" in rows[0].detail and "plugins do not load" not in rows[0].detail
+    assert "--codex-side wsl" in rows[0].fix
+
+
+@pytest.mark.parametrize("platform,where,expected", [("win32", "local", "codex.exe"), ("linux", "local", "codex"),
+                                                     ("linux", "remote-wsl", "codex"), ("linux", "windows", "codex.exe")])
+def test_bundled_codex_matches_the_platform(vs, monkeypatch, tmp_path, platform, where, expected):
+    folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/linux-x86_64/codex", "bin/windows-x86_64/codex.exe")
+    assert vscode._binary("codex", folder, vscode._os_of(where, platform)).name == expected
+
+
+def test_check_survives_permission_errors_on_odd_filesystems(vs, fake_runner, monkeypatch):
+    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", "bin/linux-x86_64/codex")
+    (vs / ".codex").mkdir()
+    (vs / ".codex" / "config.toml").write_text('[mcp_servers.s]\ncommand = "/root/bin/s"\n')
+
+    def boom(self, *a, **k):
+        raise PermissionError(13, "denied", str(self))
+    monkeypatch.setattr(Path, "is_file", boom)
+    monkeypatch.setattr(Path, "is_dir", boom)
+    check._vscode_surfaces()  # no exception
+    assert vscode.findable("/root/bin/s", ["/root/bin"]) is False
+
+
+def test_no_windows_lookup_when_both_agents_are_off_or_it_is_known(vs, monkeypatch):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda: pytest.fail("ran cmd.exe"))
+    assert vscode.extensions({"claude": False, "codex": False}) == []
+    check._vscode_surfaces(_cs(None))  # Codex on in WSL: codex_side already looked and found no Windows home
+
+
+def _repo(tmp_path, monkeypatch, fake_runner, mcp, agents=None):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".mcp.json").write_text(json.dumps(mcp))
+    if agents is not None:
+        (repo / ".loadout.json").write_text(json.dumps({"agents": agents}))
+    monkeypatch.chdir(repo)
+    fake_runner.responses[("git", "-C", str(repo), "ls-files", "--error-unmatch", ".mcp.json")] = runner.Result(0, "", "")
+    return repo
+
+
+def test_mcp_json_row_only_for_a_repo_with_claude_code(vs, fake_runner, monkeypatch, tmp_path):
+    _repo(tmp_path, monkeypatch, fake_runner, {"mcpServers": {"s": {"command": "/home/a/x"}}}, agents=["codex"])
+    assert check._repo_mcp_paths() == []
+
+
+def test_linuxbrew_is_shared_not_one_persons_home(vs, fake_runner, monkeypatch, tmp_path):
+    _repo(tmp_path, monkeypatch, fake_runner, {"mcpServers": {"s": {"command": "/home/linuxbrew/.linuxbrew/bin/uvx"}}})
+    assert check._repo_mcp_paths() == []
+
+
+def test_server_env_setup_line_with_a_trailing_comment(vs):
+    env = vs / vscode.SERVER_ENV
+    env.parent.mkdir(parents=True)
+    env.write_text('export PATH="$HOME/x:$PATH" # mine\n')
+    assert f"{vs}/x" in vscode.remote_path_dirs()
+
+
+def test_disabled_codex_servers_are_not_counted(vs):
+    paths.codex_home().mkdir()
+    (paths.codex_home() / "config.toml").write_text('[mcp_servers.off]\ncommand = "x"\nenabled = false\n')
+    assert vscode.mcp_commands("codex") == {}
+
+
+def test_deeply_nested_settings_give_none(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text("[" * 100000 + "]" * 100000)
+    assert vscode.read_jsonc(path) is None
+
+
+def test_fixtures_hide_the_real_vscode_variables():
+    import os
+    assert not any(os.environ.get(v) for v in ("APPDATA", "XDG_CONFIG_HOME", "VSCODE_EXTENSIONS"))
