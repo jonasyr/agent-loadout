@@ -23,6 +23,16 @@ class Change:
     target: str | None = None
     cmd: list | None = None
     touches: tuple = ()
+    pre: object = None        # what the path held when the plan was made (see _snapshot)
+
+
+def _snapshot(path: Path):
+    """What a path holds now: its bytes, a link's target, "dir", or None when it is absent."""
+    if path.is_symlink():
+        return ("link", os.readlink(path))
+    if path.is_file():
+        return path.read_bytes()
+    return "dir" if path.exists() else None
 
 
 def _flat(value, prefix=""):
@@ -95,6 +105,8 @@ class RepoWrites:
             if problem:
                 raise OSError(redact(problem))
             return
+        if change.path is not None:
+            change.pre = _snapshot(change.path)
         if change.kind in ("create", "modify"):  # a second write to one file: one change with the final text
             for earlier in self._changes:
                 if earlier.kind in ("create", "modify") and earlier.path == change.path:
@@ -156,11 +168,18 @@ class RepoWrites:
                            if not c.touches else f"  run     {' '.join(c.cmd)}  {c.why}")
         return [redact(l) for l in out]
 
-    def apply(self, bk) -> list[str]:
+    def apply(self, bk, hold: frozenset = frozenset()) -> list[str]:
         """Apply every collected change in order; each is recorded in `bk` before it acts. One failing change is a
-        problem line; the rest still run."""
+        problem line; the rest still run. A file that changed since the plan is left as is (the user approved the
+        plan, not that version). hold: paths the caller writes itself later (e.g. after installs)."""
         problems = []
         for c in self._ordered():
+            if c.path is not None and c.path in hold:
+                continue
+            if c.kind in ("create", "modify") and _snapshot(c.path) != c.pre:
+                problems.append(f"{self._rel(c.path)}: changed since the plan, left as is (run the command again "
+                                "for a new plan)")
+                continue
             try:
                 problem = self._do(c, bk)
             except OSError as exc:

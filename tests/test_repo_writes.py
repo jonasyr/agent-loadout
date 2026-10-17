@@ -182,10 +182,8 @@ def test_create_on_a_file_that_appeared_keeps_its_bytes(repo):
     w = repo_writes.RepoWrites(repo)
     w.create(repo / "AGENTS.md", "loadout\n", "init")
     (repo / "AGENTS.md").write_bytes(b"theirs\r\n")  # appeared between plan and apply
-    bk = backup.Backup(description="t", repo=repo)
-    w.apply(bk)
-    assert backup.restore(bk.root)[1]
-    assert (repo / "AGENTS.md").read_bytes() == b"theirs\r\n"
+    problems = w.apply(backup.Backup(description="t", repo=repo))
+    assert (repo / "AGENTS.md").read_bytes() == b"theirs\r\n" and "changed since the plan" in problems[0]
 
 
 def test_modify_on_a_missing_file_creates_it_and_one_failure_does_not_stop_the_rest(repo, tmp_path):

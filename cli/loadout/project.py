@@ -147,20 +147,44 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> tu
     return notes, failures
 
 
+def _codex_after_installs(project: Path, install: bool) -> bool:
+    """True when the repo's .codex/config.toml waits for the Codex plugin installs (so it names only plugins that
+    installed: a subset of what the plan showed)."""
+    from . import repo_config, targets
+    return install and repo_config.agents(project)["codex"] and targets.codex_enabled()
+
+
 def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive_note: bool,
-                 notes: list[str], problems: list[str]) -> None:
-    """After the plan's files and commands: link skills the commands installed, install the Codex plugins."""
+                 notes: list[str], problems: list[str], approve=None) -> None:
+    """After the plan's files and commands: a follow-up plan for skills the commands installed, then the Codex
+    plugins and the repo's Codex config without the plugins that failed."""
     from . import codex_project, repo_config, targets, wsl
     from .repo_writes import RepoWrites
-    late = profiles.link_skills(project, False, w=RepoWrites(project, now=True, bk=bk))
+    later = RepoWrites(project)
+    late = profiles.link_skills(project, False, w=later)
     problems += [l for l in late if "not linked" in l or "left as is" in l]
+    if later.changes:
+        follow = [f"The commands of profile {prof.name} added skills; link them for the repo's other agent:"]
+        follow += later.render()
+        print("\n".join(follow))
+        if approve is None or approve(follow):
+            problems += later.apply(bk)
+        else:
+            notes.append(f"skills the commands added are not linked; run loadout profile {prof.name} again to link them")
     if repo_config.agents(project)["codex"] and targets.codex_enabled():
         if install:
-            for line in codex_project.plugins(prof, False):
+            lines = codex_project.plugins(prof, False)
+            for line in lines:
                 if line.startswith("backup: "):  # Codex's own backup: its undo line must reach the user
                     notes.append(line)
                 elif line.startswith("skipped") or any(s in line for s in (": failed", "not installed", "no Codex route")):
                     problems.append(line)
+            failed = codex_project.failed_plugins(prof, lines)
+            for line in codex_project.config(prof, project, False, skip=failed, w=RepoWrites(project, now=True, bk=bk)):
+                if line.startswith("skipped") or "left as is" in line:
+                    problems.append(line)
+            for pid in sorted(failed):
+                notes.append(f"plugin {pid}: not named in .codex/config.toml, its install failed")
         tables, plugins_, _ = codex_project._wanted(prof)
         if (tables or plugins_ or any((project / ".agents" / "skills").glob("*"))) and not codex_project._trusted(project):
             if codex_project.TRUST_NOTE not in notes:
@@ -226,9 +250,10 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         print(DECLINED)
         return 0
     bk = backup.Backup(description=f"loadout profile {name} in {project}", repo=project)
-    problems = failures + w.apply(bk)
+    hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
+    problems = failures + w.apply(bk, hold=hold)
     notes = [n for n in notes if not n.startswith(("Codex plugins of profile",))]
-    _after_apply(prof, project, bk, install, drive_note, notes, problems)
+    _after_apply(prof, project, bk, install, drive_note, notes, problems, approve=approve)
     return _report(f"Profile {name}", bk, notes, problems)
 
 
@@ -387,15 +412,16 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         return 0
     if dry_run:
         print("dry run: nothing changed")
-        return rc
+        return 0
     if not approver(yes, ask, interactive)(plan):
         print(DECLINED)
-        return rc
+        return 0
     bk = backup.Backup(description=f"loadout init in {project}", repo=project)
-    problems = failures + w.apply(bk)
+    hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
+    problems = failures + w.apply(bk, hold=hold)
     notes = [n for n in notes if not n.startswith("Codex plugins of profile")]
     for i, prof in enumerate(profs):
-        _after_apply(prof, project, bk, install, i == 0, notes, problems)
+        _after_apply(prof, project, bk, install, i == 0, notes, problems, approve=approver(yes, ask, interactive))
     rc = _report("Init", bk, notes, problems) or rc
     from . import targets
     on = repo_config.agents(project)
