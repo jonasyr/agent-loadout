@@ -59,8 +59,28 @@ def user_agents() -> dict:
     return {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
 
 
+_PENDING: dict = {}
+
+
+class pending:
+    """While planning, the agents about to be written to .loadout.json count as the repo's."""
+
+    def __init__(self, project: Path, chosen: frozenset | None):
+        self.key, self.chosen = str(project), chosen
+
+    def __enter__(self):
+        if self.chosen is not None:
+            _PENDING[self.key] = frozenset(self.chosen)
+        return self
+
+    def __exit__(self, *exc):
+        _PENDING.pop(self.key, None)
+
+
 def agents(project: Path) -> dict:
     """The repo's agents from .loadout.json, else the user's (a repo nobody chose for)."""
+    if str(project) in _PENDING:
+        return {a: a in _PENDING[str(project)] for a in AGENTS}
     chosen = load(project).agents
     if chosen is None:
         return user_agents()

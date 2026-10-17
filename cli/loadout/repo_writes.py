@@ -156,16 +156,19 @@ class RepoWrites:
             if bk is not None:
                 bk.record_created_dir(folder, f"{self._rel(folder)}/ (created by loadout)")
 
+    def _record_touch(self, path: Path, who: str, bk) -> None:
+        """Before a command changes `path`: save it, or record it (and its new folders) as created."""
+        if path.exists():
+            bk.save_copy(path, f"{self._rel(path)} before {who}")
+        else:
+            self._record_parents(path, bk)
+            bk.record_created(path, f"{self._rel(path)} (created by {who})")
+
     def _do(self, c: Change, bk) -> str | None:
         if c.kind == "run":
             for path in c.touches:
-                if bk is None:
-                    continue
-                if path.exists():
-                    bk.save_copy(path, f"{self._rel(path)} before {c.cmd[0]}")
-                else:
-                    self._record_parents(path, bk)
-                    bk.record_created(path, f"{self._rel(path)} (created by {c.cmd[0]})")
+                if bk is not None:
+                    self._record_touch(path, c.cmd[0], bk)
             res = runner.run(c.cmd, cwd=str(self.project))
             return None if res.ok else f"{c.cmd[0]}: failed: {res.stderr.strip()}"
         if self._outside(c.path, follow=c.kind in ("create", "modify")) or (c.kind == "create" and c.path.is_symlink()):

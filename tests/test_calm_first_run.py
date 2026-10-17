@@ -79,11 +79,11 @@ def test_init_prints_a_short_summary(fake_home, fake_runner, calm, tmp_path, cap
     text = capsys.readouterr().out
     assert rc == 0
     lines = [line for line in text.splitlines() if line.strip()]
-    assert any(line.startswith("✓ Profile web") for line in lines), text
-    assert any(line.startswith("✓ Scaffold") and "AGENTS.md" in line for line in lines), text
-    assert "running:" not in text and str(proj) not in text and "note (web)" not in text
-    assert lines[-1].startswith("next: ")
-    assert len(lines) <= 5, text
+    plan_end = next(i for i, line in enumerate(lines) if line.startswith(("✓ Init", "! Init")))
+    assert lines[0].startswith("Plan for ") and any("create  AGENTS.md" in line for line in lines[:plan_end]), text
+    assert lines[plan_end].startswith("✓ Init"), text
+    assert "running:" not in text and lines[-1].startswith("next: ")
+    assert len(lines) - plan_end <= 5, text  # after the plan: the status, notes, the undo line and next
 
 
 def test_init_shows_a_failed_command_in_calm_mode(fake_home, fake_runner, calm, tmp_path, capsys):
@@ -92,13 +92,13 @@ def test_init_shows_a_failed_command_in_calm_mode(fake_home, fake_runner, calm, 
     text = capsys.readouterr().out
     assert rc == 1
     assert "failed: no network" in text
-    assert any(line.startswith("! Profile web") for line in text.splitlines()), text
+    assert any(line.startswith("! Init") for line in text.splitlines()), text
 
 
 def test_init_with_verbose_keeps_the_details(fake_home, fake_runner, tmp_path, capsys):
     proj, _ = _init_web(tmp_path, fake_runner)  # the autouse fixture sets VERBOSE
     text = capsys.readouterr().out
-    assert "running: playwright-cli" in text and "created AGENTS.md" in text and "note (web)" in text
+    assert "run     playwright-cli" in text and "create  AGENTS.md" in text and "note (web)" in text
 
 
 def test_own_tools_prompt_is_short_and_capitalised(capsys):
@@ -115,8 +115,8 @@ def test_profile_verbose_flag_prints_the_details(fake_home, fake_runner, calm, t
     proj = tmp_path / "app"
     proj.mkdir()
     monkeypatch.chdir(proj)
-    assert main(["profile", "--verbose", "web"]) == 0
-    assert "running: playwright-cli" in capsys.readouterr().out
+    assert main(["profile", "--verbose", "--yes", "web"]) == 0
+    assert "run     playwright-cli" in capsys.readouterr().out
 
 
 def test_calm_profile_keeps_the_codex_trust_step_and_backup(fake_home, fake_runner, calm, tmp_path, monkeypatch, capsys):

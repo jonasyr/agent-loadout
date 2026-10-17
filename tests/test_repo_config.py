@@ -81,3 +81,10 @@ def test_parse_agents(value, want):
 def test_parse_agents_refuses(value):
     with pytest.raises(ValueError, match="--agents"):
         repo_config.parse_agents(value)
+
+
+def test_pending_agents_count_while_planning(repo):
+    targets.set_agents({"claude": True, "codex": True})
+    with repo_config.pending(repo, frozenset({"codex"})):
+        assert repo_config.agents(repo) == {"claude": False, "codex": True}
+    assert repo_config.agents(repo) == {"claude": True, "codex": True}

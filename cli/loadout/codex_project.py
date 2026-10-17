@@ -152,11 +152,14 @@ def failed_plugins(prof: profiles.Profile, lines: list[str]) -> frozenset:
                             for l in lines))
 
 
-def apply(prof: profiles.Profile, project: Path, install: bool, dry_run: bool) -> list[str]:
-    lines = plugins(prof, dry_run) if install else []
-    lines = config(prof, project, dry_run, skip=failed_plugins(prof, lines)) + lines  # skills: profiles.link_skills
+def apply(prof: profiles.Profile, project: Path, install: bool, dry_run: bool, w=None,
+          user_codex: bool = True) -> list[str]:
+    """The repo's Codex side. user_codex False (a repo for Codex, a user without it): the repo's file only, no
+    installs and no trust note."""
+    lines = plugins(prof, dry_run) if install and user_codex else []
+    lines = config(prof, project, dry_run, skip=failed_plugins(prof, lines), w=w) + lines  # skills: link_skills
     tables, plugins_, _ = _wanted(prof)
     has_codex_parts = bool(tables or plugins_) or any((project / ".agents" / "skills").glob("*"))
-    if has_codex_parts and not dry_run and not _trusted(project):  # on every run until trusted, not only on changes
+    if user_codex and has_codex_parts and not dry_run and not _trusted(project):  # every run until trusted
         lines.append(TRUST_NOTE)
     return lines
