@@ -119,6 +119,7 @@ def test_add_profile_runs_codex_only_when_codex_is_on(repo, fake_runner, monkeyp
     monkeypatch.setattr(targets, "codex_enabled", lambda: False)
     project.add_profile(repo, "web", install=False)
     assert calls == []
+    (repo / ".loadout.json").unlink()  # the first run fixed the repo's agents to yours then (ADR 0030); start over
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
     project.add_profile(repo, "web", install=False)
     assert calls == ["web"]

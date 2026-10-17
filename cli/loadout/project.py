@@ -95,7 +95,7 @@ def _show(project: Path, title: str, w, notes: list[str]) -> list[str]:
 CODEX_BAD = (": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is")
 
 
-def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> tuple[list[str], list[str]]:
+def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decide=None) -> tuple[list[str], list[str]]:
     """Collect everything a profile changes in the repo into `w`. Returns (notes, failures): both are shown in the
     plan; failures also make the run end with problems (exit 1), as `_profile_now` does."""
     import os
@@ -103,7 +103,7 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> tu
     on = repo_config.agents(project)
     notes: list[str] = []
     failures: list[str] = []
-    _, skipped = profiles.apply_profile(prof, project, w=w)
+    _, skipped = profiles.apply_profile(prof, project, w=w, decide=decide, notes=notes)
     failures += skipped
     notes += profiles.repo_off_notes(prof, project)
     before = len(w.changes)
@@ -220,7 +220,7 @@ def _config_or_report(project: Path):
 
 
 def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False, drive_note: bool = True,
-                approve=None, result: dict | None = None) -> int:
+                approve=None, result: dict | None = None, decide=None) -> int:
     """approve(plan lines) -> bool: show the plan and ask (the CLI). None: apply at once, backed up (callers that
     already asked). dry_run: show the plan, change nothing."""
     from . import backup, repo_config
@@ -246,7 +246,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         mine = frozenset(a for a, on in repo_config.user_agents().items() if on)
         w.create(project / repo_config.FILE, repo_config.new_text(project, mine),
                  "loadout: which agents this repo is for (commit it)")
-    planned_notes, failures = _plan_profile(prof, project, w, install)
+    planned_notes, failures = _plan_profile(prof, project, w, install, decide)
     notes += planned_notes
     plan = _show(project, f"profile {name}", w, failures + notes)
     if not cfg.manage:
@@ -285,7 +285,10 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
     warn = problems.append if calm else print
     skipped: list[str] = []
     parts: list[str] = []
-    changed, skipped = profiles.apply_profile(prof, project, w=w)
+    merge_notes: list[str] = []
+    changed, skipped = profiles.apply_profile(prof, project, w=w, notes=merge_notes)
+    for line in merge_notes:
+        (steps.append if calm else info)(line)
     for path in changed:
         info(f"updated {path}")
         parts.append(path.relative_to(project).as_posix() if paths.inside(path, project) else path.name)
