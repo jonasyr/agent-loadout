@@ -3,6 +3,7 @@ Mode): found and reported with the fix, never repaired (spec Part 3)."""
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 from . import runner
@@ -10,6 +11,7 @@ from . import runner
 FOLDERS = (".claude/skills", ".agents/skills")
 AGENT = {".claude/skills": "Claude Code", ".agents/skills": "Codex"}
 PREFIX = "skill links: "
+SAFE = re.compile(r"[A-Za-z0-9._-]+")  # a link name loadout may put in a command you paste (names come from the repo)
 
 
 def _candidates(project: Path) -> set[str]:
@@ -66,10 +68,14 @@ def report(found: set[str]) -> list[str]:
                      f"in this checkout (Git without symlinks), so {AGENT[folder]} does not see "
                      f"{'these skills' if many else 'this skill'}")
     if lines:
+        safe = {p for p in found if SAFE.fullmatch(p.rsplit("/", 1)[-1])}
+        restore = (f" and `git checkout -- {' '.join(_quoted(safe))}` (only these links, so your other changes in the "
+                   "skill folders stay)" if safe else "")
+        odd = (f"; {len(found - safe)} link name{'s' if len(found - safe) != 1 else ''} with unusual characters "
+               "loadout does not put in a command: check those out by hand" if found - safe else "")
         lines.append(f"{PREFIX}fix: best, use Codex in WSL with the repo in the Linux home (docs/how-to/wsl.md); "
-                     "otherwise turn on Windows Developer Mode, then in the repo run `git config core.symlinks true` "
-                     f"and `git checkout -- {' '.join(_quoted(found))}` (only these links, so your other changes in "
-                     "the skill folders stay). loadout runs none of these and never replaces the files")
+                     "otherwise turn on Windows Developer Mode, then in the repo run `git config core.symlinks true`"
+                     f"{restore}{odd}. loadout runs none of these and never replaces the files")
     return lines
 
 
