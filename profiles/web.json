@@ -7,5 +7,9 @@
   },
   "settings": { "disabledMcpjsonServers": ["chrome-devtools"] },
   "commands": [["playwright-cli", "install", "--skills"]],
+  "why": {
+    "mcp.mcpServers": "Chrome DevTools for performance and network debugging",
+    "settings.disabledMcpjsonServers": "keeps Chrome DevTools off until you enable it in /mcp"
+  },
   "notes": "chrome-devtools is for performance/network debugging; enable it in /mcp when needed. For E2E tests in the project itself, add @playwright/test as a dev dependency."
 }

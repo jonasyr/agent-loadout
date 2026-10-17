@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import paths
-from .jsonio import deep_merge, load_json, save_json
+from .jsonio import deep_merge, load_json
 
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -25,6 +24,7 @@ class Profile:
     commands: list = field(default_factory=list)
     skills: list = field(default_factory=list)
     notes: str = ""
+    why: dict = field(default_factory=dict)  # entry path like "settings.disabledMcpjsonServers" -> reason
 
 
 def _dirs() -> list[Path]:
@@ -58,6 +58,7 @@ def read_profile(path: Path, name: str) -> Profile:
         commands=field_of("commands", list, []),
         skills=field_of("skills", list, []),
         notes=field_of("notes", str, ""),
+        why=field_of("why", dict, {}),
     )
 
 
@@ -74,21 +75,41 @@ def load_profile(name: str) -> Profile:
 CLAUDE_FILES = (("settings", Path(".claude/settings.json")), ("mcp", Path(".mcp.json")))  # Claude Code's repo files
 
 
-def claude_off_notes(profile: Profile) -> list[str]:
-    """With Claude Code off: one line per Claude Code file the profile would have written (ADR 0027)."""
-    from . import targets
-    if targets.claude_enabled():
+def reason(profile: Profile, entry: str | None = None) -> str:
+    """Why a change is made: `profile NAME`, plus the profile's reason for `entry` or, without an entry, its
+    description."""
+    text = profile.why.get(entry) if entry else None
+    return f"profile {profile.name}" + (f": {text}" if isinstance(text, str) and text else
+                                        f" ({profile.description})" if profile.description and entry is None else "")
+
+
+def repo_off_notes(profile: Profile, project: Path) -> list[str]:
+    """One line when the repo is not for Claude Code but the profile has Claude Code files (ADR 0030)."""
+    from . import repo_config
+    if repo_config.agents(project)["claude"]:
         return []
-    return [f"Claude Code is off: {rel.as_posix()} not written (turn it on and run loadout profile {profile.name} again)"
-            for attr, rel in CLAUDE_FILES if getattr(profile, attr)]
+    files = [rel.as_posix() for attr, rel in CLAUDE_FILES if getattr(profile, attr)]
+    if not files:
+        return []
+    chosen = repo_config.load(project).agents is not None
+    why = ("this repo is for Codex only (.loadout.json; add Claude Code with loadout init --agents claude,codex)"
+           if chosen else "Claude Code is off for you (turn it on and run loadout profile "
+           f"{profile.name} again, or choose the repo's agents with loadout init --agents claude,codex)")
+    return [f"{' and '.join(files)}: not written, {why}"]
 
 
-def apply_profile(profile: Profile, project: Path) -> tuple[list[Path], list[str]]:
-    """Merge the profile into the repo's settings and .mcp.json. Returns (changed files, skipped lines)."""
-    from . import targets
+def apply_profile(profile: Profile, project: Path, w=None) -> tuple[list[Path], list[str]]:
+    """Merge the profile into the repo's settings and .mcp.json when the repo is for Claude Code. A file is changed
+    only in the layout it already has; any other file is left and its entries named. With a collector `w` the
+    changes are only planned. Returns (changed, skipped)."""
+    import json as _json
+    from . import repo_config
+    from .jsonio import dumps_like, json_style
+    from .repo_writes import RepoWrites
     changed, skipped = [], []
-    if not targets.claude_enabled():
-        return changed, skipped  # claude_off_notes says what was not written
+    if not repo_config.agents(project)["claude"]:
+        return changed, skipped  # repo_off_notes says what was not written
+    writes = w if w is not None else RepoWrites(project, now=True)
     for attr, rel in CLAUDE_FILES:
         overlay = getattr(profile, attr)
         if not overlay:
@@ -97,11 +118,27 @@ def apply_profile(profile: Profile, project: Path) -> tuple[list[Path], list[str
         if not paths.inside(target, project) or not paths.inside(target.parent, project):
             skipped.append(f"skipped {rel.as_posix()}: it points outside the repo")
             continue
-        before = load_json(target)
+        before = load_json(target)  # a file that does not parse raises InvalidJSON, as before
+        old = target.read_bytes().decode("utf-8") if target.exists() else None
+        if old is not None and not old.strip():
+            old = None  # an empty file holds nothing of the user's: written like a new one
+        style = json_style(old) if old is not None else None
+        if old is not None and style is None:
+            entries = ", ".join(sorted(overlay))
+            skipped.append(f"{rel.as_posix()}: left as is (its layout is not one loadout rewrites); add by hand: "
+                           f"{_json.dumps(overlay, ensure_ascii=False)} ({entries})")
+            continue
         after = deep_merge(before, overlay)
-        if after != before:
-            save_json(target, after)
-            changed.append(target)
+        if after == before and old is not None:
+            continue
+        keys = [f"{attr}.{k}" for k in overlay]
+        why = next((reason(profile, k) for k in keys if k in profile.why), reason(profile))
+        if old is None:
+            (writes.modify if target.exists() else writes.create)(
+                target, _json.dumps(after, indent=2, ensure_ascii=False) + "\n", why)
+        else:
+            writes.modify(target, dumps_like(style, after), why)
+        changed.append(target)
     return changed, skipped
 
 
@@ -119,14 +156,15 @@ REPO_SKILLS = (".claude/skills", ".agents/skills")  # Claude Code's and Codex's 
 def repo_skill_dirs(project: Path) -> tuple[Path, Path | None]:
     """(where a new repo skill's real folder goes, the other agent's folder that links to it, or None): Claude Code's
     .claude/skills whenever Claude Code is on, else Codex's .agents/skills (ADR 0027)."""
-    from . import targets
+    from . import repo_config
+    on = repo_config.agents(project)
     claude, agents = (project / rel for rel in REPO_SKILLS)
-    if not targets.claude_enabled():
+    if not on["claude"]:
         return agents, None
-    return claude, agents if targets.codex_enabled() else None
+    return claude, agents if on["codex"] else None
 
 
-def copy_skills(profile: Profile, project: Path, dry_run: bool = False) -> list[str]:
+def copy_skills(profile: Profile, project: Path, dry_run: bool = False, w=None) -> list[str]:
     """Copy the profile's skills into the repo's real skill folder (repo_skill_dirs). A skill of that name in either
     agent's folder is never overwritten."""
     out = []
@@ -151,8 +189,9 @@ def copy_skills(profile: Profile, project: Path, dry_run: bool = False) -> list[
         elif dry_run:
             out.append(f"would copy skill {name} -> {dest}")
         else:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(src, dest, symlinks=True)
+            from .repo_writes import RepoWrites
+            writes = w if w is not None else RepoWrites(project, now=True)
+            writes.copytree(src, dest, f"{reason(profile)}: skill {name}")
             out.append(f"copied skill {name} -> {dest}")
     return out
 
@@ -160,21 +199,22 @@ def copy_skills(profile: Profile, project: Path, dry_run: bool = False) -> list[
 AGENT_OF = {".claude/skills": "Claude Code", ".agents/skills": "Codex"}
 
 
-def link_skills(project: Path, dry_run: bool) -> list[str]:
+def link_skills(project: Path, dry_run: bool, w=None) -> list[str]:
     """Link each repo skill into the skill folder of every other agent that is on (relative, so the link works in
     every clone): .claude/skills/NAME into .agents/skills for Codex, .agents/skills/NAME into .claude/skills for
     Claude Code (ADR 0027)."""
-    from . import targets
+    from . import repo_config
+    on = repo_config.agents(project)
     claude, agents = REPO_SKILLS
-    out, codex = [], targets.codex_enabled()
+    out, codex = [], on["codex"]
     if codex:
-        out += _link_into(project, claude, agents, dry_run, report=True)
-    if targets.claude_enabled():  # two real folders: reported once, by the Codex direction when it ran
-        out += _link_into(project, agents, claude, dry_run, report=not codex)
+        out += _link_into(project, claude, agents, dry_run, report=True, w=w)
+    if on["claude"]:  # two real folders: reported once, by the Codex direction when it ran
+        out += _link_into(project, agents, claude, dry_run, report=not codex, w=w)
     return out
 
 
-def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report: bool) -> list[str]:
+def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report: bool, w=None) -> list[str]:
     src_root, dest_root, agent = project / src_rel, project / dest_rel, AGENT_OF[dest_rel]
     if not src_root.is_dir():
         return []
@@ -207,6 +247,10 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
             continue
         if dry_run:
             out.append(f"would link skill {name} for {agent} -> {dest_rel}/{name}")
+            continue
+        if w is not None:
+            w.link(dest, want, f"skill {name} for {agent}")
+            out.append(f"linked skill {name} for {agent} -> {dest_rel}/{name}")
             continue
         dest_root.mkdir(parents=True, exist_ok=True)
         try:

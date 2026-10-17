@@ -72,7 +72,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             parts.append(path.relative_to(project).as_posix() if paths.inside(path, project) else path.name)
         for line in skipped:
             warn(line)
-    for line in profiles.claude_off_notes(prof):
+    for line in profiles.repo_off_notes(prof, project):
         (steps.append if calm else info)(line)
     skills_ok = True
     for line in profiles.copy_skills(prof, project, dry_run=dry_run):

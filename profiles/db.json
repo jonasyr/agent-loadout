@@ -9,5 +9,8 @@
       }
     }
   },
+  "why": {
+    "mcp.mcpServers": "DBHub gives the agent database access through DATABASE_URL (use a read-only user)"
+  },
   "notes": "Set DATABASE_URL in your shell or ~/.config/loadout/secrets.env. Use a read-only database user."
 }

@@ -14,14 +14,26 @@ def render(text: str, values: dict) -> str:
     return text
 
 
-def scaffold(project: Path, dry_run: bool = False) -> tuple[list[Path], list[str]]:
-    from . import targets
+def _writes(project: Path, w):
+    from .repo_writes import RepoWrites
+    return w if w is not None else RepoWrites(project, now=True)
+
+
+WHY = {"AGENTS.md": "instructions every agent reads", "CLAUDE.md": "points Claude Code at AGENTS.md",
+       "docs/README.md": "the docs map", "docs/adr/README.md": "the decisions index"}
+
+
+def scaffold(project: Path, dry_run: bool = False, w=None) -> tuple[list[Path], list[str]]:
+    """Create the missing template files in the repo; with a collector `w` they are only planned. Returns (created or
+    planned files, notes)."""
+    from . import repo_config
     templates = paths.kit_root() / "templates" / "project"
-    skip = set() if targets.claude_enabled() else {"CLAUDE.md"}  # Claude Code's file (ADR 0027)
+    skip = set() if repo_config.agents(project)["claude"] else {"CLAUDE.md"}  # Claude Code's file (ADR 0030)
     notes = []
     if (project / "CLAUDE.md").exists() and not (project / "AGENTS.md").exists():
         skip = {"AGENTS.md", "CLAUDE.md"}
         notes.append("CLAUDE.md exists without AGENTS.md: /loadout:onboard will offer to migrate it.")
+    writes = None if dry_run else _writes(project, w)
     created = []
     for src in sorted(templates.rglob("*")):
         if src.is_dir():
@@ -38,24 +50,38 @@ def scaffold(project: Path, dry_run: bool = False) -> tuple[list[Path], list[str
             notes.append(f"skipped {rel.as_posix()}: it points outside the repo")
             continue
         created.append(dest)
-        if not dry_run:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(render(src.read_text(encoding="utf-8"), {"PROJECT_NAME": project.name}), encoding="utf-8")
+        if writes is not None:
+            writes.create(dest, render(src.read_text(encoding="utf-8"), {"PROJECT_NAME": project.name}),
+                          f"init: {WHY.get(rel.as_posix(), 'project scaffold')}")
     return created, notes
 
 
-def ensure_gitignore(project: Path, dry_run: bool = False) -> list[str]:
+def ensure_gitignore(project: Path, dry_run: bool = False, w=None) -> list[str]:
+    """Add the missing local-file lines to .gitignore under one `# loadout` header, in the file's line endings."""
+    from . import repo_config
     path = project / ".gitignore"
     if not paths.inside(path, project):
         return []
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    existing = {line.strip() for line in text.splitlines()}
-    from . import targets
-    wanted = [l for l in GITIGNORE_LINES if targets.claude_enabled() or not l.startswith(".claude/")]
+    text = path.read_bytes().decode("utf-8") if path.exists() else ""
+    nl = "\r\n" if "\r\n" in text else "\n"
+    lines = text.replace("\r\n", "\n").split("\n")
+    existing = {line.strip() for line in lines}
+    wanted = [l for l in GITIGNORE_LINES if repo_config.agents(project)["claude"] or not l.startswith(".claude/")]
     missing = [line for line in wanted if line not in existing]
-    if missing and not dry_run:
-        if text and not text.endswith("\n"):
-            text += "\n"
-        text += "# loadout\n" + "\n".join(missing) + "\n"
-        path.write_text(text, encoding="utf-8")
+    if not missing or dry_run:
+        return missing
+    if "# loadout" in existing:  # one header: new lines go under it
+        at = next(i for i, l in enumerate(lines) if l.strip() == "# loadout") + 1
+        while at < len(lines) and lines[at].strip() and not lines[at].startswith("#"):
+            at += 1
+        lines[at:at] = missing
+        new = "\n".join(lines)
+    else:
+        body = "\n".join(lines)  # the user's lines stay as they are, blank ones included
+        if body and not body.endswith("\n"):
+            body += "\n"
+        new = body + "# loadout\n" + "\n".join(missing) + "\n"
+    new = new.replace("\n", nl)
+    writes = _writes(project, w)
+    (writes.modify if path.exists() else writes.create)(path, new, "init: keep local agent files out of git")
     return missing

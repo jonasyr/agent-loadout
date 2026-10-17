@@ -183,8 +183,8 @@ def test_codex_only_profile_writes_no_claude_files_and_says_so(repo, fake_runner
     assert project.add_profile(repo, "web", install=False) == 0
     assert not (repo / ".claude").exists() and not (repo / ".mcp.json").exists()
     out = capsys.readouterr().out
-    assert "Claude Code is off: .claude/settings.json not written (turn it on and run loadout profile web again)" in out
-    assert "Claude Code is off: .mcp.json not written" in out
+    assert (".claude/settings.json and .mcp.json: not written, Claude Code is off for you (turn it on and run loadout "
+            "profile web again, or choose the repo's agents with loadout init --agents claude,codex)") in out
 
 
 def test_turning_claude_code_on_then_profile_writes_them(repo, fake_runner, monkeypatch):
@@ -253,7 +253,7 @@ def test_calm_codex_only_notes_are_steps_not_warnings(repo, fake_runner, monkeyp
     monkeypatch.setattr(codex_project, "apply", lambda *a, **k: [])
     assert project.add_profile(repo, "web", install=False) == 0
     text = capsys.readouterr().out
-    assert "applied with problems" not in text and "Claude Code is off: .mcp.json not written" in text
+    assert "applied with problems" not in text and ".mcp.json: not written, Claude Code is off for you" in text
 
 
 @pytest.mark.parametrize("agents, src, dest", [

@@ -23,7 +23,7 @@ def test_detect_ignores_vendored_dirs(tmp_path):
 def test_apply_profile_merges_and_is_idempotent(tmp_path):
     proj = tmp_path / "p"
     (proj / ".claude").mkdir(parents=True)
-    (proj / ".claude/settings.json").write_text(json.dumps({"permissions": {"allow": ["Bash(x)"]}}))
+    (proj / ".claude/settings.json").write_text(json.dumps({"permissions": {"allow": ["Bash(x)"]}}, indent=2) + "\n")
     prof = profiles.load_profile("web")
     changed, skipped = profiles.apply_profile(prof, proj)
     assert {c.name for c in changed} == {"settings.json", ".mcp.json"}
