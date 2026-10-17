@@ -98,3 +98,31 @@ def test_a_person_edited_codex_table_is_a_note_not_a_problem(codex_repo):
     assert "cd@9" in cfg.read_text()
     assert not any(b in l for l in lines for b in project.CODEX_BAD)
     assert any("changed in this repo" in l for l in lines)
+
+
+ESC = "\x1b]0;owned\x07\x1b[2J"
+
+
+def test_explain_never_prints_terminal_escapes_from_a_repo(repo, capsys):
+    from loadout import explain
+    (repo / ".loadout.json").write_text(json.dumps(
+        {"agents": ["claude"], "profiles": {"web": {".mcp.json": {"mcpServers/" + ESC: {"command": ESC}}}}}, indent=2) + "\n")
+    (repo / ".mcp.json").write_text("{}\n")
+    (repo / ".gitignore").write_text("# loadout\n" + ESC + "\n")
+    explain.explain(".mcp.json", cwd=repo)
+    explain.explain(".gitignore", cwd=repo)
+    explain.explain(".loadout.json", cwd=repo)
+    out = capsys.readouterr().out
+    assert "\x1b" not in out and "\x07" not in out and "\\x1b" in out
+
+
+def test_the_plan_never_prints_terminal_escapes_from_a_repo(repo, monkeypatch, capsys):
+    path = repo / ".claude" / "settings.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({ESC: 1}, indent=2) + "\n")
+    (repo / ".loadout.json").write_text(json.dumps(
+        {"agents": ["claude"], "profiles": {"web": {".claude/settings.json": {ESC: 1}}}}, indent=2) + "\n")
+    use(monkeypatch, {"env": {"A": "1"}})
+    run(repo)
+    out = capsys.readouterr().out
+    assert "\x1b" not in out and "\x07" not in out

@@ -87,7 +87,8 @@ def chooser(take: bool, ask: Ask, interactive: bool, dry_run: bool = False):
     """Whether to use the profile's values where a person changed an entry: --take-profile, else the question in a
     terminal; without one (and in a dry run) the repo's values stay. The entries are printed in every case."""
     def decide(lines: list[str]) -> bool:
-        print("\n".join(lines))
+        from .out import printable
+        print("\n".join(printable(line) for line in lines))
         if take:
             return True
         if dry_run:
@@ -109,6 +110,8 @@ def _show(project: Path, title: str, w, notes: list[str]) -> list[str]:
     plan = [f"Plan for {project} ({title}; this repo's agents: {_agent_names(repo_config.agents(project))}):"]
     plan += w.render() or ["  (no file changes)"]
     plan += [secrets.redact(f"  note    {n}") for n in notes]
+    from .out import printable
+    plan = [printable(line) for line in plan]  # keys and values come from repo files
     print("\n".join(plan))
     return plan
 
@@ -230,7 +233,7 @@ def _report(title: str, bk, notes: list[str], problems: list[str]) -> int:
     from . import out
     out.status(title, "applied" if not problems else "applied with problems (below)", "ok" if not problems else "warn")
     for line in problems + notes:
-        out.problem(secrets.redact(line))
+        out.problem(out.printable(secrets.redact(line)))
     if not bk.empty:
         print(f"undo: loadout restore {bk.root}")
     return 1 if problems else 0

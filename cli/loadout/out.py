@@ -15,6 +15,15 @@ PROBLEM = re.compile(r"failed|skipped|not changed|not effective|could not|cannot
 _COLOR = {"ok": "32", "warn": "33", "fail": "31", "accent": "35", "muted": "2"}
 
 
+_CONTROL = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")  # tab stays; a newline would fake a line
+
+
+def printable(text: str) -> str:
+    """Text from a repo or another person's file, safe to print: control characters (a terminal escape sequence, a
+    bell) become visible \\xNN, so a cloned repo cannot drive the terminal."""
+    return _CONTROL.sub(lambda m: f"\\x{ord(m.group()):02x}", text)
+
+
 def sym(name: str) -> str:
     """The symbol, or its ASCII stand-in when stdout cannot encode it (e.g. a cp1252 console)."""
     try:
