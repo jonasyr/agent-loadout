@@ -161,3 +161,72 @@ def setting(install: Install, key: str) -> object | None:
 def row_name(ext: Extension) -> str:
     where = WHERE[ext.install.where]
     return f"VS Code ({LABEL[ext.agent]}{', ' + where if where else ''})"
+
+
+SYSTEM_DIRS = ("/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin")
+SERVER_ENV = ".vscode-server/server-env-setup"  # VS Code's place for a Remote-WSL server's environment
+_PATH_LINE = re.compile(r"^\s*(?:export\s+)?PATH=(.+)$", re.M)
+
+
+def reads_home(ext: Extension) -> Path:
+    """The agent folder the extension's agent reads. A Windows window seen from WSL reads the Windows homes, except
+    Codex with its WSL switch on, which runs the Codex in WSL and reads the WSL home."""
+    if ext.install.where == "windows":
+        win = ext.install.extensions.parent.parent  # <Windows home>/.vscode/extensions
+        if ext.agent == "codex" and wsl.vscode_wsl_mode(win) is True:
+            return paths.codex_home()
+        return win / (".claude" if ext.agent == "claude" else ".codex")
+    return paths.claude_home() if ext.agent == "claude" else paths.codex_home()
+
+
+def remote_path_dirs() -> list[str]:
+    """The folders a Remote-WSL window's agent finds commands in: the system folders, plus what
+    ~/.vscode-server/server-env-setup puts on PATH (no shell startup file runs there)."""
+    dirs = list(SYSTEM_DIRS)
+    try:
+        text = (paths.home() / SERVER_ENV).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return dirs
+    home = str(paths.home())
+    for m in _PATH_LINE.finditer(text):
+        for part in m.group(1).strip().strip("\"'").split(":"):
+            part = part.replace("${HOME}", home).replace("$HOME", home)
+            part = home + part[1:] if part.startswith("~/") else part
+            if part and "$" not in part:
+                dirs.append(part)
+    return dirs
+
+
+def findable(command: str, dirs: list[str]) -> bool:
+    if os.path.isabs(command):
+        return Path(command).is_file()
+    return any((Path(d) / command).is_file() for d in dirs)
+
+
+def _commands(servers) -> dict[str, str]:
+    if not isinstance(servers, dict):
+        return {}
+    return {name: s["command"] for name, s in servers.items()
+            if isinstance(s, dict) and isinstance(s.get("command"), str) and s["command"]}
+
+
+def mcp_commands(agent: str) -> dict[str, str]:
+    """The commands of the MCP servers an extension starts: Codex's [mcp_servers.*] in config.toml (the extension
+    loads no plugins); Claude Code's user servers in ~/.claude.json plus the loadout plugin's."""
+    if agent == "codex":
+        from . import codex
+        try:
+            data = codex._tomllib().loads((paths.codex_home() / "config.toml").read_text(encoding="utf-8"))
+        except Exception:  # missing, unreadable or not TOML: nothing to check
+            return {}
+        return _commands(data.get("mcp_servers"))
+    found = {}
+    plugin = paths.kit_root() / "plugins" / "loadout" / ".mcp.json"
+    for path in (plugin, paths.claude_json()):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            found.update(_commands(data.get("mcpServers")))
+    return found
