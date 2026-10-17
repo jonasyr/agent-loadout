@@ -112,3 +112,16 @@ def test_a_repo_restore_keeps_its_own_backup_findable_by_repo(fake_home, fake_ru
     _, ok, pre = backup.restore(bk.root)
     assert ok and pre is not None
     assert pre in [b.path for b in backup.backups(repo)]
+
+
+@pytest.mark.parametrize("flag, side", [("windows", wsl.CodexSide("wsl", ["r"])),
+                                        (None, wsl.CodexSide("wsl", ["r"], shared_home=True)),
+                                        (None, wsl.CodexSide("windows", ["r"]))])
+def test_a_skipped_codex_step_says_the_flag_changed_nothing(fake_home, fake_runner, monkeypatch, flag, side):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "codex_side", lambda **k: side)
+    seen = []
+    monkeypatch.setattr(out, "status", lambda name, msg, level="ok": seen.append((name, msg, level)))
+    assert bootstrap.codex_gate(flag, ask=lambda q: "", interactive=False, bk=backup.Backup(description="t"),
+                                vscode=True) is not None
+    assert any(n == "VS Code" and l == "warn" and "--vscode-wsl" in m for n, m, l in seen)

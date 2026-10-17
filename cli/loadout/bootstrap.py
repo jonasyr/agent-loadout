@@ -606,7 +606,15 @@ def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
 
 def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None, vscode: bool = False) -> str | None:
     """In WSL: None to set up this side's Codex, else the line that explains why not (one loadout per side, ADR 0029).
-    vscode: --vscode-wsl, switch VS Code's Codex extension to WSL without asking."""
+    vscode: --vscode-wsl, switch VS Code's Codex extension to WSL without asking; a stopped Codex step says the flag
+    changed nothing."""
+    stopped = _codex_gate(flag, ask, interactive, bk, vscode)
+    if stopped is not None and vscode:
+        out.status("VS Code", "--vscode-wsl: the Codex step in WSL was skipped, so nothing changed", "warn")
+    return stopped
+
+
+def _codex_gate(flag, ask, interactive: bool, bk: Backup | None, vscode: bool) -> str | None:
     if wsl.detect() is None:
         return None
     if flag == "wsl":
