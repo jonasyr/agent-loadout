@@ -28,7 +28,7 @@ Map the request to a command, show the planned commands as a short list, and run
 | Do my agents use Serena, the graph or Context7? | The `loadout:usage` skill, which reads `loadout usage --json` (read-only, counts only) |
 | Review the existing setup | `loadout adopt` (a dry run); after a yes, `loadout adopt --apply --groups <the agreed groups>` (add `,secrets` only when the user agreed to move the plaintext secrets the dry run listed) or `--own NAME=CHOICE`; when the groups include `update` or `install`, add `--yes` (naming `secrets` is its consent) |
 | Update tools | `loadout update` lists what is outdated; after a yes, `loadout update --yes` |
-| Undo a change | `loadout restore --list`, then `loadout restore <dir>` after a yes |
+| Undo a change | `loadout restore --list` (or `--repo PATH`) to find it, `loadout restore --show <dir>` to show the user what it puts back, then `loadout restore <dir>` after a yes; the numbered pick needs the user's terminal |
 | They installed a tool themselves (`npx ...`, `claude mcp add`, `/plugin install`) and ask what now | Answer from "You installed a tool yourself" in `docs/how-to/your-own-tools.md`; run `loadout configure own` to show where it is and its options, then decide it as under "Preferences, add-ons and your own tools" below |
 | Create a skill of their own | Ask where it should live (every machine: global; some repos: project:<profile>; this repo for everyone: repo), then `loadout configure new skill NAME --to ... --description "..."` (for `--to repo` without a terminal this prints the plan and writes nothing: show it, and after a yes run it again with `--yes`); then fill in the SKILL.md it printed. Never write into the skills folders directly. |
 

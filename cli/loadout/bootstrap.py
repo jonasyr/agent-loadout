@@ -574,12 +574,51 @@ def _offer_vscode(cs, ask, bk) -> None:
         return
     if not ask(VSCODE_QUESTION).strip().lower().startswith("y"):
         return
-    out.status("VS Code", wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL)
+    message = wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL
+    out.status("VS Code", message, _vscode_level(message))
 
 
-def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None) -> str | None:
-    """In WSL: None to set up this side's Codex, else the line that explains why not (one loadout per side, ADR 0029)."""
-    if wsl.detect() is None or flag == "wsl":
+VSCODE_FLAG_HINT = "or run bootstrap again with --vscode-wsl"
+VSCODE_DONE = ("VS Code: the Codex extension now runs", "VS Code already runs Codex in WSL")
+
+
+def _vscode_level(message: str) -> str:
+    """ok only when the switch is on now; every other answer (no settings, another value, a write error) is a warning."""
+    return "ok" if message.startswith(VSCODE_DONE) else "warn"
+
+
+def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
+    """Codex runs in WSL: switch VS Code's extension to it (--vscode-wsl), offer it (a terminal), or print the manual
+    step (no terminal) when the extension still runs the Windows Codex (spec Part 4)."""
+    home = cs.windows_home if cs is not None else None
+    if vscode:
+        if home is None:
+            out.status("VS Code", f"Windows home not found; {wsl.MANUAL}", "warn")
+        else:
+            message = wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL
+            out.status("VS Code", message, _vscode_level(message))
+        return
+    if interactive:
+        _offer_vscode(cs, ask, bk)
+    elif cs is not None and cs.vscode_windows:
+        out.status("VS Code", f"the Codex extension runs Codex on Windows; {wsl.MANUAL} ({VSCODE_FLAG_HINT})", "warn")
+
+
+def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None, vscode: bool = False) -> str | None:
+    """In WSL: None to set up this side's Codex, else the line that explains why not (one loadout per side, ADR 0029).
+    vscode: --vscode-wsl, switch VS Code's Codex extension to WSL without asking; a stopped Codex step says the flag
+    changed nothing."""
+    stopped = _codex_gate(flag, ask, interactive, bk, vscode)
+    if stopped is not None and vscode:
+        out.status("VS Code", "--vscode-wsl: the Codex step in WSL was skipped, so nothing changed", "warn")
+    return stopped
+
+
+def _codex_gate(flag, ask, interactive: bool, bk: Backup | None, vscode: bool) -> str | None:
+    if wsl.detect() is None:
+        return None
+    if flag == "wsl":
+        _vscode_step(wsl.codex_side(), ask, interactive, bk, vscode)
         return None
     if flag == "windows":
         return SKIPPED + WINDOWS_WAY
@@ -589,11 +628,8 @@ def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None) -> str | 
         return (f"Codex step skipped: {why}. One config would be read by both sides, but its commands fit only one. "
                 "Unset CODEX_HOME in WSL, or pass --codex-side wsl to set it up anyway")
     if cs.side != "windows":
-        if cs.side == "both" and cs.vscode_windows:  # Codex in WSL, but VS Code's extension still runs the Windows one
-            if interactive:
-                _offer_vscode(cs, ask, bk)
-            else:
-                out.status("VS Code", f"the Codex extension runs Codex on Windows; {wsl.MANUAL}", "warn")
+        if vscode or (cs.side == "both" and cs.vscode_windows):  # Codex in WSL, VS Code's extension may run the other
+            _vscode_step(cs, ask, interactive, bk, vscode)
         return None
     if interactive:
         answer = ask("\n" + CODEX_SIDE_QUESTION).strip() or "1"
@@ -602,7 +638,7 @@ def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None) -> str | 
         if answer != "1":
             return (f"{SKIPPED}no such choice ({answer!r}). Re-run and answer 1 or 2, or pass "
                     "--codex-side wsl or --codex-side windows")
-        _offer_vscode(cs, ask, bk)
+        _vscode_step(cs, ask, True, bk, vscode)
         return None
     return (f"Codex step skipped: {why}. Choose a side: --codex-side wsl (with --install, installs Codex in WSL), "
             f"or {WINDOWS_WAY}")
@@ -637,17 +673,18 @@ def _no_question(question: str) -> str:
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
-              answers: str | None = None) -> int:
+              answers: str | None = None, vscode_wsl: bool = False) -> int:
     from . import targets
     try:
-        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers)
+        return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
+                          vscode_wsl)
     finally:
         targets.OVERRIDE = None
 
 
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
-               answers: str | None = None) -> int:
+               answers: str | None = None, vscode_wsl: bool = False) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -707,7 +744,9 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     if personal_ok and store:
         targets.set_agents(chosen)
     # in WSL the Codex side is settled first: a Windows-side choice installs no Linux Codex (ADR 0029)
-    gate = codex_gate(codex_side, ask, interactive and not yes, bk) if codex_gate_needed(chosen) else None
+    gate = codex_gate(codex_side, ask, interactive and not yes, bk, vscode=vscode_wsl) if codex_gate_needed(chosen) else None
+    if vscode_wsl and not codex_gate_needed(chosen):
+        out.status("VS Code", "--vscode-wsl: Codex is not set up in WSL in this run; nothing changed", "warn")
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []

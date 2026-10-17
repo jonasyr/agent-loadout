@@ -67,7 +67,7 @@ Bootstrap and `loadout check` in WSL look, read-only, at:
 
 - `codex` on `PATH`: a Linux one, or a Windows one under `/mnt/<drive>/` (such as the npm shim in `AppData/Roaming/npm`), and `codex.exe`;
 - sessions from the last 30 days in the Windows Codex home;
-- the VS Code setting `chatgpt.runCodexInWindowsSubsystemForLinux` in `AppData/Roaming/Code/User/settings.json` on Windows (`true`: the extension runs Codex in WSL; `false`, or not set while the Codex extension is installed: on Windows). When you set up Codex in WSL but the extension still runs it on Windows, bootstrap offers the switch (without a terminal it prints the manual step; with `--codex-side wsl` it does neither, so set it by hand as in [the next section](#when-your-only-codex-is-the-windows-one));
+- the VS Code setting `chatgpt.runCodexInWindowsSubsystemForLinux` in `AppData/Roaming/Code/User/settings.json` on Windows (`true`: the extension runs Codex in WSL; `false`, or not set while the Codex extension is installed: on Windows). When you set up Codex in WSL but the extension still runs it on Windows, bootstrap offers the switch, also with `--codex-side wsl` (without a terminal it prints the manual step; `--vscode-wsl` makes the switch without asking; by hand: [the next section](#when-your-only-codex-is-the-windows-one));
 - `CODEX_HOME`, and whether it points into Windows.
 
 loadout finds the Windows home through `cmd.exe` and `wslpath`; without Windows interop it tries `/mnt/c/Users/$USER`.
@@ -76,7 +76,7 @@ loadout finds the Windows home through `cmd.exe` and `wslpath`; without Windows 
 
 Bootstrap does not set up the WSL home for a Codex that does not read it. In a terminal it asks which side you want:
 
-1. **Codex in WSL.** Run bootstrap with `--install` so it installs Codex in WSL (`mise use -g codex`); a Windows `codex` on `PATH` does not count. If VS Code's `settings.json` exists and the setting is not `true`, bootstrap offers to set it. On a yes it edits only that key in `settings.json` and keeps every other byte; it saves a copy first, so `loadout restore` puts it back. VS Code reloads. To do it by hand: in VS Code on Windows, open Settings, search for `chatgpt.runCodexInWindowsSubsystemForLinux` and tick it.
+1. **Codex in WSL.** Run bootstrap with `--install` so it installs Codex in WSL (`mise use -g codex`); a Windows `codex` on `PATH` does not count. If VS Code's `settings.json` exists and the setting is not `true`, bootstrap offers to set it. On a yes it edits only that key in `settings.json` and keeps every other byte; it saves a copy first, so `loadout restore` puts it back. VS Code reloads. Without a terminal (or for an agent), `--vscode-wsl` makes the same edit without asking; without either, bootstrap prints the manual step. To do it by hand: in VS Code on Windows, open Settings, search for `chatgpt.runCodexInWindowsSubsystemForLinux` and tick it. `loadout check` shows a `VS Code` warning while the extension still runs the Windows Codex.
 2. **Codex on Windows.** Run loadout's `bootstrap.ps1` in PowerShell on Windows, with the same personal layer. Bootstrap in WSL then skips its Codex step; the rest of the setup runs.
 
 Without a terminal, or with `--yes`, pass `--codex-side wsl` or `--codex-side windows`. Without the flag the Codex step stops and prints both ways; the exit code is the same as without the step. In WSL, `loadout check` and the daily sync never set up or check the WSL home through a Windows `codex`: with only the Windows Codex, `loadout check` shows one `Codex` line that points to `bootstrap.ps1`.

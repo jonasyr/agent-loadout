@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import filecmp
 import json
+import math
 import os
 import shutil
 import stat
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import paths, runner
@@ -308,7 +310,8 @@ def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | No
     if manifest.get("restored_at") and not force:
         when = _stamp(manifest["restored_at"])
         return [f"{root} was already restored at {when}; re-run with --force to replay it again"], False, None
-    pre = Backup(description=f"pre-restore of {root}")
+    repo = manifest.get("repo") if isinstance(manifest.get("repo"), str) else None
+    pre = Backup(description=f"pre-restore of {root}", repo=repo)  # findable with --repo, to undo this restore
     lines, ok = [], True
     failed = []
     ordered = [s for s in reversed(manifest.get("steps", [])) if isinstance(s, dict)]  # a damaged entry is skipped
@@ -347,31 +350,117 @@ def _stamp(value) -> str:
         return "?"
 
 
-def list_backups() -> list[str]:
+@dataclass
+class BackupInfo:
+    path: Path
+    created: float
+    description: str
+    repo: str | None
+    steps: list
+    restored_at: float | None
+
+
+def backups(repo: Path | None = None) -> list[BackupInfo]:
+    """loadout's backups, newest first; with `repo`, only the ones made for that repo. A symlinked folder or a damaged
+    manifest is left out (restore refuses it too)."""
     root = paths.backups_root()
-    rows = []
+    want = os.path.realpath(repo) if repo is not None else None
+
+    def same(rep: str) -> bool:
+        try:
+            return os.path.realpath(rep) == want
+        except (OSError, ValueError):  # a damaged repo path (a NUL byte) matches nothing
+            return False
+    found = []
     for d in root.iterdir() if root.is_dir() else []:
-        if d.is_symlink():  # restore refuses it, so it is not listed
-            continue
-        manifest = d / "manifest.json"
-        if not manifest.is_file():
+        if d.is_symlink() or not (d / "manifest.json").is_file():
             continue
         try:
-            data = load_json(manifest)
+            data = load_json(d / "manifest.json")
         except Exception:
             continue
-        if not isinstance(data.get("steps", []), list):  # a damaged manifest is not listed
+        steps = data.get("steps", [])
+        if not isinstance(steps, list):
             continue
         created = data.get("created_at")
-        rows.append((created if isinstance(created, (int, float)) and created > 0 else manifest.stat().st_mtime,
-                     d.name, d, data))
+        ok = isinstance(created, (int, float)) and not isinstance(created, bool) and math.isfinite(created) and created > 0
+        created = created if ok else (d / "manifest.json").stat().st_mtime
+        rep = data.get("repo") if isinstance(data.get("repo"), str) else None
+        if want is not None and (rep is None or not same(rep)):
+            continue
+        restored = data.get("restored_at")
+        found.append(BackupInfo(d, created, str(data.get("description") or ""), rep,
+                                [s for s in steps if isinstance(s, dict)],
+                                restored if isinstance(restored, (int, float)) else (1.0 if restored else None)))
+    return sorted(found, key=lambda b: (b.created, b.path.name), reverse=True)
+
+
+def _shown(path) -> str:
+    text, home = str(path), str(paths.home())
+    return "~" + text[len(home):] if text.startswith(home) else text
+
+
+def age(created: float, now: float | None = None) -> str:
+    seconds = max(0, int((time.time() if now is None else now) - created))
+    for unit, size in (("day", 86400), ("hour", 3600), ("minute", 60)):
+        if seconds >= size:
+            n = seconds // size
+            return f"{n} {unit}{'s' if n != 1 else ''} ago"
+    return "just now"
+
+
+def _undo_of(step: dict) -> dict:
+    undo = step.get("undo")
+    return undo if isinstance(undo, dict) else {}
+
+
+def summary(info: BackupInfo) -> str:
+    kinds = [_undo_of(s) for s in info.steps]
+    files = sum(1 for u in kinds if any(k in u for k in ("restore-file", "move", "created", "kept")))
+    folders = sum(1 for u in kinds if "created-dir" in u)
+    commands = sum(1 for u in kinds if "run" in u)
+    parts = [f"{n} {word}{'s' if n != 1 else ''}" for n, word in ((files, "file"), (folders, "folder"),
+                                                                  (commands, "command")) if n]
+    return ", ".join(parts) or "nothing to undo"
+
+
+def where(info: BackupInfo) -> str:
+    return f"repo {_shown(info.repo)}" if info.repo else "home"
+
+
+def _pair_target(value) -> str | None:
+    return str(value[1]) if isinstance(value, list) and len(value) == 2 else None
+
+
+def contents(info: BackupInfo) -> list[str]:
+    """What a restore does, step by step in the order it runs (newest first); undo commands with secrets masked."""
     out = []
-    home = str(paths.home())
-    for created, _, d, data in sorted(rows, key=lambda r: (r[0], r[1]), reverse=True):
-        n = len(data.get("steps", []))
-        state = "restored " + _stamp(data["restored_at"]) if data.get("restored_at") else "not restored"
-        desc = f"  {data['description']}" if data.get("description") else ""
-        shown = "~" + str(d)[len(home):] if str(d).startswith(home) else str(d)
-        when = _stamp(created)
-        out.append(f"{shown}  {when}  {n} step{'s' if n != 1 else ''}  {state}{desc}")
+    for step in reversed(info.steps):
+        undo, label = _undo_of(step), redact(str(step.get("label", "?")))
+        done = " (already restored)" if step.get("restored") else ""
+        if "restore-file" in undo and _pair_target(undo["restore-file"]):
+            what = f"put back {_shown(_pair_target(undo['restore-file']))}"
+        elif "move" in undo and _pair_target(undo["move"]):
+            what = f"move back {_shown(_pair_target(undo['move']))}"
+        elif "created" in undo:
+            what = f"take away {_shown(undo['created'])} (loadout created it)"
+        elif "created-dir" in undo:
+            what = f"remove the folder {_shown(undo['created-dir'])} if it is empty"
+        elif "run" in undo and isinstance(undo["run"], list):
+            what = "run: " + redact(" ".join(map(str, undo["run"])))
+        elif "kept" in undo:
+            what = "nothing automatic: the old value is kept in the backup"
+        else:
+            what = "unknown step, left as is"
+        out.append(redact(f"{what}  [{label}]{done}"))  # target paths can hold a token (a repo folder's name)
+    return out
+
+
+def list_backups(repo: Path | None = None) -> list[str]:
+    out = []
+    for b in backups(repo):
+        n = len(b.steps)
+        state = "restored " + _stamp(b.restored_at) if b.restored_at else "not restored"
+        desc = f"  {b.description}" if b.description else ""
+        out.append(f"{_shown(b.path)}  {_stamp(b.created)}  {n} step{'s' if n != 1 else ''}  {state}{desc}")
     return out
