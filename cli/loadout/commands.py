@@ -7,9 +7,9 @@ from . import backup
 
 def _register_restore(sub):
     p = sub.add_parser("restore", help="undo a loadout backup (without a path: pick one of the recent backups)")
-    p.add_argument("backup_dir", nargs="?", help="backup directory printed by bootstrap/adopt, e.g. ~/.local/state/loadout/backups/loadout-<timestamp>")
-    p.add_argument("--list", action="store_true", help="list backups, newest first")
-    p.add_argument("--last", action="store_true", help="restore the newest backup (with --repo: the repo's newest)")
+    p.add_argument("backup_dir", nargs="?", help="backup directory a loadout command printed, e.g. ~/.local/state/loadout/backups/loadout-<timestamp>")
+    p.add_argument("--list", action="store_true", help="list backups, newest first, with their paths (for agents and scripts)")
+    p.add_argument("--last", action="store_true", help="restore the newest backup of any kind (with --repo: the repo's newest); asks in a terminal")
     p.add_argument("--repo", metavar="PATH", help="only the backups made for this repo")
     p.add_argument("--show", action="store_true", help="print what the backup at BACKUP_DIR puts back; change nothing")
     p.add_argument("--force", action="store_true", help="replay a backup that was already restored")

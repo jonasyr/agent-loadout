@@ -25,6 +25,8 @@ WSL 1 has a regression where Claude Code's native binary fails with `Exec format
 
 Open the WSL terminal, not PowerShell. Run `cd ~`, then follow [Step 1 of the tutorial](../tutorials/getting-started.md#step-1-run-bootstrap) inside WSL.
 
+With Codex only and VS Code, follow [Codex only on Windows with VS Code](setups.md#codex-only-on-windows-with-vs-code) instead.
+
 Keep the clone in the Linux home: the installed links point into it. Choose Claude Code, Codex or both when bootstrap asks. Then restart Claude Code and/or Codex, whichever you chose (in Codex, approve loadout's hooks once with `/hooks`, see [Use loadout with Codex](codex.md#switch-it-on)), and run `loadout check`.
 
 ## 3. Know which install loadout configures
@@ -67,7 +69,7 @@ Bootstrap and `loadout check` in WSL look, read-only, at:
 
 - `codex` on `PATH`: a Linux one, or a Windows one under `/mnt/<drive>/` (such as the npm shim in `AppData/Roaming/npm`), and `codex.exe`;
 - sessions from the last 30 days in the Windows Codex home;
-- the VS Code setting `chatgpt.runCodexInWindowsSubsystemForLinux` in `AppData/Roaming/Code/User/settings.json` on Windows (`true`: the extension runs Codex in WSL; `false`, or not set while the Codex extension is installed: on Windows). When you set up Codex in WSL but the extension still runs it on Windows, bootstrap offers the switch, also with `--codex-side wsl` (without a terminal it prints the manual step; `--vscode-wsl` makes the switch without asking; by hand: [the next section](#when-your-only-codex-is-the-windows-one));
+- the VS Code setting `chatgpt.runCodexInWindowsSubsystemForLinux` in `AppData/Roaming/Code/User/settings.json` on Windows (`true`: the extension runs Codex in WSL; `false`, or not set while the Codex extension is installed: on Windows). When you set up Codex in WSL but the extension still runs it on Windows, bootstrap offers the switch ([the next section](#when-your-only-codex-is-the-windows-one));
 - `CODEX_HOME`, and whether it points into Windows.
 
 loadout finds the Windows home through `cmd.exe` and `wslpath`; without Windows interop it tries `/mnt/c/Users/$USER`.

@@ -13,6 +13,7 @@ Every command returns 0 on success. These apply to all commands:
 | Code | Meaning |
 |---|---|
 | 1 | A `ValueError` or invalid JSON (`InvalidJSON`) reached the top level. The message is printed to stderr as `loadout: ...`, with secrets redacted. |
+| 1 | Also: the move of loadout's state out of `~/.claude` ([ADR 0025](../adr/0025-state-in-xdg-state-home.md)) did not finish. Nothing was changed; run the command again, and `loadout check` shows what is left. Not for `check`, `restore`, `usage`, `explain` and `kit-path`. |
 | 2 | Wrong command-line usage, reported by argparse. |
 | 130 | You pressed Ctrl+C. loadout prints `interrupted; run the same command again to continue` and stops. A re-run picks up where it stopped. |
 
@@ -171,7 +172,7 @@ loadout init [--agents claude|codex|claude,codex] [--yes] [--no-install] [--dry-
 | `--verbose` | Print every detail of the steps that run after the plan. `init` and `profile` always show the full plan first, then one status line (`Init` or `Profile NAME`), the problems and notes, the `undo:` line and the next step. |
 | `--dry-run` | Print the plan and change nothing. |
 
-In a terminal, `init` asks which agents the repo is for (Enter: the agents that are on for you), unless `--agents` is given or the repo already has `.loadout.json`. Then it asks which profiles. Without a terminal it takes your agents, applies no profile unless you name one or pass `--yes`, shows the plan and writes nothing unless `--yes` is given. `git init` is a step of the plan: declining the plan or `--dry-run` skips it, and `loadout restore` cannot undo it (the plan says so). If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
+In a terminal, `init` asks which agents the repo is for (Enter: the agents that are on for you), unless `--agents` is given or the repo's `.loadout.json` already names its agents (with `--dry-run` it does not ask). Then it asks which profiles. Without a terminal it takes the repo's agents (`--agents`, or what `.loadout.json` names; else yours), applies no profile unless you name one, pass `--yes` or `--dry-run` (which plan the suggested ones), shows the plan and writes nothing unless `--yes` is given. `git init` is a step of the plan: declining the plan or `--dry-run` skips it, and `loadout restore` cannot undo it (the plan says so). If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`.
 
 Exit codes: 0 on success, and also when the plan was declined, when there was no terminal and no `--yes`, for `--dry-run`, and when `.loadout.json` says `"manage": false`. 1 for an unknown profile name (every name is checked before anything changes), an invalid `.loadout.json` or `--agents` value, or when a profile was applied with problems (the run goes on and ends with `Init: applied with problems (below)` or `Profile NAME: applied with problems (below)`). Problems are: a repo file skipped because it is, or lies behind, a symlink out of the repo; a JSON file that is not in a layout loadout can keep (its entries are printed, the file is left as it is); skills not copied; a plugin install or command that failed, a plugin id that is not `name@marketplace`, or a command that is not a list of words; a repo skill that was not linked for an agent the repo is for, or a different item left at the link's place (`not linked`, `left as is`); a committed skill link that this checkout wrote as a plain file (Git without symlinks) is not a problem: it is reported once with the fix; with Codex, a Codex step that failed or was skipped. A `not written` or `not installed` note for an agent that is off for you or not in the repo's list is not a problem. `init` also returns 1 when it skipped `git init` because `.git` points out of the repo.
 
@@ -231,8 +232,8 @@ Changing the list with `init --agents`: an added agent gets its missing files an
 `init`, `profile` and `configure new skill --to repo` write in a repo only through a plan.
 
 1. **Plan.** One line per change, with its reason: `create` (a new file, with its size and, for JSON, the entries), `change` (the diff: added and changed JSON keys, or unified diff lines for text), `copy` (a skill folder), `link` and `run` (a command). File changes come first; commands run after all of them. Secret values are masked.
-2. **Question.** In a terminal: `Apply these changes? [y/N]`. Without a terminal: `no terminal: nothing written (run it again with --yes to apply this plan)`. Declined: `nothing changed`. `--dry-run` stops after the plan.
-3. **Apply.** Before each change loadout saves a copy of the file it changes and records every file and folder it creates, in a backup that names the repo. The run ends with `undo: loadout restore <dir>`. A file that changed after the plan was shown (an edit, a `git pull`) is left as is: `changed since the plan, left as is`; run the command again for a new plan. If `.loadout.json` changed in that time, the plan no longer fits the repo's agents and nothing is written.
+2. **Question.** In a terminal: `Apply these changes? [y/N]`. Without a terminal: `no terminal: nothing written (run it again with --yes to apply this plan)`, then `nothing changed`. Declined: `nothing changed`. `--dry-run` stops after the plan.
+3. **Apply.** Before each change loadout saves a copy of the file it changes and records every file and folder it creates, in a backup that names the repo. The run ends with `undo: loadout restore <dir>` (`configure new skill`: `backup: <dir>  (undo: loadout restore <dir>)`). A file that changed after the plan was shown (an edit, a `git pull`) is left as is: `changed since the plan, left as is`; run the command again for a new plan. If `.loadout.json` changed in that time, the plan no longer fits the repo's agents and nothing is written.
 4. **After the commands.** Skills that a profile's commands installed get a short second plan, `The commands of profile NAME added skills; link them for the repo's other agent:`, with the same question (`--yes` covers it). With Codex on for you, the repo's `.codex/config.toml` is written after the Codex plugin installs and names only the plugins that installed; a failed one gets a note.
 5. **Layout kept.** A repo JSON file is rewritten only in the layout it has (indentation or one line, line endings, key order); new keys go at the end. A file that cannot be kept that way is left, and its entries are printed for you to add. Nothing is written through a link that leads outside the repo.
 
@@ -343,7 +344,7 @@ loadout restore [--list] [--last] [--repo PATH] [--show] [--force] [BACKUP_DIR]
 |---|---|
 | `BACKUP_DIR` | A directory printed by bootstrap, adopt, `init`, `profile` or `configure new skill --to repo`, for example `~/.local/state/loadout/backups/loadout-<timestamp>`. A path from before the move, `~/.claude/backups/loadout-<timestamp>`, still works. |
 | `--list` | List backups, newest first, with their paths (for agents and scripts). |
-| `--last` | Restore the newest backup of any kind (a later command's backup, or a restore's own, is newer than the one you may mean); it first prints what goes back and, in a terminal, asks `Restore this? [y/N]`. |
+| `--last` | Restore the newest backup of any kind (a later command's backup, or a restore's own, is newer than the one you may mean); it first prints what goes back and, in a terminal, asks `Restore this? [y/N]`; without a terminal it restores without asking, so show the user `--list` first. |
 | `--show` | With `BACKUP_DIR`: print what that backup puts back (each file, each undo command, secrets masked) and change nothing. |
 | `--repo PATH` | Only the backups made for that repo (with `--list`, `--last` or the pick). |
 | `--force` | Replay a backup that was already restored. |
@@ -352,7 +353,7 @@ In a terminal, `loadout restore` without a folder shows the last 10 backups, num
 
 Backups are kept in `~/.local/state/loadout/backups`, for every user, Codex-only setups included; see [loadout's own files](../explanation/architecture.md#loadouts-own-files). Backups taken before the move restore from the new place. If the old `~/.claude/backups` folder still exists, restore names it: the move has not finished, or a different backup of the same name was kept in both places. Restore only accepts folders under the backups location and only runs the undo commands loadout itself records (`claude mcp add-json|remove -s user`, `claude plugin enable|install … --scope user`, `claude plugin marketplace add`, `codex plugin remove`, `codex plugin marketplace remove`); anything else is refused with a message and exit code 1.
 
-Exit codes: 0 when listing, when nothing was picked or the pick was declined, and when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed. 2 for a path given with `--list` or `--last`.
+Exit codes: 0 when listing, when nothing was picked or the pick was declined, and when every step succeeded; 1 when the backup has no manifest, was already restored (without `--force`), or a step failed, and for `--show` without a backup path or with a path that holds no backup. 2 for a path given with `--list` or `--last`.
 
 ## loadout explain
 
@@ -362,7 +363,7 @@ loadout explain FILE
 
 Read-only. For a file in the current repo, it lists the entries loadout wrote there (from the `profiles` record in [`.loadout.json`](#loadoutjson)), from which profile, and the state of each: `loadout's value`, `changed in this repo (now …)`, `removed in this repo`, or `cannot compare, the file does not parse`. A value that looks like a secret is shown as `(a secret value, not shown)`. Everything else in the file is yours. For `.loadout.json` it prints the repo's agents, `manage` and how many entries each profile recorded; for `.gitignore`, the lines under its `# loadout` line. A file without recorded entries says so (files `init` created are yours once they exist). Text from the repo is printed with control characters made visible, so a file cannot drive your terminal.
 
-Exit codes: 0 when it printed the entries (or that there are none). 1 outside a git repo, for a missing file without a record, and for an invalid `.loadout.json`.
+Exit codes: 0 when it printed the entries (or that there are none). 1 outside a git repo, for a missing file without a record, for a missing `.loadout.json` or a missing or unreadable `.gitignore`, for a link that leads outside the repo, and for an invalid `.loadout.json`.
 
 ## loadout kit-path
 

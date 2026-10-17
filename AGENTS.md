@@ -36,17 +36,17 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 
 `cli/loadout/` modules:
 
-- `__main__.py` CLI entry; `commands.py` registers subcommands; `ui.py` prompt helpers; `out.py` calm status lines and `--verbose`
+- `__main__.py` CLI entry (the parser, `init`, `profile`, the state-move gate); `commands.py` registers the other subcommands; `migrate.py` moves loadout's state out of `~/.claude` (ADR 0025); `ui.py` prompt helpers; `out.py` calm status lines and `--verbose`
 - `paths.py` locations from HOME; `runner.py` the only place external commands run; `jsonio.py` JSON and deep merge
 - `bootstrap.py` first-time setup (`answers.py` checks its `--answers` file); `adopt.py` migrate an existing machine; `maintenance.py` session hook and `update`
 - `link.py` rule links and PATH; `settings_merge.py` three-way settings merge; `personal_mcp.py` personal MCP servers
 - `catalog.py`, `versions.py`, `pkgmgr.py` tool knowledge, versions, binary updates
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
-- `repo_config.py` `.loadout.json` (the repo's agents, `manage`, the profiles' record); `repo_writes.py` repo writes as a plan, applied with a backup; `repo_merge.py` the three-way merge of profile entries against the record; `explain.py` `loadout explain`
+- `repo_config.py` `.loadout.json` (the repo's agents, `manage`, the profiles' record); `repo_writes.py` repo writes as a plan, applied with a backup; `repo_merge.py` the three-way merge of profile entries against the record; `explain.py` `loadout explain`; `skill_links.py` committed skill links a checkout wrote as plain files
 - `preferences.py`, `configure.py` structured preferences and the wizard
 - `own.py` your own tools; `new_skill.py` `configure new skill` (a SKILL.md stub in one of the three scopes); `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks, which side Codex runs on, the VS Code switch
 - `targets.py` which agents are on (`targets.json` in the personal layer); `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_hooks.py` Serena's hooks as owned entries in `~/.codex/hooks.json`; `codex_project.py` the Codex side of `init` and `profile`
-- `secrets.py` secret detection and storage; `backup.py` undo backups; `check.py` health report; `advisor.py` advisor marker; `usage.py` `loadout usage` (tool-family counts from local transcripts)
+- `secrets.py` secret detection and storage; `backup.py` undo backups; `restore_cmd.py` `loadout restore` (path, `--list`, `--last`, `--show`, the numbered pick); `check.py` health report; `advisor.py` advisor marker; `usage.py` `loadout usage` (tool-family counts from local transcripts)
 
 Other kit parts:
 
@@ -54,8 +54,9 @@ Other kit parts:
 - `.claude/skills/diagrams`: repo-local skill for editing the docs diagrams (Codex finds it through a short pointer in `.agents/skills/diagrams`)
 - `.github/`: CI workflows, issue forms and the PR template (see CONTRIBUTING.md)
 - `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
+- `bootstrap.sh`, `bootstrap.ps1` entry scripts; `bin/` the `loadout` launchers; `templates/` the files `init` and bootstrap create; `dev/codex-sandbox.sh`; `tests/`
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
 
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0031), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0031), `examples/`, `assets/` (wordmark, demo GIF), `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).

@@ -29,7 +29,7 @@ First run `loadout configure set target codex on` once. It brings loadout's reco
    ```
 
    Plugins you enabled for Claude Code were installed in Codex from their marketplaces too. Remove each the same way if you want: `codex plugin remove NAME@MARKET`, then `codex plugin marketplace remove MARKET`.
-5. In each repo where you ran `loadout init` or `loadout profile`: delete `.loadout.json` if you do not want to keep it, remove the sections loadout added to `.codex/config.toml` and the links in `.agents/skills` that point to `../../.claude/skills/NAME` (and in `.claude/skills` the links to `../../.agents/skills/NAME`). Use git there.
+5. In each repo where you ran `loadout init` or `loadout profile`: delete `.loadout.json` if you do not want to keep it, remove the sections loadout added to `.codex/config.toml` and the links in `.agents/skills` that point to `../../.claude/skills/NAME` (and in `.claude/skills` the links to `../../.agents/skills/NAME`). Use git there, or, while its backup is still there, `loadout restore --repo PATH` puts back what a run wrote (not a profile's `commands`).
 
 Then continue with [Remove the kit](#remove-the-kit), which deletes `~/.local/state/loadout`. If you restore from a backup instead, `loadout restore` removes the plugins and marketplaces it recorded and puts back the saved `AGENTS.md` and `config.toml` ([Undo](undo-and-restore.md#codex)).
 
@@ -58,7 +58,7 @@ You can then delete the clone: the folder `loadout kit-path` printed at the star
 
 - **MCP servers** from your personal `mcp.json` were added with `claude mcp add-json -s user`. Remove them with `claude mcp remove -s user NAME` if you no longer want them.
 - **Plugins** that bootstrap installed stay installed. Uninstall each with `claude plugin uninstall ID` if you want (Codex: see above).
-- **`~/.claude/settings.json`** keeps the other merged values (the other plugins, `env`, `permissions`). Remove them if you want, or restore an older backup from `~/.local/state/loadout/backups/`.
+- **`~/.claude/settings.json`** keeps the other merged values (the other plugins, `env`, `permissions`). Remove them if you want, or run `loadout restore` and pick an older backup.
 - **Git's credential helper for GitHub**, if bootstrap ran `gh auth setup-git`. Remove it with `git config --global --unset-all credential.https://github.com.helper`.
 - **Tools bootstrap installed** (uv, Claude Code, Codex, mise and what mise installed, codebase-memory-mcp, rtk, npm tools) stay. Remove them with their own uninstall steps: see the docs of [uv](https://docs.astral.sh/uv/), [Claude Code](https://code.claude.com/docs/en/setup) and [mise](https://mise.jdx.dev/).
 - **The shell startup file** keeps the "# loadout secrets" block that bootstrap added. Delete it if you want.

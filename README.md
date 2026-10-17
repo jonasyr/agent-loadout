@@ -69,7 +69,7 @@ Bootstrap first asks for your personal layer, the folder for your own preference
 
 It installs what is missing, in your home folder and without sudo: the agents you chose and every tool in [the toolset](#the-toolset), never replacing a tool you already have. `--install` runs those installers without a further prompt ([what runs when you ask](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). The one-liner clones into `./agent-loadout`; `--dir PATH` chooses another folder ([Getting started](docs/tutorials/getting-started.md#step-1-run-bootstrap)).
 
-Then it walks you through three steps (your personal layer, preferences, your existing setup) and, if it replaced anything, names the undo command. It ends with the steps still open on your machine. Step by step: [Getting started](docs/tutorials/getting-started.md).
+Then it walks you through four steps (your personal layer, your coding agents, preferences, your existing setup) and, if it replaced anything, names the undo command. It ends with the steps still open on your machine. Step by step: [Getting started](docs/tutorials/getting-started.md).
 
 </details>
 
@@ -110,7 +110,7 @@ cd my-project
 loadout init
 ```
 
-`loadout init` asks which agents the repo is for, shows everything it would write and asks before it writes ([details](docs/reference/cli.md#loadout-init)). Then open your agent there and run the onboard skill: it reads the project and writes its documentation. In Claude Code that is `/loadout:onboard`; in Codex, write `$loadout:onboard` (or ask Codex to use the `loadout:onboard` skill). Codex reads the repo's `.codex/config.toml` only after you start `codex` there once and accept the trust question.
+`loadout init` asks which agents the repo is for, shows everything it would write and asks before it writes; without a terminal it writes only with `--yes` ([details](docs/reference/cli.md#loadout-init)). Then open your agent there and run the onboard skill: it reads the project and writes its documentation. In Claude Code that is `/loadout:onboard`; in Codex, write `$loadout:onboard` (or ask Codex to use the `loadout:onboard` skill). Codex reads the repo's `.codex/config.toml` only after you start `codex` there once and accept the trust question.
 
 ### Questions or changes later
 
@@ -150,7 +150,7 @@ Domain tools (research, databases, SonarQube, Android) are added per project wit
 ## Why you can trust it
 
 - **It updates itself, so you trust this repo.** A daily background job runs `git pull --ff-only` on this repo and your personal layer, and the next session runs the new code. Turn it off with `LOADOUT_NO_AUTO_PULL=1`, or point your clone at a fork you review ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
-- **What it replaces can be restored.** Before loadout removes or replaces a tool, file or link you own, it moves it into a timestamped backup, and `loadout restore` puts it back. Writes in a repo (`init`, `profile`) are shown as a plan first and backed up too. The routine sync of the kit's own settings is not backed up ([details](docs/how-to/undo-and-restore.md#what-restore-does-not-undo)).
+- **What it replaces can be restored.** Before loadout removes or replaces a tool, file or link you own, it moves it into a timestamped backup, and `loadout restore` puts it back. Writes in a repo (`init`, `profile`, `configure new skill --to repo`) are shown as a plan first and backed up too. The routine sync of the kit's own settings is not backed up ([details](docs/how-to/undo-and-restore.md#what-restore-does-not-undo)).
 - **Your tools never change without your answer.** `loadout adopt` is a dry run until `--apply`, then asks per group and once more before it applies; tools loadout does not know stay as they are, and binary updates show each command and ask first.
 - **Secrets stay out of git.** Keys live in `~/.config/loadout/secrets.env` (readable only by you) and configs refer to them by name (`${VAR}` for Claude Code, `env_vars` for Codex); your own tools recorded into your personal layer pass a secret guard (values you set with `configure set pref` are not checked; [secrets](docs/explanation/security-and-trust.md#secrets)).
 

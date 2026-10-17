@@ -2,7 +2,7 @@
 
 An ADR records one decision: the situation, what was decided, what else was considered and what follows from it. Each file is one decision.
 
-An accepted ADR is not edited when the decision changes. A new ADR supersedes it, and the old one gets the status "Superseded by 00NN". Small corrections (a typo, a renamed file) are fine.
+An accepted ADR is not edited when the decision changes. A new ADR supersedes it, and the old one gets the status "Superseded by 00NN"; when only part of it is superseded, the status names that part ("Accepted; decision line superseded by 00NN"). Small corrections (a typo, a renamed file) are fine.
 
 The records 0001 to 0013 were decided when the design was written and were written down afterwards, with the date of the original decision. Each links to its source in the design specs under [`docs/superpowers/`](../superpowers/).
 

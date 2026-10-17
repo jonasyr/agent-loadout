@@ -64,3 +64,15 @@ Audit of `main` at da5db5c: every place that states the old model. Categories: A
 | .serena/memories/architecture.md | 2 | A |
 
 Nothing in `templates/**` or `rules/**` states the old model. No page describes the per-run `# loadout` header in `.gitignore`.
+
+## Full audit (PR 5)
+
+Run on the finished branch (2026-10-17): an old-model grep pass, then about 1,000 claims checked against the code by area. No page still stated the old model; the fixes were gaps, wrong strings and duplicates.
+
+| Area | Pages checked | Fixed |
+|---|---|---|
+| Entry | README.md, docs/README.md, docs/tutorials/getting-started.md, CONTRIBUTING.md | README steps count, repo-write list, `--yes`; undo entry; tutorial `--dry-run` sentence; "now" |
+| How-to | setups, install-with-an-agent, wsl, codex, troubleshooting, undo-and-restore, write-a-profile, your-own-tools, ask-about-loadout, uninstall, personal-repo, set-preferences, run-evals, add-to-catalog | new walkthrough; `--vscode-wsl` stated once (wsl.md); bootstrap default without a terminal; two troubleshooting rows; restore for repo writes; undo claim; uninstall restore |
+| Reference | cli, profile-format, hooks, personal-layer, preferences-format, included-tools, catalog-format, settings-merge | exit codes (state move, `explain`, `--show`), init question, `new skill` backup line, `--last` without a terminal; profile `why` field, problem line, empty overlay, code list; `restore --help` |
+| Explanation and ADRs | architecture, security-and-trust, documentation-strategy, the-toolset, execution-advisor, docs/adr/README.md (0007, 0027 partial supersede), docs/diagrams/*.mmd | adopt's repo step; stale code citation; partial-supersede status rule |
+| Agents | AGENTS.md map, skills configure, onboard, docs-sync, docs-audit, .serena/memories (5) | three modules and top-level parts in the map; `--take-profile`, `manage: false`, `explain`, `--last` in configure; onboard's files; memories trimmed to summaries plus links |
