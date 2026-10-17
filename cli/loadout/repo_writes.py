@@ -4,6 +4,7 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,7 +42,8 @@ def _flat(value, prefix=""):
     if isinstance(value, dict) and value:
         out = {}
         for k, v in value.items():
-            out.update(_flat(v, f"{prefix}.{k}" if prefix else str(k)))
+            seg = str(k).replace("\\", "\\\\").replace(".", "\\.")  # a literal dot stays distinct from nesting
+            out.update(_flat(v, f"{prefix}.{seg}" if prefix else seg))
         return out
     return {prefix: value}
 
@@ -62,17 +64,23 @@ def _json_diff(old: str, new: str) -> list[str] | None:
                 or secrets.high_entropy(value))
 
     def masked(key, value):
+        if isinstance(value, dict):  # nested objects: each value under its own key
+            return {k: masked(str(k), v) for k, v in value.items()}
         if isinstance(value, list):  # args lists: the value after a key-like flag, and any secret-looking item
             out, prev = [], None
             for item in value:
                 flag = isinstance(prev, str) and prev.startswith("-") and secrets.SECRET_KEY.search(prev)
-                out.append(secrets.MASK if isinstance(item, str) and (flag or secret(key, item)) else item)
+                if isinstance(item, str):
+                    out.append(secrets.MASK if flag or secret(key, item) else item)
+                else:
+                    out.append(masked(key, item))
                 prev = item
             return out
         return secrets.MASK if secret(key, value) else value
 
     def shown(key, value):
-        return json.dumps(masked(key.rsplit(".", 1)[-1], value), ensure_ascii=False)
+        last = re.split(r"(?<!\\)\.", key)[-1].replace("\\.", ".")
+        return json.dumps(masked(last, value), ensure_ascii=False)
 
     lines = []
     for key in b:
@@ -199,6 +207,10 @@ class RepoWrites:
                 problem = f"{self._rel(c.path) if c.path else c.cmd[0]}: {exc.strerror or exc}"
             if problem:
                 problems.append(redact(problem))
+                if c.path in self._watched:  # e.g. .loadout.json could not be written: the rest was planned for it
+                    self.stale = True
+                    problems.append(f"{self._rel(c.path)} was not written, so the rest of the plan was not applied")
+                    return problems
         return problems
 
     def _outside(self, path: Path, follow: bool) -> bool:

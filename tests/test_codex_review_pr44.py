@@ -140,3 +140,36 @@ def test_the_follow_up_plan_stops_when_the_agent_choice_changed(repo, monkeypatc
         return True
     assert project.add_profile(repo, "web", approve=approve) == 1
     assert len(answers) == 2 and not (repo / ".agents").exists()
+
+
+def test_a_secret_nested_in_a_list_of_objects_is_masked(repo):
+    import json
+    value = "Zq8xLp2Vt9" * 3
+    w = repo_writes.RepoWrites(repo)
+    w.create(repo / "h.json", json.dumps({"hooks": [{"args": ["--token", value]}, [["--password", value]]]}) + "\n", "p")
+    assert value not in "\n".join(w.render())
+
+
+def test_a_failed_loadout_json_write_stops_the_plan(repo, monkeypatch):
+    from loadout import repo_config
+    (repo / ".loadout.json").write_text('{\n  "agents": [\n    "claude"\n  ]\n}\n')
+    w = repo_writes.RepoWrites(repo)
+    w.watch(repo / repo_config.FILE)
+    w.modify(repo / repo_config.FILE, '{\n  "agents": [\n    "codex"\n  ]\n}\n', "init")
+    w.create(repo / "AGENTS.md", "x\n", "init")
+    real = repo_writes.write_atomic
+
+    def locked(path, text, *a, **k):
+        if path.name == ".loadout.json":
+            raise PermissionError(13, "locked")
+        return real(path, text, *a, **k)
+    monkeypatch.setattr(repo_writes, "write_atomic", locked)
+    problems = w.apply(backup.Backup(description="t", repo=repo))
+    assert w.stale and problems and not (repo / "AGENTS.md").exists()
+
+
+def test_a_dotted_key_and_a_nested_path_stay_distinct(repo):
+    (repo / "d.json").write_text('{\n  "a.b": 2\n}\n')
+    w = repo_writes.RepoWrites(repo)
+    w.modify(repo / "d.json", '{\n  "a.b": 2,\n  "a": {\n    "b": 2\n  }\n}\n', "p")
+    assert any(l.strip().startswith("+ a.b") for l in w.render())
