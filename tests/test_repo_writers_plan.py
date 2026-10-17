@@ -100,3 +100,37 @@ def test_a_codex_only_user_writes_claude_files_in_a_both_agents_repo(repo):
     profiles.apply_profile(_web(), repo)
     assert (repo / ".claude" / "settings.json").is_file() and (repo / ".mcp.json").is_file()
     assert profiles.repo_skill_dirs(repo) == (repo / ".claude" / "skills", repo / ".agents" / "skills")
+
+
+# --- task-4 review fixes ---
+
+def test_a_hand_laid_out_file_that_already_has_the_entries_is_quiet(repo):
+    targets.set_agents({"claude": True, "codex": False})
+    (repo / ".claude").mkdir()
+    (repo / ".claude" / "settings.json").write_text('{"disabledMcpjsonServers": ["cd"]}\n')
+    prof = profiles.Profile(name="web", description="", settings={"disabledMcpjsonServers": ["cd"]})
+    assert profiles.apply_profile(prof, repo) == ([], [])
+
+
+def test_the_add_by_hand_line_names_keys_not_values(repo):
+    targets.set_agents({"claude": True, "codex": False})
+    secret = "sk-" + "Zq8xLp2Vt9" * 3
+    (repo / ".mcp.json").write_text('{"mcpServers": {}}\n')
+    prof = profiles.Profile(name="db", description="", mcp={"mcpServers": {"db": {"env": {"API_KEY": secret}}}})
+    _, skipped = profiles.apply_profile(prof, repo)
+    assert skipped and secret not in "\n".join(skipped) and "mcpServers.db.env.API_KEY" in skipped[0]
+
+
+def test_a_failed_link_in_now_mode_is_reported_not_raised(repo, monkeypatch):
+    from loadout import repo_writes
+    targets.set_agents({"claude": True, "codex": True})
+    (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
+    monkeypatch.setattr(repo_writes.os, "symlink", lambda *a, **k: (_ for _ in ()).throw(OSError(1, "no rights")))
+    lines = profiles.link_skills(repo, False, w=repo_writes.RepoWrites(repo, now=True))
+    assert any("not linked for Codex" in l for l in lines)
+
+
+def test_gitignore_with_mixed_endings_keeps_each_line(repo):
+    (repo / ".gitignore").write_bytes(b"a\r\nb\n")
+    scaffold.ensure_gitignore(repo)
+    assert (repo / ".gitignore").read_bytes().startswith(b"a\r\nb\n")

@@ -64,24 +64,25 @@ def ensure_gitignore(project: Path, dry_run: bool = False, w=None) -> list[str]:
         return []
     text = path.read_bytes().decode("utf-8") if path.exists() else ""
     nl = "\r\n" if "\r\n" in text else "\n"
-    lines = text.replace("\r\n", "\n").split("\n")
+    lines = text.splitlines(keepends=True)  # each of the user's lines keeps its own ending
     existing = {line.strip() for line in lines}
     wanted = [l for l in GITIGNORE_LINES if repo_config.agents(project)["claude"] or not l.startswith(".claude/")]
     missing = [line for line in wanted if line not in existing]
     if not missing or dry_run:
         return missing
+    added = [line + nl for line in missing]
     if "# loadout" in existing:  # one header: new lines go under it
         at = next(i for i, l in enumerate(lines) if l.strip() == "# loadout") + 1
         while at < len(lines) and lines[at].strip() and not lines[at].startswith("#"):
             at += 1
-        lines[at:at] = missing
-        new = "\n".join(lines)
+        if at == len(lines) and lines and not lines[-1].endswith(("\n", "\r")):
+            lines[-1] += nl
+        lines[at:at] = added
     else:
-        body = "\n".join(lines)  # the user's lines stay as they are, blank ones included
-        if body and not body.endswith("\n"):
-            body += "\n"
-        new = body + "# loadout\n" + "\n".join(missing) + "\n"
-    new = new.replace("\n", nl)
+        if lines and not lines[-1].endswith(("\n", "\r")):
+            lines[-1] += nl
+        lines += ["# loadout" + nl] + added
+    new = "".join(lines)
     writes = _writes(project, w)
     (writes.modify if path.exists() else writes.create)(path, new, "init: keep local agent files out of git")
     return missing

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import paths
 from .jsonio import deep_merge, load_json
+from .secrets import redact
 
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -122,14 +123,15 @@ def apply_profile(profile: Profile, project: Path, w=None) -> tuple[list[Path], 
         old = target.read_bytes().decode("utf-8") if target.exists() else None
         if old is not None and not old.strip():
             old = None  # an empty file holds nothing of the user's: written like a new one
-        style = json_style(old) if old is not None else None
-        if old is not None and style is None:
-            entries = ", ".join(sorted(overlay))
-            skipped.append(f"{rel.as_posix()}: left as is (its layout is not one loadout rewrites); add by hand: "
-                           f"{_json.dumps(overlay, ensure_ascii=False)} ({entries})")
-            continue
         after = deep_merge(before, overlay)
         if after == before and old is not None:
+            continue  # nothing to change: quiet, whatever the layout
+        style = json_style(old) if old is not None else None
+        if old is not None and style is None:
+            from .repo_writes import _flat
+            keys = ", ".join(_flat(overlay))  # key paths only: values can hold secrets
+            skipped.append(redact(f"{rel.as_posix()}: left as is (its layout is not one loadout rewrites); add by "
+                                  f"hand from profile {profile.name}: {keys}"))
             continue
         keys = [f"{attr}.{k}" for k in overlay]
         why = next((reason(profile, k) for k in keys if k in profile.why), reason(profile))
@@ -249,7 +251,11 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
             out.append(f"would link skill {name} for {agent} -> {dest_rel}/{name}")
             continue
         if w is not None:
-            w.link(dest, want, f"skill {name} for {agent}")
+            try:
+                w.link(dest, want, f"skill {name} for {agent}")
+            except OSError as exc:  # a collector in now mode: e.g. Windows without symlink rights
+                out.append(f"skill {name}: not linked for {agent} ({exc.strerror or exc})")
+                continue
             out.append(f"linked skill {name} for {agent} -> {dest_rel}/{name}")
             continue
         dest_root.mkdir(parents=True, exist_ok=True)
