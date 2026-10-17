@@ -110,7 +110,7 @@ cd my-project
 loadout init
 ```
 
-Then open your agent there and run the onboard skill: it reads the project and writes its documentation. In Claude Code that is `/loadout:onboard`; in Codex, write `$loadout:onboard` (or ask Codex to use the `loadout:onboard` skill). Codex reads the repo's `.codex/config.toml` only after you start `codex` there once and accept the trust question.
+`loadout init` asks which agents the repo is for, shows everything it would write and asks before it writes ([details](docs/reference/cli.md#loadout-init)). Then open your agent there and run the onboard skill: it reads the project and writes its documentation. In Claude Code that is `/loadout:onboard`; in Codex, write `$loadout:onboard` (or ask Codex to use the `loadout:onboard` skill). Codex reads the repo's `.codex/config.toml` only after you start `codex` there once and accept the trust question.
 
 ### Questions or changes later
 
@@ -123,7 +123,7 @@ Ask your agent in plain words ("how do I undo yesterday's change?", "turn off Co
 - **Works on existing setups.** `loadout adopt` shows what it would change and why, asks first, and backs up what it replaces ([your own tools](docs/how-to/your-own-tools.md)).
 - **Stays up to date by itself.** loadout pulls the kit and your personal layer daily and you get a notice when tools have updates. Claude Code updates its plugins itself; for Codex, loadout refreshes them after a pull that brought new commits ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
 - **Yours on top.** Your preferences, own tools and profiles live in your personal layer, ideally a private git repo, so they follow you to every machine ([set it up](docs/how-to/personal-repo.md)); change them with `loadout configure` or by asking your agent ([preferences](docs/how-to/set-preferences.md)).
-- **Projects too.** `loadout init` prepares any repo for agent work, profiles add domain tools only where needed, and three skills keep the docs true ([documentation strategy](docs/explanation/documentation-strategy.md)).
+- **Projects too.** `loadout init` prepares any repo for the agents you choose for it, profiles add domain tools only where needed, and three skills keep the docs true ([documentation strategy](docs/explanation/documentation-strategy.md)).
 
 ## The toolset
 
@@ -150,7 +150,7 @@ Domain tools (research, databases, SonarQube, Android) are added per project wit
 ## Why you can trust it
 
 - **It updates itself, so you trust this repo.** A daily background job runs `git pull --ff-only` on this repo and your personal layer, and the next session runs the new code. Turn it off with `LOADOUT_NO_AUTO_PULL=1`, or point your clone at a fork you review ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
-- **What it replaces can be restored.** Before loadout removes or replaces a tool, file or link you own, it moves it into a timestamped backup, and `loadout restore` puts it back. The routine sync of the kit's own settings is not backed up ([details](docs/how-to/undo-and-restore.md#what-restore-does-not-undo)).
+- **What it replaces can be restored.** Before loadout removes or replaces a tool, file or link you own, it moves it into a timestamped backup, and `loadout restore` puts it back. Writes in a repo (`init`, `profile`) are shown as a plan first and backed up too. The routine sync of the kit's own settings is not backed up ([details](docs/how-to/undo-and-restore.md#what-restore-does-not-undo)).
 - **Your tools never change without your answer.** `loadout adopt` is a dry run until `--apply`, then asks per group and once more before it applies; tools loadout does not know stay as they are, and binary updates show each command and ask first.
 - **Secrets stay out of git.** Keys live in `~/.config/loadout/secrets.env` (readable only by you) and configs refer to them by name (`${VAR}` for Claude Code, `env_vars` for Codex); your own tools recorded into your personal layer pass a secret guard (values you set with `configure set pref` are not checked; [secrets](docs/explanation/security-and-trust.md#secrets)).
 

@@ -15,7 +15,7 @@ loadout configure set target claude off
 
 One agent must stay on. Switching an agent off uninstalls nothing; loadout just stops setting it up. The choice is stored in your personal layer (`targets.json`), so it follows you to every machine. loadout needs codex 0.161 or newer.
 
-**Codex only.** Without Claude Code, bootstrap does not install Claude Code and skips everything that belongs to it: the links under `~/.claude`, the Claude settings, its plugins and `adopt`. In a repo, `loadout init` and `loadout profile` write no Claude Code files either, and repo skills go into `.agents/skills` ([ADR 0027](../adr/0027-repo-files-follow-the-agents.md)). `loadout check` and the daily sync then look at Codex only. Codex still gets the plugins the kit enables, the rules, your personal layer and the tools. Add Claude Code later with `loadout configure set target claude on`; if Claude Code is not installed yet, it tells you to run `loadout bootstrap --install`, which installs and sets it up.
+**Codex only.** Without Claude Code, bootstrap does not install Claude Code and skips everything that belongs to it: the links under `~/.claude`, the Claude settings, its plugins and `adopt`. In a repo that has no `.loadout.json`, `loadout init` and `loadout profile` write no Claude Code files either, and repo skills go into `.agents/skills`; a repo that names Claude Code in its `.loadout.json` gets those files even from you ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)). `loadout check` and the daily sync then look at Codex only. Codex still gets the plugins the kit enables, the rules, your personal layer and the tools. Add Claude Code later with `loadout configure set target claude on`; if Claude Code is not installed yet, it tells you to run `loadout bootstrap --install`, which installs and sets it up.
 
 The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; a progress line names each step (with `--verbose`, or without a terminal, one line each). Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
 
@@ -38,7 +38,7 @@ The same kit and personal layer reach Codex. Where each part goes (the instructi
 
 ## Project trust
 
-With Codex on, `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you.
+When the repo is for Codex (its `.loadout.json`, or your agents without one), `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you.
 
 ## Where to read more
 

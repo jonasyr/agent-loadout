@@ -1,6 +1,6 @@
 # 0027. Repo files follow the agents that are on
 
-- Status: Accepted
+- Status: Accepted; its decision line is superseded by [0030](0030-repo-files-follow-the-repos-agents.md) (a repo's files follow the repo's agents, chosen in `.loadout.json`). The rest stands.
 - Date: 2026-10-14
 - Source: [Design: repo files follow the agents](../superpowers/specs/2026-10-14-repo-follows-agents-design.md)
 

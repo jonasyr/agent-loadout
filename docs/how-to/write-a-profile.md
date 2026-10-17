@@ -18,14 +18,14 @@ The kit ships `thesis`, `web`, `db`, `sonar` and `android`. Yours live in `<pers
    ```
 
    Pin MCP server versions. A profile name that matches a kit profile replaces it for you; nothing is merged.
-2. **Preview it in a repo.** In the repo, run `loadout init --dry-run NAME`. It prints the profile's description, the skills it would copy, the plugins and commands it would run and the files `init` would create, and changes nothing. It does not show the settings diff.
+2. **Preview it in a repo.** In the repo, run `loadout profile NAME --dry-run`. It prints the plan: each file with its diff (also the `.claude/settings.json` and `.mcp.json` changes), the skills it would copy, and the plugins and commands it would run. It changes nothing.
 3. **Apply it.** In the repo, run:
 
    ```bash
    loadout profile NAME
    ```
 
-   This merges `settings` into the repo's `.claude/settings.json` and `mcp` into `.mcp.json`, copies `skills`, installs `install` plugins at project scope (in Claude Code; with Codex on, also in Codex, see [In Codex](../reference/profile-format.md#in-codex)) and runs `commands`. Add `--no-install` to skip the plugins and commands. Commit what it wrote: with Claude Code on `.claude/settings.json`, `.mcp.json` and any `.claude/skills/`, and with Codex on `.codex/config.toml` and `.agents/skills` (with Codex only, the skills live there). They are normal project files and `loadout restore` does not undo them.
+   It shows the plan and asks `Apply these changes? [y/N]` (without a terminal, add `--yes`). Then it merges `settings` into the repo's `.claude/settings.json` and `mcp` into `.mcp.json`, copies `skills`, installs `install` plugins at project scope (in Claude Code; when the repo is for Codex, also in Codex, see [In Codex](../reference/profile-format.md#in-codex)) and runs `commands`. Add `--no-install` to skip the plugins and commands. Commit what it wrote: `.loadout.json` (if it was new), then for a Claude Code repo `.claude/settings.json`, `.mcp.json` and any `.claude/skills/`, and for a Codex repo `.codex/config.toml` and `.agents/skills` (in a Codex-only repo the skills live there). They are normal project files. The run ends with `undo: loadout restore <dir>`, which puts the files back; it cannot undo the profile's `commands` ([Repo writes](../reference/cli.md#repo-writes)).
 4. **Sync it.** To use the profile on other machines, commit and push your personal layer. See [Sync](../reference/personal-layer.md#sync).
 
 ## Changes later

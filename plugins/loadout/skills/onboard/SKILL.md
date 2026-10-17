@@ -30,7 +30,7 @@ Define the project yourself; do not hand off to another workflow skill here.
    - `docs/adr/0001-<stack-decision>.md` (Context, Decision, Consequences, Status: accepted);
    - `AGENTS.md`: purpose (one paragraph), commands (install/test/run for the chosen stack), hard conventions, map;
    - `docs/README.md`: the index, linking the ADR.
-4. Suggest profiles for the stack (`loadout profile <name>`: web, db, android, thesis, sonar) and run the ones the user accepts. For a web stack, suggest `@playwright/test` for E2E tests.
+4. Suggest profiles for the stack (`loadout profile <name>`: web, db, android, thesis, sonar) and run the ones the user accepts (`loadout profile <name> --dry-run` and show the plan first; after the user's yes, `loadout profile <name> --yes`, because an agent has no terminal). For a web stack, suggest `@playwright/test` for E2E tests.
 5. Create the minimal skeleton the stack's conventions call for, such as package manifest, `src/`, `tests/` and a first passing test.
 6. Show the diff and commit after approval.
 

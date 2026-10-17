@@ -1,6 +1,6 @@
 # Architecture
 
-loadout has three parts: the kit repo (shared), your personal layer (yours) and the configuration folders of your agents (where Claude Code and Codex read theirs). The CLI merges the first two into the third and keeps it current. Which agents it serves is your choice ([Use loadout with Codex](../how-to/codex.md#switch-it-on)); one stays on. Where a page says "your agent", it holds for both.
+loadout has three parts: the kit repo (shared), your personal layer (yours) and the configuration folders of your agents (where Claude Code and Codex read theirs). The CLI merges the first two into the third and keeps it current. Which agents it serves is your choice ([Use loadout with Codex](../how-to/codex.md#switch-it-on)); one stays on. Where a page says "your agent", it holds for both. A repo is a fourth, shared place: loadout keeps no list of repos, and each repo names its own agents in a committed `.loadout.json` ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-overview.dark.svg">
@@ -43,7 +43,7 @@ What the Codex side maps, and what stays different, is in [Use loadout with Code
 Two folders belong to loadout itself, for every user, Codex-only included. They sit in `$XDG_STATE_HOME/loadout` (an absolute path), or `~/.local/state/loadout` when that is not set, on every OS. The path does not depend on whether Claude Code is on (`paths.state_dir`, `paths.backups_root`), so a Codex-only machine has no `~/.claude`. See [ADR 0025](../adr/0025-state-in-xdg-state-home.md).
 
 - `~/.local/state/loadout/`: machine-local state. It records what the merge last applied (the snapshot), which `config.toml` entries loadout owns (`codex-config.json`), your `leave` decisions, queued notices, the maintenance timestamps and the tool hints' per-session counters (`tool-hint/`, removed after 7 days). It is not synced.
-- `~/.local/state/loadout/backups/`: one `loadout-<timestamp>` folder per change that moved or replaced something you own, with a manifest of undo steps. See [Undo what loadout changed](../how-to/undo-and-restore.md).
+- `~/.local/state/loadout/backups/`: one `loadout-<timestamp>` folder per change that moved or replaced something you own, with a manifest of undo steps. A run of `init`, `profile` or `configure new skill --to repo` makes one too, for the repo files it changes (the manifest names the repo). See [Undo what loadout changed](../how-to/undo-and-restore.md).
 
 Older versions kept both folders in `~/.claude`. loadout moves them in two steps, because an older loadout run or the hooks of a Claude Code session that has not reloaded its plugins can still write the old place:
 

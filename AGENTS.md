@@ -20,8 +20,8 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 
 ### User files
 - loadout changes only what it recorded as its own in a user's files (`~/.claude/settings.json`, `~/.codex/config.toml`, `AGENTS.md`, shell startup files); text the user wrote stays byte for byte. Safe path: exact-text record, parse guard, atomic write. Treat a write that can change or lose user entries as P1.
-- Every destructive change is undoable: a backup step or an undo command before it acts, so `loadout restore` reverts it. A removal or overwrite without one is P1.
-- With an agent turned off (`targets.json`), nothing reads or changes that agent's files. P1. loadout's own old state under `~/.claude` (`~/.claude/.loadout`, `~/.claude/backups/loadout-*`) is loadout's, not Claude Code's: the move out of it runs for every user (ADR 0025).
+- Every destructive change is undoable: a backup step or an undo command before it acts, so `loadout restore` reverts it. A removal or overwrite without one is P1. Repo writes (`init`, `profile`, `configure new skill --to repo`) are a plan first and are backed up (ADR 0030); only a `run` step (a profile's `commands`, `git init`) is not undoable, and the plan says so.
+- With an agent turned off (`targets.json`), nothing reads or changes that agent's files in the user's agent folders (`~/.claude`, `~/.codex`); repo files follow `.loadout.json` (ADR 0030). P1. loadout's own old state under `~/.claude` (`~/.claude/.loadout`, `~/.claude/backups/loadout-*`) is loadout's, not Claude Code's: the move out of it runs for every user (ADR 0025).
 
 ### Secrets
 - No plaintext secret is written to the personal layer, `mcp.json`, `config.toml`, the backup manifest or the output. Only variable names; values go to `secrets.env`. P1.
@@ -42,6 +42,7 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 - `link.py` rule links and PATH; `settings_merge.py` three-way settings merge; `personal_mcp.py` personal MCP servers
 - `catalog.py`, `versions.py`, `pkgmgr.py` tool knowledge, versions, binary updates
 - `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
+- `repo_config.py` `.loadout.json` (the repo's agents, `manage`); `repo_writes.py` repo writes as a plan, applied with a backup
 - `preferences.py`, `configure.py` structured preferences and the wizard
 - `own.py` your own tools; `new_skill.py` `configure new skill` (a SKILL.md stub in one of the three scopes); `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks, which side Codex runs on, the VS Code switch
 - `targets.py` which agents are on (`targets.json` in the personal layer); `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_hooks.py` Serena's hooks as owned entries in `~/.codex/hooks.json`; `codex_project.py` the Codex side of `init` and `profile`
@@ -55,6 +56,6 @@ Other kit parts:
 - `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
 - `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
 
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0029), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0030), `examples/`, `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).
