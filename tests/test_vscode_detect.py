@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
+from conftest import linux_codex_bin
+
 from loadout import runner, vscode, wsl
+
+
+LINUX_BIN = linux_codex_bin()
 
 
 @pytest.fixture
@@ -70,7 +75,7 @@ def test_newest_version_folder_by_number(tmp_path):
 def test_extensions_with_their_bundled_binaries(vs):
     root = vs / ".vscode" / "extensions"
     _ext(root, "anthropic.claude-code-2.1.217-linux-x64", "resources/native-binary/claude")
-    _ext(root, "openai.chatgpt-26.715.61943-linux-x64", "bin/linux-x86_64/codex")
+    _ext(root, "openai.chatgpt-26.715.61943-linux-x64", LINUX_BIN)
     found = {e.agent: e for e in vscode.extensions({"claude": True, "codex": True}, "linux")}
     assert found["claude"].binary == root / "anthropic.claude-code-2.1.217-linux-x64/resources/native-binary/claude"
     assert found["claude"].version == "2.1.217"
@@ -80,7 +85,7 @@ def test_extensions_with_their_bundled_binaries(vs):
 
 def test_an_agent_that_is_off_is_not_read(vs):
     root = vs / ".vscode" / "extensions"
-    _ext(root, "openai.chatgpt-26.715.61943-linux-x64", "bin/linux-x86_64/codex")
+    _ext(root, "openai.chatgpt-26.715.61943-linux-x64", LINUX_BIN)
     assert vscode.extensions({"claude": True, "codex": False}, "linux") == []
 
 
@@ -91,7 +96,7 @@ def test_missing_binary_is_none(vs):
 
 
 def test_bundled_codex_version_and_age(vs, fake_runner):
-    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", "bin/linux-x86_64/codex")
+    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", LINUX_BIN)
     (ext,) = vscode.extensions({"codex": True}, "linux")
     fake_runner.responses[(str(ext.binary), "--version")] = runner.Result(0, "codex-cli 0.145.0-alpha.27\n", "")
     assert vscode.bundled_version(ext) == "0.145.0"
@@ -100,7 +105,7 @@ def test_bundled_codex_version_and_age(vs, fake_runner):
 
 
 def test_bundled_codex_without_a_version_is_unknown(vs, fake_runner):
-    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", "bin/linux-x86_64/codex")
+    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", LINUX_BIN)
     (ext,) = vscode.extensions({"codex": True}, "linux")
     fake_runner.responses[(str(ext.binary), "--version")] = runner.Result(124, "", "timed out")
     assert vscode.bundled_version(ext) is None

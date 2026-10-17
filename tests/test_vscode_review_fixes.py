@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import host_arch, linux_codex_bin
+
 from loadout import check, paths, runner, targets, vscode, wsl
 
 
@@ -47,7 +49,7 @@ def test_windows_only_codex_remote_wsl_row_and_no_wsl_codex_config_read(vs, fake
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
     win = tmp_path / "c" / "Users" / "ada"
     win.mkdir(parents=True)
-    _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", "bin/linux-x86_64/codex")
+    _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", linux_codex_bin())
     fake_runner.missing.add("codex")
     monkeypatch.setattr(vscode, "mcp_commands", lambda agent: pytest.fail("read the WSL Codex config"))
     rows = check._vscode_surfaces(_cs(win, side="windows"))
@@ -59,7 +61,7 @@ def test_windows_only_codex_remote_wsl_row_and_no_wsl_codex_config_read(vs, fake
 @pytest.mark.parametrize("platform,where,expected", [("win32", "local", "codex.exe"), ("linux", "local", "codex"),
                                                      ("linux", "remote-wsl", "codex"), ("linux", "windows", "codex.exe")])
 def test_bundled_codex_matches_the_platform(vs, monkeypatch, tmp_path, platform, where, expected):
-    folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/linux-x86_64/codex", "bin/windows-x86_64/codex.exe")
+    folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", f"bin/linux-{host_arch()}/codex", f"bin/windows-{host_arch()}/codex.exe")
     assert vscode._binary("codex", folder, vscode._os_of(where, platform)).name == expected
 
 
@@ -130,13 +132,13 @@ def test_fixtures_hide_the_real_vscode_variables():
 
 def test_only_the_target_platforms_codex_counts(vs, tmp_path):
     folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/windows-x86_64/codex.exe")
-    assert vscode._binary("codex", folder, "linux") is None  # a foreign build is "no bundled Codex for this platform"
-    assert vscode._binary("codex", folder, "windows").name == "codex.exe"
+    assert vscode._binary("codex", folder, "linux", "x86_64") is None  # a foreign build is "no bundled Codex for this platform"
+    assert vscode._binary("codex", folder, "windows", "x86_64").name == "codex.exe"
 
 
 def test_unknown_bin_layout_still_finds_codex(vs, tmp_path):
     folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/x86_64/codex")
-    assert vscode._binary("codex", folder, "linux").name == "codex"
+    assert vscode._binary("codex", folder, "linux", "x86_64").name == "codex"
 
 
 @pytest.mark.parametrize("value", ["/no/such/claude", 3, "", None, "DIR"])
@@ -160,3 +162,28 @@ def test_a_command_without_execute_permission_is_not_findable(tmp_path):
     assert not vscode.findable(str(cmd), []) and not vscode.findable("serena", [str(tmp_path)])
     cmd.chmod(0o755)
     assert vscode.findable(str(cmd), []) and vscode.findable("serena", [str(tmp_path)])
+
+
+@pytest.mark.parametrize("machine,expected", [("x86_64", "linux-x86_64"), ("AMD64", "linux-x86_64"),
+                                              ("aarch64", "linux-aarch64"), ("arm64", "linux-aarch64")])
+def test_bundled_codex_matches_the_host_architecture(tmp_path, machine, expected):
+    folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/linux-aarch64/codex", "bin/linux-x86_64/codex")
+    assert vscode._binary("codex", folder, "linux", machine).parent.name == expected
+
+
+def test_a_foreign_architecture_only_is_no_bundled_codex(tmp_path):
+    folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/linux-aarch64/codex")
+    assert vscode._binary("codex", folder, "linux", "x86_64") is None
+
+
+def test_a_wrapper_in_a_vscode_profile_counts(vs, fake_runner, tmp_path):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
+    wrapper = tmp_path / "claude"
+    wrapper.write_text("x")
+    profile = vscode._user_dir(vs, sys.platform) / "profiles" / "abc123"
+    profile.mkdir(parents=True)
+    (profile / "settings.json").write_text(json.dumps({"claudeCode.claudeProcessWrapper": str(wrapper)}))
+    fake_runner.missing.add("claude")
+    (row,) = check._vscode_surfaces()
+    assert row.ok

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform as _platform
 import re
 import sys
 from dataclasses import dataclass
@@ -102,10 +103,17 @@ def _os_of(where: str, platform: str) -> str:
 
 
 _OS_NAMES = {"windows": ("windows", "win32"), "darwin": ("darwin", "macos", "mac"), "linux": ("linux",)}
+_ARCH_NAMES = {"x86_64": ("x86_64", "x64", "amd64"), "aarch64": ("aarch64", "arm64")}
 
 
-def _binary(agent: str, folder: Path, os_name: str = "linux") -> Path | None:
-    """The bundled agent binary for os_name; a Codex build can hold one folder per OS under bin/."""
+def _arch(machine: str | None = None) -> str:
+    m = (machine or _platform.machine()).lower()
+    return next((a for a, names in _ARCH_NAMES.items() if m in names), m)
+
+
+def _binary(agent: str, folder: Path, os_name: str = "linux", machine: str | None = None) -> Path | None:
+    """The bundled agent binary for os_name and this machine's architecture; a Codex build can hold one folder
+    per OS and architecture under bin/."""
     if agent == "claude":
         candidates = [folder / "resources" / "native-binary" / n for n in ("claude", "claude.exe")]
     else:
@@ -117,6 +125,9 @@ def _binary(agent: str, folder: Path, os_name: str = "linux") -> Path | None:
         own = [d for d in dirs if d.name.lower().startswith(_OS_NAMES[os_name])]
         if not own and not any(d.name.lower().startswith(known) for d in dirs):
             own = dirs  # a layout without OS names: take what is there
+        tagged = [d for d in own if any(n in d.name.lower() for names in _ARCH_NAMES.values() for n in names)]
+        if tagged:  # folders that name an architecture: only this machine's counts
+            own = [d for d in tagged if any(n in d.name.lower() for n in _ARCH_NAMES.get(_arch(machine), (_arch(machine),)))]
         exe = ("codex.exe", "codex") if os_name == "windows" else ("codex", "codex.exe")
         candidates = [d / n for d in own for n in exe]  # another OS's build is no bundled Codex for this one
     return next((p for p in candidates if _is_file(p)), None)
@@ -180,7 +191,11 @@ def settings_files(install: Install) -> list[Path]:
     """The user settings file of an install (the Remote-WSL server's machine settings for its server)."""
     if install.user_dir is None:
         return [install.extensions.parent / "data" / "Machine" / "settings.json"]
-    return [install.user_dir / "settings.json"]
+    try:
+        profiles = sorted(install.user_dir.glob("profiles/*/settings.json"))
+    except OSError:
+        profiles = []
+    return [install.user_dir / "settings.json", *profiles]  # which profile is active is not on disk: any may be
 
 
 def setting(install: Install, key: str) -> object | None:
@@ -242,12 +257,13 @@ def findable(command: str, dirs: list[str]) -> bool:
 
 
 def wrapper(install: Install) -> Path | None:
-    """claudeCode.claudeProcessWrapper when it names a file that exists; anything else launches nothing."""
-    value = setting(install, "claudeCode.claudeProcessWrapper")
-    if not isinstance(value, str) or not value.strip():
-        return None
-    path = Path(value).expanduser()
-    return path if _is_file(path) else None
+    """claudeCode.claudeProcessWrapper when it names a file that exists, in the user settings or any profile's
+    (the active profile is not known); anything else launches nothing."""
+    for path in settings_files(install):
+        value = (read_jsonc(path) or {}).get("claudeCode.claudeProcessWrapper")
+        if isinstance(value, str) and value.strip() and _is_file(Path(value).expanduser()):
+            return Path(value).expanduser()
+    return None
 
 
 def _commands(servers) -> dict[str, str]:

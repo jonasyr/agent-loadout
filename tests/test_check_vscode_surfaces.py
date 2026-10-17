@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from conftest import host_codex_bin
+
 from loadout import check, runner, targets, vscode, wsl
+
+
+HOST_BIN = host_codex_bin()
 
 
 @pytest.fixture
@@ -28,8 +33,8 @@ def _ext(root: Path, name: str, binary: str | None = None) -> Path:
 
 def _codex_ext(vs, fake_runner, version="0.162.1", root=None):
     root = root or vs / ".vscode" / "extensions"
-    folder = _ext(root, "openai.chatgpt-26.715.61943-linux-x64", "bin/linux-x86_64/codex")
-    fake_runner.responses[(str(folder / "bin/linux-x86_64/codex"), "--version")] = runner.Result(
+    folder = _ext(root, "openai.chatgpt-26.715.61943-linux-x64", HOST_BIN)
+    fake_runner.responses[(str(folder / HOST_BIN), "--version")] = runner.Result(
         0, f"codex-cli {version}\n", "")
     return folder
 
@@ -68,7 +73,7 @@ def test_old_bundled_codex_warns_with_the_update_fix(vs, fake_runner):
 
 def test_bundled_codex_that_gives_no_version_is_not_reported(vs, fake_runner):
     folder = _codex_ext(vs, fake_runner)
-    fake_runner.responses[(str(folder / "bin/linux-x86_64/codex"), "--version")] = runner.Result(124, "", "")
+    fake_runner.responses[(str(folder / HOST_BIN), "--version")] = runner.Result(124, "", "")
     fake_runner.paths["codex"] = "/usr/bin/codex"
     (row,) = check._vscode_surfaces()
     assert row.ok
