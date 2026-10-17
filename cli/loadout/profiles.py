@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import paths
-from .jsonio import deep_merge, load_json
+from .jsonio import load_json
 from .secrets import redact
 
 
@@ -99,27 +99,33 @@ def repo_off_notes(profile: Profile, project: Path) -> list[str]:
     return [f"{' and '.join(files)}: not written, {why}"]
 
 
-def apply_profile(profile: Profile, project: Path, w=None) -> tuple[list[Path], list[str]]:
-    """Merge the profile into the repo's settings and .mcp.json when the repo is for Claude Code. A file is changed
-    only in the layout it already has; any other file is left and its entries named. With a collector `w` the
-    changes are only planned. Returns (changed, skipped)."""
+def apply_profile(profile: Profile, project: Path, w=None, decide=None, notes: list | None = None) -> tuple[list[Path], list[str]]:
+    """Merge the profile into the repo's settings and .mcp.json three-way against its record in .loadout.json
+    (ADR 0031), when the repo is for Claude Code. A file is changed only in the layout it already has; any other
+    file is left and its entries named. decide(lines) -> bool: whether to use the profile's values where a person
+    changed an entry (None: keep theirs). notes collects the plan's lines about updated, kept and removed entries.
+    With a collector `w` the changes are only planned. Returns (changed, skipped)."""
     import json as _json
-    from . import repo_config
+    from . import repo_config, repo_merge
     from .jsonio import dumps_like, json_style
-    from .repo_writes import RepoWrites
+    from .repo_writes import RepoWrites, _flat
     changed, skipped = [], []
+    notes = notes if notes is not None else []
     if not repo_config.agents(project)["claude"]:
         return changed, skipped  # repo_off_notes says what was not written
     writes = w if w is not None else RepoWrites(project, now=True)
+    every = repo_config.records(project, writes)
+    mine = every.get(profile.name, {})
+    files = []
     for attr, rel in CLAUDE_FILES:
-        overlay = getattr(profile, attr)
-        if not overlay:
+        overlay, key = getattr(profile, attr), rel.as_posix()
+        if not overlay and not mine.get(key):
             continue
         target = project / rel
         if not paths.inside(target, project) or not paths.inside(target.parent, project):
-            skipped.append(f"skipped {rel.as_posix()}: it points outside the repo")
+            skipped.append(f"skipped {key}: it points outside the repo")
             continue
-        planned = w.planned(target) if w is not None and hasattr(w, "planned") else None
+        planned = writes.planned(target)
         if planned is not None:  # an earlier profile in this plan already writes it: build on that
             before, old = _json.loads(planned), planned
         else:
@@ -127,25 +133,65 @@ def apply_profile(profile: Profile, project: Path, w=None) -> tuple[list[Path], 
             old = target.read_bytes().decode("utf-8") if target.exists() else None
         if old is not None and not old.strip():
             old = None  # an empty file holds nothing of the user's: written like a new one
-        after = deep_merge(before, overlay)
-        if after == before and old is not None:
-            continue  # nothing to change: quiet, whatever the layout
-        style = json_style(old) if old is not None else None
-        if old is not None and style is None:
-            from .repo_writes import _flat
-            keys = ", ".join(_flat(overlay))  # key paths only: values can hold secrets
-            skipped.append(redact(f"{rel.as_posix()}: left as is (its layout is not one loadout rewrites); add by "
-                                  f"hand from profile {profile.name}: {keys}"))
-            continue
-        keys = [f"{attr}.{k}" for k in overlay]
-        why = next((reason(profile, k) for k in keys if k in profile.why), reason(profile))
-        if old is None:
-            (writes.modify if target.exists() else writes.create)(
-                target, _json.dumps(after, indent=2, ensure_ascii=False) + "\n", why)
-        else:
-            writes.modify(target, dumps_like(style, after), why)
-        changed.append(target)
+        others = tuple(r.get(key, {}) for n, r in every.items() if n != profile.name)
+        files.append([attr, rel, target, before, old, overlay, others,
+                      repo_merge.merge(before, overlay, mine.get(key, {}), others=others)])
+    force = bool(getattr(decide, "take", False))  # --take-profile: also what was offered before and declined
+    differs = [(f[1].as_posix(), d) for f in files for d in f[7].differs + (f[7].offered if force else [])]
+    if differs and decide is not None:
+        lines = [f"This repo differs from profile {profile.name} in {len(differs)} "
+                 f"entr{'y' if len(differs) == 1 else 'ies'}:"]
+        for rel, d in differs:
+            k = repo_merge.unpointer(d.pointer)[-1]
+            lines.append(redact(f"  {rel}  {d.pointer}: the repo has {repo_merge.show(d.theirs, k)}, "
+                                f"the profile has {repo_merge.show(d.new, k)}"))
+        if decide(lines):
+            for f in files:
+                f[7] = repo_merge.merge(f[3], f[5], mine.get(f[1].as_posix(), {}), take=True, others=f[6],
+                                        take_offered=force)
+    record = {}
+    for attr, rel, target, before, old, overlay, others, m in files:
+        key = rel.as_posix()
+        skipped += [redact(f"{key}: {line}") for line in m.blocked]
+        if not repo_merge.same(m.after, before) or old is None:
+            style = json_style(old) if old is not None else None
+            if old is not None and style is None:
+                keys = ", ".join(_flat(overlay))  # key paths only: values can hold secrets
+                skipped.append(redact(f"{key}: left as is (its layout is not one loadout rewrites); add by hand from "
+                                      f"profile {profile.name}: {keys}"))
+                continue  # nothing written, so the record for this file stays as it was
+            if m.after or old is not None:
+                keys = [f"{attr}.{k}" for k in overlay]
+                why = next((reason(profile, k) for k in keys if k in profile.why), reason(profile))
+                text = (_json.dumps(m.after, indent=2, ensure_ascii=False) + "\n" if old is None
+                        else dumps_like(style, m.after))
+                (writes.modify if target.exists() else writes.create)(target, text, why)
+                changed.append(target)
+        notes += _merge_notes(profile, key, m)
+        record[key] = m.record
+    if record and any(not repo_merge.same(record[k], mine.get(k, {})) for k in record):
+        repo_config.plan_record(project, writes, profile.name, record, notes)
     return changed, skipped
+
+
+def _merge_notes(profile: Profile, rel: str, m) -> list[str]:
+    from . import repo_merge
+    out = [f"{rel}: update {p} to profile {profile.name}'s value" for p in m.updated]
+    out += [f"{rel}: remove {p} (no longer in profile {profile.name})" for p in m.removed]
+    out += [f"{rel}: {line}" for line in m.kept + m.left]
+    out += [f"{rel}: {line} was removed in this repo; kept removed" for line in m.kept_removed]
+    for d in m.differs:
+        if d.pointer not in m.updated:
+            k = repo_merge.unpointer(d.pointer)[-1]
+            out.append(f"{rel}: {d.pointer}: kept the repo's {repo_merge.show(d.theirs, k)} (profile {profile.name} "
+                       f"has {repo_merge.show(d.new, k)}; loadout profile {profile.name} --take-profile uses it)")
+    for d in m.offered:
+        if d.pointer not in m.updated:
+            k = repo_merge.unpointer(d.pointer)[-1]
+            out.append(f"{rel}: {d.pointer}: the repo's {repo_merge.show(d.theirs, k)} stays (changed in this repo; "
+                       f"loadout profile {profile.name} --take-profile uses the profile's {repo_merge.show(d.new, k)})")
+    return [redact(line) for line in out]
+
 
 
 def _skill_source(name: str) -> Path | None:

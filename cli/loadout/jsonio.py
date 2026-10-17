@@ -133,7 +133,7 @@ def json_style(text: str) -> JsonStyle | None:
         data = json.loads(core)
     except ValueError:
         return None
-    for indent in (2, 4, "\t"):
+    for indent in (2, 4, "\t", None):  # None: one line, as json.dumps writes it by default
         if json.dumps(data, indent=indent, ensure_ascii=False) == core:
             return JsonStyle(indent, newline, final)
     return None

@@ -245,6 +245,23 @@ def _pair_secret(key: str, value: str) -> bool:
     return looks_secret(key, value) or _keyed_value(key, value)
 
 
+def secret_value(key: str, value) -> bool:
+    """Whether a value under `key` must never be shown or stored in plain text: the one test for repo plans, the
+    profiles' record and `loadout explain` (a `--token=VALUE` argument included)."""
+    if not isinstance(value, str):
+        return False
+    if "=" in value:  # --token=VALUE
+        k, _, v = value.partition("=")
+        if looks_secret(k.lstrip("-"), v, keyed_arg=True):
+            return True
+    return (looks_secret(key, value) or _pair_secret(key, value) or redact(value) != value or high_entropy(value))
+
+
+def flag_secret(prev) -> bool:
+    """The item after this one in an args list is a secret (`--password VALUE`)."""
+    return isinstance(prev, str) and prev.startswith("-") and bool(SECRET_KEY.search(prev))
+
+
 def redact(text: str) -> str:
     """Mask anything that looks like a secret before it reaches the console."""
     if not text:

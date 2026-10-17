@@ -15,6 +15,16 @@ PROBLEM = re.compile(r"failed|skipped|not changed|not effective|could not|cannot
 _COLOR = {"ok": "32", "warn": "33", "fail": "31", "accent": "35", "muted": "2"}
 
 
+_CONTROL = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")  # tab stays; a newline would fake a line
+
+
+def printable(text: str, lines: bool = False) -> str:
+    """Text from a repo or another person's file, safe to print: control characters (a terminal escape sequence, a
+    bell) become visible \\xNN, so a cloned repo cannot drive the terminal. lines: keep line breaks (a message of
+    several lines, such as a failed command's stderr); otherwise a newline is escaped too, so it cannot fake a line."""
+    return _CONTROL.sub(lambda m: m.group() if lines and m.group() == "\n" else f"\\x{ord(m.group()):02x}", text)
+
+
 def sym(name: str) -> str:
     """The symbol, or its ASCII stand-in when stdout cannot encode it (e.g. a cp1252 console)."""
     try:
@@ -80,4 +90,4 @@ def detail(line: str) -> None:
 
 def problem(line: str) -> None:
     end_progress()
-    print(f"  {line}")
+    print(f"  {printable(line, lines=True)}")

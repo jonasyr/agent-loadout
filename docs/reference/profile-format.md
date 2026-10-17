@@ -12,8 +12,8 @@ Every field is optional; a missing field is empty. Kit profiles must have a `des
 |---|---|---|
 | `description` | string | One line. `loadout configure show` uses it as the reason for the plugins the profile installs. |
 | `install` | list of plugin ids | Plugins to install at project scope with `claude plugin install ID --scope project`. Each id is `name@marketplace`; anything else is skipped with a message and `loadout profile` exits 1. This step is skipped when the repo is not for Claude Code, or when Claude Code is off for you (the plan says which). The marketplace of each id must be declared in `settings.base.json` for the kit's own profiles; a test checks this. |
-| `settings` | object | Merged into the repo's `.claude/settings.json` (when the repo is for Claude Code). |
-| `mcp` | object | Merged into the repo's `.mcp.json` (when the repo is for Claude Code). Usually `{"mcpServers": {...}}`. Pin versions: the kit's own profiles must not use `@latest`. |
+| `settings` | object | Merged (three-way, see below) into the repo's `.claude/settings.json` (when the repo is for Claude Code). |
+| `mcp` | object | Merged (three-way, see below) into the repo's `.mcp.json` (when the repo is for Claude Code). Usually `{"mcpServers": {...}}`. Pin versions: the kit's own profiles must not use `@latest`. |
 | `commands` | list of commands | Commands run in the repo after the plugins, each a list of arguments, for example `["playwright-cli", "install", "--skills"]`. |
 | `skills` | list of names | Skill folders copied into the repo's `.claude/skills/`. |
 | `notes` | string | Printed after the profile is applied. |
@@ -40,7 +40,7 @@ Example, the kit's `web` profile:
 
 In this order:
 
-1. `settings` is merged into `<repo>/.claude/settings.json`, and `mcp` into `<repo>/.mcp.json`. Dicts merge recursively, lists are joined without duplicates, and for any other value the profile wins. A file is written only when the result differs, and only in the layout it already has (see [Repo writes](cli.md#repo-writes)). A profile with an empty `settings` or `mcp` does not touch that file. The agents come from the repo's [`.loadout.json`](cli.md#loadoutjson); these two files are written only when it names Claude Code (or, without the file, when Claude Code is on for you).
+1. `settings` is merged into `<repo>/.claude/settings.json`, and `mcp` into `<repo>/.mcp.json`. The merge is three-way against the profile's record in [`.loadout.json`](cli.md#loadoutjson) ([ADR 0031](../adr/0031-repo-profile-entries-merge-three-way.md)): a missing entry is added; a profile update applies when the file still has the value loadout wrote; a value someone changed stays (loadout asks once when the profile has a new one, and `--take-profile` takes it); a list entry someone removed stays removed; an entry the profile dropped is removed when it still has loadout's value and no other profile recorded it. Without a record (a repo from before this rule), only missing entries are added, and a different existing value is named in the plan. An MCP server's definition is one entry. `loadout explain <file>` shows which entries are loadout's. A file is written only when the result differs, and only in the layout it already has (see [Repo writes](cli.md#repo-writes)). A profile with an empty `settings` or `mcp` does not touch that file. The agents come from the repo's [`.loadout.json`](cli.md#loadoutjson); these two files are written only when it names Claude Code (or, without the file, when Claude Code is on for you).
 2. `skills` are copied. See below.
 3. `install` and `commands` run, unless `--no-install` was given. A failing command prints `failed: ...` and the rest continues.
 4. With Codex on, the Codex side is set up (see [In Codex](#in-codex)).
@@ -67,7 +67,7 @@ The copy is a snapshot. Later changes to the profile's skill do not reach the re
 
 ## In Codex
 
-When the repo is for Codex, `loadout init` and `loadout profile NAME` also set up Codex in the repo. The repo's agents come from [`.loadout.json`](cli.md#loadoutjson); without that file, Codex must be on for you ([Use loadout with Codex](../how-to/codex.md#switch-it-on)). The plugin installs below run only when Codex is also on for you. Each field maps like this:
+When the repo is for Codex, `loadout init` and `loadout profile NAME` also set up Codex in the repo. The repo's agents come from [`.loadout.json`](cli.md#loadoutjson); without that file, Codex must be on for you ([Use loadout with Codex](../how-to/codex.md#switch-it-on)). The plugin installs below run only when Codex is also on for you. loadout only adds tables to `.codex/config.toml`; it records them in `.loadout.json`, so a table or plugin switch someone removed is not added back, and a newer table in the profile is named in the plan instead of written. Each field maps like this:
 
 | Field | In Codex |
 |---|---|

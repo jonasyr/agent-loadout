@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import paths
-from .jsonio import dumps_like, json_style
+from .jsonio import JsonStyle, dumps_like, json_style
 
 FILE = ".loadout.json"
 AGENTS = ("claude", "codex")
@@ -52,6 +52,7 @@ def load(project: Path) -> RepoConfig:
     manage = data.get("manage", True)
     if not isinstance(manage, bool):
         raise Invalid(f"{FILE}: manage must be true or false")
+    _check_profiles(data)
     return RepoConfig(agents, manage, data, True)
 
 
@@ -108,3 +109,84 @@ def new_text(project: Path, chosen: frozenset) -> str | None:
     if style is None:
         raise Invalid(f'{FILE}: its layout is not one loadout rewrites; set "agents": {json.dumps(ordered)} by hand')
     return dumps_like(style, {**cfg.data, "agents": ordered})
+
+
+RECORD_WHY = "loadout: what profile {name} wrote here, so later runs can update it (commit it)"
+
+
+def _check_profiles(data: dict) -> None:
+    rec = data.get("profiles")
+    if rec is None:
+        return
+    if not (isinstance(rec, dict) and all(
+            isinstance(files, dict) and all(isinstance(entries, dict) for entries in files.values())
+            for files in rec.values())):
+        raise Invalid(f"{FILE}: profiles must map each profile to its files and their entries (loadout writes it; "
+                      "take it back from git, or remove the profiles key to start a new record)")
+
+
+def current_text(project: Path, w=None) -> str | None:
+    """.loadout.json's text as the plan has it: planned in `w`, else on disk (CRLF kept), else None."""
+    planned = w.planned(_path(project)) if w is not None and hasattr(w, "planned") else None
+    if planned is not None:
+        return planned
+    if not _path(project).is_file():
+        return None
+    with open(_path(project), encoding="utf-8", newline="") as fh:
+        return fh.read()
+
+
+def records(project: Path, w=None) -> dict:
+    """Every profile's record: {profile: {file: {pointer: value}}}."""
+    text = current_text(project, w)
+    if text is None:
+        return {}
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
+        raise Invalid(f"{FILE}: does not parse ({exc}); fix it, then run this again") from None
+    if not isinstance(data, dict):
+        raise Invalid(f"{FILE}: must be a JSON object")
+    _check_profiles(data)
+    return data.get("profiles") or {}
+
+
+def record_text(project: Path, text: str | None, profile: str, files: dict) -> str | None:
+    """.loadout.json's text with `profile`'s record set for `files` ({file: entries}; empty entries drop the file),
+    or None when nothing changes. Without the file: a new one naming the repo's agents."""
+    if text is None:
+        on = agents(project)
+        data, style = {"agents": [a for a in AGENTS if on[a]] or list(AGENTS)}, JsonStyle(2, "\n", True)
+    else:
+        style = json_style(text)
+        if style is None:
+            raise Invalid(f"{FILE}: its layout is not one loadout rewrites, so the record of profile {profile} is not "
+                          "written (later runs add only missing entries)")
+        data = json.loads(text)
+    rec = dict(data.get("profiles") or {})
+    mine = dict(rec.get(profile) or {})
+    for rel, entries in files.items():
+        if entries:
+            mine[rel] = entries
+        else:
+            mine.pop(rel, None)
+    if mine:
+        rec[profile] = mine
+    else:
+        rec.pop(profile, None)
+    new = {**data, "profiles": rec} if rec else {k: v for k, v in data.items() if k != "profiles"}
+    from .repo_merge import same
+    if (text is None and not rec) or (text is not None and same(new, data)):
+        return None
+    return dumps_like(style, new)
+
+
+def plan_record(project: Path, w, profile: str, files: dict, notes: list) -> None:
+    """Put `profile`'s record for `files` into .loadout.json through the writer `w` (a plan or now)."""
+    try:
+        text = record_text(project, current_text(project, w), profile, files)
+    except Invalid as exc:
+        notes.append(str(exc))
+        return
+    if text is not None:
+        (w.modify if _path(project).exists() else w.create)(_path(project), text, RECORD_WHY.format(name=profile))

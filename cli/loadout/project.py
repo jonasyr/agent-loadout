@@ -79,6 +79,28 @@ def approver(yes: bool, ask: Ask, interactive: bool):
     return approve
 
 
+TAKE_QUESTION = "Use the profile's values for these? [y/N] "
+KEPT_NO_TERMINAL = "  kept the repo's values (run it again with --take-profile to use the profile's)"
+
+
+def chooser(take: bool, ask: Ask, interactive: bool, dry_run: bool = False):
+    """Whether to use the profile's values where a person changed an entry: --take-profile, else the question in a
+    terminal; without one (and in a dry run) the repo's values stay. The entries are printed in every case."""
+    def decide(lines: list[str]) -> bool:
+        from .out import printable
+        print("\n".join(printable(line) for line in lines))
+        if take:
+            return True
+        if dry_run:
+            return False
+        if not interactive:
+            print(KEPT_NO_TERMINAL)
+            return False
+        return ui.confirm(ask, TAKE_QUESTION)
+    decide.take = take  # apply_profile then also lists what was offered before and declined
+    return decide
+
+
 def _agent_names(on: dict) -> str:
     return " and ".join(n for n, k in (("Claude Code", "claude"), ("Codex", "codex")) if on[k]) or "none"
 
@@ -88,14 +110,18 @@ def _show(project: Path, title: str, w, notes: list[str]) -> list[str]:
     plan = [f"Plan for {project} ({title}; this repo's agents: {_agent_names(repo_config.agents(project))}):"]
     plan += w.render() or ["  (no file changes)"]
     plan += [secrets.redact(f"  note    {n}") for n in notes]
+    from .out import printable
+    plan = [printable(line) for line in plan]  # keys and values come from repo files
     print("\n".join(plan))
     return plan
 
 
 CODEX_BAD = (": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is")
+RECORD_LATER = (".loadout.json: the record of profile {name}'s .codex/config.toml entries is written after the Codex "
+                "plugin installs, naming only what was added")
 
 
-def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> tuple[list[str], list[str]]:
+def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decide=None) -> tuple[list[str], list[str]]:
     """Collect everything a profile changes in the repo into `w`. Returns (notes, failures): both are shown in the
     plan; failures also make the run end with problems (exit 1), as `_profile_now` does."""
     import os
@@ -103,7 +129,7 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> tu
     on = repo_config.agents(project)
     notes: list[str] = []
     failures: list[str] = []
-    _, skipped = profiles.apply_profile(prof, project, w=w)
+    _, skipped = profiles.apply_profile(prof, project, w=w, decide=decide, notes=notes)
     failures += skipped
     notes += profiles.repo_off_notes(prof, project)
     before = len(w.changes)
@@ -134,10 +160,17 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> tu
                 failures.append(f"command {cmd!r}: not a list of words, skipped")
     failures += [l for l in profiles.link_skills(project, False, w=w) if "not linked" in l or "left as is" in l]
     if on["codex"]:
-        for line in codex_project.config(prof, project, False, w=w):
+        held = _codex_after_installs(project, install)
+        for line in codex_project.config(prof, project, False, w=w, record=not held):
             if line.startswith(("added", "enabled", "would")):
                 continue
             (failures if line.startswith("skipped") or any(b in line for b in CODEX_BAD) else notes).append(line)
+        if held and any(codex_project._wanted(prof)[:2]):
+            try:  # the record is written later; say now if .loadout.json's layout will not take it
+                repo_config.record_text(project, repo_config.current_text(project, w), prof.name, {})
+                notes.append(RECORD_LATER.format(name=prof.name))
+            except repo_config.Invalid as exc:
+                notes.append(str(exc))
         if install and not targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: not installed for Codex, which is off for you "
                          "(a Codex user installs them with loadout profile here)")
@@ -167,7 +200,8 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
     if later.changes:
         follow = [f"The commands of profile {prof.name} added skills; link them for the repo's other agent:"]
         follow += later.render()
-        print("\n".join(follow))
+        from .out import printable
+        print("\n".join(printable(line) for line in follow))
         if approve is None or approve(follow):
             problems += later.apply(bk)
             if later.stale:  # .loadout.json changed: nothing after this may run
@@ -186,6 +220,8 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
             for line in codex_project.config(prof, project, False, skip=failed, w=RepoWrites(project, now=True, bk=bk)):
                 if line.startswith("skipped") or "left as is" in line:
                     problems.append(line)
+                elif line.startswith(repo_config.FILE + ":") and line not in notes:
+                    notes.append(line)
             for pid in sorted(failed):
                 notes.append(f"plugin {pid}: not named in .codex/config.toml, its install failed")
         tables, plugins_, _ = codex_project._wanted(prof)
@@ -204,7 +240,7 @@ def _report(title: str, bk, notes: list[str], problems: list[str]) -> int:
     from . import out
     out.status(title, "applied" if not problems else "applied with problems (below)", "ok" if not problems else "warn")
     for line in problems + notes:
-        out.problem(secrets.redact(line))
+        out.problem(secrets.redact(line))  # problem() escapes control characters, keeping line breaks
     if not bk.empty:
         print(f"undo: loadout restore {bk.root}")
     return 1 if problems else 0
@@ -220,7 +256,7 @@ def _config_or_report(project: Path):
 
 
 def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False, drive_note: bool = True,
-                approve=None, result: dict | None = None) -> int:
+                approve=None, result: dict | None = None, decide=None) -> int:
     """approve(plan lines) -> bool: show the plan and ask (the CLI). None: apply at once, backed up (callers that
     already asked). dry_run: show the plan, change nothing."""
     from . import backup, repo_config
@@ -246,7 +282,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         mine = frozenset(a for a, on in repo_config.user_agents().items() if on)
         w.create(project / repo_config.FILE, repo_config.new_text(project, mine),
                  "loadout: which agents this repo is for (commit it)")
-    planned_notes, failures = _plan_profile(prof, project, w, install)
+    planned_notes, failures = _plan_profile(prof, project, w, install, decide)
     notes += planned_notes
     plan = _show(project, f"profile {name}", w, failures + notes)
     if not cfg.manage:
@@ -281,11 +317,15 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
     calm = _calm()
     problems: list[str] = []
     steps: list[str] = []  # what the user still has to do or may want to undo: shown in calm mode too
-    info = (lambda line: None) if calm else print
-    warn = problems.append if calm else print
+    from .out import printable
+    info = (lambda line: None) if calm else (lambda line: print(printable(line)))  # lines carry repo text
+    warn = problems.append if calm else (lambda line: print(printable(line)))
     skipped: list[str] = []
     parts: list[str] = []
-    changed, skipped = profiles.apply_profile(prof, project, w=w)
+    merge_notes: list[str] = []
+    changed, skipped = profiles.apply_profile(prof, project, w=w, notes=merge_notes)
+    for line in merge_notes:
+        (steps.append if calm else info)(line)
     for path in changed:
         info(f"updated {path}")
         parts.append(path.relative_to(project).as_posix() if paths.inside(path, project) else path.name)
@@ -408,7 +448,8 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     with repo_config.pending(project, agents):
         hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
         for prof in profs:
-            planned_notes, planned_failures = _plan_profile(prof, project, w, install)
+            planned_notes, planned_failures = _plan_profile(prof, project, w, install,
+                                                            chooser(False, ask, interactive and not yes, dry_run))
             notes += planned_notes
             failures += planned_failures
         _, scaffold_notes = scaffold.scaffold(project, w=w)

@@ -352,3 +352,16 @@ def _register_kit_path(sub):
 
 
 EXTRA_COMMANDS.append(_register_kit_path)
+
+
+def _register_explain(sub) -> None:
+    p = sub.add_parser("explain", help="which entries in a repo file loadout wrote, and whether each is unchanged")
+    p.add_argument("file", help="a file in the current repo, e.g. .claude/settings.json")
+
+    def run(a):
+        from .explain import explain
+        return explain(a.file)
+    p.set_defaults(func=run)
+
+
+EXTRA_COMMANDS.append(_register_explain)

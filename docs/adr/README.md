@@ -30,7 +30,7 @@ Template:
 | [0004](0004-rules-linked-as-directories.md) | Rules are linked as directories; `~/.claude/CLAUDE.md` changes only when you ask adopt to migrate it | Accepted |
 | [0005](0005-catalog-as-source-of-tool-knowledge.md) | `catalog.json` is the source of tool knowledge | Accepted |
 | [0006](0006-secrets-in-secrets-env.md) | Secrets live in `secrets.env` and are referenced as `${VAR}` | Accepted |
-| [0007](0007-tiered-scoping-with-profiles.md) | Tiered scoping: core tools global, domain tools per project | Accepted |
+| [0007](0007-tiered-scoping-with-profiles.md) | Tiered scoping: core tools global, domain tools per project | Accepted; merge rule superseded by 0031 |
 | [0008](0008-code-intelligence-routed-by-rule.md) | Code intelligence: LSP plugins, Serena and codebase-memory, routed by a rule | Accepted |
 | [0009](0009-design-tooling-frontend-design-and-impeccable.md) | Design tooling: frontend-design and impeccable | Accepted |
 | [0010](0010-docs-as-single-source-of-truth.md) | `docs/` is the single source of truth; AGENTS.md and memories link to it | Accepted |
@@ -54,3 +54,4 @@ Template:
 | [0028](0028-serena-codex-hooks-in-hooks-json.md) | Serena's Codex hooks as owned entries in hooks.json | Accepted |
 | [0029](0029-codex-on-windows-and-wsl.md) | Codex on Windows and WSL: one loadout per side | Accepted |
 | [0030](0030-repo-files-follow-the-repos-agents.md) | Repo files follow the repo's agents | Accepted |
+| [0031](0031-repo-profile-entries-merge-three-way.md) | Profile entries in repo files merge three-way against a record | Accepted |
