@@ -92,16 +92,24 @@ def _show(project: Path, title: str, w, notes: list[str]) -> list[str]:
     return plan
 
 
-def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> list[str]:
-    """Collect everything a profile changes in the repo into `w`, in apply order. Returns notes for the plan."""
+CODEX_BAD = (": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is")
+
+
+def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> tuple[list[str], list[str]]:
+    """Collect everything a profile changes in the repo into `w`. Returns (notes, failures): both are shown in the
+    plan; failures also make the run end with problems (exit 1), as `_profile_now` does."""
     import os
     from . import codex_project, repo_config, targets
     on = repo_config.agents(project)
     notes: list[str] = []
+    failures: list[str] = []
     _, skipped = profiles.apply_profile(prof, project, w=w)
-    notes += skipped + profiles.repo_off_notes(prof, project)
+    failures += skipped
+    notes += profiles.repo_off_notes(prof, project)
     before = len(w.changes)
-    notes += [l for l in profiles.copy_skills(prof, project, w=w) if not l.startswith("copied skill")]
+    for line in profiles.copy_skills(prof, project, w=w):
+        if not line.startswith("copied skill"):
+            (failures if line.startswith("skills not copied") else notes).append(line)
     real, other = profiles.repo_skill_dirs(project)
     if other is not None:  # skills planned for copying get their link in the same plan
         for c in w.changes[before:]:
@@ -113,7 +121,7 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> li
     if install:
         for pid in prof.install:
             if not (isinstance(pid, str) and profiles.PLUGIN_ID.match(pid)):
-                notes.append(f"plugin {pid!r}: not a name@marketplace id, skipped")
+                failures.append(f"plugin {pid!r}: not a name@marketplace id, skipped")
             elif on["claude"] and targets.claude_enabled():
                 w.run(["claude", "plugin", "install", pid, "--scope", "project"], profiles.reason(prof),
                       touches=(project / ".claude" / "settings.json",))
@@ -123,15 +131,17 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool) -> li
             if isinstance(cmd, list) and cmd and all(isinstance(part, str) for part in cmd):
                 w.run(cmd, profiles.reason(prof))
             else:
-                notes.append(f"command {cmd!r}: not a list of words, skipped")
-    notes += [l for l in profiles.link_skills(project, False, w=w) if "not linked" in l or "left as is" in l]
+                failures.append(f"command {cmd!r}: not a list of words, skipped")
+    failures += [l for l in profiles.link_skills(project, False, w=w) if "not linked" in l or "left as is" in l]
     if on["codex"]:
-        notes += [l for l in codex_project.config(prof, project, False, w=w)
-                  if not l.startswith(("added", "enabled", "would"))]
+        for line in codex_project.config(prof, project, False, w=w):
+            if line.startswith(("added", "enabled", "would")):
+                continue
+            (failures if line.startswith("skipped") or any(b in line for b in CODEX_BAD) else notes).append(line)
         if install and targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: installed in your Codex (outside this repo, "
                          "with their own backup)")
-    return notes
+    return notes, failures
 
 
 def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive_note: bool,
@@ -197,8 +207,9 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         mine = frozenset(a for a, on in repo_config.user_agents().items() if on)
         w.create(project / repo_config.FILE, repo_config.new_text(project, mine),
                  "loadout: which agents this repo is for (commit it)")
-    notes += _plan_profile(prof, project, w, install)
-    plan = _show(project, f"profile {name}", w, notes)
+    planned_notes, failures = _plan_profile(prof, project, w, install)
+    notes += planned_notes
+    plan = _show(project, f"profile {name}", w, failures + notes)
     if not cfg.manage:
         print(MANAGE_OFF)
         return 0
@@ -209,7 +220,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         print(DECLINED)
         return 0
     bk = backup.Backup(description=f"loadout profile {name} in {project}", repo=project)
-    problems = w.apply(bk)
+    problems = failures + w.apply(bk)
     notes = [n for n in notes if not n.startswith(("Codex plugins of profile",))]
     _after_apply(prof, project, bk, install, drive_note, notes, problems)
     return _report(f"Profile {name}", bk, notes, problems)
@@ -307,11 +318,7 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     if git_dir.is_symlink() and not paths.inside(git_dir, project):  # git init would follow it out of the repo
         print("skipped git init: .git points outside the repo")
         rc = 1
-    elif not git_dir.exists():
-        if dry_run or not cfg.manage:
-            print("would offer: git init")
-        elif yes or ui.confirm(ask, f"{project} is not a git repository. Run git init? [y/N] "):
-            runner.run(["git", "init"], cwd=str(project))
+    git_init = not git_dir.exists() and not git_dir.is_symlink()  # planned below, so a declined plan skips it too
     mine = frozenset(a for a, on in repo_config.user_agents().items() if on)
     if agents is None and cfg.agents is None:
         agents = mine
@@ -335,6 +342,9 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
                 profiles.load_profile(name)
     w = RepoWrites(project)
     notes: list[str] = []
+    failures: list[str] = []
+    if git_init:
+        w.run(["git", "init"], "init: make this folder a git repository")
     if agents is not None:
         try:
             text = repo_config.new_text(project, agents)
@@ -352,7 +362,9 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     profs = [profiles.load_profile(name) for name in chosen]
     with repo_config.pending(project, agents):
         for prof in profs:
-            notes += _plan_profile(prof, project, w, install)
+            planned_notes, planned_failures = _plan_profile(prof, project, w, install)
+            notes += planned_notes
+            failures += planned_failures
         _, scaffold_notes = scaffold.scaffold(project, w=w)
         if not paths.inside(project / ".gitignore", project):
             notes.append("skipped .gitignore: it points outside the repo")
@@ -363,7 +375,7 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
             if note.startswith("skipped"):
                 rc = 1
         title = "init" + (f", profiles {', '.join(chosen)}" if chosen else "")
-        plan = _show(project, title, w, notes)
+        plan = _show(project, title, w, failures + notes)
     if not cfg.manage:
         print(MANAGE_OFF)
         return 0
@@ -374,7 +386,7 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         print(DECLINED)
         return rc
     bk = backup.Backup(description=f"loadout init in {project}", repo=project)
-    problems = w.apply(bk)
+    problems = failures + w.apply(bk)
     notes = [n for n in notes if not n.startswith("Codex plugins of profile")]
     for i, prof in enumerate(profs):
         _after_apply(prof, project, bk, install, i == 0, notes, problems)

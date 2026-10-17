@@ -109,3 +109,41 @@ def test_changing_agents_removes_nothing_and_lists_what_is_left(repo, fake_runne
                  agents=frozenset({"codex"}))
     assert (repo / "CLAUDE.md").exists()
     assert "no longer needed for this repo's agents (yours to remove): CLAUDE.md" in capsys.readouterr().out
+
+
+# --- task-5 review fixes ---
+
+def test_two_profiles_on_one_file_both_land(repo, fake_runner, monkeypatch):
+    two = {"web": profiles.Profile(name="web", description="", settings={"a": 1}),
+           "db": profiles.Profile(name="db", description="", settings={"b": 2})}
+    monkeypatch.setattr(profiles, "load_profile", lambda name: two[name])
+    rc = project.init(repo, ["web", "db"], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False)
+    import json
+    assert rc == 0 and json.loads((repo / ".claude" / "settings.json").read_text()) == {"a": 1, "b": 2}
+
+
+def test_the_plan_lists_each_file_once(repo, fake_runner, monkeypatch, capsys):
+    two = {"web": profiles.Profile(name="web", description="", settings={"a": 1}),
+           "db": profiles.Profile(name="db", description="", settings={"b": 2})}
+    monkeypatch.setattr(profiles, "load_profile", lambda name: two[name])
+    project.init(repo, ["web", "db"], yes=False, install=False, dry_run=True, ask=lambda q: "", interactive=False)
+    out = capsys.readouterr().out
+    assert out.count(".claude/settings.json") == 1 and "+ a: 1" in out and "+ b: 2" in out
+
+
+def test_git_init_is_part_of_the_plan(fake_home, fake_runner, tmp_path, capsys):
+    proj = tmp_path / "p"
+    proj.mkdir()
+    project.init(proj, [], yes=False, install=False, dry_run=False, ask=lambda q: "y", interactive=False)
+    assert ["git", "init"] not in fake_runner.calls and "run     git init" in capsys.readouterr().out
+    project.init(proj, [], yes=False, install=False, dry_run=False, ask=lambda q: "-" if "profiles" in q else "n",
+                 interactive=True)
+    assert ["git", "init"] not in fake_runner.calls  # declined plan: no git init either
+    project.init(proj, [], yes=True, install=False, dry_run=False, ask=lambda q: "", interactive=False)
+    assert ["git", "init"] in fake_runner.calls
+
+
+def test_a_conflict_makes_the_cli_path_exit_1(repo, fake_runner, monkeypatch):
+    (repo / ".claude").mkdir()
+    (repo / ".claude" / "settings.json").write_text('{"disabledMcpjsonServers": []}\n')  # a layout loadout leaves
+    assert project.add_profile(repo, "web", install=False, approve=lambda plan: True) == 1

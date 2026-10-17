@@ -78,8 +78,23 @@ class RepoWrites:
             problem = self._do(change, self.bk)
             if problem:
                 raise OSError(redact(problem))
-        else:
-            self._changes.append(change)
+            return
+        if change.kind in ("create", "modify"):  # a second write to one file: one change with the final text
+            for earlier in self._changes:
+                if earlier.kind in ("create", "modify") and earlier.path == change.path:
+                    earlier.text = change.text
+                    if change.why not in earlier.why:
+                        earlier.why = f"{earlier.why}; {change.why}"
+                    return
+        self._changes.append(change)
+
+    def planned(self, path: Path) -> str | None:
+        """The text already planned for `path`, so a later planner builds on it instead of on the disk."""
+        return next((c.text for c in self._changes if c.kind in ("create", "modify") and c.path == path), None)
+
+    def _ordered(self) -> list[Change]:
+        """File changes first, commands after them, so a command's own edits are not overwritten by the plan."""
+        return [c for c in self._changes if c.kind != "run"] + [c for c in self._changes if c.kind == "run"]
 
     def create(self, path: Path, text: str, why: str) -> None:
         self._add(Change("create", path, why, text=text))
@@ -104,7 +119,7 @@ class RepoWrites:
 
     def render(self) -> list[str]:
         out = []
-        for c in self._changes:
+        for c in self._ordered():
             if c.kind == "create":
                 n = len(c.text.splitlines())
                 out.append(f"  create  {self._rel(c.path)} ({n} line{'s' if n != 1 else ''})  {c.why}")
@@ -129,7 +144,7 @@ class RepoWrites:
         """Apply every collected change in order; each is recorded in `bk` before it acts. One failing change is a
         problem line; the rest still run."""
         problems = []
-        for c in self._changes:
+        for c in self._ordered():
             try:
                 problem = self._do(c, bk)
             except OSError as exc:

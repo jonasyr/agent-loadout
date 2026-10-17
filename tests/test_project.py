@@ -97,7 +97,8 @@ def test_init_dry_run_changes_nothing(tmp_path, fake_runner):
 def test_init_offers_git_init(tmp_path, fake_runner):
     proj = tmp_path / "p"
     proj.mkdir()
-    project.init(proj, [], yes=False, install=False, dry_run=False, ask=lambda q: "y" if "git init" in q else "-")
+    project.init(proj, [], yes=False, install=False, dry_run=False, ask=lambda q: "y" if "Apply" in q else "-",
+                 interactive=True)
     assert ["git", "init"] in fake_runner.calls
 
 

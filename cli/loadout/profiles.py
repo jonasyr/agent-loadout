@@ -119,8 +119,12 @@ def apply_profile(profile: Profile, project: Path, w=None) -> tuple[list[Path], 
         if not paths.inside(target, project) or not paths.inside(target.parent, project):
             skipped.append(f"skipped {rel.as_posix()}: it points outside the repo")
             continue
-        before = load_json(target)  # a file that does not parse raises InvalidJSON, as before
-        old = target.read_bytes().decode("utf-8") if target.exists() else None
+        planned = w.planned(target) if w is not None and hasattr(w, "planned") else None
+        if planned is not None:  # an earlier profile in this plan already writes it: build on that
+            before, old = _json.loads(planned), planned
+        else:
+            before = load_json(target)  # a file that does not parse raises InvalidJSON, as before
+            old = target.read_bytes().decode("utf-8") if target.exists() else None
         if old is not None and not old.strip():
             old = None  # an empty file holds nothing of the user's: written like a new one
         after = deep_merge(before, overlay)

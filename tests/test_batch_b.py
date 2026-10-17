@@ -292,8 +292,8 @@ def test_repo_offer_y_means_the_detected_repos(machine, monkeypatch, capsys):
     assert asked == ["  apply to these repos? [y/N/paths]: "]
     assert [r for r, _ in applied] == [repo]
     out = capsys.readouterr().out
-    assert out.count("is not undone by loadout restore") == 1
-    assert "(applying writes the repo's committed .claude/settings.json / .mcp.json and is not undone by loadout restore)" in out
+    assert out.count("each run prints its `loadout restore` line") == 1
+    assert "not undone by loadout restore" not in out
 
 
 @pytest.mark.parametrize("answer", ["", "n", "N"])

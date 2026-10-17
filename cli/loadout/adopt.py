@@ -587,8 +587,8 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
     from . import project
 
     if new_profiles:
-        print("\n(applying writes the repo's committed .claude/settings.json / .mcp.json "
-              "and is not undone by loadout restore)")
+        print("\n(applying writes the repo's committed files, such as .claude/settings.json and .mcp.json; "
+              "each run prints its `loadout restore` line)")
     for name, items in new_profiles.items():
         found = sorted({repo for item in items for repo in own.candidate_repos(item)})
         print(f"\nprofile {name} is in your personal layer. Apply it to repos now?")

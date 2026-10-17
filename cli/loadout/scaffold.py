@@ -62,7 +62,8 @@ def ensure_gitignore(project: Path, dry_run: bool = False, w=None) -> list[str]:
     path = project / ".gitignore"
     if not paths.inside(path, project):
         return []
-    text = path.read_bytes().decode("utf-8") if path.exists() else ""
+    planned = w.planned(path) if w is not None and hasattr(w, "planned") else None
+    text = planned if planned is not None else (path.read_bytes().decode("utf-8") if path.exists() else "")
     nl = "\r\n" if "\r\n" in text else "\n"
     lines = text.splitlines(keepends=True)  # each of the user's lines keeps its own ending
     existing = {line.strip() for line in lines}

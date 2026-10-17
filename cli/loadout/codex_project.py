@@ -43,7 +43,8 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
     plugins = [p for p in plugins if p not in skip]
     if not tables and not plugins:
         return lines
-    old = path.read_bytes().decode("utf-8") if path.exists() else ""  # bytes: CRLF stays CRLF
+    planned = w.planned(path) if w is not None and hasattr(w, "planned") else None
+    old = planned if planned is not None else (path.read_bytes().decode("utf-8") if path.exists() else "")  # CRLF stays
     try:
         before = tl.loads(old)
     except Exception as exc:
