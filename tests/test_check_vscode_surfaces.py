@@ -1,6 +1,7 @@
 """loadout check: a row per agent extension and window type, the Remote-WSL PATH, a committed .mcp.json with a
 person's home path (spec Part 4). Every row is a warning; nothing is changed."""
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -89,7 +90,7 @@ def test_claude_extension_without_any_binary_warns(vs, fake_runner):
 
 def test_claude_extension_without_a_binary_but_with_a_wrapper_is_ok(vs, fake_runner):
     _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
-    user = vs / ".config" / "Code" / "User"
+    user = vscode._user_dir(vs, sys.platform)  # where this OS keeps VS Code's user settings
     user.mkdir(parents=True)
     (user / "settings.json").write_text('{"claudeCode.claudeProcessWrapper": "/opt/claude"}')
     fake_runner.missing.add("claude")
