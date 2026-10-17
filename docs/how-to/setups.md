@@ -31,6 +31,17 @@ Not supported either: one loadout that writes both Codex homes, and a WSL `CODEX
 | A repo shared with a teammate on Windows | The same as above. If the teammate's Git has no symlinks (Windows without Developer Mode), the committed skill links arrive as plain files. | Reports it once, with the fix, in `loadout check`, `init` and `profile`; never replaces the files ([Troubleshooting](troubleshooting.md#windows)). |
 | A repo on a Windows drive (`/mnt/d`), used from WSL | It works; moving it into the Linux home is faster. | Prints one note in `loadout init` and `loadout profile` ([Repos on /mnt/d](wsl.md#repos-on-mntd)). |
 
+## Codex only on Windows with VS Code
+
+This is OpenAI's recommended setup ([Codex on Windows with WSL](https://learn.chatgpt.com/docs/windows/wsl)): Codex and loadout in WSL, repos in the Linux home, VS Code opened from WSL so its Codex extension runs the Codex in WSL. For an agent, the same steps are in [Set loadout up from inside an agent](install-with-an-agent.md#codex-only-on-windows-with-vs-code).
+
+1. **WSL 2:** in PowerShell, `wsl -l -v` shows version 2 ([WSL 2](wsl.md#1-use-wsl-2-not-wsl-1)). Then open the WSL terminal and run `cd ~`.
+2. **bootstrap** inside WSL, as [Getting started](../tutorials/getting-started.md#step-1-run-bootstrap) shows it, with `--install --agents codex --codex-side wsl --vscode-wsl`. `--codex-side wsl` installs Codex in WSL even when a Windows Codex exists; `--vscode-wsl` sets the extension's `chatgpt.runCodexInWindowsSubsystemForLinux` to `true`, with a backup ([which side](wsl.md#when-your-only-codex-is-the-windows-one)). In a terminal without these flags, bootstrap asks which side when it finds only the Windows Codex and then offers the switch.
+3. **`codex login`** in the WSL terminal.
+4. **`/hooks`:** start `codex` in the WSL terminal and approve loadout's hooks once ([Use loadout with Codex](codex.md#switch-it-on)).
+5. **The first repo** in the Linux home: `loadout init --agents codex` there shows a plan and asks before it writes. Open the repo with `code .` from WSL, start `codex` there once and accept the trust question ([Project trust](codex.md#project-trust)).
+6. **`loadout check`:** each `warn` line names its fix. Its `VS Code` row warns while the extension still runs the Windows Codex.
+
 ## Afterwards
 
 Run `loadout check`. Each problem line names its fix; the rest is in [Troubleshooting](troubleshooting.md).

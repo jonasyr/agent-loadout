@@ -100,3 +100,14 @@ Without a terminal, bootstrap skips the review of what was installed before load
 - **Logins:** bootstrap's "Still to do" list names the logins that are missing.
 - Run `loadout check`. For each `warn` or `FAIL` line, give the user the fix from [Troubleshooting](troubleshooting.md), in one line each.
 - For a new repo, they can run `loadout init` there. Without a terminal that is two steps: you run `loadout init --dry-run --agents claude`, `codex` or `claude,codex` (the repo's agents; ask which) and show the plan, then run `loadout init --yes --agents …` after their yes. For later changes, they ask you, and you use the `loadout:configure` skill.
+
+## Codex only on Windows with VS Code
+
+When step 1 printed `WSL` and the user chose Codex only, take these steps in this order; they are the same as in [Find the path for your setup](setups.md#codex-only-on-windows-with-vs-code). Show each command and run it only after a yes, as above.
+
+1. **WSL 2:** if the user is not sure their distribution is WSL 2, they run `wsl -l -v` in PowerShell ([WSL 2](wsl.md#1-use-wsl-2-not-wsl-1)).
+2. **bootstrap:** the command from step 4 with `--agents codex --codex-side wsl --vscode-wsl`, for example `loadout bootstrap --install --agents codex --codex-side wsl --vscode-wsl </dev/null` when loadout is installed. Ask before adding `--vscode-wsl`: it sets one VS Code setting so the Codex extension runs the Codex in WSL, with a backup.
+3. **`codex login`:** the user types it in the WSL terminal.
+4. **`/hooks`:** the user starts `codex` in the WSL terminal and approves loadout's hooks once.
+5. **The first repo** (`loadout init --agents codex`), in a repo in the Linux home: run `loadout init --dry-run --agents codex </dev/null`, show the plan, and after a yes run `loadout init --yes --agents codex </dev/null`. The user opens the repo with `code .` from WSL, starts `codex` there once and accepts the trust question.
+6. **`loadout check`:** give the fix for each `warn` or `FAIL` line in one line.

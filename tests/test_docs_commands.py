@@ -52,3 +52,23 @@ def test_every_loadout_command_parses(page, fake_home):
 
 def test_the_pages_have_commands():
     assert all(commands_in(p) for p in PAGES)
+
+
+WALK = "## Codex only on Windows with VS Code"
+STEPS = ["WSL 2", "bootstrap", "codex login", "/hooks", "loadout init --agents codex", "loadout check"]
+
+
+def _walkthrough(path: Path) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+    assert WALK in text, path.name
+    section = text.split(WALK, 1)[1].split("\n## ", 1)[0]
+    return [line for line in section.splitlines() if re.match(r"\d+\. ", line)]
+
+
+def test_walkthrough_is_the_same_six_steps_in_both_pages():
+    pages = [ROOT / "docs/how-to/setups.md", ROOT / "docs/how-to/install-with-an-agent.md"]
+    for page in pages:
+        steps = _walkthrough(page)
+        assert len(steps) == len(STEPS), (page.name, steps)
+        for line, key in zip(steps, STEPS):
+            assert key in line, (page.name, key, line)
