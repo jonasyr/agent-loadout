@@ -172,8 +172,8 @@ def _repo(name: str, description: str, cwd: Path, bk: Backup, approve=None) -> l
     if bk.repo is None:
         bk.repo = root
     problems = w.apply(bk)
-    if any(str(skill_md.relative_to(root).as_posix()) in p for p in problems if "not linked" not in p):
-        return problems
+    if w.stale or any("not linked" not in p for p in problems):  # nothing (or not the skill) was written
+        raise Refused("; ".join(problems))
     out = [f"skill {name}: created {skill_md} (commit it to share it with this repo)"]
     if dest_root is not None:
         dest = dest_root / name

@@ -220,11 +220,14 @@ def _config_or_report(project: Path):
 
 
 def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False, drive_note: bool = True,
-                approve=None) -> int:
+                approve=None, result: dict | None = None) -> int:
     """approve(plan lines) -> bool: show the plan and ask (the CLI). None: apply at once, backed up (callers that
     already asked). dry_run: show the plan, change nothing."""
     from . import backup, repo_config
     from .repo_writes import RepoWrites
+    project = Path(project).resolve()  # backups record absolute paths, so restore works from any folder
+    result = result if result is not None else {}
+    result["applied"] = False
     cfg = _config_or_report(project)
     if cfg is None:
         return 1
@@ -232,6 +235,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     if approve is None and not dry_run and cfg.manage:
         bk = backup.Backup(description=f"loadout profile {name} in {project}", repo=project)
         rc = _profile_now(project, prof, install, drive_note, bk)
+        result["applied"] = True
         if not bk.empty:
             print(f"undo: loadout restore {bk.root}")
         return rc
@@ -259,6 +263,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
     problems = failures + w.apply(bk, hold=hold)
     if w.stale:  # .loadout.json changed after the plan: no dependent step runs either
         return _report(f"Profile {name}", bk, [], problems[-1:])
+    result["applied"] = True
     notes = [n for n in notes if not n.startswith(("Codex plugins of profile",))]
     _after_apply(prof, project, bk, install, drive_note, notes, problems, approve=approve)
     return _report(f"Profile {name}", bk, notes, problems)

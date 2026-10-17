@@ -100,8 +100,8 @@ def test_new_skill_stops_when_the_agent_choice_changed(repo):
     def approve(plan):
         (repo / ".loadout.json").write_text('{\n  "agents": [\n    "codex"\n  ]\n}\n')
         return True
-    lines = new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=approve)
-    assert any("changed since the plan" in l for l in lines)
+    with pytest.raises(new_skill.Refused, match="changed since the plan"):
+        new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=approve)
     assert not (repo / ".claude").exists() and not (repo / ".agents").exists()
 
 
@@ -201,3 +201,39 @@ def test_a_git_init_step_refuses_when_git_exists_at_run_time(repo, fake_runner, 
     (proj / ".git").mkdir()
     problems = w.apply(backup.Backup(description="t", repo=proj))
     assert ["git", "init"] not in fake_runner.calls and problems
+
+
+def test_new_skill_fails_when_its_file_appeared_after_the_plan(repo):
+    from loadout import new_skill
+    targets.set_agents({"claude": True, "codex": False})
+
+    def approve(plan):
+        (repo / ".claude" / "skills" / "notes").mkdir(parents=True)
+        (repo / ".claude" / "skills" / "notes" / "SKILL.md").write_text("mine\n")
+        return True
+    with pytest.raises(new_skill.Refused, match="changed since the plan"):
+        new_skill.create("notes", "repo", "Use when x", cwd=repo, approve=approve)
+    assert (repo / ".claude" / "skills" / "notes" / "SKILL.md").read_text() == "mine\n"
+
+
+@pytest.mark.parametrize("answer, word", [("n", "not applied"), ("y", "applied")])
+def test_adopt_reports_what_really_happened(repo, monkeypatch, capsys, answer, word):
+    from loadout import adopt, own
+    monkeypatch.setattr(profiles, "load_profile", lambda n: profiles.Profile(name="mine", description="", settings={"a": 1}))
+    monkeypatch.setattr(own, "candidate_repos", lambda item: [repo])
+    answers = iter(["y", answer])
+    adopt._offer_profiles({"mine": [object()]}, lambda q: next(answers))
+    line = [l for l in capsys.readouterr().out.splitlines() if "profile mine" in l][-1]
+    assert line.endswith(f"profile mine {word}") or (word == "applied" and line.endswith("profile mine applied"))
+
+
+def test_a_relative_repo_path_is_recorded_absolute(repo, monkeypatch):
+    from loadout.jsonio import load_json
+    monkeypatch.setattr(profiles, "load_profile", lambda n: profiles.Profile(name="mine", description="", settings={"a": 1}))
+    monkeypatch.chdir(repo.parent)
+    project.add_profile(__import__("pathlib").Path(repo.name), "mine", approve=lambda plan: True)
+    from loadout import paths
+    manifest = sorted(paths.backups_root().glob("*/manifest.json"))[-1]
+    data = load_json(manifest)
+    assert data["repo"] == str(repo.resolve())
+    assert all(__import__("os").path.isabs(v) for st in data["steps"] for v in (st["undo"].get("created"), ) if v)
