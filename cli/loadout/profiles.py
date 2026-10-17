@@ -263,7 +263,8 @@ def link_skills(project: Path, dry_run: bool, w=None) -> list[str]:
         out += _link_into(project, claude, agents, dry_run, report=True, w=w)
     if on["claude"]:  # two real folders: reported once, by the Codex direction when it ran
         out += _link_into(project, agents, claude, dry_run, report=not codex, w=w)
-    return out
+    from . import skill_links
+    return out + skill_links.report(skill_links.plain_files(project))
 
 
 def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report: bool, w=None) -> list[str]:
@@ -279,7 +280,7 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
             return [f"skills not linked: {part} is a link; make it a plain folder, then run this again"]
         if part.exists() and not part.is_dir():
             return [f"skills not linked: {part} is not a folder"]
-    out = []
+    out, broken = [], None
     for entry in sorted(src_root.iterdir()):
         if entry.name.startswith(".") or not entry.is_dir():
             continue
@@ -293,6 +294,12 @@ def _link_into(project: Path, src_rel: str, dest_rel: str, dry_run: bool, report
             reverse = not dest.is_symlink() and os.path.realpath(dest) == os.path.realpath(entry)
             if ours or reverse:
                 continue  # our link, or the entry is the other agent's link to this real folder
+            if dest.is_file() and not dest.is_symlink():
+                if broken is None:
+                    from . import skill_links
+                    broken = skill_links.plain_files(project)
+                if f"{dest_rel}/{name}" in broken:
+                    continue  # a committed link this checkout wrote as a file: link_skills reports it once
             if report:
                 out.append(f"skill {name}: {dest_rel}/{name} is not a link to {src_rel}/{name}, "
                            f"left as is ({agent} uses that one)")
