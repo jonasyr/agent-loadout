@@ -350,6 +350,18 @@ def _codex_side(cs=False) -> list[CheckResult]:
     return out
 
 
+def _vscode(cs) -> list[CheckResult]:
+    """In WSL with Codex in WSL: VS Code's Codex extension must run that Codex too (spec Part 4)."""
+    if cs is None or cs.side not in ("wsl", "both") or cs.windows_home is None:
+        return []
+    if cs.vscode_windows:
+        return [CheckResult("VS Code", False, "the Codex extension runs Codex on Windows, not the Codex in WSL",
+                            f"loadout bootstrap --codex-side wsl --vscode-wsl, or {wsl.MANUAL}", "warn")]
+    if wsl.vscode_wsl_mode(cs.windows_home) is True:
+        return [CheckResult("VS Code", True, "the Codex extension runs Codex in WSL")]
+    return []
+
+
 def _codex(cs=None) -> list[CheckResult]:
     from . import codex
     if _windows_only(cs) and codex.enabled():
@@ -386,7 +398,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     if codex_windows and cs is not None:
         from dataclasses import replace
         cs = replace(cs, side="windows", shared_home=False)
-    return [*_python(), *_wsl(cs), *_codex_side(cs), *_legacy_state(),
+    return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
             *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links()]
