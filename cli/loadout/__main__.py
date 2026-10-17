@@ -82,7 +82,7 @@ def _verbose(a) -> None:
 
 
 # commands that may run while the state move is unfinished: they read only, or (restore) map old paths themselves
-EXEMPT = {"kit-path", "check", "restore", "usage", None}
+EXEMPT = {"kit-path", "check", "restore", "usage", "explain", None}
 READ_ONLY = {"kit-path", "check", "usage"}  # promised read-only: no migration, no state folder
 
 EXTRA_COMMANDS: list = []  # later modules append register(subparsers) functions here
