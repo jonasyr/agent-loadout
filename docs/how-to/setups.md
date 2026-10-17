@@ -39,7 +39,7 @@ This is OpenAI's recommended setup ([Codex on Windows with WSL](https://learn.ch
 2. **bootstrap** inside WSL, as [Getting started](../tutorials/getting-started.md#step-1-run-bootstrap) shows it, with `--install --agents codex --codex-side wsl --vscode-wsl`. `--codex-side wsl` sets up Codex in WSL even when a Windows Codex exists, and `--vscode-wsl` switches VS Code's Codex extension to it, with a backup ([which side, the switch](wsl.md#when-your-only-codex-is-the-windows-one)). Leave out `--vscode-wsl` if you do not use VS Code.
 3. **`codex login`** in the WSL terminal.
 4. **`/hooks`:** start `codex` in the WSL terminal and approve loadout's hooks once ([Use loadout with Codex](codex.md#switch-it-on)).
-5. **The first repo** in the Linux home: `loadout init --agents codex` there shows a plan and asks before it writes. Open the repo with `code .` from WSL, start `codex` there once and accept the trust question ([Project trust](codex.md#project-trust)).
+5. **The first repo** in the Linux home: `loadout init --agents codex` there shows a plan and asks before it writes. Start `codex` once in the WSL terminal in that repo and accept the trust question ([Project trust](codex.md#project-trust)), then open the repo with `code .` from WSL.
 6. **`loadout check`:** each `warn` line names its fix. Its `VS Code` row warns while the extension still runs the Windows Codex.
 
 ## Afterwards

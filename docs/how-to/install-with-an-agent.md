@@ -80,12 +80,14 @@ A machine with loadout and a personal layer (repair):
 loadout bootstrap --install --agents <list> </dev/null
 ```
 
-Add `--codex-side wsl|windows` when step 2 asked it. In WSL with Codex only, use the steps in [Codex only on Windows with VS Code](#codex-only-on-windows-with-vs-code).
+Add `--codex-side wsl|windows` when step 2 asked it.
 
 Before the user answers, say two things:
 
 - `--install` runs the installers for missing tools without a further prompt ([What runs when you ask](../explanation/security-and-trust.md#what-runs-when-you-ask)).
 - You do not add `--yes`: it would also apply the review of their existing setup without showing it. You review it in step 5 instead.
+
+In WSL with Codex only and Codex in WSL, the order of the remaining steps is in [Codex only on Windows with VS Code](#codex-only-on-windows-with-vs-code).
 
 Run the command after the yes (with `--answers`, write the file first, as in step 3). It takes a few minutes. Show the user its summary lines.
 
@@ -103,11 +105,11 @@ Without a terminal, bootstrap skips the review of what was installed before load
 
 ## Codex only on Windows with VS Code
 
-When the commands in section 1 printed `WSL` and the user chose Codex only, take these steps in this order instead of sections 4 to 6; they are the same as in [Find the path for your setup](setups.md#codex-only-on-windows-with-vs-code). Show each command and run it only after a yes, as above.
+When the commands in section 1 printed `WSL`, the user chose Codex only, and Codex runs in WSL (question 2 answered WSL, or not asked), take sections 4 to 6 in this order; the steps are the same as in [Find the path for your setup](setups.md#codex-only-on-windows-with-vs-code). Show each command and run it only after a yes, as above. If the user answered Windows to question 2, follow section 4 with `--codex-side windows` instead: these steps do not apply.
 
 1. **WSL 2:** if the user is not sure their distribution is WSL 2, they run `wsl -l -v` in PowerShell ([WSL 2](wsl.md#1-use-wsl-2-not-wsl-1)).
-2. **bootstrap:** the command from section 4 with `--agents codex --codex-side wsl --vscode-wsl`, for example `loadout bootstrap --install --agents codex --codex-side wsl --vscode-wsl </dev/null` when loadout is installed. Ask first whether they use VS Code with the Codex extension; only then add `--vscode-wsl`, which sets one VS Code setting so the extension runs the Codex in WSL, with a backup. Without VS Code, leave it out and skip `code .` in step 5. Then review their existing setup as in section 5.
+2. **bootstrap:** the command from section 4 with `--agents codex --codex-side wsl --vscode-wsl`, with its personal-layer flags, the answers file and the two things to say first; for example `loadout bootstrap --install --agents codex --codex-side wsl --vscode-wsl </dev/null` when loadout and a personal layer are installed. Ask first whether they use VS Code with the Codex extension; only then add `--vscode-wsl`, which sets one VS Code setting so the extension runs the Codex in WSL, with a backup. Without VS Code, leave it out and skip `code .` in step 5. Then review their existing setup as in section 5.
 3. **`codex login`:** the user types it in the WSL terminal.
 4. **`/hooks`:** the user starts `codex` in the WSL terminal and approves loadout's hooks once.
-5. **The first repo** (`loadout init --agents codex`), in a repo in the Linux home: run `loadout init --dry-run --agents codex </dev/null`, show the plan, and after a yes run `loadout init --yes --agents codex </dev/null`. The user opens the repo with `code .` from WSL, starts `codex` there once and accepts the trust question.
+5. **The first repo** (`loadout init --agents codex`), in a repo in the Linux home: run `loadout init --dry-run --agents codex </dev/null`, show the plan, and after a yes run `loadout init --yes --agents codex </dev/null`. The user starts `codex` once in the WSL terminal in that repo and accepts the trust question, then opens the repo with `code .` from WSL.
 6. **`loadout check`:** give the fix for each `warn` or `FAIL` line in one line.
