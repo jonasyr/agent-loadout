@@ -38,7 +38,7 @@ The same kit and personal layer reach Codex. Where each part goes (the instructi
 
 ## Project trust
 
-When the repo is for Codex (its `.loadout.json`, or your agents without one), `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you.
+When the repo is for Codex (its `.loadout.json`, or your agents without one), `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you. Like every repo write, these show a plan and ask first, and `loadout restore` undoes them ([Repo writes](../reference/cli.md#repo-writes)).
 
 ## Where to read more
 

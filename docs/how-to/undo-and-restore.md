@@ -10,7 +10,7 @@ Before loadout removes or replaces a tool, file or link you own, it moves the ol
 Undo any time: loadout restore --list
 ```
 
-`loadout restore` in a terminal lets you pick it from a numbered list; `--list` shows the backups with their paths. With `--verbose`, bootstrap and adopt print the path directly, and `configure`, `update` and the maintenance always do:
+`loadout restore` in a terminal lets you pick it from a numbered list; `--list` shows the backups with their paths. `init`, `profile` and `configure new skill --to repo` always end with the path (`undo: loadout restore <dir>`). With `--verbose`, bootstrap and adopt print the path directly, and `configure`, `update` and the maintenance always do:
 
 ```
 backup: ~/.local/state/loadout/backups/loadout-20261010-093000  (undo: loadout restore ~/.local/state/loadout/backups/loadout-20261010-093000)
@@ -69,5 +69,6 @@ Bootstrap and adopt save the snapshot in the backup, so restoring `settings.json
 |---|---|
 | Undo the last adopt | `loadout restore` and pick the adopt backup by its command and age (a later command or restore may have made a newer one) |
 | Bring back one tool I removed | Restore replays a whole backup; it cannot pick single items. Reinstall one tool with its own command if you do not want the rest back |
+| Undo what `init`, `profile` or `configure new skill --to repo` wrote in a repo | `loadout restore --repo PATH` and pick the backup, or `loadout restore <dir>` with the `undo:` path the command printed (a profile's `commands` stay done) |
 | Undo a restore | `loadout restore <pre-restore backup path>` (it is printed), or pick it in `loadout restore` |
 | See what a backup holds | Open `~/.local/state/loadout/backups/loadout-<timestamp>/manifest.json`. Do not share it: it can contain secrets |

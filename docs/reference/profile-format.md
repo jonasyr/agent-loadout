@@ -1,6 +1,6 @@
 # Profile format
 
-A profile is a per-project preset: settings, MCP servers, plugins and commands for one kind of project. `loadout profile NAME` and `loadout init` apply it to the current repo. The code is `cli/loadout/profiles.py` and `cli/loadout/project.py`.
+A profile is a per-project preset: settings, MCP servers, plugins and commands for one kind of project. `loadout profile NAME` and `loadout init` apply it to the current repo. The code is in `cli/loadout/`: `profiles.py` and `project.py`, with `repo_merge.py` (the three-way merge), `repo_writes.py` (the plan), `repo_config.py` (`.loadout.json`) and, for Codex, `codex_project.py`.
 
 A profile is one JSON file `NAME.json`. Kit profiles live in `profiles/` in the kit: `thesis`, `web`, `db`, `sonar` and `android`. Your own live in `<personal layer>/profiles/`. See [personal-layer](personal-layer.md).
 
@@ -17,8 +17,9 @@ Every field is optional; a missing field is empty. Kit profiles must have a `des
 | `commands` | list of commands | Commands run in the repo after the plugins, each a list of arguments, for example `["playwright-cli", "install", "--skills"]`. |
 | `skills` | list of names | Skill folders copied into the repo's `.claude/skills/`. |
 | `notes` | string | Printed after the profile is applied. |
+| `why` | object | One-line reasons for the plan, keyed by a top-level entry: `settings.KEY` or `mcp.KEY`, for example `{"mcp.mcpServers": "Chrome DevTools for performance and network debugging"}`. The plan's line for that file reads `profile NAME: <reason>`; without one it names the profile. |
 
-Kit profiles use `description`, `settings`, `mcp`, `install`, `commands` and `notes`. A `skills` list is for personal profiles; the folders come from `profiles/skills/<name>/` (see below).
+Kit profiles use `description`, `settings`, `mcp`, `install`, `commands`, `notes` and `why`. A `skills` list is for personal profiles; the folders come from `profiles/skills/<name>/` (see below).
 
 Example, the kit's `web` profile:
 
@@ -40,7 +41,7 @@ Example, the kit's `web` profile:
 
 In this order:
 
-1. `settings` is merged into `<repo>/.claude/settings.json`, and `mcp` into `<repo>/.mcp.json`. The merge is three-way against the profile's record in [`.loadout.json`](cli.md#loadoutjson) ([ADR 0031](../adr/0031-repo-profile-entries-merge-three-way.md)): a missing entry is added; a profile update applies when the file still has the value loadout wrote; a value someone changed stays (loadout asks once when the profile has a new one, and `--take-profile` takes it); a list entry someone removed stays removed; an entry the profile dropped is removed when it still has loadout's value and no other profile recorded it. Without a record (a repo from before this rule), only missing entries are added, and a different existing value is named in the plan. An MCP server's definition is one entry. `loadout explain <file>` shows which entries are loadout's. A file is written only when the result differs, and only in the layout it already has (see [Repo writes](cli.md#repo-writes)). A profile with an empty `settings` or `mcp` does not touch that file. The agents come from the repo's [`.loadout.json`](cli.md#loadoutjson); these two files are written only when it names Claude Code (or, without the file, when Claude Code is on for you).
+1. `settings` is merged into `<repo>/.claude/settings.json`, and `mcp` into `<repo>/.mcp.json`. The merge is three-way against the profile's record in [`.loadout.json`](cli.md#loadoutjson) ([ADR 0031](../adr/0031-repo-profile-entries-merge-three-way.md)): a missing entry is added; a profile update applies when the file still has the value loadout wrote; a value someone changed stays (loadout asks once when the profile has a new one, and `--take-profile` takes it); a list entry someone removed stays removed; an entry the profile dropped is removed when it still has loadout's value and no other profile recorded it. Without a record (a repo from before this rule), only missing entries are added, and a different existing value is named in the plan. An MCP server's definition is one entry. `loadout explain <file>` shows which entries are loadout's. A file is written only when the result differs, and only in the layout it already has (see [Repo writes](cli.md#repo-writes)). A profile with an empty `settings` or `mcp` does not touch that file, unless its record holds entries there (then the dropped entries are removed as above). The agents come from the repo's [`.loadout.json`](cli.md#loadoutjson); these two files are written only when it names Claude Code (or, without the file, when Claude Code is on for you).
 2. `skills` are copied. See below.
 3. `install` and `commands` run, unless `--no-install` was given. A failing command prints `failed: ...` and the rest continues.
 4. With Codex on, the Codex side is set up (see [In Codex](#in-codex)).
@@ -50,7 +51,7 @@ The repo's `.claude/settings.json` and `.mcp.json` are normal project files that
 
 `--dry-run` (on `init` and on `profile`) prints the plan, including the settings and `.mcp.json` changes, and changes nothing.
 
-When a step has a problem, the rest still runs, and the command ends with `profile NAME: applied with problems` and exit code 1 (the causes are listed under [loadout init](cli.md#loadout-init)).
+When a step has a problem, the rest still runs, and the command ends with `Profile NAME: applied with problems (below)` (`Init: …` for init) and exit code 1 (the causes are listed under [loadout init](cli.md#loadout-init)).
 
 ### Skills
 

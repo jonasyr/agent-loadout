@@ -15,7 +15,7 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 - [Keep your personal layer in a private git repo](how-to/personal-repo.md). Read this when you want your preferences and own tools on more than one machine.
 - [Find the path for your setup](how-to/setups.md). Read this before installing when you use Windows, WSL, Codex, or a machine or repo that already has parts set up: it names the path for each platform, agent and starting point.
 - [Use loadout with Codex](how-to/codex.md). Read this for the Codex-only details: switching Codex on, hook approval, project trust and where it stays different.
-- [Undo what loadout changed](how-to/undo-and-restore.md). Read this when something went wrong, you want a removed tool back, or you want to undo what `loadout init` or `loadout profile` wrote in a repo.
+- [Undo what loadout changed](how-to/undo-and-restore.md). Read this when something went wrong, you want a removed tool back, or you want to undo what `loadout init`, `loadout profile` or a new repo skill wrote in a repo.
 - [Set your working preferences](how-to/set-preferences.md). Read this when you want to change answer language, commit style, effort or another preference everywhere.
 - [Write a personal profile](how-to/write-a-profile.md). Read this when you want your own preset of tools for a kind of project.
 - [Add a tool to the catalog](how-to/add-to-catalog.md). Read this when you want to propose a tool to the kit.
