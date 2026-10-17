@@ -166,7 +166,11 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
                 continue
             (failures if line.startswith("skipped") or any(b in line for b in CODEX_BAD) else notes).append(line)
         if held and any(codex_project._wanted(prof)[:2]):
-            notes.append(RECORD_LATER.format(name=prof.name))
+            try:  # the record is written later; say now if .loadout.json's layout will not take it
+                repo_config.record_text(project, repo_config.current_text(project, w), prof.name, {})
+                notes.append(RECORD_LATER.format(name=prof.name))
+            except repo_config.Invalid as exc:
+                notes.append(str(exc))
         if install and not targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: not installed for Codex, which is off for you "
                          "(a Codex user installs them with loadout profile here)")
@@ -196,7 +200,8 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
     if later.changes:
         follow = [f"The commands of profile {prof.name} added skills; link them for the repo's other agent:"]
         follow += later.render()
-        print("\n".join(follow))
+        from .out import printable
+        print("\n".join(printable(line) for line in follow))
         if approve is None or approve(follow):
             problems += later.apply(bk)
             if later.stale:  # .loadout.json changed: nothing after this may run
@@ -215,6 +220,8 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
             for line in codex_project.config(prof, project, False, skip=failed, w=RepoWrites(project, now=True, bk=bk)):
                 if line.startswith("skipped") or "left as is" in line:
                     problems.append(line)
+                elif line.startswith(repo_config.FILE + ":") and line not in notes:
+                    notes.append(line)
             for pid in sorted(failed):
                 notes.append(f"plugin {pid}: not named in .codex/config.toml, its install failed")
         tables, plugins_, _ = codex_project._wanted(prof)
@@ -310,8 +317,9 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
     calm = _calm()
     problems: list[str] = []
     steps: list[str] = []  # what the user still has to do or may want to undo: shown in calm mode too
-    info = (lambda line: None) if calm else print
-    warn = problems.append if calm else print
+    from .out import printable
+    info = (lambda line: None) if calm else (lambda line: print(printable(line)))  # lines carry repo text
+    warn = problems.append if calm else (lambda line: print(printable(line)))
     skipped: list[str] = []
     parts: list[str] = []
     merge_notes: list[str] = []

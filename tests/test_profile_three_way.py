@@ -173,10 +173,10 @@ def test_a_wrong_shaped_record_stops_before_any_change(repo, monkeypatch, capsys
 
 
 def test_a_record_it_cannot_write_leaves_loadout_json_and_writes_the_rest(repo, monkeypatch, capsys):
-    (repo / ".loadout.json").write_text('{"agents": ["claude"]}')
+    (repo / ".loadout.json").write_text('{"agents":["claude"]}')
     use(monkeypatch, {"env": {"A": "1"}})
     run(repo)
-    assert (repo / ".loadout.json").read_text() == '{"agents": ["claude"]}'
+    assert (repo / ".loadout.json").read_text() == '{"agents":["claude"]}'
     assert settings(repo)["env"]["A"] == "1" and "record of profile web is not written" in capsys.readouterr().out
 
 

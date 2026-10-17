@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=lambda a: _verbose(a) or project.add_profile(
         Path.cwd(), a.name, install=not a.no_install, dry_run=a.dry_run,
         approve=project.approver(a.yes, _ask, ui.is_interactive()),
-        decide=project.chooser(a.take_profile, _ask, ui.is_interactive(), a.dry_run)))
+        decide=project.chooser(a.take_profile, _ask, ui.is_interactive() and not a.yes, a.dry_run)))
 
     for register in EXTRA_COMMANDS:
         register(sub)

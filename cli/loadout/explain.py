@@ -96,7 +96,7 @@ def explain(target: str, cwd: Path | None = None) -> int:
     try:
         cfg = repo_config.load(root)
     except repo_config.Invalid as exc:
-        _say(exc)
+        _say(str(exc))
         return 1
     rel = path.relative_to(root).as_posix()
     from . import paths

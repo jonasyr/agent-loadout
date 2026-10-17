@@ -46,7 +46,7 @@ def test_an_unchanged_record_is_no_change(repo):
 
 def test_a_layout_loadout_cannot_keep_is_refused(repo):
     with pytest.raises(repo_config.Invalid, match="record of profile web is not written"):
-        repo_config.record_text(repo, '{"agents": ["claude"]}', "web", {".mcp.json": {"a": 1}})
+        repo_config.record_text(repo, '{"agents":["claude"]}', "web", {".mcp.json": {"a": 1}})
 
 
 def test_records_read_the_planned_text_first(repo):
@@ -58,7 +58,7 @@ def test_records_read_the_planned_text_first(repo):
 
 
 def test_plan_record_notes_a_layout_it_cannot_keep(repo):
-    (repo / ".loadout.json").write_text('{"agents": ["claude"]}')
+    (repo / ".loadout.json").write_text('{"agents":["claude"]}')
     notes = []
     w = RepoWrites(repo)
     repo_config.plan_record(repo, w, "web", {".mcp.json": {"a": 1}}, notes)

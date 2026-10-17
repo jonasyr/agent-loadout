@@ -26,7 +26,7 @@ def test_no_final_newline_is_kept():
 
 
 @pytest.mark.parametrize("text", [
-    '{"a": [1, 2]}\n',                 # compact
+    '{"a":[1,2]}\n',                   # compact without spaces (json.dumps' one-line default is kept)
     '{\n  "a": 1, "b": 2\n}\n',        # hand layout
     '{\n  // note\n  "a": 1\n}\n',     # comments (JSONC)
     '{\n  "a": 1\r\n}\n',              # mixed line endings

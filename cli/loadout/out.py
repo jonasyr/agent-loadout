@@ -89,4 +89,4 @@ def detail(line: str) -> None:
 
 def problem(line: str) -> None:
     end_progress()
-    print(f"  {line}")
+    print(f"  {printable(line)}")

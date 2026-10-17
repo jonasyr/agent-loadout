@@ -145,5 +145,5 @@ def test_git_init_is_part_of_the_plan(fake_home, fake_runner, tmp_path, capsys):
 
 def test_a_conflict_makes_the_cli_path_exit_1(repo, fake_runner, monkeypatch):
     (repo / ".claude").mkdir()
-    (repo / ".claude" / "settings.json").write_text('{"disabledMcpjsonServers": []}\n')  # a layout loadout leaves
+    (repo / ".claude" / "settings.json").write_text('{"disabledMcpjsonServers":[]}\n')  # a layout loadout leaves
     assert project.add_profile(repo, "web", install=False, approve=lambda plan: True) == 1

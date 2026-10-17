@@ -50,9 +50,9 @@ def test_a_profile_keeps_the_files_layout(repo, indent, nl):
 def test_a_hand_laid_out_file_is_left_and_its_entries_named(repo):
     targets.set_agents({"claude": True, "codex": False})
     (repo / ".claude").mkdir()
-    (repo / ".claude" / "settings.json").write_text('{"model": "x"}\n')
+    (repo / ".claude" / "settings.json").write_text('{"model":"x"}\n')
     changed, skipped = profiles.apply_profile(_web(), repo)
-    assert (repo / ".claude" / "settings.json").read_text() == '{"model": "x"}\n'
+    assert (repo / ".claude" / "settings.json").read_text() == '{"model":"x"}\n'
     assert any(".claude/settings.json" in l and "by hand" in l and "disabledMcpjsonServers" in l for l in skipped)
 
 
@@ -115,7 +115,7 @@ def test_a_hand_laid_out_file_that_already_has_the_entries_is_quiet(repo):
 def test_the_add_by_hand_line_names_keys_not_values(repo):
     targets.set_agents({"claude": True, "codex": False})
     secret = "sk-" + "Zq8xLp2Vt9" * 3
-    (repo / ".mcp.json").write_text('{"mcpServers": {}}\n')
+    (repo / ".mcp.json").write_text('{"mcpServers":{}}\n')
     prof = profiles.Profile(name="db", description="", mcp={"mcpServers": {"db": {"env": {"API_KEY": secret}}}})
     _, skipped = profiles.apply_profile(prof, repo)
     assert skipped and secret not in "\n".join(skipped) and "mcpServers.db.env.API_KEY" in skipped[0]

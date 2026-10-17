@@ -50,11 +50,13 @@ def _has(items: list, s) -> bool:
 
 
 def secretish(value, key: str = "") -> bool:
+    """The same test as the plan's diff (secrets.secret_value), at any depth, and the value after a --password flag."""
     if isinstance(value, dict):
         return any(secretish(v, str(k)) for k, v in value.items())
     if isinstance(value, list):
-        return any(secretish(v, key) for v in value)
-    return isinstance(value, str) and (secrets.redact(value) != value or secrets.looks_secret(key, value))
+        return any(secretish(v, key) or (isinstance(v, str) and i and secrets.flag_secret(value[i - 1]))
+                   for i, v in enumerate(value))
+    return secrets.secret_value(key, value)
 
 
 def stored(value, key: str = ""):

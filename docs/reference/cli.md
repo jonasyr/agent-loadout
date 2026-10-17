@@ -188,7 +188,7 @@ loadout profile [--no-install] [--dry-run] [--yes] [--take-profile] [--verbose] 
 | `--no-install` | Do not install the profile's plugins or run its commands. |
 | `--dry-run` | Print the plan and change nothing. |
 | `--yes` | Apply the plan without asking. Needed without a terminal; without it the plan is shown and nothing is written. |
-| `--take-profile` | Where someone changed an entry the profile set, use the profile's value. Without it, a terminal asks once (`Use the profile's values for these? [y/N]`); without a terminal the repo's values stay. |
+| `--take-profile` | Where someone changed an entry the profile set, use the profile's value. Without it, a terminal asks once (`Use the profile's values for these? [y/N]`); with `--yes` or without a terminal the repo's values stay. |
 | `--verbose` | Print every file, command and note instead of the one status line. |
 
 A re-run merges three-way against what the profile wrote last time ([Applying a profile](profile-format.md#what-applying-a-profile-does), [ADR 0031](../adr/0031-repo-profile-entries-merge-three-way.md)): updates apply by themselves, a teammate's changes stay unless you say yes, and a value you declined is not asked about again.
@@ -233,7 +233,7 @@ Changing the list with `init --agents`: an added agent gets its missing files an
 2. **Question.** In a terminal: `Apply these changes? [y/N]`. Without a terminal: `no terminal: nothing written (run it again with --yes to apply this plan)`. Declined: `nothing changed`. `--dry-run` stops after the plan.
 3. **Apply.** Before each change loadout saves a copy of the file it changes and records every file and folder it creates, in a backup that names the repo. The run ends with `undo: loadout restore <dir>`. A file that changed after the plan was shown (an edit, a `git pull`) is left as is: `changed since the plan, left as is`; run the command again for a new plan. If `.loadout.json` changed in that time, the plan no longer fits the repo's agents and nothing is written.
 4. **After the commands.** Skills that a profile's commands installed get a short second plan, `The commands of profile NAME added skills; link them for the repo's other agent:`, with the same question (`--yes` covers it). With Codex on for you, the repo's `.codex/config.toml` is written after the Codex plugin installs and names only the plugins that installed; a failed one gets a note.
-5. **Layout kept.** A repo JSON file is rewritten only in the layout it has (indentation, line endings, key order); new keys go at the end. A file that cannot be kept that way is left, and its entries are printed for you to add. Nothing is written through a link that leads outside the repo.
+5. **Layout kept.** A repo JSON file is rewritten only in the layout it has (indentation or one line, line endings, key order); new keys go at the end. A file that cannot be kept that way is left, and its entries are printed for you to add. Nothing is written through a link that leads outside the repo.
 
 `loadout restore` puts changed files back byte for byte and takes away the files loadout created. A folder loadout created is removed only when it is empty; otherwise it stays and restore prints a `kept` line. It cannot undo a `run` step: a profile's `commands`, and the `git init` of `init`; the plan says so.
 

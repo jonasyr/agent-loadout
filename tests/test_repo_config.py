@@ -65,7 +65,7 @@ def test_new_text_creates_and_keeps_other_keys(repo):
 
 
 def test_new_text_refuses_a_hand_laid_out_file(repo):
-    (repo / ".loadout.json").write_text('{"agents": ["codex"], "team": "x"}\n')
+    (repo / ".loadout.json").write_text('{"agents":["codex"],"team":"x"}\n')
     with pytest.raises(repo_config.Invalid, match="by hand"):
         repo_config.new_text(repo, frozenset({"claude", "codex"}))
 

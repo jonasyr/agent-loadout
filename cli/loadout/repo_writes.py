@@ -54,15 +54,7 @@ def _json_diff(old: str, new: str) -> list[str] | None:
         a, b = _flat(json.loads(old or "{}")), _flat(json.loads(new))
     except ValueError:
         return None
-    def secret(key, value) -> bool:
-        if not isinstance(value, str):
-            return False
-        if "=" in value:  # --token=VALUE
-            k, _, v = value.partition("=")
-            if secrets.looks_secret(k.lstrip("-"), v, keyed_arg=True):
-                return True
-        return (secrets.looks_secret(key, value) or secrets._pair_secret(key, value) or redact(value) != value
-                or secrets.high_entropy(value))
+    secret = secrets.secret_value
 
     def masked(key, value):
         if isinstance(value, dict):  # nested objects: each value under its own key
