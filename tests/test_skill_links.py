@@ -1,5 +1,12 @@
 """Committed skill links a checkout turned into plain files (spec Part 3)."""
+import hashlib
+
 from loadout import runner, skill_links
+
+
+def blob(text: str) -> str:
+    data = text.encode()
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
 def _repo(tmp_path):
@@ -21,7 +28,7 @@ def test_a_plain_file_git_records_as_a_link_is_found(tmp_path, fake_runner):
     (p / ".agents" / "skills" / "demo").write_text("../../.claude/skills/demo")
     (p / ".agents" / "skills" / "mine").write_text("my notes")
     fake_runner.responses[("git",)] = runner.Result(
-        0, "120000 abc 0\t.agents/skills/demo\0" "100644 def 0\t.agents/skills/mine\0", "")
+        0, f"120000 {blob('../../.claude/skills/demo')} 0\t.agents/skills/demo\0" "100644 def 0\t.agents/skills/mine\0", "")
     assert skill_links.plain_files(p) == {".agents/skills/demo"}
     assert fake_runner.calls[0][:3] == ["git", "-C", str(p)] and "-z" in fake_runner.calls[0]
 
@@ -42,10 +49,18 @@ def test_the_report_counts_per_folder_and_names_the_fix():
     assert lines[1] == ("skill links: 2 skill links in .agents/skills are plain files in this checkout (Git without "
                         "symlinks), so Codex does not see these skills")
     assert "git config core.symlinks true" in lines[2]
-    assert "git checkout -- .claude/skills .agents/skills" in lines[2] and "Developer Mode" in lines[2]
+    assert 'git checkout -- ".claude/skills/c" ".agents/skills/a" ".agents/skills/b"' in lines[2]
+    assert "Developer Mode" in lines[2] and "git checkout -- .claude/skills" not in lines[2]
     assert all(l.startswith(skill_links.PREFIX) for l in lines)
 
 
 def test_the_fix_names_only_the_folders_with_plain_files():
-    assert "git checkout -- .agents/skills`" in skill_links.report({".agents/skills/a"})[-1]
+    assert 'git checkout -- ".agents/skills/a"`' in skill_links.report({".agents/skills/a"})[-1]
     assert skill_links.report(set()) == []
+
+
+def test_a_file_whose_bytes_are_not_the_link_target_is_not_a_broken_link(tmp_path, fake_runner):
+    p = _repo(tmp_path)
+    (p / ".agents" / "skills" / "demo").write_text("my own notes, not a link target")
+    fake_runner.responses[("git",)] = runner.Result(0, f"120000 {blob('../../.claude/skills/demo')} 0\t.agents/skills/demo\0", "")
+    assert skill_links.plain_files(p) == set()

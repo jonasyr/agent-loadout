@@ -18,6 +18,19 @@ def git(cwd, *args):
     return subprocess.run(["git", *args], cwd=cwd, env=env, check=True, capture_output=True, text=True).stdout
 
 
+@pytest.fixture(autouse=True)
+def only_git_runs(monkeypatch):
+    """The real runner, for git only: any other command (claude, codex, an installer) fails the test."""
+    from loadout import runner
+    real = runner.run
+
+    def run(cmd, *a, **k):
+        if cmd[0] != "git":
+            raise AssertionError(f"a test may not run {cmd[0]}")
+        return real(cmd, *a, **k)
+    monkeypatch.setattr(runner, "run", run)
+
+
 @pytest.fixture
 def clone(fake_home, tmp_path, monkeypatch):
     """A both-agents repo with a committed .agents/skills/demo link, cloned with core.symlinks=false."""
@@ -71,3 +84,26 @@ def test_a_plain_file_git_does_not_record_as_a_link_still_fails(clone, capsys):
     mine.write_text("my own file")
     assert project.add_profile(clone, "web", install=False, approve=lambda plan: True) == 1
     assert "left as is" in capsys.readouterr().out and mine.read_text() == "my own file"
+
+
+def test_a_file_put_at_a_committed_links_place_is_not_a_broken_checkout(fake_home, tmp_path, monkeypatch, capsys):
+    origin = tmp_path / "origin"
+    (origin / ".claude" / "skills" / "demo").mkdir(parents=True)
+    (origin / ".agents" / "skills").mkdir(parents=True)
+    link = origin / ".agents" / "skills" / "demo"
+    try:
+        os.symlink(os.path.join("..", "..", ".claude", "skills", "demo"), link, target_is_directory=True)
+    except OSError:
+        pytest.skip("no symlink rights here")
+    (origin / ".claude" / "skills" / "demo" / "SKILL.md").write_text("x")
+    (origin / ".loadout.json").write_text('{\n  "agents": [\n    "claude",\n    "codex"\n  ]\n}\n')
+    git(origin, "init", "-q")
+    git(origin, "-c", "core.symlinks=true", "add", "-A")
+    git(origin, "commit", "-qm", "init")
+    link.unlink()
+    link.write_text("my own file")  # a person's choice, not Git without symlinks
+    targets.set_agents({"claude": True, "codex": True})
+    monkeypatch.setattr(profiles, "load_profile", lambda n: profiles.Profile(name=n, description="d", settings={"x": 1}))
+    assert project.add_profile(origin, "web", install=False, approve=lambda plan: True) == 1
+    printed = capsys.readouterr().out
+    assert "left as is" in printed and "plain file in this checkout" not in printed and link.read_text() == "my own file"
