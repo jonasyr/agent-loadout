@@ -197,3 +197,21 @@ def test_run_checks_includes_the_rows_and_never_exits_1_for_them(vs, fake_runner
     results = check.run_checks()
     rows = _rows(results)
     assert rows and all(r.severity == "warn" for r in rows if not r.ok)
+
+
+def test_repo_text_with_control_characters_is_shown_escaped(vs, fake_runner, monkeypatch, tmp_path):
+    _repo(tmp_path, monkeypatch, fake_runner, json.dumps({"mcpServers": {"evil\x1b]0;pwned\x07": {
+        "command": "/home/niko\x1b[2J/bin/serena"}}}))
+    (row,) = check._repo_mcp_paths()
+    assert "\x1b" not in row.detail and "\x07" not in row.detail
+
+
+def test_mcp_server_names_from_config_are_shown_escaped(vs, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda: None)
+    _codex_ext(vs, fake_runner, root=vs / ".vscode-server" / "extensions")
+    fake_runner.paths["codex"] = "/usr/bin/codex"
+    (vs / ".codex").mkdir()
+    (vs / ".codex" / "config.toml").write_text('[mcp_servers."x\\u001b[31m"]\ncommand = "serena"\n')
+    (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"]
+    assert "\x1b" not in row.detail

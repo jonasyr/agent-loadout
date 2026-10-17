@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import catalog, link, paths, runner, settings_merge, wsl
 from .jsonio import InvalidJSON, get_dict, load_json
+from .out import printable
 
 
 @dataclass
@@ -410,8 +411,8 @@ def _vscode_path(found) -> list[CheckResult]:
     if not missing:
         return []
     return [CheckResult("VS Code PATH", False,
-                        f"in a Remote-WSL window the Codex extension may not find the command of the MCP servers "
-                        f"{', '.join(missing)}: no shell startup files run there",
+                        printable(f"in a Remote-WSL window the Codex extension may not find the command of the "
+                                  f"MCP servers {', '.join(missing)}: no shell startup files run there"),
                         "use an absolute command in the server entry, or put its folder on PATH in "
                         f"~/{vscode.SERVER_ENV} (export PATH=\"$HOME/.local/bin:$PATH\"), then run WSL: Restart",
                         "warn")]
@@ -460,9 +461,9 @@ def _repo_mcp_paths() -> list[CheckResult]:
         return []  # not committed: the person's own file
     names = ", ".join(sorted(hits))
     prefix = sorted(set(hits.values()))[0]
-    return [CheckResult("repo .mcp.json", False,
-                        f"{root}: the committed .mcp.json starts {names} from a path in one person's home ({prefix}…), "
-                        "so teammates' agents cannot start it",
+    return [CheckResult("repo .mcp.json", False,  # names and paths come from the repo: printed escaped
+                        printable(f"{root}: the committed .mcp.json starts {names} from a path in one person's "
+                                  f"home ({prefix}…), so teammates' agents cannot start it"),
                         "move it to local scope (claude mcp add --scope local …) or a user-level server; "
                         "loadout does not change the file", "warn")]
 
