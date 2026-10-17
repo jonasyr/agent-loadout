@@ -6,26 +6,17 @@ from . import backup
 
 
 def _register_restore(sub):
-    p = sub.add_parser("restore", help="undo a loadout backup (--list shows them)")
+    p = sub.add_parser("restore", help="undo a loadout backup (without a path: pick one of the recent backups)")
     p.add_argument("backup_dir", nargs="?", help="backup directory printed by bootstrap/adopt, e.g. ~/.local/state/loadout/backups/loadout-<timestamp>")
     p.add_argument("--list", action="store_true", help="list backups, newest first")
+    p.add_argument("--last", action="store_true", help="restore the newest backup (with --repo: the repo's newest)")
+    p.add_argument("--repo", metavar="PATH", help="only the backups made for this repo")
     p.add_argument("--force", action="store_true", help="replay a backup that was already restored")
 
     def run(args):
-        if args.list or not args.backup_dir:
-            rows = backup.list_backups()
-            print("\n".join(rows) if rows else "no backups yet")
-            if rows:
-                print("\nundo one: loadout restore <path from the first column>")
-            if not args.list:
-                print("usage: loadout restore DIR")
-            return 0
-        lines, ok, pre = backup.restore(Path(args.backup_dir).expanduser(), force=args.force)
-        for line in lines:
-            print(line)
-        if pre is not None:
-            print(f"\nthe state this restore replaced is in {pre}  (undo this restore: loadout restore {pre})")
-        return 0 if ok else 1
+        from . import restore_cmd, ui
+        from .__main__ import _ask
+        return restore_cmd.run(args.backup_dir, args.list, args.last, args.repo, args.force, _ask, ui.is_interactive())
 
     p.set_defaults(func=run)
 
