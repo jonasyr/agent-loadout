@@ -79,6 +79,26 @@ def approver(yes: bool, ask: Ask, interactive: bool):
     return approve
 
 
+TAKE_QUESTION = "Use the profile's values for these? [y/N] "
+KEPT_NO_TERMINAL = "  kept the repo's values (run it again with --take-profile to use the profile's)"
+
+
+def chooser(take: bool, ask: Ask, interactive: bool, dry_run: bool = False):
+    """Whether to use the profile's values where a person changed an entry: --take-profile, else the question in a
+    terminal; without one (and in a dry run) the repo's values stay. The entries are printed in every case."""
+    def decide(lines: list[str]) -> bool:
+        print("\n".join(lines))
+        if take:
+            return True
+        if dry_run:
+            return False
+        if not interactive:
+            print(KEPT_NO_TERMINAL)
+            return False
+        return ui.confirm(ask, TAKE_QUESTION)
+    return decide
+
+
 def _agent_names(on: dict) -> str:
     return " and ".join(n for n, k in (("Claude Code", "claude"), ("Codex", "codex")) if on[k]) or "none"
 
@@ -416,7 +436,8 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     with repo_config.pending(project, agents):
         hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
         for prof in profs:
-            planned_notes, planned_failures = _plan_profile(prof, project, w, install)
+            planned_notes, planned_failures = _plan_profile(prof, project, w, install,
+                                                            chooser(False, ask, interactive and not yes, dry_run))
             notes += planned_notes
             failures += planned_failures
         _, scaffold_notes = scaffold.scaffold(project, w=w)

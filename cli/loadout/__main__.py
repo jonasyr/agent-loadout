@@ -62,10 +62,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-install", action="store_true", help="do not install the profile's plugins or run its commands")
     p.add_argument("--dry-run", action="store_true", help="show the plan, change nothing")
     p.add_argument("--yes", action="store_true", help="apply the plan without asking (needed without a terminal)")
+    p.add_argument("--take-profile", action="store_true",
+                   help="where someone changed an entry the profile set, use the profile's value")
     p.add_argument("--verbose", action="store_true", help="every file, command and note, not only the summary")
     p.set_defaults(func=lambda a: _verbose(a) or project.add_profile(
         Path.cwd(), a.name, install=not a.no_install, dry_run=a.dry_run,
-        approve=project.approver(a.yes, _ask, ui.is_interactive())))
+        approve=project.approver(a.yes, _ask, ui.is_interactive()),
+        decide=project.chooser(a.take_profile, _ask, ui.is_interactive(), a.dry_run)))
 
     for register in EXTRA_COMMANDS:
         register(sub)
