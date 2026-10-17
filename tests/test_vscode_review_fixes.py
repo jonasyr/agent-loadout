@@ -187,3 +187,9 @@ def test_a_wrapper_in_a_vscode_profile_counts(vs, fake_runner, tmp_path):
     fake_runner.missing.add("claude")
     (row,) = check._vscode_surfaces()
     assert row.ok
+
+
+def test_a_windows_home_mounted_in_wsl_counts_as_one_persons_home(vs, fake_runner, monkeypatch, tmp_path):
+    _repo(tmp_path, monkeypatch, fake_runner, {"mcpServers": {"s": {"command": "/mnt/c/Users/Ana/bin/serena"}}})
+    (row,) = check._repo_mcp_paths()
+    assert not row.ok and "/mnt/c/Users/Ana/" in row.detail
