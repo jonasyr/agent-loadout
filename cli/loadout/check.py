@@ -274,7 +274,10 @@ def _repo_skill_links() -> list[CheckResult]:
     """The repo of the current folder: committed skill links this checkout wrote as plain files (spec Part 3)."""
     from . import skill_links
     from .new_skill import repo_root
-    root = repo_root(Path(os.path.abspath(Path.cwd())))
+    try:
+        root = repo_root(Path(os.path.abspath(Path.cwd())))
+    except OSError:  # the current folder was deleted: no repo to check
+        return []
     if root is None or Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
         return []  # outside a repo, or a dotfiles repo in the home folder (.claude/skills there is Claude Code's own)
     lines = skill_links.report(skill_links.plain_files(root))
