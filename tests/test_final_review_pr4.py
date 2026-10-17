@@ -99,3 +99,16 @@ def test_previews_and_rows_mask_a_token_in_a_path(fake_home, fake_runner, tmp_pa
     restore_cmd.run(str(bk.root), False, False, None, False, lambda q: "", True, now=NOW, show=True)
     restore_cmd.run(None, True, False, None, False, lambda q: "", False, now=NOW)
     assert token not in capsys.readouterr().out
+
+
+def test_a_repo_restore_keeps_its_own_backup_findable_by_repo(fake_home, fake_runner, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    f = repo / "x.json"
+    f.write_text("before")
+    bk = backup.Backup(description="profile web", repo=repo)
+    bk.save_copy(f, "x.json before")
+    f.write_text("after")
+    _, ok, pre = backup.restore(bk.root)
+    assert ok and pre is not None
+    assert pre in [b.path for b in backup.backups(repo)]

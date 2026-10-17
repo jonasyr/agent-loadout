@@ -310,7 +310,8 @@ def restore(root: Path, force: bool = False) -> tuple[list[str], bool, Path | No
     if manifest.get("restored_at") and not force:
         when = _stamp(manifest["restored_at"])
         return [f"{root} was already restored at {when}; re-run with --force to replay it again"], False, None
-    pre = Backup(description=f"pre-restore of {root}")
+    repo = manifest.get("repo") if isinstance(manifest.get("repo"), str) else None
+    pre = Backup(description=f"pre-restore of {root}", repo=repo)  # findable with --repo, to undo this restore
     lines, ok = [], True
     failed = []
     ordered = [s for s in reversed(manifest.get("steps", [])) if isinstance(s, dict)]  # a damaged entry is skipped
