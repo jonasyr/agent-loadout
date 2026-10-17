@@ -35,7 +35,7 @@ def test_a_teammate_change_is_kept_and_offered_once():
     assert m.after == {"a": 5} and [d.pointer for d in m.differs] == ["a"]
     assert m.record == {"a": 2}
     again = rm.merge({"a": 5}, {"a": 2}, m.record)
-    assert again.after == {"a": 5} and again.differs == [] and again.kept
+    assert again.after == {"a": 5} and again.differs == [] and again.offered
 
 
 def test_take_uses_the_profile_value():
@@ -50,7 +50,7 @@ def test_a_value_a_person_removed_is_offered_not_added_back():
 
 def test_an_unchanged_profile_keeps_a_changed_file_silently():
     m = rm.merge({"a": 5}, {"a": 1}, {"a": 1})
-    assert m.after == {"a": 5} and m.differs == [] and m.kept and m.record == {"a": 1}
+    assert m.after == {"a": 5} and m.differs == [] and m.offered and m.record == {"a": 1}
 
 
 def test_without_a_record_another_value_stays_and_is_not_recorded():

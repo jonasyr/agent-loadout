@@ -96,6 +96,7 @@ def chooser(take: bool, ask: Ask, interactive: bool, dry_run: bool = False):
             print(KEPT_NO_TERMINAL)
             return False
         return ui.confirm(ask, TAKE_QUESTION)
+    decide.take = take  # apply_profile then also lists what was offered before and declined
     return decide
 
 

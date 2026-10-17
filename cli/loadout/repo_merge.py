@@ -40,6 +40,11 @@ def _canon(value) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)  # default: TOML dates
 
 
+def same(a, b) -> bool:
+    """Equal as JSON: true is not 1, 1 is not 1.0 (Python's == says they are)."""
+    return _canon(a) == _canon(b)
+
+
 def _has(items: list, s) -> bool:
     return any(_canon(s) == _canon(x) for x in items)
 
@@ -125,15 +130,18 @@ class Merge:
     removed: list = field(default_factory=list)
     differs: list = field(default_factory=list)
     kept: list = field(default_factory=list)
+    offered: list = field(default_factory=list)  # Differs a person changed, the profile's value offered before
     kept_removed: list = field(default_factory=list)
     left: list = field(default_factory=list)
     blocked: list = field(default_factory=list)
 
 
-def merge(current: dict, overlay: dict, base: dict, take: bool = False, others: tuple = ()) -> Merge:
+def merge(current: dict, overlay: dict, base: dict, take: bool = False, others: tuple = (),
+          take_offered: bool = False) -> Merge:
     """current: the file now (not changed); overlay: the profile's fragment; base: this profile's record for the file
     ({} without one); take: use the profile's value where a person changed an entry; others: the other profiles'
-    records for the file."""
+    records for the file; take_offered: also where the profile's value was offered before and declined (an explicit
+    --take-profile)."""
     m = Merge(copy.deepcopy(current))
     seen = set()
     for path, new in leaves(overlay):
@@ -148,14 +156,14 @@ def merge(current: dict, overlay: dict, base: dict, take: bool = False, others: 
         if isinstance(new, list):
             _list(m, path, ptr, new, theirs, base.get(ptr, MISSING), others)
         else:
-            _value(m, path, ptr, new, theirs, base.get(ptr, MISSING), take, others)
+            _value(m, path, ptr, new, theirs, base.get(ptr, MISSING), take, others, take_offered)
     for ptr, old in base.items():
         if ptr not in seen:
             _drop(m, unpointer(ptr), ptr, old, others)
     return m
 
 
-def _value(m: Merge, path, ptr, new, theirs, old, take, others) -> None:
+def _value(m: Merge, path, ptr, new, theirs, old, take, others, take_offered=False) -> None:
     key = str(path[-1])
     if theirs is not MISSING and _canon(theirs) == _canon(new):
         if old is not MISSING or held(others, ptr, stored(new, key)):
@@ -173,8 +181,11 @@ def _value(m: Merge, path, ptr, new, theirs, old, take, others) -> None:
         _set(m.after, path, new)
         m.updated.append(ptr)
         m.record[ptr] = stored(new, key)
-    elif matches(old, new, key):
-        m.kept.append(f"{ptr}: the repo's {show(theirs, key)} stays (changed in this repo)")
+    elif matches(old, new, key):  # offered before: not asked again, only an explicit take uses it
+        m.offered.append(Differs(ptr, theirs, new))
+        if take_offered:
+            _set(m.after, path, new)
+            m.updated.append(ptr)
         m.record[ptr] = old
     else:
         m.differs.append(Differs(ptr, theirs, new))

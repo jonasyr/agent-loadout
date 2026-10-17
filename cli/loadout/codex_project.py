@@ -71,6 +71,9 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
             if have == want:
                 if ptr in mine or repo_merge.held(others, ptr, repo_merge.stored(want, name)):
                     rec[ptr] = repo_merge.stored(want, name)
+            elif ptr in mine and repo_merge.matches(mine[ptr], want, name):  # a person changed loadout's table
+                lines.append(f"mcp {name}: the table in {path} stays (changed in this repo)")
+                rec[ptr] = mine[ptr]
             elif ptr in mine and repo_merge.matches(mine[ptr], have, name):
                 lines.append(f"mcp {name}: profile {prof.name} has a new definition; the table in {path} stays "
                              "(loadout only adds tables there; change it by hand)")
@@ -108,7 +111,7 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
         lines.append(("would enable" if dry_run else "enabled") + f" plugin {pid} in {path}")
     for pid in skip:  # did not install: recorded only if it is in the file already
         ptr = repo_merge.pointer(("plugins", pid, "enabled"))
-        if ptr in mine and pid in before.get("plugins", {}):
+        if ptr in mine:  # kept, also when a person removed it: a failed install must not forget that
             rec[ptr] = mine[ptr]
     for ptr in mine:
         if ptr not in rec and repo_merge.get(before, repo_merge.unpointer(ptr)) is not repo_merge.MISSING \

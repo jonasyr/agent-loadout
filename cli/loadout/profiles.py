@@ -136,7 +136,8 @@ def apply_profile(profile: Profile, project: Path, w=None, decide=None, notes: l
         others = tuple(r.get(key, {}) for n, r in every.items() if n != profile.name)
         files.append([attr, rel, target, before, old, overlay, others,
                       repo_merge.merge(before, overlay, mine.get(key, {}), others=others)])
-    differs = [(f[1].as_posix(), d) for f in files for d in f[7].differs]
+    force = bool(getattr(decide, "take", False))  # --take-profile: also what was offered before and declined
+    differs = [(f[1].as_posix(), d) for f in files for d in f[7].differs + (f[7].offered if force else [])]
     if differs and decide is not None:
         lines = [f"This repo differs from profile {profile.name} in {len(differs)} "
                  f"entr{'y' if len(differs) == 1 else 'ies'}:"]
@@ -146,12 +147,13 @@ def apply_profile(profile: Profile, project: Path, w=None, decide=None, notes: l
                                 f"the profile has {repo_merge.show(d.new, k)}"))
         if decide(lines):
             for f in files:
-                f[7] = repo_merge.merge(f[3], f[5], mine.get(f[1].as_posix(), {}), take=True, others=f[6])
+                f[7] = repo_merge.merge(f[3], f[5], mine.get(f[1].as_posix(), {}), take=True, others=f[6],
+                                        take_offered=force)
     record = {}
     for attr, rel, target, before, old, overlay, others, m in files:
         key = rel.as_posix()
         skipped += [redact(f"{key}: {line}") for line in m.blocked]
-        if m.after != before or old is None:
+        if not repo_merge.same(m.after, before) or old is None:
             style = json_style(old) if old is not None else None
             if old is not None and style is None:
                 keys = ", ".join(_flat(overlay))  # key paths only: values can hold secrets
@@ -167,7 +169,7 @@ def apply_profile(profile: Profile, project: Path, w=None, decide=None, notes: l
                 changed.append(target)
         notes += _merge_notes(profile, key, m)
         record[key] = m.record
-    if record and any(record[k] != mine.get(k, {}) for k in record):
+    if record and any(not repo_merge.same(record[k], mine.get(k, {})) for k in record):
         repo_config.plan_record(project, writes, profile.name, record, notes)
     return changed, skipped
 
@@ -183,6 +185,11 @@ def _merge_notes(profile: Profile, rel: str, m) -> list[str]:
             k = repo_merge.unpointer(d.pointer)[-1]
             out.append(f"{rel}: {d.pointer}: kept the repo's {repo_merge.show(d.theirs, k)} (profile {profile.name} "
                        f"has {repo_merge.show(d.new, k)}; loadout profile {profile.name} --take-profile uses it)")
+    for d in m.offered:
+        if d.pointer not in m.updated:
+            k = repo_merge.unpointer(d.pointer)[-1]
+            out.append(f"{rel}: {d.pointer}: the repo's {repo_merge.show(d.theirs, k)} stays (changed in this repo; "
+                       f"loadout profile {profile.name} --take-profile uses the profile's {repo_merge.show(d.new, k)})")
     return [redact(line) for line in out]
 
 

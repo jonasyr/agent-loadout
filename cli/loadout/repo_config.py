@@ -175,7 +175,8 @@ def record_text(project: Path, text: str | None, profile: str, files: dict) -> s
     else:
         rec.pop(profile, None)
     new = {**data, "profiles": rec} if rec else {k: v for k, v in data.items() if k != "profiles"}
-    if (text is None and not rec) or (text is not None and new == data):
+    from .repo_merge import same
+    if (text is None and not rec) or (text is not None and same(new, data)):
         return None
     return dumps_like(style, new)
 
