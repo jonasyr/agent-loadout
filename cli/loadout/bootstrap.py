@@ -785,6 +785,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []
+    prepend_tool_dirs()  # a CLI installed by an earlier run, not yet on this shell's PATH, counts as installed
     cli_line, cli_skip = (codex_cli_choice(install, ask, interactive and not yes, codex_cli)
                           if chosen["codex"] and not gate else (None, False))
     recommended = codex_recommended(chosen, gate)
@@ -890,8 +891,9 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
-    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if here[a] and (a == "claude" or runner.have("codex")))
-    if here["codex"] and not runner.have("codex") and not run:  # extension mode: the extension is where Codex runs
+    extension = here["codex"] and not runner.have("codex") and codex.extension_state()[0] is not None
+    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if here[a] and (a == "claude" or not extension))
+    if extension and not run:  # extension mode: the extension is where Codex runs
         print("\nNext: open VS Code's Codex extension (reload the window if it is open). The kit loads automatically.")
         if not personal_ok:
             print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")

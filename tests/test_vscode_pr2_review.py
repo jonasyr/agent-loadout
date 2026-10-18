@@ -86,3 +86,23 @@ def test_without_codex_cli_says_when_it_was_not_used(fake_home, fake_runner, cap
     bootstrap.bootstrap(install=False, yes=True, plugins=False, adopt_step=False, ask=lambda q: "", interactive=False,
                         agents="claude", codex_cli=False)
     assert "--without-codex-cli: not used" in capsys.readouterr().out
+
+
+def test_no_extension_next_line_when_no_extension_was_usable(fake_home, fake_runner, capsys, monkeypatch):
+    (fake_home / ".config/loadout/personal").mkdir(parents=True)
+    fake_runner.missing.add("codex")
+    monkeypatch.setattr(out, "VERBOSE", False)
+    bootstrap.bootstrap(install=False, yes=True, plugins=False, adopt_step=False, ask=lambda q: "", interactive=False,
+                        agents="codex")
+    assert "open VS Code's Codex extension" not in capsys.readouterr().out
+
+
+def test_tool_folders_are_on_path_before_the_cli_offer(fake_home, fake_runner, monkeypatch):
+    (fake_home / ".config/loadout/personal").mkdir(parents=True)
+    order = []
+    real = bootstrap.prepend_tool_dirs
+    monkeypatch.setattr(bootstrap, "prepend_tool_dirs", lambda extra=None: order.append("path") or real(extra))
+    monkeypatch.setattr(bootstrap, "codex_cli_choice", lambda *a: order.append("offer") or (None, False))
+    bootstrap.bootstrap(install=False, yes=True, plugins=False, adopt_step=False, ask=lambda q: "", interactive=False,
+                        agents="codex")
+    assert "offer" in order and order.index("path") < order.index("offer")
