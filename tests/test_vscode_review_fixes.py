@@ -238,6 +238,8 @@ def test_project_codex_servers_count_in_the_remote_wsl_path_check(vs, fake_runne
     (repo / ".git").mkdir(parents=True)
     (repo / ".codex").mkdir()
     (repo / ".codex" / "config.toml").write_text('[mcp_servers.proj]\ncommand = "projtool"\n')
+    (vs / ".codex").mkdir(exist_ok=True)
+    (vs / ".codex" / "config.toml").write_text(f'[projects.{json.dumps(str(repo.resolve()))}]\ntrust_level = "trusted"\n')
     monkeypatch.chdir(repo)
     (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"]
     assert "proj" in row.detail
@@ -295,9 +297,10 @@ def test_a_windows_wrapper_path_is_checked_through_its_wsl_mount(vs, fake_runner
 
 def test_a_project_can_switch_off_an_inherited_codex_server(vs, tmp_path):
     paths.codex_home().mkdir()
-    (paths.codex_home() / "config.toml").write_text('[mcp_servers.s]\ncommand = "tool"\n')
     project = tmp_path / "repo"
     (project / ".codex").mkdir(parents=True)
+    (paths.codex_home() / "config.toml").write_text(
+        f'[mcp_servers.s]\ncommand = "tool"\n[projects.{json.dumps(str(project.resolve()))}]\ntrust_level = "trusted"\n')
     (project / ".codex" / "config.toml").write_text('[mcp_servers.s]\nenabled = false\n')
     assert vscode.mcp_commands("codex", project) == {}
 
@@ -387,6 +390,7 @@ def test_usable_terminal_mode_is_a_way_to_start_claude(vs, fake_runner, monkeypa
     assert row.ok
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="a /mnt/<drive> path is a WSL path")
 def test_a_windows_codex_shim_in_wsl_is_not_the_wsl_codex_cli(vs, fake_runner, monkeypatch, tmp_path):
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
     monkeypatch.setattr(wsl, "windows_home", lambda: None)
@@ -394,3 +398,13 @@ def test_a_windows_codex_shim_in_wsl_is_not_the_wsl_codex_cli(vs, fake_runner, m
     fake_runner.paths["codex"] = "/mnt/c/Users/a/AppData/Roaming/npm/codex"
     rows = check._vscode_surfaces(_cs(None))
     assert any("plugins do not load" in r.detail for r in rows)
+
+
+
+def test_an_untrusted_projects_codex_servers_do_not_count(vs, tmp_path):
+    paths.codex_home().mkdir()
+    (paths.codex_home() / "config.toml").write_text('[mcp_servers.s]\ncommand = "tool"\n')
+    project = tmp_path / "repo"
+    (project / ".codex").mkdir(parents=True)
+    (project / ".codex" / "config.toml").write_text('[mcp_servers.p]\ncommand = "projtool"\n[mcp_servers.s]\nenabled = false\n')
+    assert vscode.mcp_commands("codex", project) == {"s": "tool"}  # Codex ignores an untrusted project's layer

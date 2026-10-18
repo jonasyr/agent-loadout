@@ -346,7 +346,9 @@ def mcp_commands(agent: str, project: Path | None = None) -> dict[str, str]:
     user servers in ~/.claude.json plus the loadout plugin's."""
     if agent == "codex":
         tables = _toml_tables(paths.codex_home() / "config.toml")
-        if project is not None:  # the project's layer wins key by key, `enabled = false` included
+        from .codex_project import _trusted
+        if project is not None and _trusted(project):  # Codex reads a project's layer only once it is trusted;
+            # that layer wins key by key, `enabled = false` included
             for name, table in _toml_tables(project / ".codex" / "config.toml").items():
                 tables[name] = {**tables.get(name, {}), **table}
         return _commands(tables)
