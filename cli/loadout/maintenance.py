@@ -351,6 +351,9 @@ def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[s
     if codex_on and (reason := codex.unavailable()) is not None:
         print(f"Codex: {reason}; its plugins are left as they are")
         codex_on = False
+    elif codex_on and not runner.have("codex"):  # extension mode: no plugins to refresh
+        print(codex.PLUGINS_EXTENSION)
+        codex_on = False
     if not todo and not codex_on:
         return
     where = " and ".join(([f"{len(todo)} in Claude Code"] if todo else []) + (["the Codex plugins"] if codex_on else []))

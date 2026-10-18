@@ -33,13 +33,16 @@ def set_enabled(on: bool) -> str:
 
 
 def unavailable(allow_shared_home: bool = False) -> str | None:
-    """None when a usable codex is on PATH, else the reason in one line. In WSL, a Windows codex and a
-    CODEX_HOME that points into Windows are reasons too (ADR 0029); only bootstrap --codex-side wsl allows the latter."""
-    if not runner.have("codex"):
-        ext, why = extension_state()  # VS Code's Codex extension alone: loadout sets Codex up for it
-        return None if ext is not None else why or "codex not found on PATH"
+    """None when a usable codex is on PATH, or, without one, when VS Code's Codex extension on this side runs a usable
+    codex (extension mode); else the reason in one line. In WSL, a Windows codex and a CODEX_HOME that points into
+    Windows are reasons too (ADR 0029); only bootstrap --codex-side wsl allows the latter."""
     from . import wsl
-    found = runner.which("codex")
+    cli = runner.have("codex")
+    if not cli:
+        ext, why = extension_state()  # VS Code's Codex extension alone: loadout sets Codex up for it
+        if ext is None:
+            return why or "codex not found on PATH"
+    found = runner.which("codex") if cli else None
     if found and wsl.detect() is not None and wsl._on_windows_drive(Path(found), wsl.MOUNT):
         # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
         return (f"the codex on PATH is the Windows one ({found}): run bootstrap with --install to install Codex in "
@@ -49,6 +52,8 @@ def unavailable(allow_shared_home: bool = False) -> str | None:
             and wsl._on_windows_drive(Path(shared), wsl.MOUNT)):
         return (f"CODEX_HOME points into Windows ({shared}): both sides would read loadout's WSL commands; unset it "
                 "in WSL, or run bootstrap with --codex-side wsl to set it up anyway (docs/how-to/wsl.md#codex)")
+    if not cli:
+        return None  # extension mode: the extension's codex was checked in extension_state
     res = runner.run(["codex", "--version"], timeout=20)
     m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
     if not m:
@@ -62,6 +67,9 @@ EXT_OLD = ("VS Code's Codex extension runs codex {version}; loadout needs 0.161 
            "VS Code (or install the Codex CLI: loadout bootstrap --install)")
 PLUGINS_EXTENSION = ("plugins: not installed: VS Code's Codex extension loads none (use the Codex CLI alongside it "
                      "for them: loadout bootstrap --install)")
+LOGIN_EXTENSION = "in VS Code's Codex extension: gear, MCP servers, Authenticate"
+EXT_NOVERSION = ("VS Code's Codex extension's own codex gives no version, so loadout does not use it: update the "
+                 "extension in VS Code (or install the Codex CLI: loadout bootstrap --install)")
 HOOKS_NO_CLI = ("approve the loadout hooks once in the Codex CLI's /hooks (VS Code's Codex extension has none), and use "
                 "the CLI for plugin skills: install it with loadout bootstrap --install, then run `codex` in VS Code's "
                 "terminal and /hooks")
@@ -77,6 +85,7 @@ def extension_state():
             continue
         version = vscode.bundled_version(ext)
         if version is None:
+            why = why or EXT_NOVERSION
             continue
         if vscode.too_old(version):
             why = EXT_OLD.format(version=version)
@@ -1052,9 +1061,15 @@ def checks() -> list:
     if problem:
         return [CheckResult("Codex", False, problem, "install or update codex (mise use -g codex), or: loadout configure set target codex off", "warn")]
     results = [CheckResult("Codex", True)]
-    installed = installed_plugins()
-    ok = installed is not None and "loadout@agent-loadout" in installed
-    results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex", "loadout bootstrap"))
+    cli = runner.have("codex")
+    if cli:
+        installed = installed_plugins()
+        ok = installed is not None and "loadout@agent-loadout" in installed
+        results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
+                                   "loadout bootstrap"))
+    else:  # extension mode: plugins need the CLI, and the extension loads none
+        results.append(CheckResult("Codex plugin", False, PLUGINS_EXTENSION.split(": ", 1)[1],
+                                   "loadout bootstrap --install (the Codex CLI)", "warn"))
     path = paths.codex_home() / "AGENTS.md"
     current = splice(path.read_text(encoding="utf-8") if path.exists() else "", render_instructions())
     ok = path.exists() and current == path.read_text(encoding="utf-8")
@@ -1081,13 +1096,14 @@ def checks() -> list:
     if status in ("untrusted", "changed"):
         results.append(CheckResult("Codex hooks", False, "loadout's hooks are not approved yet" if status == "untrusted"
                                    else "loadout's hooks changed since you approved them",
-                                   "start codex, then run /hooks and approve them", "warn"))
+                                   "start codex, then run /hooks and approve them" if cli else HOOKS_NO_CLI, "warn"))
     elif status == "trusted":
         results.append(CheckResult("Codex hooks", True))
     logins = logins_needed()
     if logins:
         results.append(CheckResult("Codex logins", False, "waiting for a login: " + ", ".join(logins),
-                                   "; ".join(f"codex mcp login {n}" for n in logins), "warn"))
+                                   "; ".join(f"codex mcp login {n}" for n in logins) if cli else LOGIN_EXTENSION,
+                                   "warn"))
     lines = drift()
     results.append(CheckResult("Codex drift", not lines, "; ".join(lines), "loadout adopt (see docs/how-to/your-own-tools.md)", "warn"))
     return results
@@ -1195,5 +1211,8 @@ def open_steps() -> list[str]:
     # unknown (unreadable config): remind, since the approval cannot be confirmed
     todo = HOOKS_TODO if cli else HOOKS_NO_CLI
     steps = [HOOKS_CHANGED if cli else HOOKS_NO_CLI] if status == "changed" else [] if status == "trusted" else [todo]
+    if not cli:
+        return (steps + [f"log in to {name} once: {LOGIN_EXTENSION}" for name in logins_needed()]
+                + [f"optional: log in to {name} for higher limits: {LOGIN_EXTENSION}" for name in logins_optional()])
     return (steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
             + [f"optional: log in to {name} in Codex for higher limits: codex mcp login {name}" for name in logins_optional()])

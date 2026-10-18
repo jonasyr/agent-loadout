@@ -5,7 +5,8 @@ from loadout import bootstrap, codex
 
 
 @pytest.fixture
-def ext(monkeypatch):
+def ext(fake_runner, monkeypatch):
+    fake_runner.missing.add("codex")  # never this machine's real codex
     monkeypatch.setattr(codex, "extension_state", lambda: (object(), None))
     monkeypatch.setattr(bootstrap, "missing_binary", lambda name: name == "codex")
 
@@ -32,10 +33,12 @@ def test_without_codex_cli_flag_skips_without_asking(ext):
         bootstrap.CODEX_CLI_DECLINED, True)
 
 
-def test_no_extension_or_a_cli_already_there_no_offer(monkeypatch):
+def test_no_extension_or_a_cli_already_there_no_offer(fake_runner, monkeypatch):
+    fake_runner.missing.add("codex")
     monkeypatch.setattr(codex, "extension_state", lambda: (None, None))
     monkeypatch.setattr(bootstrap, "missing_binary", lambda name: True)
     assert bootstrap.codex_cli_choice(True, lambda q: pytest.fail("asked"), True, True) == (None, False)
+    fake_runner.missing.discard("codex")
     monkeypatch.setattr(codex, "extension_state", lambda: (object(), None))
     monkeypatch.setattr(bootstrap, "missing_binary", lambda name: False)
     assert bootstrap.codex_cli_choice(True, lambda q: pytest.fail("asked"), True, True) == (None, False)

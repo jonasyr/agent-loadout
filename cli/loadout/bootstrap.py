@@ -593,11 +593,20 @@ CODEX_CLI_DECLINED = ("not installed (you use VS Code's Codex extension): loadou
                       "what only the CLI adds is listed under Still to do")
 
 
+def codex_recommended(chosen: dict, gate) -> frozenset:
+    """{"codex"} when the Codex CLI is recommended, not required: no codex on PATH and VS Code's Codex extension on
+    this side runs a usable one."""
+    from . import codex
+    if not chosen.get("codex") or gate or runner.have("codex") or codex.extension_state()[0] is None:
+        return frozenset()
+    return frozenset({"codex"})
+
+
 def codex_cli_choice(install: bool, ask: Ask, interactive: bool, wanted: bool) -> tuple[str | None, bool]:
     """(the Codex CLI line to print or None, skip its install). Only when the Codex CLI is missing and VS Code's Codex
     extension on this side can run Codex: the CLI is recommended there, not required (spec Part 2)."""
     from . import codex
-    if not missing_binary("codex") or codex.extension_state()[0] is None:
+    if runner.have("codex") or codex.extension_state()[0] is None:  # a CLI, or a Windows shim in WSL: as today
         return None, False
     if not wanted:
         return CODEX_CLI_DECLINED, True
@@ -778,14 +787,16 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     notes: list[str] = []
     cli_line, cli_skip = (codex_cli_choice(install, ask, interactive and not yes, codex_cli)
                           if chosen["codex"] and not gate else (None, False))
-    recommended = frozenset({"codex"}) if chosen["codex"] and not gate and codex.extension_state()[0] is not None \
-        else frozenset()
+    recommended = codex_recommended(chosen, gate)
     missing = check_prereqs(install, ask, installed=installed, notes=notes,
                             skip=frozenset({"codex"}) if gate or cli_skip else frozenset(), recommended=recommended)
     summary, level = _prereq_summary(missing, installed, recommended)
     out.status("Prerequisites", summary, level)
     if cli_line is not None and (cli_skip or "codex" in installed):
         out.status("Codex CLI", cli_line, "warn" if cli_skip else "ok")
+    if not codex_cli and not cli_skip:  # shown in calm mode too: an agent that passed it must see it did nothing
+        out.problem("--without-codex-cli: not used; it applies only with VS Code's Codex extension and no Codex CLI "
+                    "on PATH")
     for line in notes:
         out.problem(line)
     claude_on = chosen["claude"]
@@ -836,7 +847,9 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             lines = codex.apply_all(bk, say=out.progress)
             out.end_progress()
             failed = sum(1 for line in lines if PROBLEM.search(line))
-            _report("Codex", "rules, plugins, MCP servers and skills set up" if not failed else f"{failed} problem(s) (below)", lines)
+            done = ("rules, plugins, MCP servers and skills set up" if runner.have("codex")
+                    else "rules, MCP servers and skills set up for VS Code's Codex extension")
+            _report("Codex", done if not failed else f"{failed} problem(s) (below)", lines)
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
         _step("Adopt existing setup")
@@ -877,7 +890,13 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
-    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if here[a])
+    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if here[a] and (a == "claude" or runner.have("codex")))
+    if here["codex"] and not runner.have("codex") and not run:  # extension mode: the extension is where Codex runs
+        print("\nNext: open VS Code's Codex extension (reload the window if it is open). The kit loads automatically.")
+        if not personal_ok:
+            print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
+            return 1
+        return code
     names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if here[a])
     if not run:  # Codex only, and its step stopped: on Windows, or a CODEX_HOME shared with Windows
         print(f"\nNext: {WINDOWS_WAY}." if WINDOWS_WAY in gate else "\nNext: settle Codex's side (see the Codex step above).")
