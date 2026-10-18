@@ -547,6 +547,8 @@ def setup_vscode_path(bk: Backup | None) -> str:
     if not dirs:
         return ""
     target = paths.home() / vscode.SERVER_ENV
+    if target.is_symlink():  # a dotfiles link, dangling or not: write and record its target, the link stays
+        target = Path(os.path.realpath(target))
     block = _path_block(dirs)
     line = _refresh_path_block(target, block, bk)
     if line is None and target.exists():

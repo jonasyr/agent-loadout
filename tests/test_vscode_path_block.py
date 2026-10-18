@@ -110,3 +110,16 @@ def test_vscode_path_adds_to_an_existing_file_atomically(server, monkeypatch):
     monkeypatch.setattr(type(server), "open", no_append)
     assert bootstrap.setup_vscode_path(backup.Backup(description="t")).startswith("added")
     assert server.read_bytes().startswith(mine + bootstrap.PATH_MARKER.encode())
+
+
+def test_vscode_path_through_a_dangling_symlink_restores_to_the_link(server, fake_home):
+    """A dotfiles link to a file that does not exist yet: the file is created at the link's target, and restore
+    removes that file and keeps the link."""
+    real = fake_home / "dots" / "server-env-setup"
+    real.parent.mkdir()
+    server.symlink_to(real)
+    bk = backup.Backup(description="t")
+    assert bootstrap.setup_vscode_path(bk).startswith("created")
+    assert server.is_symlink() and bootstrap.PATH_MARKER in real.read_text()
+    _, ok, _ = backup.restore(bk.root)
+    assert ok and server.is_symlink() and not real.exists()
