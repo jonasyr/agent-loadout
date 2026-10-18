@@ -35,3 +35,18 @@ def test_agent_page_and_configure_skill_ask_about_vscode():
     assert "--without-codex-cli" in skill and "docs/how-to/vscode.md" in skill
     assert "--without-codex-cli" in (ROOT / "docs/reference/cli.md").read_text(encoding="utf-8")
     assert "## Codex in VS Code without the CLI" in HOWTO.read_text(encoding="utf-8")
+
+
+def test_pr3_fixes_are_documented():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    howto = (root / "docs/how-to/vscode.md").read_text(encoding="utf-8")
+    cli = (root / "docs/reference/cli.md").read_text(encoding="utf-8")
+    trouble = (root / "docs/how-to/troubleshooting.md").read_text(encoding="utf-8")
+    skill = (root / "plugins/loadout/skills/configure/SKILL.md").read_text(encoding="utf-8")
+    assert "loadout bootstrap --vscode-path" in howto and "WSL: Restart" in howto
+    assert "bundled" in howto and "claude plugin" in howto
+    assert "profile" in howto and ".vscode/settings.json" in howto
+    assert "[--vscode-path]" in cli and "| `--vscode-path` |" in cli
+    assert "`binary claude`" in trouble and "--vscode-path" in trouble
+    assert "--vscode-path" in skill
