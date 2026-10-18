@@ -93,3 +93,15 @@ def test_vscode_wsl_flag_names_the_override_and_leaves_it(fake_home, fake_runner
                                 bk=backup.Backup(description="t"), vscode=True) is None
     text = capsys.readouterr().out
     assert wsl.vscode_wsl_mode(home) is True and str(folder) in text and folder.read_bytes() == before
+
+
+def test_bootstrap_prints_the_override_path_escaped(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    home = _win(tmp_path)
+    repo = tmp_path / "re\x1b[31mpo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".vscode").mkdir()
+    (repo / ".vscode" / "settings.json").write_text('{"%s": false}' % KEY)
+    monkeypatch.chdir(repo)
+    bootstrap._vscode_step(wsl.CodexSide("wsl", [], windows_home=home), lambda q: "", False, None, False)
+    text = capsys.readouterr().out
+    assert "settings.json" in text and "\x1b[31m" not in text

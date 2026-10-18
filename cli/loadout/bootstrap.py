@@ -713,7 +713,7 @@ def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
         from . import vscode as vs
         for kind, path in vs.wsl_switch_overrides(home):
             detail, fix = vs.override_text(kind, path)
-            out.status("VS Code", f"{detail}; {fix}", "warn")
+            out.status("VS Code", out.printable(f"{detail}; {fix}"), "warn")  # a folder name is untrusted
 
 
 def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None, vscode: bool = False) -> str | None:
