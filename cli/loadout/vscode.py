@@ -227,11 +227,10 @@ def broken_settings(install: Install) -> list[Path]:
 
 
 def setting(install: Install, key: str) -> object | None:
-    for path in settings_files(install):
-        data = read_jsonc(path)
-        if data is not None and key in data:
-            return data[key]
-    return None
+    """A setting from the user settings (the Remote-WSL server's machine settings). A profile's value is never
+    taken: which profile is active is not on disk."""
+    data = read_jsonc(settings_files(install)[0])
+    return data.get(key) if data is not None else None
 
 
 def row_name(ext: Extension) -> str:

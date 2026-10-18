@@ -364,3 +364,13 @@ def test_terminal_mode_in_vscode_on_windows_with_an_installed_claude(vs, monkeyp
     (win / where).write_text("x")
     (row,) = check._vscode_surfaces(_cs(win))
     assert row.ok
+
+
+def test_settings_come_from_the_user_settings_only_never_a_profile(vs, tmp_path):
+    user = vs / ".config" / "Code" / "User"
+    (user / "profiles" / "aaa").mkdir(parents=True)
+    (user / "profiles" / "aaa" / "settings.json").write_text('{"claudeCode.useTerminal": true}')
+    (install,) = vscode.installs("linux")
+    assert vscode.setting(install, "claudeCode.useTerminal") is None  # which profile is active is not known
+    (user / "settings.json").write_text('{"claudeCode.useTerminal": false}')
+    assert vscode.setting(install, "claudeCode.useTerminal") is False
