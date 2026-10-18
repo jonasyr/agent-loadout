@@ -58,3 +58,19 @@ def test_still_to_do_names_the_cli_for_hooks(ext_only, monkeypatch):
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "untrusted")
     steps = codex.open_steps()
     assert steps[0] == codex.HOOKS_NO_CLI and "Codex CLI" in steps[0] and "loadout bootstrap --install" in steps[0]
+
+
+
+def test_check_warns_not_fails_for_a_missing_cli_next_to_the_extension(ext_only):
+    from loadout import check
+    (row,) = [r for r in check._binaries() if r.name == "binary codex"]
+    assert not row.ok and row.severity == "warn"
+    assert "extension" in row.detail and "/hooks" in row.fix
+
+
+def test_check_still_fails_without_cli_and_extension(fake_home, fake_runner, monkeypatch):
+    from loadout import check
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": False, "codex": True})
+    fake_runner.missing.add("codex")
+    (row,) = [r for r in check._binaries() if r.name == "binary codex"]
+    assert row.severity == "error"
