@@ -43,6 +43,8 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("LOADOUT_PERSONAL", raising=False)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)  # state_dir() follows the throwaway HOME
+    for var in ("APPDATA", "XDG_CONFIG_HOME", "VSCODE_EXTENSIONS"):  # never the real VS Code folders
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("PATH", os.environ.get("PATH", ""))  # teardown restores it: nothing leaks a fake tool dir into later tests
     monkeypatch.setenv("LOADOUT_REEXEC", "1")  # bin/loadout never re-execs the test process through a real uv
 
@@ -82,3 +84,32 @@ def verbose_output(monkeypatch):
     """Existing tests assert today's detail lines (verbose mode); calm-mode tests set out.VERBOSE = False."""
     from loadout import out
     monkeypatch.setattr(out, "VERBOSE", True)
+
+
+def host_arch() -> str:
+    import platform
+    return "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
+
+
+def linux_codex_bin() -> str:
+    """The bundled Codex of a Linux build for this machine's architecture (Remote-WSL, a "linux" platform)."""
+    return f"bin/linux-{host_arch()}/codex"
+
+
+def host_codex_bin() -> str:
+    """Where the bundled Codex of this host's VS Code extension build lives (tests build that one)."""
+    import sys
+    arch = host_arch()
+    if sys.platform == "win32":
+        return f"bin/windows-{arch}/codex.exe"
+    return f"bin/{'darwin' if sys.platform == 'darwin' else 'linux'}-{arch}/codex"
+
+
+@pytest.fixture
+def codex_bin() -> str:
+    return host_codex_bin()
+
+
+def host_claude_bin() -> str:
+    import sys
+    return "resources/native-binary/claude.exe" if sys.platform == "win32" else "resources/native-binary/claude"

@@ -76,6 +76,17 @@ Only if Codex is on ([Use loadout with Codex](codex.md)). `loadout check` names 
 | `loadout check` warns `Codex Serena hooks: … add these yourself` | Your `~/.codex/hooks.json` is not in loadout's own format (other indentation, or mixed line endings), so loadout does not rewrite it. Add the listed `serena-hooks … --client=codex` entries by hand, or run `serena setup codex` ([Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)). |
 | `mcp serena: left as is, config.toml already has a server of that name` | Your `[mcp_servers.serena]` does not start Serena (if it does, loadout uses it and says nothing). Rename that table if you want loadout's Serena; loadout never changes it. |
 
+## VS Code
+
+| Symptom | Fix |
+|---|---|
+| `VS Code (Codex)`: plugins do not load in VS Code's Codex extension | The extension loads no plugins and has no `/hooks`. Use the Codex CLI alongside VS Code ([VS Code](vscode.md#the-codex-cli-alongside-vs-code)). |
+| `VS Code (Codex)`: its bundled Codex is older than 0.161 | Update the Codex extension in VS Code's Extensions view. |
+| `VS Code (Claude Code, Windows window)` | That window reads `%USERPROFILE%\.claude`. Open repos with `code .` from WSL, or set loadout up on Windows too ([Windows and WSL](vscode.md#windows-and-wsl)). |
+| `VS Code settings`: … does not parse | Fix the file's JSON in VS Code (Preferences: Open User Settings (JSON)); loadout reads it, never changes it. |
+| `VS Code PATH` | An absolute command in the server entry, or the folder on PATH in `~/.vscode-server/server-env-setup` ([VS Code](vscode.md#mcp-servers-in-a-remote-wsl-window)). |
+| `repo .mcp.json` | Register that server in local scope or as your user-level server ([VS Code](vscode.md#a-committed-mcpjson-with-your-own-path)). |
+
 ## Windows
 
 | Symptom | Fix |

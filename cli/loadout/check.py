@@ -1,6 +1,7 @@
 """`loadout check`: report problems, never fix them; every failure names its fix."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import stat
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from . import catalog, link, paths, runner, settings_merge, wsl
 from .jsonio import InvalidJSON, get_dict, load_json
+from .out import printable
 
 
 @dataclass
@@ -362,6 +364,224 @@ def _vscode(cs) -> list[CheckResult]:
     return []
 
 
+CODEX_GAP = ("plugins do not load in VS Code's Codex extension (loadout's skills such as loadout:configure, "
+             "superpowers, plugin hooks), and it has no /hooks, so Serena's hooks wait for your approval")
+CODEX_GAP_FIX = ("use the Codex CLI alongside VS Code: loadout bootstrap --install installs it; run codex once in "
+                 "VS Code's terminal and approve the hooks in /hooks, and use it there when you need the plugin skills")
+_HOME_PATH = re.compile(r"(?:^|=)(/home/(?!linuxbrew/)[^/]+/|/Users/[^/]+/|/mnt/[A-Za-z]/(?i:users)/[^/]+/|"
+                        r"[A-Za-z]:[\\/](?i:users)[\\/][^\\/]+[\\/])")  # a user name may hold spaces
+
+
+def _codex_cli_here() -> bool:
+    """A Codex CLI that shares this side's ~/.codex: in WSL a Windows shim under /mnt/<drive>/ does not count."""
+    if wsl.detect() is None:
+        return runner.have("codex")
+    found = runner.which("codex")
+    return bool(found) and not wsl._on_windows_drive(Path(found), wsl.MOUNT)
+
+
+def _surface_rows(ext, windows_only: bool = False, vscode_row: bool = False) -> list[CheckResult]:
+    """One extension in one window type: what it lacks, each with its fix; one ok row when nothing.
+    vscode_row: the "VS Code" row already says the Codex extension runs Codex on Windows."""
+    from . import codex, vscode
+    name, gaps = vscode.row_name(ext), []
+    if ext.agent == "codex":
+        if ext.override_bad is not None:
+            gaps.append((printable(f"chatgpt.cliExecutable names {ext.override_bad}, which is not a file it can run, "
+                                   "and the extension starts Codex through it"),
+                         "point it at an installed codex, or remove the setting from VS Code's user settings"))
+        if ext.install.where == "windows" and not vscode.runs_in_wsl(ext) and not vscode_row:
+            home = vscode.reads_home(ext)
+            try:
+                ours = codex.START in (home / "AGENTS.md").read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                ours = False
+            if not ours:
+                gaps.append((printable(f"the Codex extension in a Windows window reads {home}, which loadout has "
+                                       "not set up"),
+                             "switch it to WSL (loadout bootstrap --codex-side wsl --vscode-wsl), open repos with "
+                             "`code .` from WSL, or run bootstrap.ps1 on Windows (docs/how-to/wsl.md#codex)"))
+        if ext.binary is None and ext.override_bad is None:
+            gaps.append(("the extension has no bundled Codex for this platform", "reinstall the Codex extension in VS Code"))
+        else:
+            version = vscode.bundled_version(ext)
+            if version is not None and vscode.too_old(version) and ext.override:
+                gaps.append((printable(f"the Codex that chatgpt.cliExecutable names ({ext.binary}) is {version}; "
+                                       "loadout's Codex setup needs 0.161 or newer"),
+                             "update that Codex, or remove chatgpt.cliExecutable from VS Code's settings so the "
+                             "extension runs its own"))
+            elif version is not None and vscode.too_old(version):
+                gaps.append((f"its bundled Codex is {version}; loadout's Codex setup needs 0.161 or newer",
+                             "update the Codex extension in VS Code (Extensions view)"))
+        if ext.install.where == "remote-wsl" and windows_only:
+            gaps.append(("the Codex extension in a Remote-WSL window reads the WSL ~/.codex, which loadout does not "
+                         "set up while your Codex runs on Windows",
+                         "open the repo in a Windows window, or set up Codex in WSL with loadout bootstrap "
+                         "--codex-side wsl (docs/how-to/wsl.md#codex)"))
+        elif (ext.install.where != "windows" or vscode.runs_in_wsl(ext)) and not _codex_cli_here():
+            gaps.append((CODEX_GAP, CODEX_GAP_FIX))  # a Windows-side Codex: its side and home are the "VS Code" row's
+    else:
+        if ext.install.where == "windows":  # the home first; whether it can start Claude below, for every window
+            home = vscode.reads_home(ext)
+            if not os.path.isdir(home / "rules" / "loadout"):  # bootstrap.ps1 links the kit's rules there
+                gaps.append((printable(f"the Claude Code extension in a Windows window reads {home}, which loadout "
+                                       "in WSL does not set up"),
+                             "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
+                             "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
+                             "VS Code on Windows (its Remote-WSL copy stays)"))
+        mode = vscode.setting(ext.install, "claudeCode.useTerminal")
+        if mode is None and ext.desktop is not None:  # a Remote-WSL window: the desktop's user value, unless overridden
+            mode = vscode.setting(ext.desktop, "claudeCode.useTerminal")
+        terminal = mode is True
+        terminal_ok = terminal and (vscode.windows_claude(ext.install) if ext.install.where == "windows"
+                                    else runner.have("claude"))
+        if terminal and not terminal_ok:
+            if ext.install.where != "windows":
+                gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on PATH, and no claude is on "
+                             "PATH", "install Claude Code (loadout bootstrap --install; on native Windows "
+                             "bootstrap.ps1 --install), or turn claudeCode.useTerminal off"))
+            else:
+                gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on the Windows PATH, and it "
+                             "may not find one (none where the Windows installers put it)",
+                             "install Claude Code on Windows (bootstrap.ps1 --install), or turn claudeCode.useTerminal "
+                             "off"))
+        configured = vscode.setting(ext.install, "claudeCode.claudeProcessWrapper")
+        if not terminal_ok and isinstance(configured, str) and configured.strip() and vscode.wrapper(ext.install) is None:
+            gaps.append((printable(f"claudeCode.claudeProcessWrapper names {configured.strip()}, which is not a file "
+                                   "it can run, and the extension starts Claude through it"),
+                         "point it at an installed claude, or remove the setting from VS Code's user settings"))
+        elif ext.binary is None and not terminal_ok and vscode.wrapper(ext.install) is None:
+            # it never uses the claude on PATH, except in terminal mode on Windows
+            profile = (" (a VS Code profile sets claudeCode.claudeProcessWrapper; loadout cannot tell which profile "
+                       "is active)") if vscode.profile_wrapper(ext.install) else ""
+            gaps.append(("the extension has no bundled Claude Code for this platform, so it cannot start Claude"
+                         + profile,
+                         "set claudeCode.claudeProcessWrapper in VS Code's user settings to an installed claude "
+                         "(loadout bootstrap --install installs one), or reinstall the extension"))
+    if not gaps:
+        return [CheckResult(name, True)]
+    return [CheckResult(name, False, detail, fix, "warn") for detail, fix in gaps]
+
+
+def _vscode_path(found, windows_only: bool = False) -> list[CheckResult]:
+    """An MCP server whose command the extension's agent may not find on its PATH: a Remote-WSL window's Codex gets
+    VS Code's server PATH (no shell startup file runs there); the others get the shell's PATH (Claude Code reads
+    the login shell, a desktop-launched VS Code the shell environment). A Windows window seen from WSL is not
+    checked: its PATH is not readable from here. loadout's own plugin servers have their own MCP PATH row."""
+    from . import vscode
+    from .new_skill import repo_root
+    try:
+        project = repo_root(Path(os.path.abspath(Path.cwd())))
+    except OSError:
+        project = None
+    rows, seen = [], set()
+    for ext in found:
+        if (ext.install.where == "windows" and not vscode.runs_in_wsl(ext)) or (ext.agent == "codex" and windows_only):
+            continue
+        remote = ext.agent == "codex" and ext.install.where == "remote-wsl"
+        if (ext.agent, remote) in seen:
+            continue
+        seen.add((ext.agent, remote))
+        if ext.agent == "codex":
+            servers = vscode.mcp_commands("codex", project)
+        else:
+            servers = vscode.mcp_commands("claude", project, plugin=False)
+        if remote:
+            dirs = vscode.remote_path_dirs()
+            missing = sorted(n for n, cmd in servers.items() if not vscode.findable(cmd, dirs))
+        else:
+            missing = sorted(n for n, cmd in servers.items()
+                             if not (vscode.findable(cmd, []) if os.path.isabs(cmd) else runner.which(cmd)))
+        if not missing:
+            continue
+        label = vscode.LABEL[ext.agent]
+        if remote:
+            rows.append(CheckResult("VS Code PATH", False,
+                                    printable(f"in a Remote-WSL window the Codex extension may not find the command "
+                                              f"of the MCP servers {', '.join(missing)}: no shell startup files run "
+                                              "there"),
+                                    "use an absolute command in the server entry, or put its folder on PATH in "
+                                    f"~/{vscode.SERVER_ENV} (export PATH=\"$HOME/.local/bin:$PATH\"), then run "
+                                    "WSL: Restart", "warn"))
+        else:
+            rows.append(CheckResult("VS Code PATH", False,
+                                    printable(f"the {label} extension may not find the command of the MCP servers "
+                                              f"{', '.join(missing)}: it is not on your shell's PATH"),
+                                    "install it, or use an absolute command in the server entry", "warn"))
+    return rows
+
+
+def _vscode_surfaces(cs=None) -> list[CheckResult]:
+    """VS Code's agent extensions, per window type, for the agents that are on (spec Part 4)."""
+    from . import targets, vscode
+    on = {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
+    # Codex on in WSL: codex_side already looked for the Windows home, so it is not looked up twice
+    found = vscode.extensions(on, win_home=getattr(cs, "windows_home", None), look=cs is None)
+    only = _windows_only(cs) if hasattr(cs, "side") else False  # ADR 0029: the WSL Codex home is not theirs
+    if only and any(vscode.runs_in_wsl(e) for e in found):
+        only = False  # the open folder switches the extension to WSL: the WSL home is the one it reads
+    broken = []
+    folder = vscode.folder_settings() if found else None
+    read = [i for e in found for i in (e.install, e.desktop) if i is not None]  # every install whose settings count
+    files = [p for install in dict.fromkeys(read) for p in vscode.broken_settings(install)]
+    if folder is not None and os.path.isfile(folder) and vscode.read_jsonc(folder) is None:
+        files.append(folder)  # the open folder's settings: they override the user's
+    for p in files:
+        broken += [CheckResult("VS Code settings", False,
+                               printable(f"{p} does not parse, so loadout cannot read the settings that matter there"),
+                               "fix its JSON in VS Code (Preferences: Open User Settings (JSON))", "warn")]
+    said = bool(cs is not None and getattr(cs, "side", None) in ("wsl", "both") and getattr(cs, "vscode_windows", False))
+    return [*broken, *(row for ext in found for row in _surface_rows(ext, only, said)), *_vscode_path(found, only)]
+
+
+def _repo_mcp_paths() -> list[CheckResult]:
+    """The current repo's committed .mcp.json: a server whose command or arguments sit in one person's home cannot
+    start for teammates. Reported, never changed; only server names and the home prefix are printed."""
+    from .new_skill import repo_root
+    try:
+        root = repo_root(Path(os.path.abspath(Path.cwd())))
+    except OSError:
+        return []
+    if root is None or Path(os.path.realpath(root)) == Path(os.path.realpath(paths.home())):
+        return []
+    from . import repo_config
+    try:
+        if not repo_config.agents(root)["claude"]:
+            return []  # .mcp.json is Claude Code's project file; the repo is not for Claude Code (ADR 0030)
+    except ValueError:  # an invalid .loadout.json: its own row says so
+        return []
+    path = root / ".mcp.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    servers = data.get("mcpServers") if isinstance(data, dict) else None
+    if not isinstance(servers, dict):
+        return []
+    hits = {}
+    for name, srv in servers.items():
+        if not isinstance(srv, dict):
+            continue
+        args = srv.get("args") if isinstance(srv.get("args"), list) else []
+        for value in [srv.get("command"), *args]:
+            m = _HOME_PATH.search(value) if isinstance(value, str) else None
+            if m:
+                hits[name] = m.group(1)
+                break
+    if not hits:
+        return []
+    res = runner.run(["git", "-C", str(root), "ls-files", "--error-unmatch", ".mcp.json"], timeout=20)
+    if not res.ok:
+        return []  # not committed: the person's own file
+    names = ", ".join(sorted(hits))
+    prefix = sorted(set(hits.values()))[0]
+    return [CheckResult("repo .mcp.json", False,  # names and paths come from the repo: printed escaped
+                        printable(f"{root}: the committed .mcp.json starts {names} from a path in one person's "
+                                  f"home ({prefix}…), so teammates' agents cannot start it"),
+                        "move it to local scope (claude mcp add --scope local …) or a user-level server; "
+                        "loadout does not change the file", "warn")]
+
+
 def _codex(cs=None) -> list[CheckResult]:
     from . import codex
     if _windows_only(cs) and codex.enabled():
@@ -398,10 +618,10 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     if codex_windows and cs is not None:
         from dataclasses import replace
         cs = replace(cs, side="windows", shared_home=False)
-    return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_legacy_state(),
+    return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links()]
+            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

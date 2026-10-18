@@ -55,3 +55,4 @@ Template:
 | [0029](0029-codex-on-windows-and-wsl.md) | Codex on Windows and WSL: one loadout per side | Accepted |
 | [0030](0030-repo-files-follow-the-repos-agents.md) | Repo files follow the repo's agents | Accepted |
 | [0031](0031-repo-profile-entries-merge-three-way.md) | Profile entries in repo files merge three-way against a record | Accepted |
+| [0032](0032-vscode-extensions-are-a-surface-of-an-agent.md) | VS Code extensions are a surface of an agent | Accepted |
