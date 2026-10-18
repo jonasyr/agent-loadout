@@ -513,6 +513,68 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
     return out, bool(out)
 
 
+
+SERVER_ENV_QUESTION = ("Add loadout's tool folders to PATH for VS Code's Remote-WSL windows "
+                       "(~/.vscode-server/server-env-setup, backup first)? [y/N] ")
+SERVER_ENV_AFTER = 'takes effect after "WSL: Restart" in VS Code, or a reconnect'
+
+
+def vscode_path_wanted() -> bool:
+    """In WSL with VS Code's Remote-WSL server (~/.vscode-server): its windows run no shell startup file."""
+    return wsl.detect() is not None and (paths.home() / ".vscode-server").is_dir()
+
+
+def _home_tool_dirs() -> list[Path]:
+    home = paths.home()
+    return [d for d in paths.tool_dirs() if d == home or home in d.parents]
+
+
+def setup_vscode_path(bk: Backup | None) -> str:
+    """Add or refresh loadout's PATH block in ~/.vscode-server/server-env-setup; the user's lines stay byte for byte.
+    Returns the line to print, "" when nothing changed."""
+    from . import vscode
+    dirs = _home_tool_dirs()
+    if not dirs:
+        return ""
+    target = paths.home() / vscode.SERVER_ENV
+    block = _path_block(dirs)
+    line = _refresh_path_block(target, block, bk)
+    if line is None:
+        if target.exists() and bk is not None:  # an append is undone from the copy
+            bk.save_copy(target, f"{target} before adding the tool folders to PATH")
+        line = _add_block(target, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH")
+    return line or ""
+
+
+def _vscode_path_step(ask: Ask, interactive: bool, flag: bool, bk: Backup | None) -> None:
+    """--vscode-path, or a yes in a terminal when a tool folder is missing from the Remote-WSL PATH; a block written
+    earlier is kept current (spec Part 3)."""
+    from . import vscode
+    if not vscode_path_wanted():
+        if flag:
+            out.status("VS Code PATH", "--vscode-path applies in WSL with VS Code's Remote-WSL server "
+                                       "(~/.vscode-server); nothing changed", "warn")
+        return
+    target = paths.home() / vscode.SERVER_ENV
+    try:
+        ours = PATH_MARKER.encode() in target.read_bytes()
+    except OSError:
+        ours = False
+    if not (flag or ours):
+        have = set(vscode.remote_path_dirs())
+        missing = [d for d in _home_tool_dirs() if str(d) not in have]
+        if not missing or not interactive:
+            return
+        print(f"\nplan: add a PATH block to {target} for {', '.join(map(str, missing))} "
+              f"({SERVER_ENV_AFTER}; undo: loadout restore)")
+        if not ui.confirm(ask, SERVER_ENV_QUESTION):
+            return
+    line = setup_vscode_path(bk)
+    if line:
+        out.status("VS Code PATH", f"{line}; {SERVER_ENV_AFTER}", "ok")
+    elif flag:
+        out.status("VS Code PATH", f"already set up in {target}", "ok")
+
 def _win_path_command() -> list[str]:
     import base64
     encoded = base64.b64encode(WIN_PATH_SCRIPT.encode("utf-16-le")).decode("ascii")
@@ -713,18 +775,20 @@ def _no_question(question: str) -> str:
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
-              answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True) -> int:
+              answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
+              vscode_path: bool = False) -> int:
     from . import targets
     try:
         return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
-                          vscode_wsl, codex_cli)
+                          vscode_wsl, codex_cli, vscode_path)
     finally:
         targets.OVERRIDE = None
 
 
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
-               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True) -> int:
+               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
+               vscode_path: bool = False) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -872,6 +936,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     path_lines, path_changed = setup_path(bk)
     _report("PATH", "tool folders added (new terminals)" if path_changed else "already set up",
             path_lines or ["PATH already set up"])
+    _vscode_path_step(ask, interactive and not yes, vscode_path, bk)
     if not bk.empty:
         out.detail(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")

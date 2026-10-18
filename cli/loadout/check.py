@@ -517,9 +517,9 @@ def _vscode_path(found, windows_only: bool = False) -> list[CheckResult]:
                                     printable(f"in a Remote-WSL window the Codex extension may not find the command "
                                               f"of the MCP servers {', '.join(missing)}: no shell startup files run "
                                               "there"),
-                                    "use an absolute command in the server entry, or put its folder on PATH in "
-                                    f"~/{vscode.SERVER_ENV} (export PATH=\"$HOME/.local/bin:$PATH\"), then run "
-                                    "WSL: Restart", "warn"))
+                                    "loadout bootstrap --vscode-path puts loadout's tool folders on PATH in "
+                                    f"~/{vscode.SERVER_ENV} (then run WSL: Restart); for a command elsewhere, use "
+                                    "an absolute command in the server entry", "warn"))
         else:
             rows.append(CheckResult("VS Code PATH", False,
                                     printable(f"the {label} extension may not find the command of the MCP servers "

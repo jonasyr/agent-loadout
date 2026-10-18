@@ -329,7 +329,7 @@ def row_name(ext: Extension) -> str:
 
 SYSTEM_DIRS = ("/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin")
 SERVER_ENV = ".vscode-server/server-env-setup"  # VS Code's place for a Remote-WSL server's environment
-_PATH_LINE = re.compile(r"^\s*(?:export\s+)?PATH=(.+)$", re.M)
+_PATH_LINE = re.compile(r"^\s*(?:case\b.*\*\)\s*)?(?:export\s+)?PATH=(.+)$", re.M)
 
 
 def reads_home(ext: Extension) -> Path:
