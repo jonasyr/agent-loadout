@@ -454,7 +454,7 @@ def _vscode_path(found, windows_only: bool = False) -> list[CheckResult]:
         if ext.agent == "codex":
             servers = vscode.mcp_commands("codex", project)
         else:
-            servers = vscode.mcp_commands("claude", plugin=False)
+            servers = vscode.mcp_commands("claude", project, plugin=False)
         if remote:
             dirs = vscode.remote_path_dirs()
             missing = sorted(n for n, cmd in servers.items() if not vscode.findable(cmd, dirs))

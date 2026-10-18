@@ -433,3 +433,14 @@ def test_a_found_command_gives_no_path_row(vs, fake_runner):
     paths.codex_home().mkdir()
     (paths.codex_home() / "config.toml").write_text('[mcp_servers.ok]\ncommand = "tool"\n')
     assert [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"] == []
+
+
+def test_claude_mcp_commands_include_project_and_local_scope(vs, tmp_path):
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"proj": {"command": "p"}, "both": {"command": "x"}}}))
+    paths.claude_json().write_text(json.dumps({
+        "mcpServers": {"user": {"command": "u"}},
+        "projects": {str(project.resolve()): {"mcpServers": {"both": {"command": "local"}}}}}))
+    found = vscode.mcp_commands("claude", project, plugin=False)
+    assert found == {"user": "u", "proj": "p", "both": "local"}  # local beats project beats user

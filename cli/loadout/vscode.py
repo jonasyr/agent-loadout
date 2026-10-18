@@ -353,12 +353,20 @@ def mcp_commands(agent: str, project: Path | None = None, plugin: bool = True) -
                 tables[name] = {**tables.get(name, {}), **table}
         return _commands(tables)
     found = {}
-    sources = ([paths.kit_root() / "plugins" / "loadout" / ".mcp.json"] if plugin else []) + [paths.claude_json()]
-    for path in sources:
+    def read(path: Path) -> dict:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            continue
-        if isinstance(data, dict):
-            found.update(_commands(data.get("mcpServers")))
+            return {}
+        return data if isinstance(data, dict) else {}
+    user = read(paths.claude_json())
+    if plugin:
+        found.update(_commands(read(paths.kit_root() / "plugins" / "loadout" / ".mcp.json").get("mcpServers")))
+    found.update(_commands(user.get("mcpServers")))
+    if project is not None:  # Claude Code's scopes: local beats project beats user
+        found.update(_commands(read(project / ".mcp.json").get("mcpServers")))
+        projects = user.get("projects")
+        entry = projects.get(str(project.resolve())) if isinstance(projects, dict) else None
+        if isinstance(entry, dict):
+            found.update(_commands(entry.get("mcpServers")))
     return found
