@@ -167,7 +167,10 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
             hit = newest(install.extensions, ext_id)
             if hit is not None:
                 os_name = "linux" if _wsl_switch(agent, install) else _os_of(install.where, platform)
-                out.append(Extension(agent, install, hit[0], hit[1], _binary(agent, hit[0], os_name), os_name))
+                binary = _binary(agent, hit[0], os_name)
+                if agent == "codex":  # chatgpt.cliExecutable, when it names a usable file, is what the extension runs
+                    binary = _wrapper_path(install, setting(install, "chatgpt.cliExecutable")) or binary
+                out.append(Extension(agent, install, hit[0], hit[1], binary, os_name))
     return out
 
 

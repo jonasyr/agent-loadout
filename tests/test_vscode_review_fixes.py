@@ -474,3 +474,20 @@ def test_home_paths_with_a_space_in_the_user_name(vs, fake_runner, monkeypatch, 
     _repo(tmp_path, monkeypatch, fake_runner, {"mcpServers": {"s": {"command": cmd}}})
     (row,) = check._repo_mcp_paths()
     assert not row.ok
+
+
+def test_a_codex_executable_override_is_the_codex_that_is_checked(vs, fake_runner, tmp_path):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64")  # no bundled codex
+    own = tmp_path / ("codex.exe" if sys.platform == "win32" else "codex")
+    own.write_text("x")
+    own.chmod(0o755)
+    user = vscode._user_dir(vs, sys.platform)
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text(json.dumps({"chatgpt.cliExecutable": str(own)}))
+    fake_runner.paths["codex"] = "/usr/bin/codex"
+    fake_runner.responses[(str(own), "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
+    (ext,) = vscode.extensions({"codex": True})
+    assert ext.binary == own
+    (row,) = check._vscode_surfaces()
+    assert row.ok

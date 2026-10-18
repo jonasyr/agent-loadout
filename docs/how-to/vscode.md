@@ -37,7 +37,7 @@ A Remote-WSL window runs no shell startup file, so folders that your shell adds 
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 ```
 
-Then run "WSL: Restart" in VS Code, or reconnect. In other windows, `VS Code PATH` warns when a server's command (one of yours, in `config.toml` or `~/.claude.json`) is not on your shell's PATH: install it, or give it an absolute command. The Claude Code extension takes PATH from your login shell, according to its current code; the live tour confirms it.
+Then run "WSL: Restart" in VS Code, or reconnect. In other windows, `VS Code PATH` warns when a server's command (one of yours, in `config.toml` or `~/.claude.json`) is not on your shell's PATH: install it, or give it an absolute command. That check uses the PATH `loadout check` runs with; it does not start your login shell (its startup files can prompt or change things), so run it from a plain terminal, not an activated virtualenv, to see what VS Code sees. The Claude Code extension takes PATH from your login shell, according to its current code; the live tour confirms it.
 
 ## A committed .mcp.json with your own path
 
