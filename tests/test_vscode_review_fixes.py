@@ -177,7 +177,7 @@ def test_a_foreign_architecture_only_is_no_bundled_codex(tmp_path):
     assert vscode._binary("codex", folder, "linux", "x86_64") is None
 
 
-def test_a_wrapper_in_a_vscode_profile_counts(vs, fake_runner, tmp_path):
+def test_a_wrapper_only_in_a_vscode_profile_is_named_but_does_not_clear_the_warning(vs, fake_runner, tmp_path):
     import sys
     _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
     wrapper = tmp_path / "claude"
@@ -187,7 +187,7 @@ def test_a_wrapper_in_a_vscode_profile_counts(vs, fake_runner, tmp_path):
     (profile / "settings.json").write_text(json.dumps({"claudeCode.claudeProcessWrapper": str(wrapper)}))
     fake_runner.missing.add("claude")
     (row,) = check._vscode_surfaces()
-    assert row.ok
+    assert not row.ok and "profile" in row.detail and "user settings" in row.fix
 
 
 def test_a_windows_home_mounted_in_wsl_counts_as_one_persons_home(vs, fake_runner, monkeypatch, tmp_path):
@@ -250,3 +250,43 @@ def test_a_bundled_binary_without_execute_permission_is_none(tmp_path):
     claude = _ext(tmp_path / "ext", "anthropic.claude-code-2.1.1", "resources/native-binary/claude")
     (claude / "resources/native-binary/claude").chmod(0o644)
     assert vscode._binary("claude", claude, "linux") is None
+
+
+
+def test_codex_windows_window_with_the_wsl_switch_runs_the_linux_codex(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    settings = wsl.vscode_settings(win)
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"chatgpt.runCodexInWindowsSubsystemForLinux": true}')
+    folder = _ext(win / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-win32-x64",
+                  f"bin/windows-{host_arch()}/codex.exe", linux_codex_bin())
+    (ext,) = vscode.extensions({"codex": True}, "linux", win_home=win)
+    assert ext.binary == folder / linux_codex_bin()
+    fake_runner.missing.add("codex")
+    rows = check._vscode_surfaces(_cs(win))
+    assert any("plugins do not load" in r.detail for r in rows)
+
+
+@pytest.mark.parametrize("os_name,present,expected", [("linux", ["claude.exe"], None), ("windows", ["claude"], None),
+                                                      ("windows", ["claude", "claude.exe"], "claude.exe")])
+def test_claude_binary_matches_the_target_os(tmp_path, os_name, present, expected):
+    folder = _ext(tmp_path / "ext", "anthropic.claude-code-2.1.1", *[f"resources/native-binary/{n}" for n in present])
+    found = vscode._binary("claude", folder, os_name)
+    assert (found.name if found else None) == expected
+
+
+def test_a_windows_wrapper_path_is_checked_through_its_wsl_mount(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "MOUNT", str(tmp_path / "mnt") + "/")
+    win = tmp_path / "mnt" / "c" / "Users" / "ana"
+    exe = win / "bin" / "claude.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("x")
+    settings = wsl.vscode_settings(win)
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"claudeCode.claudeProcessWrapper": "C:\\Users\\ana\\bin\\claude.exe"}))
+    _ext(win / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-win32-x64")
+    (win / ".claude" / "rules" / "loadout").mkdir(parents=True)
+    (row,) = check._vscode_surfaces(_cs(win))
+    assert row.ok

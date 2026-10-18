@@ -388,8 +388,8 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                          "set up while your Codex runs on Windows",
                          "open the repo in a Windows window, or set up Codex in WSL with loadout bootstrap "
                          "--codex-side wsl (docs/how-to/wsl.md#codex)"))
-        elif ext.install.where != "windows" and not runner.have("codex"):
-            gaps.append((CODEX_GAP, CODEX_GAP_FIX))  # a Windows window: its side and home are the "VS Code" row's
+        elif (ext.install.where != "windows" or vscode.runs_in_wsl(ext)) and not runner.have("codex"):
+            gaps.append((CODEX_GAP, CODEX_GAP_FIX))  # a Windows-side Codex: its side and home are the "VS Code" row's
     else:
         if ext.install.where == "windows":  # the home first; whether it can start Claude below, for every window
             home = vscode.reads_home(ext)
@@ -400,7 +400,10 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                              "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
                              "VS Code on Windows (its Remote-WSL copy stays)"))
         if ext.binary is None and vscode.wrapper(ext.install) is None:  # it never uses the claude on PATH
-            gaps.append(("the extension has no bundled Claude Code for this platform, so it cannot start Claude",
+            profile = (" (a VS Code profile sets claudeCode.claudeProcessWrapper; loadout cannot tell which profile "
+                       "is active)") if vscode.profile_wrapper(ext.install) else ""
+            gaps.append(("the extension has no bundled Claude Code for this platform, so it cannot start Claude"
+                         + profile,
                          "set claudeCode.claudeProcessWrapper in VS Code's user settings to an installed claude "
                          "(loadout bootstrap --install installs one), or reinstall the extension"))
     if not gaps:

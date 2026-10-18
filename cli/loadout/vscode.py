@@ -116,7 +116,8 @@ def _binary(agent: str, folder: Path, os_name: str = "linux", machine: str | Non
     """The bundled agent binary for os_name and this machine's architecture; a Codex build can hold one folder
     per OS and architecture under bin/."""
     if agent == "claude":
-        candidates = [folder / "resources" / "native-binary" / n for n in ("claude", "claude.exe")]
+        name = "claude.exe" if os_name == "windows" else "claude"  # another OS's binary starts nothing here
+        candidates = [folder / "resources" / "native-binary" / name]
     else:
         try:
             dirs = sorted((folder / "bin").iterdir())
@@ -135,6 +136,17 @@ def _binary(agent: str, folder: Path, os_name: str = "linux", machine: str | Non
     return next((p for p in candidates if usable(p)), None)
 
 
+def _wsl_switch(agent: str, install: Install) -> bool:
+    """VS Code on Windows whose Codex extension runs its Linux Codex inside WSL
+    (chatgpt.runCodexInWindowsSubsystemForLinux)."""
+    return agent == "codex" and install.where == "windows" and \
+        wsl.vscode_wsl_mode(install.extensions.parent.parent) is True
+
+
+def runs_in_wsl(ext: Extension) -> bool:
+    return _wsl_switch(ext.agent, ext.install)
+
+
 def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path | None = None,
                look: bool = True) -> list[Extension]:
     """The agent extensions of the agents that are on, one per install that has it."""
@@ -148,8 +160,8 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
                 continue  # an agent that is off: nothing of it is read
             hit = newest(install.extensions, ext_id)
             if hit is not None:
-                out.append(Extension(agent, install, hit[0], hit[1],
-                                     _binary(agent, hit[0], _os_of(install.where, platform))))
+                os_name = "linux" if _wsl_switch(agent, install) else _os_of(install.where, platform)
+                out.append(Extension(agent, install, hit[0], hit[1], _binary(agent, hit[0], os_name)))
     return out
 
 
@@ -270,14 +282,31 @@ def findable(command: str, dirs: list[str]) -> bool:
     return any(_runnable(Path(d) / command) for d in dirs)
 
 
+_WIN_PATH = re.compile(r"^([A-Za-z]):[\\/](.*)$")
+
+
+def _wrapper_path(install: Install, value) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    m = _WIN_PATH.match(value.strip()) if install.where == "windows" else None
+    if m:  # VS Code on Windows names a Windows path; from WSL it is under the drive's mount
+        path = Path(wsl.MOUNT) / m.group(1).lower() / m.group(2).replace("\\", "/")
+    else:
+        path = Path(value.strip()).expanduser()
+    return path if _is_file(path) else None
+
+
 def wrapper(install: Install) -> Path | None:
-    """claudeCode.claudeProcessWrapper when it names a file that exists, in the user settings or any profile's
-    (the active profile is not known); anything else launches nothing."""
-    for path in settings_files(install):
-        value = (read_jsonc(path) or {}).get("claudeCode.claudeProcessWrapper")
-        if isinstance(value, str) and value.strip() and _is_file(Path(value).expanduser()):
-            return Path(value).expanduser()
-    return None
+    """claudeCode.claudeProcessWrapper from the user settings when it names a file that exists. A profile's value
+    does not count: which profile is active is not on disk."""
+    files = settings_files(install)
+    return _wrapper_path(install, (read_jsonc(files[0]) or {}).get("claudeCode.claudeProcessWrapper"))
+
+
+def profile_wrapper(install: Install) -> bool:
+    """A VS Code profile (not the user settings) sets a wrapper that names a file."""
+    return any(_wrapper_path(install, (read_jsonc(p) or {}).get("claudeCode.claudeProcessWrapper")) is not None
+               for p in settings_files(install)[1:])
 
 
 def _commands(servers) -> dict[str, str]:
