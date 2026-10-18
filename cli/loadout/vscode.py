@@ -80,10 +80,15 @@ def newest(folder: Path, ext_id: str) -> tuple[Path, str] | None:
         entries = list(folder.iterdir())
     except OSError:
         return None
+    try:  # folders VS Code removed or replaced but has not deleted yet
+        obsolete = json.loads((folder / ".obsolete").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        obsolete = {}
+    gone = {k.lower() for k, v in obsolete.items() if v} if isinstance(obsolete, dict) else set()
     best = None
     for entry in entries:
         name = entry.name.lower()
-        if not name.startswith(ext_id + "-"):
+        if not name.startswith(ext_id + "-") or name in gone:
             continue
         m = _FOLDER_VERSION.match(name[len(ext_id) + 1:])
         if not m or not _is_dir(entry):
@@ -364,7 +369,13 @@ def mcp_commands(agent: str, project: Path | None = None, plugin: bool = True) -
         found.update(_commands(read(paths.kit_root() / "plugins" / "loadout" / ".mcp.json").get("mcpServers")))
     found.update(_commands(user.get("mcpServers")))
     if project is not None:  # Claude Code's scopes: local beats project beats user
-        found.update(_commands(read(project / ".mcp.json").get("mcpServers")))
+        disabled = set()
+        for settings in (paths.claude_home() / "settings.json", project / ".claude" / "settings.json",
+                         project / ".claude" / "settings.local.json"):
+            names = read(settings).get("disabledMcpjsonServers")
+            disabled |= {n for n in names if isinstance(n, str)} if isinstance(names, list) else set()
+        found.update({n: c for n, c in _commands(read(project / ".mcp.json").get("mcpServers")).items()
+                      if n not in disabled})  # a .mcp.json server switched off is not started
         projects = user.get("projects")
         entry = projects.get(str(project.resolve())) if isinstance(projects, dict) else None
         if isinstance(entry, dict):

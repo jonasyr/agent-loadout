@@ -444,3 +444,25 @@ def test_claude_mcp_commands_include_project_and_local_scope(vs, tmp_path):
         "projects": {str(project.resolve()): {"mcpServers": {"both": {"command": "local"}}}}}))
     found = vscode.mcp_commands("claude", project, plugin=False)
     assert found == {"user": "u", "proj": "p", "both": "local"}  # local beats project beats user
+
+
+def test_disabled_project_claude_servers_do_not_count(vs, tmp_path):
+    project = tmp_path / "repo"
+    (project / ".claude").mkdir(parents=True)
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"off": {"command": "x"}, "on": {"command": "y"}}}))
+    (project / ".claude" / "settings.json").write_text(json.dumps({"disabledMcpjsonServers": ["off"]}))
+    assert vscode.mcp_commands("claude", project, plugin=False) == {"on": "y"}
+
+
+def test_extension_folders_marked_obsolete_are_skipped(tmp_path):
+    (tmp_path / "anthropic.claude-code-2.1.300").mkdir()
+    (tmp_path / "anthropic.claude-code-2.1.217").mkdir()
+    (tmp_path / ".obsolete").write_text(json.dumps({"anthropic.claude-code-2.1.300": True}))
+    assert vscode.newest(tmp_path, "anthropic.claude-code")[1] == "2.1.217"
+
+
+@pytest.mark.parametrize("cmd", ["/mnt/c/users/Ana/bin/serena", r"C:\users\Ana\bin\serena.exe"])
+def test_windows_home_paths_match_in_any_case(vs, fake_runner, monkeypatch, tmp_path, cmd):
+    _repo(tmp_path, monkeypatch, fake_runner, {"mcpServers": {"s": {"command": cmd}}})
+    (row,) = check._repo_mcp_paths()
+    assert not row.ok
