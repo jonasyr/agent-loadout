@@ -391,7 +391,7 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
         elif ext.install.where != "windows" and not runner.have("codex"):
             gaps.append((CODEX_GAP, CODEX_GAP_FIX))  # a Windows window: its side and home are the "VS Code" row's
     else:
-        if ext.install.where == "windows":
+        if ext.install.where == "windows":  # the home first; whether it can start Claude below, for every window
             home = vscode.reads_home(ext)
             if not os.path.isdir(home / "rules" / "loadout"):  # bootstrap.ps1 links the kit's rules there
                 gaps.append((printable(f"the Claude Code extension in a Windows window reads {home}, which loadout "
@@ -399,7 +399,7 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                              "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
                              "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
                              "VS Code on Windows (its Remote-WSL copy stays)"))
-        elif ext.binary is None and vscode.wrapper(ext.install) is None:  # it never uses the claude on PATH
+        if ext.binary is None and vscode.wrapper(ext.install) is None:  # it never uses the claude on PATH
             gaps.append(("the extension has no bundled Claude Code for this platform, so it cannot start Claude",
                          "set claudeCode.claudeProcessWrapper in VS Code's user settings to an installed claude "
                          "(loadout bootstrap --install installs one), or reinstall the extension"))
@@ -414,7 +414,13 @@ def _vscode_path(found, windows_only: bool = False) -> list[CheckResult]:
     if windows_only or not any(e.agent == "codex" and e.install.where == "remote-wsl" for e in found):
         return []  # Claude Code's extension takes PATH from the login shell; Codex's takes VS Code's
     dirs = vscode.remote_path_dirs()
-    missing = sorted(n for n, cmd in vscode.mcp_commands("codex").items() if not vscode.findable(cmd, dirs))
+    from .new_skill import repo_root
+    try:
+        project = repo_root(Path(os.path.abspath(Path.cwd())))
+    except OSError:
+        project = None
+    servers = vscode.mcp_commands("codex", project)
+    missing = sorted(n for n, cmd in servers.items() if not vscode.findable(cmd, dirs))
     if not missing:
         return []
     return [CheckResult("VS Code PATH", False,

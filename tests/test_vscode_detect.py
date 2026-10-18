@@ -24,6 +24,7 @@ def _ext(root: Path, name: str, binary: str | None = None) -> Path:
     if binary:
         (folder / binary).parent.mkdir(parents=True, exist_ok=True)
         (folder / binary).write_text("bin")
+        (folder / binary).chmod(0o755)  # shipped executable
     return folder
 
 

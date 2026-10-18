@@ -21,6 +21,7 @@ def _ext(root: Path, name: str, *binaries: str) -> Path:
     for b in binaries:
         (folder / b).parent.mkdir(parents=True, exist_ok=True)
         (folder / b).write_text("bin")
+        (folder / b).chmod(0o755)  # shipped executable
     return folder
 
 
@@ -216,3 +217,36 @@ def test_server_env_setup_path_assignments_apply_in_order(vs, text, has, lacks):
         assert d.format(home=vs) in dirs
     for d in lacks:
         assert d.format(home=vs) not in dirs
+
+
+def test_a_set_up_windows_window_still_needs_a_launchable_claude(vs, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    _ext(win / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-win32-x64")  # no bundled claude.exe
+    (win / ".claude" / "rules" / "loadout").mkdir(parents=True)
+    (row,) = check._vscode_surfaces(_cs(win))
+    assert not row.ok and "cannot start Claude" in row.detail
+
+
+def test_project_codex_servers_count_in_the_remote_wsl_path_check(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda: None)
+    _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", linux_codex_bin())
+    fake_runner.paths["codex"] = "/usr/bin/codex"
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".codex").mkdir()
+    (repo / ".codex" / "config.toml").write_text('[mcp_servers.proj]\ncommand = "projtool"\n')
+    monkeypatch.chdir(repo)
+    (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"]
+    assert "proj" in row.detail
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="execute permission is POSIX")
+def test_a_bundled_binary_without_execute_permission_is_none(tmp_path):
+    folder = _ext(tmp_path / "ext", "openai.chatgpt-26.1.1", "bin/linux-x86_64/codex")
+    (folder / "bin/linux-x86_64/codex").chmod(0o644)
+    assert vscode._binary("codex", folder, "linux", "x86_64") is None
+    claude = _ext(tmp_path / "ext", "anthropic.claude-code-2.1.1", "resources/native-binary/claude")
+    (claude / "resources/native-binary/claude").chmod(0o644)
+    assert vscode._binary("claude", claude, "linux") is None

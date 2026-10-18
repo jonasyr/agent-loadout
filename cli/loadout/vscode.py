@@ -131,7 +131,8 @@ def _binary(agent: str, folder: Path, os_name: str = "linux", machine: str | Non
             own = [d for d in tagged if any(n in d.name.lower() for n in _ARCH_NAMES.get(_arch(machine), (_arch(machine),)))]
         exe = ("codex.exe", "codex") if os_name == "windows" else ("codex", "codex.exe")
         candidates = [d / n for d in own for n in exe]  # another OS's build is no bundled Codex for this one
-    return next((p for p in candidates if _is_file(p)), None)
+    usable = _is_file if os_name == "windows" else _runnable  # a POSIX binary needs execute permission
+    return next((p for p in candidates if usable(p)), None)
 
 
 def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path | None = None,
@@ -287,16 +288,24 @@ def _commands(servers) -> dict[str, str]:
             and s.get("enabled") is not False}  # a switched-off Codex server starts nothing
 
 
-def mcp_commands(agent: str) -> dict[str, str]:
-    """The commands of the MCP servers an extension starts: Codex's [mcp_servers.*] in config.toml (the extension
-    loads no plugins); Claude Code's user servers in ~/.claude.json plus the loadout plugin's."""
+def _toml_servers(path: Path) -> dict[str, str]:
+    from . import codex
+    try:
+        data = codex._tomllib().loads(path.read_text(encoding="utf-8"))
+    except Exception:  # missing, unreadable or not TOML: nothing to check
+        return {}
+    return _commands(data.get("mcp_servers"))
+
+
+def mcp_commands(agent: str, project: Path | None = None) -> dict[str, str]:
+    """The commands of the MCP servers an extension starts: Codex's [mcp_servers.*] in config.toml, and in a
+    project its .codex/config.toml, which wins for a name it shares (the extension loads no plugins); Claude Code's
+    user servers in ~/.claude.json plus the loadout plugin's."""
     if agent == "codex":
-        from . import codex
-        try:
-            data = codex._tomllib().loads((paths.codex_home() / "config.toml").read_text(encoding="utf-8"))
-        except Exception:  # missing, unreadable or not TOML: nothing to check
-            return {}
-        return _commands(data.get("mcp_servers"))
+        found = _toml_servers(paths.codex_home() / "config.toml")
+        if project is not None:
+            found.update(_toml_servers(project / ".codex" / "config.toml"))
+        return found
     found = {}
     plugin = paths.kit_root() / "plugins" / "loadout" / ".mcp.json"
     for path in (plugin, paths.claude_json()):
