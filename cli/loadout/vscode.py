@@ -144,14 +144,20 @@ def _binary(agent: str, folder: Path, os_name: str = "linux", machine: str | Non
     return next((p for p in candidates if usable(p)), None)
 
 
-def folder_setting(key: str) -> object | None:
-    """A setting from the current repo's .vscode/settings.json (the folder VS Code opens), or None."""
+def folder_settings() -> Path | None:
+    """The current repo's .vscode/settings.json (the folder VS Code opens), or None outside a repo."""
     from .new_skill import repo_root
     try:
         root = repo_root(Path(os.path.abspath(Path.cwd())))
     except OSError:
         return None
-    data = read_jsonc(root / ".vscode" / "settings.json") if root is not None else None
+    return root / ".vscode" / "settings.json" if root is not None else None
+
+
+def folder_setting(key: str) -> object | None:
+    """A setting from the open folder's .vscode/settings.json, or None."""
+    path = folder_settings()
+    data = read_jsonc(path) if path is not None else None
     return data.get(key) if data is not None else None
 
 
@@ -178,7 +184,9 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
     platform = platform or sys.platform
     out = []
     found = installs(platform, win_home, look)
-    desktop = next((i for i in found if i.where != "remote-wsl"), None)  # where a remote window's user settings are
+    # a Remote-WSL server belongs to VS Code on Windows: its user settings are the remote window's, before a Linux one's
+    desktop = next((i for i in found if i.where == "windows"), None) or \
+        next((i for i in found if i.where == "local"), None)
     for install in found:
         for agent, ext_id in EXT_ID.items():
             if not on.get(agent):
@@ -188,9 +196,10 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
                 os_name = "linux" if _wsl_switch(agent, install) else _os_of(install.where, platform)
                 binary, own, value = _binary(agent, hit[0], os_name), None, None
                 if agent == "codex":  # chatgpt.cliExecutable, when it names a usable file, is what the extension runs
-                    value = setting(install, "chatgpt.cliExecutable")
-                    if value is None and install.where == "remote-wsl" and desktop is not None:
-                        value = setting(desktop, "chatgpt.cliExecutable")  # application scope: the desktop's applies
+                    if install.where == "remote-wsl":  # application scope: only the desktop's user settings count
+                        value = setting(desktop, "chatgpt.cliExecutable") if desktop is not None else None
+                    else:
+                        value = setting(install, "chatgpt.cliExecutable")
                     own = _wrapper_path(install, value)
                 bad = value.strip() if own is None and isinstance(value, str) and value.strip() else None
                 out.append(Extension(agent, install, hit[0], hit[1], own or binary, os_name, own is not None, bad))

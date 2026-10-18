@@ -515,11 +515,14 @@ def _vscode_surfaces(cs=None) -> list[CheckResult]:
     found = vscode.extensions(on, win_home=getattr(cs, "windows_home", None), look=cs is None)
     only = _windows_only(cs) if hasattr(cs, "side") else False  # ADR 0029: the WSL Codex home is not theirs
     broken = []
-    for install in dict.fromkeys(e.install for e in found):  # each install once, in order
+    folder = vscode.folder_settings() if found else None
+    files = [p for install in dict.fromkeys(e.install for e in found) for p in vscode.broken_settings(install)]
+    if folder is not None and os.path.isfile(folder) and vscode.read_jsonc(folder) is None:
+        files.append(folder)  # the open folder's settings: they override the user's
+    for p in files:
         broken += [CheckResult("VS Code settings", False,
                                printable(f"{p} does not parse, so loadout cannot read the settings that matter there"),
-                               "fix its JSON in VS Code (Preferences: Open User Settings (JSON))", "warn")
-                   for p in vscode.broken_settings(install)]
+                               "fix its JSON in VS Code (Preferences: Open User Settings (JSON))", "warn")]
     said = bool(cs is not None and getattr(cs, "side", None) in ("wsl", "both") and getattr(cs, "vscode_windows", False))
     return [*broken, *(row for ext in found for row in _surface_rows(ext, only, said)), *_vscode_path(found, only)]
 

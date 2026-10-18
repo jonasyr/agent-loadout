@@ -574,3 +574,47 @@ def test_codex_in_a_windows_window_warns_when_windows_codex_is_not_set_up(vs, fa
     (win / ".codex" / "AGENTS.md").write_text("<!-- loadout:start -->\nx\n<!-- loadout:end -->\n")
     rows = check._vscode_surfaces(_cs(win, side="windows"))
     assert not any("not set up" in r.detail for r in rows)
+
+
+def _remote_codex_with_desktops(vs, monkeypatch, tmp_path, machine=None, linux=None, windows=None):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    (win / ".vscode" / "extensions").mkdir(parents=True)
+    _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64")
+    for path, value in ((vs / ".vscode-server" / "data" / "Machine" / "settings.json", machine),
+                        (vs / ".config" / "Code" / "User" / "settings.json", linux),
+                        (wsl.vscode_settings(win), windows)):
+        if value is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"chatgpt.cliExecutable": str(value)}))
+    return [e for e in vscode.extensions({"codex": True}, "linux", win_home=win) if e.install.where == "remote-wsl"]
+
+
+def _exe(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x")
+    path.chmod(0o755)
+    return path
+
+
+def test_remote_wsl_ignores_a_machine_copy_of_the_codex_override(vs, monkeypatch, tmp_path):
+    (ext,) = _remote_codex_with_desktops(vs, monkeypatch, tmp_path, machine=_exe(tmp_path / "m" / "codex"))
+    assert not ext.override
+
+
+def test_remote_wsl_prefers_the_windows_desktop_settings(vs, monkeypatch, tmp_path):
+    good = _exe(vs / "bin" / "codex")
+    (ext,) = _remote_codex_with_desktops(vs, monkeypatch, tmp_path, linux=tmp_path / "linux-only", windows=good)
+    assert ext.override and ext.binary == good
+
+
+def test_a_broken_folder_settings_file_is_reported(vs, fake_runner, monkeypatch, tmp_path):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", host_claude_bin())
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".vscode").mkdir()
+    (repo / ".vscode" / "settings.json").write_text('{"a": ')
+    monkeypatch.chdir(repo)
+    bad = [r for r in check._vscode_surfaces() if r.name == "VS Code settings"]
+    assert len(bad) == 1 and ".vscode" in bad[0].detail
