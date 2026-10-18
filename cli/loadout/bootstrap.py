@@ -59,7 +59,8 @@ def _report(name: str, summary: str, lines: list[str] = (), level: str = "ok") -
         (out.problem if line in bad else out.detail)(line)
 
 
-def _prereq_summary(missing: list[str], installed: list[str]) -> tuple[str, str]:
+def _prereq_summary(missing: list[str], installed: list[str],
+                    recommended: frozenset = frozenset()) -> tuple[str, str]:
     entries = [e for e in catalog.binaries() if not e.get("helper") and _wanted(e)]
     ready = sum(1 for e in entries if runner.have(e["id"]))
     text = f"{ready} tools ready"
@@ -68,7 +69,7 @@ def _prereq_summary(missing: list[str], installed: list[str]) -> tuple[str, str]
     if missing:
         text += f", missing {', '.join(missing)}"
     required = {e["id"] for e in entries if e.get("required")}
-    return text, ("fail" if set(missing) & required else "warn" if missing else "ok")
+    return text, ("fail" if set(missing) & (required - recommended) else "warn" if missing else "ok")
 
 
 MANUAL_STEPS = {
@@ -170,7 +171,7 @@ def missing_binary(name: str) -> bool:
 
 
 def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None,
-                  skip: frozenset = frozenset()) -> list[str]:
+                  skip: frozenset = frozenset(), recommended: frozenset = frozenset()) -> list[str]:
     """notes: collects the missing and failed lines for the caller to print under its status line (else printed now).
     skip: binaries not wanted this run (codex when, in WSL, the user's Codex is the Windows one).
     Progress lines ("installing …") always print at once: an install can take minutes."""
@@ -227,7 +228,10 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             failed.add(name)
             if not entry.get("helper"):
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
-                note(f"missing {'(required) ' if entry.get('required') else ''}{name}: {hint}")
+                why = ("recommended next to VS Code's Codex extension, for /hooks and plugins"
+                       if name in recommended else "")
+                tag = f"({why}) " if why else "(required) " if entry.get("required") else ""
+                note(f"missing {tag}{name}: {hint}")
                 missing.append(name)
     if not _gh_for_git() and runner.have("gh"):
         note("gh is not logged in: run `gh auth login` (needed for private marketplaces)", problem=True)
@@ -582,6 +586,28 @@ VSCODE_FLAG_HINT = "or run bootstrap again with --vscode-wsl"
 VSCODE_DONE = ("VS Code: the Codex extension now runs", "VS Code already runs Codex in WSL")
 
 
+CODEX_CLI_QUESTION = ("\nVS Code's Codex extension runs its own Codex. "
+                      "Install the Codex CLI alongside VS Code (for /hooks and plugins)? [Y/n] ")
+CODEX_CLI_WHY = "installed alongside VS Code's Codex extension, for /hooks and plugins"
+CODEX_CLI_DECLINED = ("not installed (you use VS Code's Codex extension): loadout sets Codex up for the extension; "
+                      "what only the CLI adds is listed under Still to do")
+
+
+def codex_cli_choice(install: bool, ask: Ask, interactive: bool, wanted: bool) -> tuple[str | None, bool]:
+    """(the Codex CLI line to print or None, skip its install). Only when the Codex CLI is missing and VS Code's Codex
+    extension on this side can run Codex: the CLI is recommended there, not required (spec Part 2)."""
+    from . import codex
+    if not missing_binary("codex") or codex.extension_state()[0] is None:
+        return None, False
+    if not wanted:
+        return CODEX_CLI_DECLINED, True
+    if not install:
+        return None, False  # nothing installs this run; the missing line says it is recommended
+    if interactive and ask(CODEX_CLI_QUESTION).strip().lower() not in ("", "y", "yes"):
+        return CODEX_CLI_DECLINED, True
+    return CODEX_CLI_WHY, False
+
+
 def _vscode_level(message: str) -> str:
     """ok only when the switch is on now; every other answer (no settings, another value, a write error) is a warning."""
     return "ok" if message.startswith(VSCODE_DONE) else "warn"
@@ -673,18 +699,18 @@ def _no_question(question: str) -> str:
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
-              answers: str | None = None, vscode_wsl: bool = False) -> int:
+              answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True) -> int:
     from . import targets
     try:
         return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
-                          vscode_wsl)
+                          vscode_wsl, codex_cli)
     finally:
         targets.OVERRIDE = None
 
 
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
-               answers: str | None = None, vscode_wsl: bool = False) -> int:
+               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -750,10 +776,16 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []
+    cli_line, cli_skip = (codex_cli_choice(install, ask, interactive and not yes, codex_cli)
+                          if chosen["codex"] and not gate else (None, False))
+    recommended = frozenset({"codex"}) if chosen["codex"] and not gate and codex.extension_state()[0] is not None \
+        else frozenset()
     missing = check_prereqs(install, ask, installed=installed, notes=notes,
-                            skip=frozenset({"codex"}) if gate else frozenset())
-    summary, level = _prereq_summary(missing, installed)
+                            skip=frozenset({"codex"}) if gate or cli_skip else frozenset(), recommended=recommended)
+    summary, level = _prereq_summary(missing, installed, recommended)
     out.status("Prerequisites", summary, level)
+    if cli_line is not None and (cli_skip or "codex" in installed):
+        out.status("Codex CLI", cli_line, "warn" if cli_skip else "ok")
     for line in notes:
         out.problem(line)
     claude_on = chosen["claude"]
