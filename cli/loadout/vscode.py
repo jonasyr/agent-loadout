@@ -177,6 +177,42 @@ def runs_in_wsl(ext: Extension) -> bool:
     return _wsl_switch(ext.agent, ext.install)
 
 
+def wsl_switch_overrides(win_home: Path) -> list[tuple[str, Path]]:
+    """Settings that turn the Codex extension's WSL switch off over VS Code's user settings on Windows: the open
+    folder's .vscode/settings.json ("folder", it wins) and a profile ("profile", while it is active; which one is,
+    is not on disk). loadout names them and never edits them."""
+    found = []
+    folder = folder_settings()
+    if folder is not None and _is_file(folder):
+        data = read_jsonc(folder)
+        value = data.get(wsl.WIN_SETTING) if data is not None else None
+        if value is True:
+            return []  # the folder's value wins over every profile's
+        if value is False:
+            found.append(("folder", folder))
+    try:
+        profiles = sorted((wsl.vscode_settings(win_home).parent / "profiles").glob("*/settings.json"))
+    except OSError:
+        profiles = []
+    for p in profiles:
+        data = read_jsonc(p)
+        if data is not None and data.get(wsl.WIN_SETTING) is False:
+            found.append(("profile", p))
+    return found
+
+
+def override_text(kind: str, path: Path) -> tuple[str, str]:
+    """(detail, fix) for one override of the WSL switch."""
+    if kind == "folder":
+        return (f"{path} sets {wsl.WIN_SETTING} to false, and a folder's settings win over your user settings: in "
+                "this folder the Codex extension runs Codex on Windows",
+                "set it to true in that file or remove it (loadout does not edit a folder's settings)")
+    return (f"the VS Code profile settings {path} set {wsl.WIN_SETTING} to false: while that profile is active the "
+            "Codex extension runs Codex on Windows (loadout cannot tell which profile is active)",
+            "set it to true in that profile (Preferences: Open User Settings (JSON) with the profile active) or "
+            "remove it (loadout does not edit a profile)")
+
+
 def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path | None = None,
                look: bool = True) -> list[Extension]:
     """The agent extensions of the agents that are on, one per install that has it."""
@@ -230,6 +266,36 @@ def bundled_version(ext: Extension) -> str | None:
     found = m.group(0) if m else None
     if key is not None:
         _VERSIONS[key] = found
+    return found
+
+
+def _key(version: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", version))
+
+
+def bundled_claude(platform: str | None = None) -> Path | None:
+    """The Claude Code extension's bundled claude on this side (a local or Remote-WSL install, the newest version).
+    A Windows window seen from WSL does not count: its claude.exe reads the Windows home."""
+    found = [e for e in extensions({"claude": True}, platform, look=False)
+             if e.install.where != "windows" and e.binary is not None]
+    return max(found, key=lambda e: _key(e.version)).binary if found else None
+
+
+def use_bundled_claude(on: bool | None = None) -> Path | None:
+    """No claude on PATH and Claude Code on (on, else targets.json): loadout's own claude commands (claude plugin,
+    claude mcp) run the extension's bundled binary. Returns it, or None (nothing registered)."""
+    runner.FALLBACK.pop("claude", None)
+    if on is None:
+        from . import targets
+        try:
+            on = targets.claude_enabled()
+        except Exception:  # a damaged targets.json: its own row says so
+            return None
+    if not on or runner.have("claude"):
+        return None
+    found = bundled_claude()
+    if found is not None:
+        runner.FALLBACK["claude"] = str(found)
     return found
 
 
@@ -296,7 +362,8 @@ def row_name(ext: Extension) -> str:
 
 SYSTEM_DIRS = ("/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin")
 SERVER_ENV = ".vscode-server/server-env-setup"  # VS Code's place for a Remote-WSL server's environment
-_PATH_LINE = re.compile(r"^\s*(?:export\s+)?PATH=(.+)$", re.M)
+# a plain assignment, or the unconditional arm of loadout's own block line (a user's case arm is conditional)
+_PATH_LINE = re.compile(r'^\s*(?:case ":\$PATH:" in \*":[^"]*:"\*\) ;; \*\)\s*)?(?:export\s+)?PATH=(.+)$', re.M)
 
 
 def reads_home(ext: Extension) -> Path:

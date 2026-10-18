@@ -170,6 +170,17 @@ def missing_binary(name: str) -> bool:
     return bool(found) and wsl._on_windows_drive(Path(found), wsl.MOUNT)
 
 
+RECOMMENDED_WHY = {"codex": "recommended next to VS Code's Codex extension, for /hooks and plugins",
+                   "claude": "VS Code's Claude Code extension's own runs loadout's claude commands meanwhile"}
+CLAUDE_BUNDLED = ("not on PATH: loadout runs VS Code's Claude Code extension's own ({path}) for claude plugin and "
+                  "claude mcp; --install puts a claude on PATH for the terminal")
+
+
+def _claude_bundled_line(path: Path) -> str:
+    """The plan line naming the bundled binary; its folder name is printed escaped."""
+    return CLAUDE_BUNDLED.format(path=out.printable(str(path)))
+
+
 def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None,
                   skip: frozenset = frozenset(), recommended: frozenset = frozenset()) -> list[str]:
     """notes: collects the missing and failed lines for the caller to print under its status line (else printed now).
@@ -228,8 +239,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             failed.add(name)
             if not entry.get("helper"):
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
-                why = ("recommended next to VS Code's Codex extension, for /hooks and plugins"
-                       if name in recommended else "")
+                why = RECOMMENDED_WHY.get(name, "") if name in recommended else ""
                 tag = f"({why}) " if why else "(required) " if entry.get("required") else ""
                 note(f"missing {tag}{name}: {hint}")
                 missing.append(name)
@@ -513,6 +523,75 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
     return out, bool(out)
 
 
+
+SERVER_ENV_QUESTION = ("Add loadout's tool folders to PATH for VS Code's Remote-WSL windows "
+                       "(~/.vscode-server/server-env-setup, backup first)? [y/N] ")
+SERVER_ENV_AFTER = 'takes effect after "WSL: Restart" in VS Code, or a reconnect'
+
+
+def vscode_path_wanted() -> bool:
+    """In WSL with VS Code's Remote-WSL server (~/.vscode-server): its windows run no shell startup file."""
+    return wsl.detect() is not None and (paths.home() / ".vscode-server").is_dir()
+
+
+def _home_tool_dirs() -> list[Path]:
+    home = paths.home()
+    return [d for d in paths.tool_dirs() if d == home or home in d.parents]
+
+
+def setup_vscode_path(bk: Backup | None) -> str:
+    """Add or refresh loadout's PATH block in ~/.vscode-server/server-env-setup; the user's lines stay byte for byte.
+    Returns the line to print, "" when nothing changed."""
+    from . import vscode
+    dirs = _home_tool_dirs()
+    if not dirs:
+        return ""
+    target = paths.home() / vscode.SERVER_ENV
+    if target.is_symlink():  # a dotfiles link, dangling or not: write and record its target, the link stays
+        target = Path(os.path.realpath(target))
+    block = _path_block(dirs)
+    line = _refresh_path_block(target, block, bk)
+    if line is None and target.exists():
+        raw = target.read_bytes()
+        if bk is not None:  # the addition is undone from the copy
+            bk.save_copy(target, f"{target} before adding the tool folders to PATH")
+        from .jsonio import write_atomic_bytes  # the user's bytes plus the block, never half a block
+        write_atomic_bytes(target, raw + (b"" if not raw or raw.endswith(b"\n") else b"\n") + block.encode("utf-8"))
+        line = f"added the tool folders to PATH to {target}"
+    elif line is None:
+        line = _add_block(target, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH")
+    return line or ""
+
+
+def _vscode_path_step(ask: Ask, interactive: bool, flag: bool, bk: Backup | None) -> None:
+    """--vscode-path, or a yes in a terminal when a tool folder is missing from the Remote-WSL PATH; a block written
+    earlier is kept current (spec Part 3)."""
+    from . import vscode
+    if not vscode_path_wanted():
+        if flag:
+            out.status("VS Code PATH", "--vscode-path applies in WSL with VS Code's Remote-WSL server "
+                                       "(~/.vscode-server); nothing changed", "warn")
+        return
+    target = paths.home() / vscode.SERVER_ENV
+    try:
+        ours = PATH_MARKER.encode() in target.read_bytes()
+    except OSError:
+        ours = False
+    if not (flag or ours):
+        have = set(vscode.remote_path_dirs())
+        missing = [d for d in _home_tool_dirs() if str(d) not in have]
+        if not missing or not interactive:
+            return
+        print(f"\nplan: add a PATH block to {target} for {', '.join(map(str, missing))} "
+              f"({SERVER_ENV_AFTER}; undo: loadout restore)")
+        if not ui.confirm(ask, SERVER_ENV_QUESTION):
+            return
+    line = setup_vscode_path(bk)
+    if line:
+        out.status("VS Code PATH", f"{line}; {SERVER_ENV_AFTER}", "ok")
+    elif flag:
+        out.status("VS Code PATH", f"already set up in {target}", "ok")
+
 def _win_path_command() -> list[str]:
     import base64
     encoded = base64.b64encode(WIN_PATH_SCRIPT.encode("utf-16-le")).decode("ascii")
@@ -624,7 +703,8 @@ def _vscode_level(message: str) -> str:
 
 def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
     """Codex runs in WSL: switch VS Code's extension to it (--vscode-wsl), offer it (a terminal), or print the manual
-    step (no terminal) when the extension still runs the Windows Codex (spec Part 4)."""
+    step (no terminal) when the extension still runs the Windows Codex (spec Part 4). A folder's or a profile's
+    setting that turns it off again is named, never edited (spec Part 3)."""
     home = cs.windows_home if cs is not None else None
     if vscode:
         if home is None:
@@ -632,11 +712,15 @@ def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
         else:
             message = wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL
             out.status("VS Code", message, _vscode_level(message))
-        return
-    if interactive:
+    elif interactive:
         _offer_vscode(cs, ask, bk)
     elif cs is not None and cs.vscode_windows:
         out.status("VS Code", f"the Codex extension runs Codex on Windows; {wsl.MANUAL} ({VSCODE_FLAG_HINT})", "warn")
+    if home is not None:
+        from . import vscode as vs
+        for kind, path in vs.wsl_switch_overrides(home):
+            detail, fix = vs.override_text(kind, path)
+            out.status("VS Code", out.printable(f"{detail}; {fix}"), "warn")  # a folder name is untrusted
 
 
 def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None, vscode: bool = False) -> str | None:
@@ -708,18 +792,20 @@ def _no_question(question: str) -> str:
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
-              answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True) -> int:
+              answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
+              vscode_path: bool = False) -> int:
     from . import targets
     try:
         return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
-                          vscode_wsl, codex_cli)
+                          vscode_wsl, codex_cli, vscode_path)
     finally:
         targets.OVERRIDE = None
 
 
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
-               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True) -> int:
+               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
+               vscode_path: bool = False) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -786,15 +872,19 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     installed: list[str] = []
     notes: list[str] = []
     prepend_tool_dirs()  # a CLI installed by an earlier run, not yet on this shell's PATH, counts as installed
+    from . import vscode
+    claude_bundled = vscode.use_bundled_claude(on=chosen["claude"])
     cli_line, cli_skip = (codex_cli_choice(install, ask, interactive and not yes, codex_cli)
                           if chosen["codex"] and not gate else (None, False))
-    recommended = codex_recommended(chosen, gate)
+    recommended = codex_recommended(chosen, gate) | (frozenset({"claude"}) if claude_bundled else frozenset())
     missing = check_prereqs(install, ask, installed=installed, notes=notes,
                             skip=frozenset({"codex"}) if gate or cli_skip else frozenset(), recommended=recommended)
     summary, level = _prereq_summary(missing, installed, recommended)
     out.status("Prerequisites", summary, level)
     if cli_line is not None and (cli_skip or "codex" in installed):
         out.status("Codex CLI", cli_line, "warn" if cli_skip else "ok")
+    if claude_bundled is not None and missing_binary("claude"):
+        out.status("Claude Code CLI", _claude_bundled_line(claude_bundled), "warn")
     if not codex_cli and not cli_skip:  # shown in calm mode too: an agent that passed it must see it did nothing
         out.problem("--without-codex-cli: not used; it applies only with VS Code's Codex extension and no Codex CLI "
                     "on PATH")
@@ -867,6 +957,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     path_lines, path_changed = setup_path(bk)
     _report("PATH", "tool folders added (new terminals)" if path_changed else "already set up",
             path_lines or ["PATH already set up"])
+    _vscode_path_step(ask, interactive and not yes, vscode_path, bk)
     if not bk.empty:
         out.detail(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
@@ -892,21 +983,27 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         for line in todo:
             print(f"  - {line}")
     extension = here["codex"] and not runner.have("codex") and codex.extension_state()[0] is not None
-    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if here[a] and (a == "claude" or not extension))
-    if extension and not run:  # extension mode: the extension is where Codex runs
-        print("\nNext: open VS Code's Codex extension (reload the window if it is open). The kit loads automatically.")
+    claude_ext = here["claude"] and claude_bundled is not None and not runner.have("claude")
+    run = " or ".join(f"`{a}`" for a in ("claude", "codex")
+                      if here[a] and not (a == "claude" and claude_ext) and (a == "claude" or not extension))
+    if (extension or claude_ext) and not run:  # extension mode: the extension is where the agent runs
+        names = " and ".join(n for n, on in (("Claude Code", claude_ext), ("Codex", extension)) if on)
+        word = "extensions" if extension and claude_ext else "extension"
+        print(f"\nNext: open VS Code's {names} {word} (reload the window if it is open). The kit loads automatically.")
         if not personal_ok:
             print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
             return 1
         return code
-    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if here[a])
+    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex"))
+                        if here[a] and not (a == "claude" and claude_ext))
+    also = ", and open VS Code's Claude Code extension" if claude_ext else ""  # it runs Claude Code here
     if not run:  # Codex only, and its step stopped: on Windows, or a CODEX_HOME shared with Windows
         print(f"\nNext: {WINDOWS_WAY}." if WINDOWS_WAY in gate else "\nNext: settle Codex's side (see the Codex step above).")
     elif out.VERBOSE:
-        print(f"\nThen start {names}." if path_changed else f"\nRestart {names} to load plugins and rules.")
+        print(f"\nThen start {names}{also}." if path_changed else f"\nRestart {names} to load plugins and rules{also}.")
     else:
-        print(f"\nNext: run {run} in a new terminal." if path_changed
-              else f"\nNext: run {run} (restart it if it is open). The kit loads automatically.")
+        print(f"\nNext: run {run} in a new terminal{also}." if path_changed
+              else f"\nNext: run {run} (restart it if it is open){also}. The kit loads automatically.")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1

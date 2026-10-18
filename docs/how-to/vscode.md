@@ -22,6 +22,10 @@ Both extensions bring their own copy of the agent and do not use the `claude` or
 
 With VS Code's Codex extension and no Codex CLI, loadout still sets Codex up: the rules block in `AGENTS.md`, `config.toml`, Serena's hooks and the skills. It uses the extension's own Codex for the little it runs (it needs 0.161 or newer; with an older one, update the extension). It skips plugins, which the extension does not load. With `--install`, bootstrap asks in a terminal whether to install the Codex CLI next to the extension; without a terminal it installs it, and `--without-codex-cli` leaves it out. In WSL this applies to a Remote-WSL window; the walkthrough for Codex on Windows with VS Code needs the CLI in WSL. Without the CLI, bootstrap's "Still to do" names the one step only the CLI has (approving loadout's hooks in `/hooks`), and `loadout check` warns `binary codex` instead of failing.
 
+## Claude Code in VS Code without the CLI
+
+With no `claude` on your PATH, loadout runs the Claude Code extension's own binary for its `claude plugin …` and `claude mcp …` commands: the newest copy in a local or Remote-WSL install (from WSL, never a Windows window's, which reads the Windows home). Bootstrap's `Claude Code CLI` line names the binary, and `loadout check` warns `binary claude` instead of failing. `--install` still installs the CLI, which a terminal and the extension's terminal mode (`claudeCode.useTerminal`) need. Without a bundled binary, the CLI is required as before.
+
 ## Windows and WSL
 
 Which home an extension reads depends on the window:
@@ -31,11 +35,13 @@ Which home an extension reads depends on the window:
 | A Remote-WSL window (`code .` from WSL) | the WSL `~/.claude` | the WSL `~/.codex` |
 | A local Windows window | `%USERPROFILE%\.claude` | `%USERPROFILE%\.codex`, or the WSL `~/.codex` when `chatgpt.runCodexInWindowsSubsystemForLinux` is on ([the switch](wsl.md#when-your-only-codex-is-the-windows-one)) |
 
+A folder's `.vscode/settings.json` that sets `chatgpt.runCodexInWindowsSubsystemForLinux` to `false` wins over your user settings, and a VS Code profile's does while that profile is active. `loadout check` names the file in a `VS Code` row, and `bootstrap --vscode-wsl` says so; loadout edits neither.
+
 With loadout in WSL, open your repos with `code .` from WSL, so both extensions read what loadout set up. `loadout check` in WSL warns `VS Code (Claude Code, Windows window)` when the Claude Code extension is installed in VS Code on Windows and loadout has not set up Windows (if you use only Remote-WSL windows, uninstall that Windows copy), and the `VS Code` row when the Codex extension still runs the Windows Codex. To use the Windows window instead, set loadout up on Windows too with `bootstrap.ps1` ([Codex on both sides](wsl.md#codex-on-both-sides)).
 
 ### MCP servers in a Remote-WSL window
 
-A Remote-WSL window runs no shell startup file, so folders that your shell adds to PATH (mise's shims, `~/.local/bin`) may be missing when the Codex extension starts an MCP server. `loadout check` warns `VS Code PATH` and names the servers. Fix: give the server an absolute command (for example `/home/you/.local/bin/serena`), or add the folder in `~/.vscode-server/server-env-setup`:
+A Remote-WSL window runs no shell startup file, so folders that your shell adds to PATH (mise's shims, `~/.local/bin`) may be missing when the Codex extension starts an MCP server. `loadout check` warns `VS Code PATH` and names the servers. Fix: `loadout bootstrap --vscode-path` adds a marked block with the folders bootstrap gives your shell to `~/.vscode-server/server-env-setup` (it creates the file if missing, keeps your lines, saves a copy first; `loadout restore` undoes it). In a terminal, bootstrap offers it when one of those folders is missing there. For a command elsewhere, give the server an absolute command (for example `/home/you/.local/bin/serena`), or add its folder in that file yourself:
 
 ```bash
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
