@@ -491,3 +491,45 @@ def test_a_codex_executable_override_is_the_codex_that_is_checked(vs, fake_runne
     assert ext.binary == own
     (row,) = check._vscode_surfaces()
     assert row.ok
+
+
+def test_remote_wsl_codex_takes_the_desktop_cli_executable(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    own = vs / "bin" / "codex"
+    own.parent.mkdir()
+    own.write_text("x")
+    own.chmod(0o755)
+    settings = wsl.vscode_settings(win)
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"chatgpt.cliExecutable": str(own)}))
+    (win / ".vscode" / "extensions").mkdir(parents=True)
+    _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64")
+    (ext,) = vscode.extensions({"codex": True}, "linux", win_home=win)
+    assert ext.binary == own and ext.override
+
+
+def test_an_unusable_claude_wrapper_warns_even_with_a_bundled_binary(vs, fake_runner, tmp_path):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", host_claude_bin())
+    user = vscode._user_dir(vs, sys.platform)
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text(json.dumps({"claudeCode.claudeProcessWrapper": "/no/such/claude"}))
+    (row,) = check._vscode_surfaces()
+    assert not row.ok and "claudeProcessWrapper" in row.detail and "remove the setting" in row.fix
+
+
+def test_an_old_codex_override_points_at_the_setting(vs, fake_runner, tmp_path):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", host_codex_bin())
+    own = tmp_path / ("codex.exe" if sys.platform == "win32" else "codex")
+    own.write_text("x")
+    own.chmod(0o755)
+    user = vscode._user_dir(vs, sys.platform)
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text(json.dumps({"chatgpt.cliExecutable": str(own)}))
+    fake_runner.paths["codex"] = "/usr/bin/codex"
+    fake_runner.responses[(str(own), "--version")] = runner.Result(0, "codex-cli 0.150.0\n", "")
+    (row,) = check._vscode_surfaces()
+    assert not row.ok and "chatgpt.cliExecutable" in row.detail and "chatgpt.cliExecutable" in row.fix
+    assert "update the Codex extension" not in row.fix

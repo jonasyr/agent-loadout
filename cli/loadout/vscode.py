@@ -37,6 +37,7 @@ class Extension:
     version: str
     binary: Path | None  # the bundled agent binary; None when this build has none
     os_name: str = "linux"  # the OS that binary runs on: "linux", "darwin" or "windows"
+    override: bool = False  # binary is chatgpt.cliExecutable, not the bundled one
 
 
 def _user_dir(home: Path, platform: str) -> Path:
@@ -160,17 +161,22 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
         return []  # nothing of an agent that is off is read, and no Windows lookup for nothing
     platform = platform or sys.platform
     out = []
-    for install in installs(platform, win_home, look):
+    found = installs(platform, win_home, look)
+    desktop = next((i for i in found if i.where != "remote-wsl"), None)  # where a remote window's user settings are
+    for install in found:
         for agent, ext_id in EXT_ID.items():
             if not on.get(agent):
                 continue  # an agent that is off: nothing of it is read
             hit = newest(install.extensions, ext_id)
             if hit is not None:
                 os_name = "linux" if _wsl_switch(agent, install) else _os_of(install.where, platform)
-                binary = _binary(agent, hit[0], os_name)
+                binary, own = _binary(agent, hit[0], os_name), None
                 if agent == "codex":  # chatgpt.cliExecutable, when it names a usable file, is what the extension runs
-                    binary = _wrapper_path(install, setting(install, "chatgpt.cliExecutable")) or binary
-                out.append(Extension(agent, install, hit[0], hit[1], binary, os_name))
+                    value = setting(install, "chatgpt.cliExecutable")
+                    if value is None and install.where == "remote-wsl" and desktop is not None:
+                        value = setting(desktop, "chatgpt.cliExecutable")  # application scope: the desktop's applies
+                    own = _wrapper_path(install, value)
+                out.append(Extension(agent, install, hit[0], hit[1], own or binary, os_name, own is not None))
     return out
 
 

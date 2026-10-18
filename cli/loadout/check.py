@@ -389,7 +389,12 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
             gaps.append(("the extension has no bundled Codex for this platform", "reinstall the Codex extension in VS Code"))
         else:
             version = vscode.bundled_version(ext)
-            if version is not None and vscode.too_old(version):
+            if version is not None and vscode.too_old(version) and ext.override:
+                gaps.append((printable(f"the Codex that chatgpt.cliExecutable names ({ext.binary}) is {version}; "
+                                       "loadout's Codex setup needs 0.161 or newer"),
+                             "update that Codex, or remove chatgpt.cliExecutable from VS Code's settings so the "
+                             "extension runs its own"))
+            elif version is not None and vscode.too_old(version):
                 gaps.append((f"its bundled Codex is {version}; loadout's Codex setup needs 0.161 or newer",
                              "update the Codex extension in VS Code (Extensions view)"))
         if ext.install.where == "remote-wsl" and windows_only:
@@ -420,7 +425,12 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                              "may not find one (none where the Windows installers put it)",
                              "install Claude Code on Windows (bootstrap.ps1 --install), or turn claudeCode.useTerminal "
                              "off"))
-        if ext.binary is None and not terminal_ok and vscode.wrapper(ext.install) is None:
+        configured = vscode.setting(ext.install, "claudeCode.claudeProcessWrapper")
+        if isinstance(configured, str) and configured.strip() and vscode.wrapper(ext.install) is None:
+            gaps.append((printable(f"claudeCode.claudeProcessWrapper names {configured.strip()}, which is not a file "
+                                   "it can run, and the extension starts Claude through it"),
+                         "point it at an installed claude, or remove the setting from VS Code's user settings"))
+        elif ext.binary is None and not terminal_ok and vscode.wrapper(ext.install) is None:
             # it never uses the claude on PATH, except in terminal mode on Windows
             profile = (" (a VS Code profile sets claudeCode.claudeProcessWrapper; loadout cannot tell which profile "
                        "is active)") if vscode.profile_wrapper(ext.install) else ""
