@@ -68,6 +68,7 @@ def fake_home(tmp_path, monkeypatch):
 def fake_runner(monkeypatch):
     from loadout import vscode
     monkeypatch.setattr(vscode, "_VERSIONS", {})  # no version cached from another test
+    monkeypatch.setattr(runner, "FALLBACK", {})  # no bundled binary registered by another test
     fake = FakeRunner()
     monkeypatch.setattr(runner, "run", fake)
     monkeypatch.setattr(runner, "have", fake.have)

@@ -266,6 +266,36 @@ def bundled_version(ext: Extension) -> str | None:
     return found
 
 
+def _key(version: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", version))
+
+
+def bundled_claude(platform: str | None = None) -> Path | None:
+    """The Claude Code extension's bundled claude on this side (a local or Remote-WSL install, the newest version).
+    A Windows window seen from WSL does not count: its claude.exe reads the Windows home."""
+    found = [e for e in extensions({"claude": True}, platform, look=False)
+             if e.install.where != "windows" and e.binary is not None]
+    return max(found, key=lambda e: _key(e.version)).binary if found else None
+
+
+def use_bundled_claude(on: bool | None = None) -> Path | None:
+    """No claude on PATH and Claude Code on (on, else targets.json): loadout's own claude commands (claude plugin,
+    claude mcp) run the extension's bundled binary. Returns it, or None (nothing registered)."""
+    runner.FALLBACK.pop("claude", None)
+    if on is None:
+        from . import targets
+        try:
+            on = targets.claude_enabled()
+        except Exception:  # a damaged targets.json: its own row says so
+            return None
+    if not on or runner.have("claude"):
+        return None
+    found = bundled_claude()
+    if found is not None:
+        runner.FALLBACK["claude"] = str(found)
+    return found
+
+
 def too_old(version: str) -> bool:
     m = _VERSION.match(version)
     return m is not None and (int(m.group(1)), int(m.group(2))) < CODEX_MIN

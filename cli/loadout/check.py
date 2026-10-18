@@ -228,6 +228,16 @@ def _binaries(cs=None) -> list[CheckResult]:
                                        "loadout bootstrap --install (recommended next to the extension, for /hooks "
                                        "and plugins)", "warn"))
                 continue
+        if name == "claude" and not ok:
+            from . import vscode
+            found = vscode.bundled_claude()
+            if found is not None:  # loadout's claude commands run it; a terminal still has no claude
+                out.append(CheckResult(f"binary {name}", False,
+                                       printable(f"not on PATH; loadout runs VS Code's Claude Code extension's own "
+                                                 f"({found})"),
+                                       "loadout bootstrap --install (a claude on PATH for the terminal and the "
+                                       "extension's terminal mode)", "warn"))
+                continue
         out.append(CheckResult(f"binary {name}", ok, "" if ok else "not on PATH", fix, severity))
     return out
 

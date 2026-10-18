@@ -62,6 +62,15 @@ def have(binary: str) -> bool:
     return _resolve(binary) is not None
 
 
+FALLBACK: dict[str, str] = {}  # program -> absolute path run() starts when the program is not on PATH (vscode.py)
+
+
+def _fallback(binary: str) -> str | None:
+    """Only run(): which() and have() keep answering for PATH, which a terminal and VS Code's terminal mode use."""
+    found = FALLBACK.get(binary)
+    return found if found and os.path.isabs(found) and os.path.isfile(found) else None
+
+
 def would_refuse(cmd: list[str]) -> bool:
     """True when run() would refuse cmd: a Windows .cmd/.bat shim cannot take cmd.exe metacharacters."""
     exe = _resolve(cmd[0])
@@ -164,7 +173,7 @@ def write_manual_commands(directory, title: str, cmds: list[list[str]], undo: li
 
 
 def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict | None = None) -> Result:
-    exe = _resolve(cmd[0])
+    exe = _resolve(cmd[0]) or _fallback(cmd[0])
     if exe is None:
         return Result(127, "", f"{cmd[0]}: not found")
     if would_refuse(cmd):

@@ -170,6 +170,17 @@ def missing_binary(name: str) -> bool:
     return bool(found) and wsl._on_windows_drive(Path(found), wsl.MOUNT)
 
 
+RECOMMENDED_WHY = {"codex": "recommended next to VS Code's Codex extension, for /hooks and plugins",
+                   "claude": "VS Code's Claude Code extension's own runs loadout's claude commands meanwhile"}
+CLAUDE_BUNDLED = ("not on PATH: loadout runs VS Code's Claude Code extension's own ({path}) for claude plugin and "
+                  "claude mcp; --install puts a claude on PATH for the terminal")
+
+
+def _claude_bundled_line(path: Path) -> str:
+    """The plan line naming the bundled binary; its folder name is printed escaped."""
+    return CLAUDE_BUNDLED.format(path=out.printable(str(path)))
+
+
 def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None,
                   skip: frozenset = frozenset(), recommended: frozenset = frozenset()) -> list[str]:
     """notes: collects the missing and failed lines for the caller to print under its status line (else printed now).
@@ -228,8 +239,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             failed.add(name)
             if not entry.get("helper"):
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
-                why = ("recommended next to VS Code's Codex extension, for /hooks and plugins"
-                       if name in recommended else "")
+                why = RECOMMENDED_WHY.get(name, "") if name in recommended else ""
                 tag = f"({why}) " if why else "(required) " if entry.get("required") else ""
                 note(f"missing {tag}{name}: {hint}")
                 missing.append(name)
@@ -855,15 +865,19 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     installed: list[str] = []
     notes: list[str] = []
     prepend_tool_dirs()  # a CLI installed by an earlier run, not yet on this shell's PATH, counts as installed
+    from . import vscode
+    claude_bundled = vscode.use_bundled_claude(on=chosen["claude"])
     cli_line, cli_skip = (codex_cli_choice(install, ask, interactive and not yes, codex_cli)
                           if chosen["codex"] and not gate else (None, False))
-    recommended = codex_recommended(chosen, gate)
+    recommended = codex_recommended(chosen, gate) | (frozenset({"claude"}) if claude_bundled else frozenset())
     missing = check_prereqs(install, ask, installed=installed, notes=notes,
                             skip=frozenset({"codex"}) if gate or cli_skip else frozenset(), recommended=recommended)
     summary, level = _prereq_summary(missing, installed, recommended)
     out.status("Prerequisites", summary, level)
     if cli_line is not None and (cli_skip or "codex" in installed):
         out.status("Codex CLI", cli_line, "warn" if cli_skip else "ok")
+    if claude_bundled is not None and missing_binary("claude"):
+        out.status("Claude Code CLI", _claude_bundled_line(claude_bundled), "warn")
     if not codex_cli and not cli_skip:  # shown in calm mode too: an agent that passed it must see it did nothing
         out.problem("--without-codex-cli: not used; it applies only with VS Code's Codex extension and no Codex CLI "
                     "on PATH")
@@ -962,9 +976,13 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         for line in todo:
             print(f"  - {line}")
     extension = here["codex"] and not runner.have("codex") and codex.extension_state()[0] is not None
-    run = " or ".join(f"`{a}`" for a in ("claude", "codex") if here[a] and (a == "claude" or not extension))
-    if extension and not run:  # extension mode: the extension is where Codex runs
-        print("\nNext: open VS Code's Codex extension (reload the window if it is open). The kit loads automatically.")
+    claude_ext = here["claude"] and claude_bundled is not None and not runner.have("claude")
+    run = " or ".join(f"`{a}`" for a in ("claude", "codex")
+                      if here[a] and not (a == "claude" and claude_ext) and (a == "claude" or not extension))
+    if (extension or claude_ext) and not run:  # extension mode: the extension is where the agent runs
+        names = " and ".join(n for n, on in (("Claude Code", claude_ext), ("Codex", extension)) if on)
+        word = "extensions" if extension and claude_ext else "extension"
+        print(f"\nNext: open VS Code's {names} {word} (reload the window if it is open). The kit loads automatically.")
         if not personal_ok:
             print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
             return 1

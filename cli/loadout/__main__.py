@@ -125,6 +125,11 @@ def main(argv: list[str] | None = None) -> int:
             print("loadout: moving its state out of ~/.claude did not finish (see above); nothing was changed. "
                   "Run the command again; `loadout check` shows what is left.", file=sys.stderr)
             return 1
+    try:  # no claude on PATH: loadout's claude commands run VS Code's Claude Code extension's binary (spec Part 3)
+        from .vscode import use_bundled_claude
+        use_bundled_claude()
+    except Exception:
+        pass
     try:
         return int(args.func(args) or 0)
     except (InvalidJSON, ValueError) as exc:
