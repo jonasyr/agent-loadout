@@ -290,3 +290,12 @@ def test_a_windows_wrapper_path_is_checked_through_its_wsl_mount(vs, fake_runner
     (win / ".claude" / "rules" / "loadout").mkdir(parents=True)
     (row,) = check._vscode_surfaces(_cs(win))
     assert row.ok
+
+
+def test_a_project_can_switch_off_an_inherited_codex_server(vs, tmp_path):
+    paths.codex_home().mkdir()
+    (paths.codex_home() / "config.toml").write_text('[mcp_servers.s]\ncommand = "tool"\n')
+    project = tmp_path / "repo"
+    (project / ".codex").mkdir(parents=True)
+    (project / ".codex" / "config.toml").write_text('[mcp_servers.s]\nenabled = false\n')
+    assert vscode.mcp_commands("codex", project) == {}

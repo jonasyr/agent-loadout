@@ -81,7 +81,8 @@ def test_bundled_codex_that_gives_no_version_is_not_reported(vs, fake_runner):
 
 
 def test_claude_extension_with_its_bundled_binary_is_ok(vs, fake_runner):
-    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", "resources/native-binary/claude")
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64",
+         "resources/native-binary/claude.exe" if sys.platform == "win32" else "resources/native-binary/claude")
     fake_runner.missing.add("claude")
     (row,) = check._vscode_surfaces()
     assert (row.name, row.ok) == ("VS Code (Claude Code)", True)

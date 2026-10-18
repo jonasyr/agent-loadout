@@ -317,13 +317,13 @@ def _commands(servers) -> dict[str, str]:
             and s.get("enabled") is not False}  # a switched-off Codex server starts nothing
 
 
-def _toml_servers(path: Path) -> dict[str, str]:
+def _toml_tables(path: Path) -> dict[str, dict]:
     from . import codex
     try:
-        data = codex._tomllib().loads(path.read_text(encoding="utf-8"))
+        servers = codex._tomllib().loads(path.read_text(encoding="utf-8")).get("mcp_servers")
     except Exception:  # missing, unreadable or not TOML: nothing to check
         return {}
-    return _commands(data.get("mcp_servers"))
+    return {n: t for n, t in servers.items() if isinstance(t, dict)} if isinstance(servers, dict) else {}
 
 
 def mcp_commands(agent: str, project: Path | None = None) -> dict[str, str]:
@@ -331,10 +331,11 @@ def mcp_commands(agent: str, project: Path | None = None) -> dict[str, str]:
     project its .codex/config.toml, which wins for a name it shares (the extension loads no plugins); Claude Code's
     user servers in ~/.claude.json plus the loadout plugin's."""
     if agent == "codex":
-        found = _toml_servers(paths.codex_home() / "config.toml")
-        if project is not None:
-            found.update(_toml_servers(project / ".codex" / "config.toml"))
-        return found
+        tables = _toml_tables(paths.codex_home() / "config.toml")
+        if project is not None:  # the project's layer wins key by key, `enabled = false` included
+            for name, table in _toml_tables(project / ".codex" / "config.toml").items():
+                tables[name] = {**tables.get(name, {}), **table}
+        return _commands(tables)
     found = {}
     plugin = paths.kit_root() / "plugins" / "loadout" / ".mcp.json"
     for path in (plugin, paths.claude_json()):
