@@ -4,7 +4,7 @@ Use this page if you work in VS Code with the Claude Code extension, the Codex e
 
 ## What each extension sees
 
-Both extensions bring their own copy of the agent and do not use the `claude` or `codex` on your PATH. `loadout check` shows one row per extension, `VS Code (Claude Code)` and `VS Code (Codex)`, with the window type added for a Windows window or a Remote-WSL window; every row is a warning, never a failure.
+Both extensions bring their own copy of the agent and do not use the `claude` or `codex` on your PATH. `loadout check` shows one row per extension, `VS Code (Claude Code)` and `VS Code (Codex)`, with the window type added for a Windows window or a Remote-WSL window; every row is a warning, never a failure. A `VS Code settings` row means a settings file does not parse, so loadout cannot read what it sets: fix its JSON (Preferences: Open User Settings (JSON)).
 
 | | Claude Code extension | Codex extension |
 |---|---|---|

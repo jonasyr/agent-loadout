@@ -10,7 +10,7 @@ HOWTO = ROOT / "docs/how-to/vscode.md"
 def test_howto_names_every_vscode_check_row():
     text = HOWTO.read_text(encoding="utf-8")
     for name in ("VS Code (Codex)", "VS Code (Claude Code)", "Windows window", "Remote-WSL window", "VS Code PATH",
-                 "repo .mcp.json"):
+                 "repo .mcp.json", "VS Code settings"):
         assert name in text, name
     assert "Codex CLI alongside VS Code" in text
 

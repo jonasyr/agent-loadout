@@ -399,6 +399,10 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                              "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
                              "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
                              "VS Code on Windows (its Remote-WSL copy stays)"))
+        if (ext.os_name == "windows" and ext.install.where == "local" and not runner.have("claude")
+                and vscode.setting(ext.install, "claudeCode.useTerminal") is True):
+            gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on PATH, and no claude is on PATH",
+                         "install Claude Code (bootstrap.ps1 --install), or turn claudeCode.useTerminal off"))
         if ext.binary is None and vscode.wrapper(ext.install) is None:  # it never uses the claude on PATH
             profile = (" (a VS Code profile sets claudeCode.claudeProcessWrapper; loadout cannot tell which profile "
                        "is active)") if vscode.profile_wrapper(ext.install) else ""
@@ -441,7 +445,13 @@ def _vscode_surfaces(cs=None) -> list[CheckResult]:
     # Codex on in WSL: codex_side already looked for the Windows home, so it is not looked up twice
     found = vscode.extensions(on, win_home=getattr(cs, "windows_home", None), look=cs is None)
     only = _windows_only(cs) if hasattr(cs, "side") else False  # ADR 0029: the WSL Codex home is not theirs
-    return [*(row for ext in found for row in _surface_rows(ext, only)), *_vscode_path(found, only)]
+    broken = []
+    for install in dict.fromkeys(e.install for e in found):  # each install once, in order
+        broken += [CheckResult("VS Code settings", False,
+                               printable(f"{p} does not parse, so loadout cannot read the settings that matter there"),
+                               "fix its JSON in VS Code (Preferences: Open User Settings (JSON))", "warn")
+                   for p in vscode.broken_settings(install)]
+    return [*broken, *(row for ext in found for row in _surface_rows(ext, only)), *_vscode_path(found, only)]
 
 
 def _repo_mcp_paths() -> list[CheckResult]:

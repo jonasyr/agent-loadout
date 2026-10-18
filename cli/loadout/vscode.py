@@ -36,6 +36,7 @@ class Extension:
     folder: Path
     version: str
     binary: Path | None  # the bundled agent binary; None when this build has none
+    os_name: str = "linux"  # the OS that binary runs on: "linux", "darwin" or "windows"
 
 
 def _user_dir(home: Path, platform: str) -> Path:
@@ -161,7 +162,7 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
             hit = newest(install.extensions, ext_id)
             if hit is not None:
                 os_name = "linux" if _wsl_switch(agent, install) else _os_of(install.where, platform)
-                out.append(Extension(agent, install, hit[0], hit[1], _binary(agent, hit[0], os_name)))
+                out.append(Extension(agent, install, hit[0], hit[1], _binary(agent, hit[0], os_name), os_name))
     return out
 
 
@@ -210,6 +211,11 @@ def settings_files(install: Install) -> list[Path]:
     except OSError:
         profiles = []
     return [install.user_dir / "settings.json", *profiles]  # which profile is active is not on disk: any may be
+
+
+def broken_settings(install: Install) -> list[Path]:
+    """Settings files of the install that exist but do not parse: what they set cannot be read."""
+    return [p for p in settings_files(install) if _is_file(p) and read_jsonc(p) is None]
 
 
 def setting(install: Install, key: str) -> object | None:

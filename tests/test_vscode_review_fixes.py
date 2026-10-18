@@ -299,3 +299,26 @@ def test_a_project_can_switch_off_an_inherited_codex_server(vs, tmp_path):
     (project / ".codex").mkdir(parents=True)
     (project / ".codex" / "config.toml").write_text('[mcp_servers.s]\nenabled = false\n')
     assert vscode.mcp_commands("codex", project) == {}
+
+
+def test_terminal_mode_on_windows_needs_claude_on_path(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    user = tmp_path / "Roaming" / "Code" / "User"
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text('{"claudeCode.useTerminal": true}')
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-win32-x64", "resources/native-binary/claude.exe")
+    fake_runner.missing.add("claude")
+    (row,) = [r for e in vscode.extensions({"claude": True}, "win32") for r in check._surface_rows(e)]
+    assert not row.ok and "terminal" in row.detail and "PATH" in row.detail
+
+
+def test_a_settings_file_that_does_not_parse_is_reported(vs, fake_runner):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64",
+         "resources/native-binary/claude.exe" if sys.platform == "win32" else "resources/native-binary/claude")
+    user = vscode._user_dir(vs, sys.platform)
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text('{"a": ')
+    rows = check._vscode_surfaces()
+    bad = [r for r in rows if r.name == "VS Code settings"]
+    assert len(bad) == 1 and not bad[0].ok and bad[0].severity == "warn" and "does not parse" in bad[0].detail
