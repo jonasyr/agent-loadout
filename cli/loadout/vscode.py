@@ -208,15 +208,29 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
     return out
 
 
+_VERSIONS: dict = {}  # (binary, its mtime and size) -> version: one `--version` per binary per process
+
+
 def bundled_version(ext: Extension) -> str | None:
-    """The version of the agent the extension runs: Claude Code's is the extension's own; Codex's is asked."""
+    """The version of the agent the extension runs: Claude Code's is the extension's own; Codex's is asked (once per
+    process for a binary that did not change)."""
     if ext.agent == "claude":
         return ext.version
     if ext.binary is None:
         return None
+    try:
+        st = os.stat(ext.binary)
+        key = (str(ext.binary), st.st_mtime_ns, st.st_size)
+    except OSError:
+        key = None
+    if key is not None and key in _VERSIONS:
+        return _VERSIONS[key]
     res = runner.run([str(ext.binary), "--version"], timeout=15)
     m = _VERSION.search(res.stdout) if res.ok else None
-    return m.group(0) if m else None
+    found = m.group(0) if m else None
+    if key is not None:
+        _VERSIONS[key] = found
+    return found
 
 
 def too_old(version: str) -> bool:

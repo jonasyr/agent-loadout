@@ -26,3 +26,12 @@ def test_adr_and_indexes_link_it():
 def test_the_gap_message_in_the_docs_matches_the_code():
     assert "plugins do not load in VS Code's Codex extension" in check.CODEX_GAP
     assert "plugins do not load" in HOWTO.read_text(encoding="utf-8")
+
+
+def test_agent_page_and_configure_skill_ask_about_vscode():
+    page = (ROOT / "docs/how-to/install-with-an-agent.md").read_text(encoding="utf-8")
+    assert "VS Code" in page.split("## 3.")[0] and "--without-codex-cli" in page
+    skill = (ROOT / "plugins/loadout/skills/configure/SKILL.md").read_text(encoding="utf-8")
+    assert "--without-codex-cli" in skill and "docs/how-to/vscode.md" in skill
+    assert "--without-codex-cli" in (ROOT / "docs/reference/cli.md").read_text(encoding="utf-8")
+    assert "## Codex in VS Code without the CLI" in HOWTO.read_text(encoding="utf-8")

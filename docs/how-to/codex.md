@@ -6,6 +6,8 @@ Most of loadout works the same in both agents: the kit, your personal layer, the
 
 On a new machine, bootstrap asks which coding agents to set up, Claude Code, Codex or both, right after the personal layer step. With Codex and `--install`, it installs Codex too (through mise); without `--install` it reports Codex as missing. Scripts can pass the choice: `bootstrap.sh --install --agents codex` (or `claude`, or `claude,codex`). On a machine set up before this choice existed, bootstrap asks only when `codex` is on your PATH. A personal layer you clone that already holds a choice (`targets.json`) decides without the question, and bootstrap says so; `--agents` wins over it ([bootstrap flags](../reference/cli.md#loadout-bootstrap)).
 
+With VS Code's Codex extension and no Codex CLI, loadout sets Codex up for the extension ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)).
+
 To switch an agent on or off later:
 
 ```bash

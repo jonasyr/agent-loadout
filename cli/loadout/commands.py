@@ -145,6 +145,9 @@ def _register_bootstrap(sub):
                    help="in WSL: set up Codex here (wsl) or leave it to bootstrap.ps1 on Windows (windows)")
     p.add_argument("--vscode-wsl", action="store_true",
                    help="in WSL with Codex: switch VS Code's Codex extension to WSL without asking (backup first)")
+    p.add_argument("--without-codex-cli", action="store_true",
+                   help="with VS Code's Codex extension: do not install the Codex CLI (loadout sets Codex up for the "
+                        "extension; /hooks and plugins need the CLI)")
 
     def run(a):
         if a.verbose:
@@ -154,7 +157,8 @@ def _register_bootstrap(sub):
             if wsl.detect() is None:
                 out.status("VS Code", "--vscode-wsl applies to loadout in WSL only; nothing changed", "warn")
         return bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask, agents=a.agents, codex_side=a.codex_side,
-                                   personal=a.personal, answers=a.answers, vscode_wsl=a.vscode_wsl)
+                                   personal=a.personal, answers=a.answers, vscode_wsl=a.vscode_wsl,
+                                   codex_cli=not a.without_codex_cli)
 
     p.set_defaults(func=run)
 

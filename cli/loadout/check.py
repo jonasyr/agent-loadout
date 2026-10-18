@@ -221,6 +221,13 @@ def _binaries(cs=None) -> list[CheckResult]:
         severity = "error" if entry.get("required") else "warn"
         fix = ("loadout bootstrap --install" if catalog.platform_cmds(entry, "install")
                else entry.get("manual") or f"install {name} and make sure it is on PATH")
+        if name == "codex" and not ok:
+            from . import codex
+            if codex.extension_state()[0] is not None:  # VS Code's Codex extension runs its own: the CLI adds /hooks
+                out.append(CheckResult(f"binary {name}", False, "not on PATH; VS Code's Codex extension runs its own",
+                                       "loadout bootstrap --install (recommended next to the extension, for /hooks "
+                                       "and plugins)", "warn"))
+                continue
         out.append(CheckResult(f"binary {name}", ok, "" if ok else "not on PATH", fix, severity))
     return out
 
