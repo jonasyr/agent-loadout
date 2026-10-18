@@ -84,6 +84,7 @@ Only if Codex is on ([Use loadout with Codex](codex.md)). `loadout check` names 
 | `VS Code (Codex)`: its bundled Codex is older than 0.161 | Update the Codex extension in VS Code's Extensions view. |
 | `VS Code (Claude Code, Windows window)` | That window reads `%USERPROFILE%\.claude`. Open repos with `code .` from WSL, or set loadout up on Windows too ([Windows and WSL](vscode.md#windows-and-wsl)). |
 | `VS Code settings`: … does not parse | Fix the file's JSON in VS Code (Preferences: Open User Settings (JSON)); loadout reads it, never changes it. |
+| `binary codex`: not on PATH; VS Code's Codex extension runs its own | Expected with the extension only. Install the CLI for `/hooks` and plugins: `loadout bootstrap --install` ([VS Code](vscode.md#codex-in-vs-code-without-the-cli)). |
 | `VS Code PATH` | An absolute command in the server entry, or the folder on PATH in `~/.vscode-server/server-env-setup` ([VS Code](vscode.md#mcp-servers-in-a-remote-wsl-window)). |
 | `repo .mcp.json` | Register that server in local scope or as your user-level server ([VS Code](vscode.md#a-committed-mcpjson-with-your-own-path)). |
 

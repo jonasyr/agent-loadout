@@ -18,6 +18,10 @@ Both extensions bring their own copy of the agent and do not use the `claude` or
 
 `loadout check` also warns when the extension's own Codex is older than 0.161: update the extension in VS Code's Extensions view.
 
+## Codex in VS Code without the CLI
+
+With VS Code's Codex extension and no Codex CLI, loadout still sets Codex up: the rules block in `AGENTS.md`, `config.toml`, Serena's hooks and the skills. It uses the extension's own Codex for the little it runs (it needs 0.161 or newer; with an older one, update the extension). It skips plugins, which the extension does not load. In a terminal, bootstrap asks whether to install the Codex CLI next to the extension; without a terminal, `--install` installs it, and `--without-codex-cli` leaves it out. Without the CLI, bootstrap's "Still to do" names the one step only the CLI has (approving loadout's hooks in `/hooks`), and `loadout check` warns `binary codex` instead of failing.
+
 ## Windows and WSL
 
 Which home an extension reads depends on the window:
