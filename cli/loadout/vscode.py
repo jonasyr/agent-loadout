@@ -177,6 +177,39 @@ def runs_in_wsl(ext: Extension) -> bool:
     return _wsl_switch(ext.agent, ext.install)
 
 
+def wsl_switch_overrides(win_home: Path) -> list[tuple[str, Path]]:
+    """Settings that turn the Codex extension's WSL switch off over VS Code's user settings on Windows: the open
+    folder's .vscode/settings.json ("folder", it wins) and a profile ("profile", while it is active; which one is,
+    is not on disk). loadout names them and never edits them."""
+    found = []
+    folder = folder_settings()
+    if folder is not None and _is_file(folder):
+        data = read_jsonc(folder)
+        if data is not None and data.get(wsl.WIN_SETTING) is False:
+            found.append(("folder", folder))
+    try:
+        profiles = sorted((wsl.vscode_settings(win_home).parent / "profiles").glob("*/settings.json"))
+    except OSError:
+        profiles = []
+    for p in profiles:
+        data = read_jsonc(p)
+        if data is not None and data.get(wsl.WIN_SETTING) is False:
+            found.append(("profile", p))
+    return found
+
+
+def override_text(kind: str, path: Path) -> tuple[str, str]:
+    """(detail, fix) for one override of the WSL switch."""
+    if kind == "folder":
+        return (f"{path} sets {wsl.WIN_SETTING} to false, and a folder's settings win over your user settings: in "
+                "this folder the Codex extension runs Codex on Windows",
+                "set it to true in that file or remove it (loadout does not edit a folder's settings)")
+    return (f"the VS Code profile settings {path} set {wsl.WIN_SETTING} to false: while that profile is active the "
+            "Codex extension runs Codex on Windows (loadout cannot tell which profile is active)",
+            "set it to true in that profile (Preferences: Open User Settings (JSON) with the profile active) or "
+            "remove it (loadout does not edit a profile)")
+
+
 def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path | None = None,
                look: bool = True) -> list[Extension]:
     """The agent extensions of the agents that are on, one per install that has it."""

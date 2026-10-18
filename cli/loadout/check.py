@@ -360,15 +360,25 @@ def _codex_side(cs=False) -> list[CheckResult]:
 
 
 def _vscode(cs) -> list[CheckResult]:
-    """In WSL with Codex in WSL: VS Code's Codex extension must run that Codex too (spec Part 4)."""
+    """In WSL with Codex in WSL: VS Code's Codex extension must run that Codex too (spec Part 4); a folder's or a
+    profile's settings that turn the switch off are named, never edited (spec Part 3)."""
     if cs is None or cs.side not in ("wsl", "both") or cs.windows_home is None:
         return []
-    if cs.vscode_windows:
-        return [CheckResult("VS Code", False, "the Codex extension runs Codex on Windows, not the Codex in WSL",
-                            f"loadout bootstrap --codex-side wsl --vscode-wsl, or {wsl.MANUAL}", "warn")]
-    if wsl.vscode_wsl_mode(cs.windows_home) is True:
-        return [CheckResult("VS Code", True, "the Codex extension runs Codex in WSL")]
-    return []
+    from . import vscode
+    folder = vscode.folder_setting(wsl.WIN_SETTING)
+    rows = []
+    if folder is True:
+        rows.append(CheckResult("VS Code", True, "in this folder the Codex extension runs Codex in WSL (its "
+                                                 ".vscode/settings.json)"))
+    elif cs.vscode_windows and folder is not False:
+        rows.append(CheckResult("VS Code", False, "the Codex extension runs Codex on Windows, not the Codex in WSL",
+                                f"loadout bootstrap --codex-side wsl --vscode-wsl, or {wsl.MANUAL}", "warn"))
+    elif wsl.vscode_wsl_mode(cs.windows_home) is True and folder is not False:
+        rows.append(CheckResult("VS Code", True, "the Codex extension runs Codex in WSL"))
+    for kind, path in vscode.wsl_switch_overrides(cs.windows_home):
+        detail, fix = vscode.override_text(kind, path)
+        rows.append(CheckResult("VS Code", False, printable(detail), fix, "warn"))
+    return rows
 
 
 CODEX_GAP = ("plugins do not load in VS Code's Codex extension (loadout's skills such as loadout:configure, "

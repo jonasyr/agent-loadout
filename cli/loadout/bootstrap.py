@@ -624,7 +624,8 @@ def _vscode_level(message: str) -> str:
 
 def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
     """Codex runs in WSL: switch VS Code's extension to it (--vscode-wsl), offer it (a terminal), or print the manual
-    step (no terminal) when the extension still runs the Windows Codex (spec Part 4)."""
+    step (no terminal) when the extension still runs the Windows Codex (spec Part 4). A folder's or a profile's
+    setting that turns it off again is named, never edited (spec Part 3)."""
     home = cs.windows_home if cs is not None else None
     if vscode:
         if home is None:
@@ -632,11 +633,15 @@ def _vscode_step(cs, ask, interactive: bool, bk, vscode: bool) -> None:
         else:
             message = wsl.set_vscode_wsl_mode(bk, home) if bk is not None else wsl.MANUAL
             out.status("VS Code", message, _vscode_level(message))
-        return
-    if interactive:
+    elif interactive:
         _offer_vscode(cs, ask, bk)
     elif cs is not None and cs.vscode_windows:
         out.status("VS Code", f"the Codex extension runs Codex on Windows; {wsl.MANUAL} ({VSCODE_FLAG_HINT})", "warn")
+    if home is not None:
+        from . import vscode as vs
+        for kind, path in vs.wsl_switch_overrides(home):
+            detail, fix = vs.override_text(kind, path)
+            out.status("VS Code", f"{detail}; {fix}", "warn")
 
 
 def codex_gate(flag, ask, interactive: bool, bk: Backup | None = None, vscode: bool = False) -> str | None:
