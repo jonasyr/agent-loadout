@@ -514,9 +514,12 @@ def _vscode_surfaces(cs=None) -> list[CheckResult]:
     # Codex on in WSL: codex_side already looked for the Windows home, so it is not looked up twice
     found = vscode.extensions(on, win_home=getattr(cs, "windows_home", None), look=cs is None)
     only = _windows_only(cs) if hasattr(cs, "side") else False  # ADR 0029: the WSL Codex home is not theirs
+    if only and any(vscode.runs_in_wsl(e) for e in found):
+        only = False  # the open folder switches the extension to WSL: the WSL home is the one it reads
     broken = []
     folder = vscode.folder_settings() if found else None
-    files = [p for install in dict.fromkeys(e.install for e in found) for p in vscode.broken_settings(install)]
+    read = [i for e in found for i in (e.install, e.desktop) if i is not None]  # every install whose settings count
+    files = [p for install in dict.fromkeys(read) for p in vscode.broken_settings(install)]
     if folder is not None and os.path.isfile(folder) and vscode.read_jsonc(folder) is None:
         files.append(folder)  # the open folder's settings: they override the user's
     for p in files:

@@ -618,3 +618,31 @@ def test_a_broken_folder_settings_file_is_reported(vs, fake_runner, monkeypatch,
     monkeypatch.chdir(repo)
     bad = [r for r in check._vscode_surfaces() if r.name == "VS Code settings"]
     assert len(bad) == 1 and ".vscode" in bad[0].detail
+
+
+def test_a_folder_wsl_switch_undoes_windows_only(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    win.mkdir(parents=True)
+    _ext(win / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-win32-x64", linux_codex_bin())
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".vscode").mkdir()
+    (repo / ".vscode" / "settings.json").write_text('{"chatgpt.runCodexInWindowsSubsystemForLinux": true}')
+    monkeypatch.chdir(repo)
+    paths.codex_home().mkdir()
+    (paths.codex_home() / "config.toml").write_text('[mcp_servers.gone]\ncommand = "nosuchtool"\n')
+    rows = check._vscode_surfaces(_cs(win, side="windows"))
+    assert any(r.name == "VS Code PATH" for r in rows)
+
+
+def test_a_broken_desktop_settings_file_used_by_remote_wsl_is_reported(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    settings = wsl.vscode_settings(win)
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"chatgpt.cliExecutable": ')
+    _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", linux_codex_bin())
+    fake_runner.paths["codex"] = "/usr/bin/codex"
+    bad = [r for r in check._vscode_surfaces(_cs(win)) if r.name == "VS Code settings"]
+    assert len(bad) == 1 and "AppData" in bad[0].detail

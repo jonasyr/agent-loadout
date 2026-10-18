@@ -39,6 +39,7 @@ class Extension:
     os_name: str = "linux"  # the OS that binary runs on: "linux", "darwin" or "windows"
     override: bool = False  # binary is chatgpt.cliExecutable, not the bundled one
     override_bad: str | None = None  # chatgpt.cliExecutable as configured, when it names nothing it can run
+    desktop: Install | None = None  # a Remote-WSL window's desktop install, whose user settings it also reads
 
 
 def _user_dir(home: Path, platform: str) -> Path:
@@ -202,7 +203,8 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
                         value = setting(install, "chatgpt.cliExecutable")
                     own = _wrapper_path(install, value)
                 bad = value.strip() if own is None and isinstance(value, str) and value.strip() else None
-                out.append(Extension(agent, install, hit[0], hit[1], own or binary, os_name, own is not None, bad))
+                out.append(Extension(agent, install, hit[0], hit[1], own or binary, os_name, own is not None, bad,
+                                     desktop if install.where == "remote-wsl" else None))
     return out
 
 
