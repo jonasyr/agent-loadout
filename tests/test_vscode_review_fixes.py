@@ -466,3 +466,11 @@ def test_windows_home_paths_match_in_any_case(vs, fake_runner, monkeypatch, tmp_
     _repo(tmp_path, monkeypatch, fake_runner, {"mcpServers": {"s": {"command": cmd}}})
     (row,) = check._repo_mcp_paths()
     assert not row.ok
+
+
+@pytest.mark.parametrize("cmd", ["/mnt/c/Users/Ana Maria/bin/serena", r"C:\Users\Ana Maria\bin\serena.exe",
+                                 "/home/ana maria/bin/serena"])
+def test_home_paths_with_a_space_in_the_user_name(vs, fake_runner, monkeypatch, tmp_path, cmd):
+    _repo(tmp_path, monkeypatch, fake_runner, {"mcpServers": {"s": {"command": cmd}}})
+    (row,) = check._repo_mcp_paths()
+    assert not row.ok

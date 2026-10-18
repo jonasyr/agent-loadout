@@ -368,7 +368,8 @@ CODEX_GAP = ("plugins do not load in VS Code's Codex extension (loadout's skills
              "superpowers, plugin hooks), and it has no /hooks, so Serena's hooks wait for your approval")
 CODEX_GAP_FIX = ("use the Codex CLI alongside VS Code: loadout bootstrap --install installs it; run codex once in "
                  "VS Code's terminal and approve the hooks in /hooks, and use it there when you need the plugin skills")
-_HOME_PATH = re.compile(r"(?:^|=)(/home/(?!linuxbrew/)[^/\s]+/|/Users/[^/\s]+/|/mnt/[A-Za-z]/(?i:users)/[^/\s]+/|[A-Za-z]:[\\/](?i:users)[\\/][^\\/\s]+[\\/])")
+_HOME_PATH = re.compile(r"(?:^|=)(/home/(?!linuxbrew/)[^/]+/|/Users/[^/]+/|/mnt/[A-Za-z]/(?i:users)/[^/]+/|"
+                        r"[A-Za-z]:[\\/](?i:users)[\\/][^\\/]+[\\/])")  # a user name may hold spaces
 
 
 def _codex_cli_here() -> bool:
