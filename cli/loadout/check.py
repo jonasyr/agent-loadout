@@ -429,20 +429,21 @@ def _surface_rows(ext, windows_only: bool = False, vscode_row: bool = False) -> 
                              "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
                              "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
                              "VS Code on Windows (its Remote-WSL copy stays)"))
-        terminal = ext.os_name == "windows" and vscode.setting(ext.install, "claudeCode.useTerminal") is True
-        terminal_ok = terminal and (runner.have("claude") if ext.install.where == "local"
-                                    else vscode.windows_claude(ext.install))
+        terminal = vscode.setting(ext.install, "claudeCode.useTerminal") is True
+        terminal_ok = terminal and (vscode.windows_claude(ext.install) if ext.install.where == "windows"
+                                    else runner.have("claude"))
         if terminal and not terminal_ok:
-            if ext.install.where == "local":
+            if ext.install.where != "windows":
                 gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on PATH, and no claude is on "
-                             "PATH", "install Claude Code (bootstrap.ps1 --install), or turn claudeCode.useTerminal off"))
+                             "PATH", "install Claude Code (loadout bootstrap --install; on native Windows "
+                             "bootstrap.ps1 --install), or turn claudeCode.useTerminal off"))
             else:
                 gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on the Windows PATH, and it "
                              "may not find one (none where the Windows installers put it)",
                              "install Claude Code on Windows (bootstrap.ps1 --install), or turn claudeCode.useTerminal "
                              "off"))
         configured = vscode.setting(ext.install, "claudeCode.claudeProcessWrapper")
-        if isinstance(configured, str) and configured.strip() and vscode.wrapper(ext.install) is None:
+        if not terminal_ok and isinstance(configured, str) and configured.strip() and vscode.wrapper(ext.install) is None:
             gaps.append((printable(f"claudeCode.claudeProcessWrapper names {configured.strip()}, which is not a file "
                                    "it can run, and the extension starts Claude through it"),
                          "point it at an installed claude, or remove the setting from VS Code's user settings"))

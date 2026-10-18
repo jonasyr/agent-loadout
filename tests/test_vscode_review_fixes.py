@@ -656,3 +656,36 @@ def test_a_higher_scope_http_server_replaces_a_lower_scope_command(vs, tmp_path)
         "mcpServers": {"u": {"command": "u"}},
         "projects": {str(project.resolve()): {"mcpServers": {"s": {"type": "http", "url": "https://e"}}}}}))
     assert vscode.mcp_commands("claude", project, plugin=False) == {"u": "u"}
+
+
+@pytest.mark.skipif(__import__("sys").platform == "win32", reason="the POSIX case")
+def test_terminal_mode_on_posix_needs_claude_on_path(vs, fake_runner):
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", "resources/native-binary/claude")
+    user = vs / ".config" / "Code" / "User"
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text('{"claudeCode.useTerminal": true}')
+    fake_runner.missing.add("claude")
+    (row,) = [r for e in vscode.extensions({"claude": True}, "linux") for r in check._surface_rows(e)]
+    assert not row.ok and "terminal" in row.detail
+
+
+def test_a_broken_wrapper_does_not_matter_while_terminal_mode_works(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    user = tmp_path / "Roaming" / "Code" / "User"
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text(json.dumps({"claudeCode.useTerminal": True,
+                                                   "claudeCode.claudeProcessWrapper": "/no/such"}))
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-win32-x64", "resources/native-binary/claude.exe")
+    fake_runner.paths["claude"] = "C:/x/claude.exe"
+    (row,) = [r for e in vscode.extensions({"claude": True}, "win32") for r in check._surface_rows(e)]
+    assert row.ok
+
+
+def test_claude_mcp_commands_expand_variables(vs, tmp_path, monkeypatch):
+    monkeypatch.setenv("TOOLDIR", "/opt/tools")
+    monkeypatch.delenv("NOPE", raising=False)
+    paths.claude_json().write_text(json.dumps({"mcpServers": {
+        "a": {"command": "${HOME}/.local/bin/serena"}, "b": {"command": "${TOOLDIR}/x"},
+        "c": {"command": "${NOPE:-/usr/bin/y}"}}}))
+    found = vscode.mcp_commands("claude", plugin=False)
+    assert found == {"a": f"{paths.home()}/.local/bin/serena", "b": "/opt/tools/x", "c": "/usr/bin/y"}

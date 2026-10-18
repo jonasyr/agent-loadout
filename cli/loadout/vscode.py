@@ -373,6 +373,18 @@ def _commands(servers) -> dict[str, str]:
             and s.get("enabled") is not False}  # a switched-off Codex server starts nothing
 
 
+_VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def _expand(command: str) -> str:
+    """${VAR} and ${VAR:-default}, as Claude Code expands them in an MCP command; an unset one without a default
+    stays as written."""
+    def one(m):
+        value = os.environ.get(m.group(1))
+        return value if value else (m.group(2) if m.group(2) is not None else m.group(0))
+    return _VAR.sub(one, command)
+
+
 def _toml_tables(path: Path) -> dict[str, dict]:
     from . import codex
     try:
@@ -421,5 +433,5 @@ def mcp_commands(agent: str, project: Path | None = None, plugin: bool = True) -
         entry = projects.get(str(project.resolve())) if isinstance(projects, dict) else None
         if isinstance(entry, dict):
             raw.update(tables(entry))
-    found.update(_commands(raw))
+    found.update({n: _expand(c) for n, c in _commands(raw).items()})  # Claude Code expands ${VAR} in commands
     return found
