@@ -429,7 +429,10 @@ def _surface_rows(ext, windows_only: bool = False, vscode_row: bool = False) -> 
                              "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
                              "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
                              "VS Code on Windows (its Remote-WSL copy stays)"))
-        terminal = vscode.setting(ext.install, "claudeCode.useTerminal") is True
+        mode = vscode.setting(ext.install, "claudeCode.useTerminal")
+        if mode is None and ext.desktop is not None:  # a Remote-WSL window: the desktop's user value, unless overridden
+            mode = vscode.setting(ext.desktop, "claudeCode.useTerminal")
+        terminal = mode is True
         terminal_ok = terminal and (vscode.windows_claude(ext.install) if ext.install.where == "windows"
                                     else runner.have("claude"))
         if terminal and not terminal_ok:

@@ -689,3 +689,20 @@ def test_claude_mcp_commands_expand_variables(vs, tmp_path, monkeypatch):
         "c": {"command": "${NOPE:-/usr/bin/y}"}}}))
     found = vscode.mcp_commands("claude", plugin=False)
     assert found == {"a": f"{paths.home()}/.local/bin/serena", "b": "/opt/tools/x", "c": "/usr/bin/y"}
+
+
+def test_remote_wsl_terminal_mode_comes_from_the_desktop_settings(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    settings = wsl.vscode_settings(win)
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"claudeCode.useTerminal": true}')
+    _ext(vs / ".vscode-server" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", "resources/native-binary/claude")
+    fake_runner.missing.add("claude")
+    rows = [r for r in check._vscode_surfaces(_cs(win)) if r.name == "VS Code (Claude Code, Remote-WSL window)"]
+    assert rows and not rows[0].ok and "terminal" in rows[0].detail
+    machine = vs / ".vscode-server" / "data" / "Machine" / "settings.json"
+    machine.parent.mkdir(parents=True)
+    machine.write_text('{"claudeCode.useTerminal": false}')  # the remote's machine value overrides the desktop's
+    rows = [r for r in check._vscode_surfaces(_cs(win)) if r.name == "VS Code (Claude Code, Remote-WSL window)"]
+    assert rows[0].ok
