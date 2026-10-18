@@ -102,6 +102,7 @@ def test_claude_extension_without_a_binary_but_with_a_wrapper_is_ok(vs, fake_run
     wrapper = vs / "opt" / "claude"
     wrapper.parent.mkdir()
     wrapper.write_text("x")
+    wrapper.chmod(0o755)
     (user / "settings.json").write_text(json.dumps({"claudeCode.claudeProcessWrapper": str(wrapper)}))
     fake_runner.missing.add("claude")
     (row,) = check._vscode_surfaces()

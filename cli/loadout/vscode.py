@@ -213,6 +213,14 @@ def settings_files(install: Install) -> list[Path]:
     return [install.user_dir / "settings.json", *profiles]  # which profile is active is not on disk: any may be
 
 
+def windows_claude(install: Install) -> bool:
+    """VS Code on Windows, seen from WSL: a claude where the Windows installers put it (the native installer's
+    .local\\bin, npm's global folder). The Windows PATH itself cannot be read from WSL."""
+    win = install.extensions.parent.parent
+    return any(_is_file(win / p) for p in (".local/bin/claude.exe", "AppData/Roaming/npm/claude.cmd",
+                                            "AppData/Roaming/npm/claude.exe"))
+
+
 def broken_settings(install: Install) -> list[Path]:
     """Settings files of the install that exist but do not parse: what they set cannot be read."""
     return [p for p in settings_files(install) if _is_file(p) and read_jsonc(p) is None]
@@ -299,7 +307,8 @@ def _wrapper_path(install: Install, value) -> Path | None:
         path = Path(wsl.MOUNT) / m.group(1).lower() / m.group(2).replace("\\", "/")
     else:
         path = Path(value.strip()).expanduser()
-    return path if _is_file(path) else None
+    usable = _is_file if install.where == "windows" or sys.platform == "win32" else _runnable
+    return path if usable(path) else None
 
 
 def wrapper(install: Install) -> Path | None:

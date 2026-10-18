@@ -399,10 +399,15 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                              "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
                              "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
                              "VS Code on Windows (its Remote-WSL copy stays)"))
-        if (ext.os_name == "windows" and ext.install.where == "local" and not runner.have("claude")
-                and vscode.setting(ext.install, "claudeCode.useTerminal") is True):
-            gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on PATH, and no claude is on PATH",
-                         "install Claude Code (bootstrap.ps1 --install), or turn claudeCode.useTerminal off"))
+        if ext.os_name == "windows" and vscode.setting(ext.install, "claudeCode.useTerminal") is True:
+            if ext.install.where == "local" and not runner.have("claude"):
+                gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on PATH, and no claude is on "
+                             "PATH", "install Claude Code (bootstrap.ps1 --install), or turn claudeCode.useTerminal off"))
+            elif ext.install.where == "windows" and not vscode.windows_claude(ext.install):
+                gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on the Windows PATH, and it "
+                             "may not find one (none where the Windows installers put it)",
+                             "install Claude Code on Windows (bootstrap.ps1 --install), or turn claudeCode.useTerminal "
+                             "off"))
         if ext.binary is None and vscode.wrapper(ext.install) is None:  # it never uses the claude on PATH
             profile = (" (a VS Code profile sets claudeCode.claudeProcessWrapper; loadout cannot tell which profile "
                        "is active)") if vscode.profile_wrapper(ext.install) else ""

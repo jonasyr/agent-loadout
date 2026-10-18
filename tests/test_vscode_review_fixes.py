@@ -182,6 +182,7 @@ def test_a_wrapper_only_in_a_vscode_profile_is_named_but_does_not_clear_the_warn
     _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
     wrapper = tmp_path / "claude"
     wrapper.write_text("x")
+    wrapper.chmod(0o755)
     profile = vscode._user_dir(vs, sys.platform) / "profiles" / "abc123"
     profile.mkdir(parents=True)
     (profile / "settings.json").write_text(json.dumps({"claudeCode.claudeProcessWrapper": str(wrapper)}))
@@ -322,3 +323,44 @@ def test_a_settings_file_that_does_not_parse_is_reported(vs, fake_runner):
     rows = check._vscode_surfaces()
     bad = [r for r in rows if r.name == "VS Code settings"]
     assert len(bad) == 1 and not bad[0].ok and bad[0].severity == "warn" and "does not parse" in bad[0].detail
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="execute permission is POSIX")
+def test_a_wrapper_without_execute_permission_does_not_count(vs, fake_runner, tmp_path):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
+    wrapper = tmp_path / "claude"
+    wrapper.write_text("x")
+    wrapper.chmod(0o644)
+    user = vscode._user_dir(vs, sys.platform)
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text(json.dumps({"claudeCode.claudeProcessWrapper": str(wrapper)}))
+    (row,) = check._vscode_surfaces()
+    assert not row.ok
+
+
+def _windows_terminal_mode(tmp_path):
+    win = tmp_path / "c" / "Users" / "ada"
+    settings = wsl.vscode_settings(win)
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"claudeCode.useTerminal": true}')
+    _ext(win / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-win32-x64", "resources/native-binary/claude.exe")
+    (win / ".claude" / "rules" / "loadout").mkdir(parents=True)
+    return win
+
+
+def test_terminal_mode_in_vscode_on_windows_seen_from_wsl(vs, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = _windows_terminal_mode(tmp_path)
+    (row,) = check._vscode_surfaces(_cs(win))
+    assert not row.ok and "terminal" in row.detail and "may not find" in row.detail
+
+
+@pytest.mark.parametrize("where", [".local/bin/claude.exe", "AppData/Roaming/npm/claude.cmd"])
+def test_terminal_mode_in_vscode_on_windows_with_an_installed_claude(vs, monkeypatch, tmp_path, where):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = _windows_terminal_mode(tmp_path)
+    (win / where).parent.mkdir(parents=True, exist_ok=True)
+    (win / where).write_text("x")
+    (row,) = check._vscode_surfaces(_cs(win))
+    assert row.ok
