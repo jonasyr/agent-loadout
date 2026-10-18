@@ -374,3 +374,23 @@ def test_settings_come_from_the_user_settings_only_never_a_profile(vs, tmp_path)
     assert vscode.setting(install, "claudeCode.useTerminal") is None  # which profile is active is not known
     (user / "settings.json").write_text('{"claudeCode.useTerminal": false}')
     assert vscode.setting(install, "claudeCode.useTerminal") is False
+
+
+def test_usable_terminal_mode_is_a_way_to_start_claude(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    user = tmp_path / "Roaming" / "Code" / "User"
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text('{"claudeCode.useTerminal": true}')
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-win32-x64")  # no bundled claude.exe
+    fake_runner.paths["claude"] = "C:/Users/a/.local/bin/claude.exe"
+    (row,) = [r for e in vscode.extensions({"claude": True}, "win32") for r in check._surface_rows(e)]
+    assert row.ok
+
+
+def test_a_windows_codex_shim_in_wsl_is_not_the_wsl_codex_cli(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda: None)
+    _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", linux_codex_bin())
+    fake_runner.paths["codex"] = "/mnt/c/Users/a/AppData/Roaming/npm/codex"
+    rows = check._vscode_surfaces(_cs(None))
+    assert any("plugins do not load" in r.detail for r in rows)

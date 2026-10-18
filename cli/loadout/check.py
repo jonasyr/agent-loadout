@@ -371,6 +371,14 @@ CODEX_GAP_FIX = ("use the Codex CLI alongside VS Code: loadout bootstrap --insta
 _HOME_PATH = re.compile(r"(?:^|=)(/home/(?!linuxbrew/)[^/\s]+/|/Users/[^/\s]+/|/mnt/[A-Za-z]/Users/[^/\s]+/|[A-Za-z]:[\\/]Users[\\/][^\\/\s]+[\\/])")
 
 
+def _codex_cli_here() -> bool:
+    """A Codex CLI that shares this side's ~/.codex: in WSL a Windows shim under /mnt/<drive>/ does not count."""
+    if wsl.detect() is None:
+        return runner.have("codex")
+    found = runner.which("codex")
+    return bool(found) and not wsl._on_windows_drive(Path(found), wsl.MOUNT)
+
+
 def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
     """One extension in one window type: what it lacks, each with its fix; one ok row when nothing."""
     from . import vscode
@@ -388,7 +396,7 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                          "set up while your Codex runs on Windows",
                          "open the repo in a Windows window, or set up Codex in WSL with loadout bootstrap "
                          "--codex-side wsl (docs/how-to/wsl.md#codex)"))
-        elif (ext.install.where != "windows" or vscode.runs_in_wsl(ext)) and not runner.have("codex"):
+        elif (ext.install.where != "windows" or vscode.runs_in_wsl(ext)) and not _codex_cli_here():
             gaps.append((CODEX_GAP, CODEX_GAP_FIX))  # a Windows-side Codex: its side and home are the "VS Code" row's
     else:
         if ext.install.where == "windows":  # the home first; whether it can start Claude below, for every window
@@ -399,16 +407,20 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
                              "open repos with `code .` from WSL (a Remote-WSL window), or set loadout up on Windows "
                              "with bootstrap.ps1; if you use only Remote-WSL windows, uninstall the extension from "
                              "VS Code on Windows (its Remote-WSL copy stays)"))
-        if ext.os_name == "windows" and vscode.setting(ext.install, "claudeCode.useTerminal") is True:
-            if ext.install.where == "local" and not runner.have("claude"):
+        terminal = ext.os_name == "windows" and vscode.setting(ext.install, "claudeCode.useTerminal") is True
+        terminal_ok = terminal and (runner.have("claude") if ext.install.where == "local"
+                                    else vscode.windows_claude(ext.install))
+        if terminal and not terminal_ok:
+            if ext.install.where == "local":
                 gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on PATH, and no claude is on "
                              "PATH", "install Claude Code (bootstrap.ps1 --install), or turn claudeCode.useTerminal off"))
-            elif ext.install.where == "windows" and not vscode.windows_claude(ext.install):
+            else:
                 gaps.append(("terminal mode (claudeCode.useTerminal) starts the claude on the Windows PATH, and it "
                              "may not find one (none where the Windows installers put it)",
                              "install Claude Code on Windows (bootstrap.ps1 --install), or turn claudeCode.useTerminal "
                              "off"))
-        if ext.binary is None and vscode.wrapper(ext.install) is None:  # it never uses the claude on PATH
+        if ext.binary is None and not terminal_ok and vscode.wrapper(ext.install) is None:
+            # it never uses the claude on PATH, except in terminal mode on Windows
             profile = (" (a VS Code profile sets claudeCode.claudeProcessWrapper; loadout cannot tell which profile "
                        "is active)") if vscode.profile_wrapper(ext.install) else ""
             gaps.append(("the extension has no bundled Claude Code for this platform, so it cannot start Claude"
