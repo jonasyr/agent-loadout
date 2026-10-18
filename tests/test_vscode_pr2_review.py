@@ -34,6 +34,7 @@ def test_extension_only_bootstrap_has_no_codex_failure(ext_only, capsys, monkeyp
     assert "[FAIL] Codex" not in text and "Next: open VS Code's Codex extension" in text
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="a /mnt/<drive> path is a WSL path")
 def test_a_windows_shim_in_wsl_gets_no_cli_offer(ext_only, fake_runner, monkeypatch):
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
     fake_runner.missing.discard("codex")
@@ -42,6 +43,7 @@ def test_a_windows_shim_in_wsl_gets_no_cli_offer(ext_only, fake_runner, monkeypa
     assert bootstrap.codex_recommended({"codex": True}, None) == frozenset()
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="a /mnt/<drive> path is a WSL path")
 def test_extension_mode_keeps_the_shared_codex_home_guard(ext_only, monkeypatch):
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
     monkeypatch.setenv("CODEX_HOME", "/mnt/c/Users/a/.codex")
