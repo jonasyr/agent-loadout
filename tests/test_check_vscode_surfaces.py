@@ -131,7 +131,7 @@ def test_codex_in_a_windows_window_is_left_to_the_existing_vs_code_row(vs, fake_
     win = tmp_path / "c" / "Users" / "ada"
     _codex_ext(vs, fake_runner, root=win / ".vscode" / "extensions")
     rows = check._vscode_surfaces(type("CS", (), {"windows_home": win})())
-    assert [r.name for r in rows] == ["VS Code (Codex, Windows window)"]
+    assert {r.name for r in rows} == {"VS Code (Codex, Windows window)"}
     assert all("plugins do not load" not in r.detail for r in rows)  # its home and side: the existing "VS Code" row
 
 

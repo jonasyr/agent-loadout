@@ -380,12 +380,28 @@ def _codex_cli_here() -> bool:
     return bool(found) and not wsl._on_windows_drive(Path(found), wsl.MOUNT)
 
 
-def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
-    """One extension in one window type: what it lacks, each with its fix; one ok row when nothing."""
-    from . import vscode
+def _surface_rows(ext, windows_only: bool = False, vscode_row: bool = False) -> list[CheckResult]:
+    """One extension in one window type: what it lacks, each with its fix; one ok row when nothing.
+    vscode_row: the "VS Code" row already says the Codex extension runs Codex on Windows."""
+    from . import codex, vscode
     name, gaps = vscode.row_name(ext), []
     if ext.agent == "codex":
-        if ext.binary is None:
+        if ext.override_bad is not None:
+            gaps.append((printable(f"chatgpt.cliExecutable names {ext.override_bad}, which is not a file it can run, "
+                                   "and the extension starts Codex through it"),
+                         "point it at an installed codex, or remove the setting from VS Code's user settings"))
+        if ext.install.where == "windows" and not vscode.runs_in_wsl(ext) and not vscode_row:
+            home = vscode.reads_home(ext)
+            try:
+                ours = codex.START in (home / "AGENTS.md").read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                ours = False
+            if not ours:
+                gaps.append((printable(f"the Codex extension in a Windows window reads {home}, which loadout has "
+                                       "not set up"),
+                             "switch it to WSL (loadout bootstrap --codex-side wsl --vscode-wsl), open repos with "
+                             "`code .` from WSL, or run bootstrap.ps1 on Windows (docs/how-to/wsl.md#codex)"))
+        if ext.binary is None and ext.override_bad is None:
             gaps.append(("the extension has no bundled Codex for this platform", "reinstall the Codex extension in VS Code"))
         else:
             version = vscode.bundled_version(ext)
@@ -504,7 +520,8 @@ def _vscode_surfaces(cs=None) -> list[CheckResult]:
                                printable(f"{p} does not parse, so loadout cannot read the settings that matter there"),
                                "fix its JSON in VS Code (Preferences: Open User Settings (JSON))", "warn")
                    for p in vscode.broken_settings(install)]
-    return [*broken, *(row for ext in found for row in _surface_rows(ext, only)), *_vscode_path(found, only)]
+    said = bool(cs is not None and getattr(cs, "side", None) in ("wsl", "both") and getattr(cs, "vscode_windows", False))
+    return [*broken, *(row for ext in found for row in _surface_rows(ext, only, said)), *_vscode_path(found, only)]
 
 
 def _repo_mcp_paths() -> list[CheckResult]:

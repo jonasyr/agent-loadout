@@ -38,6 +38,7 @@ class Extension:
     binary: Path | None  # the bundled agent binary; None when this build has none
     os_name: str = "linux"  # the OS that binary runs on: "linux", "darwin" or "windows"
     override: bool = False  # binary is chatgpt.cliExecutable, not the bundled one
+    override_bad: str | None = None  # chatgpt.cliExecutable as configured, when it names nothing it can run
 
 
 def _user_dir(home: Path, platform: str) -> Path:
@@ -143,11 +144,26 @@ def _binary(agent: str, folder: Path, os_name: str = "linux", machine: str | Non
     return next((p for p in candidates if usable(p)), None)
 
 
+def folder_setting(key: str) -> object | None:
+    """A setting from the current repo's .vscode/settings.json (the folder VS Code opens), or None."""
+    from .new_skill import repo_root
+    try:
+        root = repo_root(Path(os.path.abspath(Path.cwd())))
+    except OSError:
+        return None
+    data = read_jsonc(root / ".vscode" / "settings.json") if root is not None else None
+    return data.get(key) if data is not None else None
+
+
 def _wsl_switch(agent: str, install: Install) -> bool:
     """VS Code on Windows whose Codex extension runs its Linux Codex inside WSL
-    (chatgpt.runCodexInWindowsSubsystemForLinux)."""
-    return agent == "codex" and install.where == "windows" and \
-        wsl.vscode_wsl_mode(install.extensions.parent.parent) is True
+    (chatgpt.runCodexInWindowsSubsystemForLinux; the open folder's value wins over the user's)."""
+    if agent != "codex" or install.where != "windows":
+        return False
+    folder = folder_setting(wsl.WIN_SETTING)
+    if isinstance(folder, bool):
+        return folder
+    return wsl.vscode_wsl_mode(install.extensions.parent.parent) is True
 
 
 def runs_in_wsl(ext: Extension) -> bool:
@@ -170,13 +186,14 @@ def extensions(on: dict[str, bool], platform: str | None = None, win_home: Path 
             hit = newest(install.extensions, ext_id)
             if hit is not None:
                 os_name = "linux" if _wsl_switch(agent, install) else _os_of(install.where, platform)
-                binary, own = _binary(agent, hit[0], os_name), None
+                binary, own, value = _binary(agent, hit[0], os_name), None, None
                 if agent == "codex":  # chatgpt.cliExecutable, when it names a usable file, is what the extension runs
                     value = setting(install, "chatgpt.cliExecutable")
                     if value is None and install.where == "remote-wsl" and desktop is not None:
                         value = setting(desktop, "chatgpt.cliExecutable")  # application scope: the desktop's applies
                     own = _wrapper_path(install, value)
-                out.append(Extension(agent, install, hit[0], hit[1], own or binary, os_name, own is not None))
+                bad = value.strip() if own is None and isinstance(value, str) and value.strip() else None
+                out.append(Extension(agent, install, hit[0], hit[1], own or binary, os_name, own is not None, bad))
     return out
 
 
@@ -262,7 +279,7 @@ def reads_home(ext: Extension) -> Path:
     Codex with its WSL switch on, which runs the Codex in WSL and reads the WSL home."""
     if ext.install.where == "windows":
         win = ext.install.extensions.parent.parent  # <Windows home>/.vscode/extensions
-        if ext.agent == "codex" and wsl.vscode_wsl_mode(win) is True:
+        if _wsl_switch(ext.agent, ext.install):
             return paths.codex_home()
         return win / (".claude" if ext.agent == "claude" else ".codex")
     return paths.claude_home() if ext.agent == "claude" else paths.codex_home()

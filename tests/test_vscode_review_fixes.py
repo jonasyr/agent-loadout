@@ -533,3 +533,44 @@ def test_an_old_codex_override_points_at_the_setting(vs, fake_runner, tmp_path):
     (row,) = check._vscode_surfaces()
     assert not row.ok and "chatgpt.cliExecutable" in row.detail and "chatgpt.cliExecutable" in row.fix
     assert "update the Codex extension" not in row.fix
+
+
+def test_a_folder_setting_overrides_the_wsl_switch(vs, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    settings = wsl.vscode_settings(win)
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"chatgpt.runCodexInWindowsSubsystemForLinux": true}')
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".vscode").mkdir()
+    (repo / ".vscode" / "settings.json").write_text('{"chatgpt.runCodexInWindowsSubsystemForLinux": false}')
+    monkeypatch.chdir(repo)
+    folder = _ext(win / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-win32-x64",
+                  f"bin/windows-{host_arch()}/codex.exe", linux_codex_bin())
+    (ext,) = vscode.extensions({"codex": True}, "linux", win_home=win)
+    assert ext.binary == folder / f"bin/windows-{host_arch()}/codex.exe" and not vscode.runs_in_wsl(ext)
+
+
+def test_an_unusable_codex_override_warns(vs, fake_runner):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", host_codex_bin())
+    user = vscode._user_dir(vs, sys.platform)
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text(json.dumps({"chatgpt.cliExecutable": "/no/such/codex"}))
+    fake_runner.paths["codex"] = "/usr/bin/codex"
+    (row,) = check._vscode_surfaces()
+    assert not row.ok and "chatgpt.cliExecutable" in row.detail and "remove" in row.fix
+
+
+def test_codex_in_a_windows_window_warns_when_windows_codex_is_not_set_up(vs, fake_runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    win = tmp_path / "c" / "Users" / "ada"
+    win.mkdir(parents=True)
+    _ext(win / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-win32-x64", f"bin/windows-{host_arch()}/codex.exe")
+    rows = check._vscode_surfaces(_cs(win, side="windows"))
+    assert any(".codex" in r.detail and "not set up" in r.detail for r in rows)
+    (win / ".codex").mkdir()
+    (win / ".codex" / "AGENTS.md").write_text("<!-- loadout:start -->\nx\n<!-- loadout:end -->\n")
+    rows = check._vscode_surfaces(_cs(win, side="windows"))
+    assert not any("not set up" in r.detail for r in rows)
