@@ -401,20 +401,25 @@ def mcp_commands(agent: str, project: Path | None = None, plugin: bool = True) -
         except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}
+    def tables(data) -> dict:
+        servers = data.get("mcpServers")
+        return {n: t for n, t in servers.items() if isinstance(t, dict)} if isinstance(servers, dict) else {}
     user = read(paths.claude_json())
+    raw = {}  # name -> entry, merged by Claude Code's precedence; then only command servers are kept
     if plugin:
-        found.update(_commands(read(paths.kit_root() / "plugins" / "loadout" / ".mcp.json").get("mcpServers")))
-    found.update(_commands(user.get("mcpServers")))
+        raw.update(tables(read(paths.kit_root() / "plugins" / "loadout" / ".mcp.json")))
+    raw.update(tables(user))
     if project is not None:  # Claude Code's scopes: local beats project beats user
         disabled = set()
         for settings in (paths.claude_home() / "settings.json", project / ".claude" / "settings.json",
                          project / ".claude" / "settings.local.json"):
             names = read(settings).get("disabledMcpjsonServers")
             disabled |= {n for n in names if isinstance(n, str)} if isinstance(names, list) else set()
-        found.update({n: c for n, c in _commands(read(project / ".mcp.json").get("mcpServers")).items()
-                      if n not in disabled})  # a .mcp.json server switched off is not started
+        raw.update({n: t for n, t in tables(read(project / ".mcp.json")).items()
+                    if n not in disabled})  # a .mcp.json server switched off is not started
         projects = user.get("projects")
         entry = projects.get(str(project.resolve())) if isinstance(projects, dict) else None
         if isinstance(entry, dict):
-            found.update(_commands(entry.get("mcpServers")))
+            raw.update(tables(entry))
+    found.update(_commands(raw))
     return found

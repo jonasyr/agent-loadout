@@ -646,3 +646,13 @@ def test_a_broken_desktop_settings_file_used_by_remote_wsl_is_reported(vs, fake_
     fake_runner.paths["codex"] = "/usr/bin/codex"
     bad = [r for r in check._vscode_surfaces(_cs(win)) if r.name == "VS Code settings"]
     assert len(bad) == 1 and "AppData" in bad[0].detail
+
+
+def test_a_higher_scope_http_server_replaces_a_lower_scope_command(vs, tmp_path):
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"s": {"command": "p"}}}))
+    paths.claude_json().write_text(json.dumps({
+        "mcpServers": {"u": {"command": "u"}},
+        "projects": {str(project.resolve()): {"mcpServers": {"s": {"type": "http", "url": "https://e"}}}}}))
+    assert vscode.mcp_commands("claude", project, plugin=False) == {"u": "u"}
