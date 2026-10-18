@@ -193,3 +193,26 @@ def test_a_windows_home_mounted_in_wsl_counts_as_one_persons_home(vs, fake_runne
     _repo(tmp_path, monkeypatch, fake_runner, {"mcpServers": {"s": {"command": "/mnt/c/Users/Ana/bin/serena"}}})
     (row,) = check._repo_mcp_paths()
     assert not row.ok and "/mnt/c/Users/Ana/" in row.detail
+
+
+def test_a_claude_cli_on_path_does_not_stand_in_for_the_missing_bundled_binary(vs, fake_runner):
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
+    fake_runner.paths["claude"] = "/usr/bin/claude"  # the extension never uses the claude on PATH
+    (row,) = check._vscode_surfaces()
+    assert not row.ok and "claudeProcessWrapper" in row.fix
+
+
+@pytest.mark.parametrize("text,has,lacks", [
+    ('export PATH="$HOME/tools"\n', ["{home}/tools"], ["/usr/bin"]),
+    ('PATH="$HOME/a:$PATH"\nexport PATH="$HOME/b"\n', ["{home}/b"], ["{home}/a", "/usr/bin"]),
+    ('export PATH="$PATH:$HOME/c"\n', ["/usr/bin", "{home}/c"], []),
+])
+def test_server_env_setup_path_assignments_apply_in_order(vs, text, has, lacks):
+    env = vs / vscode.SERVER_ENV
+    env.parent.mkdir(parents=True)
+    env.write_text(text)
+    dirs = vscode.remote_path_dirs()
+    for d in has:
+        assert d.format(home=vs) in dirs
+    for d in lacks:
+        assert d.format(home=vs) not in dirs

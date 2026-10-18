@@ -6,6 +6,7 @@ import json
 import os
 import platform as _platform
 import re
+import shlex
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -228,8 +229,9 @@ def reads_home(ext: Extension) -> Path:
 
 
 def remote_path_dirs() -> list[str]:
-    """The folders a Remote-WSL window's agent finds commands in: the system folders, plus what
-    ~/.vscode-server/server-env-setup puts on PATH (no shell startup file runs there)."""
+    """The folders a Remote-WSL window's agent finds commands in: the system folders, as changed by the PATH
+    assignments in ~/.vscode-server/server-env-setup, in order (no shell startup file runs there). An assignment
+    without $PATH replaces what came before."""
     dirs = list(SYSTEM_DIRS)
     try:
         text = (paths.home() / SERVER_ENV).read_text(encoding="utf-8", errors="replace")
@@ -237,11 +239,22 @@ def remote_path_dirs() -> list[str]:
         return dirs
     home = str(paths.home())
     for m in _PATH_LINE.finditer(text):
-        for part in m.group(1).strip().strip("\"'").split(":"):
+        try:
+            words = shlex.split(m.group(1), comments=True)  # quotes and a trailing # comment, as the shell reads them
+        except ValueError:
+            continue  # an unbalanced quote: the shell would fail on it too
+        if not words:
+            continue
+        new = []
+        for part in words[0].split(":"):
+            if part in ("$PATH", "${PATH}"):
+                new += dirs
+                continue
             part = part.replace("${HOME}", home).replace("$HOME", home)
             part = home + part[1:] if part.startswith("~/") else part
             if part and "$" not in part:
-                dirs.append(part)
+                new.append(part)
+        dirs = new
     return dirs
 
 
