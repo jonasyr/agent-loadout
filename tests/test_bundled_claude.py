@@ -96,3 +96,14 @@ def test_bundled_path_is_printed_escaped(fake_home, fake_runner, capsys):
     from loadout import out
     out.status("Claude Code CLI", bootstrap._claude_bundled_line(fake_home / "a\x1b[31mb"), "warn")
     assert "\x1b[31m" not in capsys.readouterr().out
+
+
+def test_next_line_names_the_claude_extension_next_to_a_codex_cli(fake_home, fake_runner, monkeypatch, capsys):
+    _ext(fake_home, "2.1.10")
+    fake_runner.missing.add("claude")
+    from loadout import codex
+    monkeypatch.setattr(codex, "unavailable", lambda **k: "skip")
+    bootstrap.bootstrap(install=False, yes=True, plugins=True, adopt_step=False, ask=lambda q: "",
+                        interactive=False, agents="claude,codex", personal="new")
+    text = capsys.readouterr().out
+    assert "open VS Code's Claude Code extension" in text

@@ -185,7 +185,10 @@ def wsl_switch_overrides(win_home: Path) -> list[tuple[str, Path]]:
     folder = folder_settings()
     if folder is not None and _is_file(folder):
         data = read_jsonc(folder)
-        if data is not None and data.get(wsl.WIN_SETTING) is False:
+        value = data.get(wsl.WIN_SETTING) if data is not None else None
+        if value is True:
+            return []  # the folder's value wins over every profile's
+        if value is False:
             found.append(("folder", folder))
     try:
         profiles = sorted((wsl.vscode_settings(win_home).parent / "profiles").glob("*/settings.json"))
@@ -359,7 +362,8 @@ def row_name(ext: Extension) -> str:
 
 SYSTEM_DIRS = ("/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin")
 SERVER_ENV = ".vscode-server/server-env-setup"  # VS Code's place for a Remote-WSL server's environment
-_PATH_LINE = re.compile(r"^\s*(?:case\b.*\*\)\s*)?(?:export\s+)?PATH=(.+)$", re.M)
+# a plain assignment, or the unconditional arm of loadout's own block line (a user's case arm is conditional)
+_PATH_LINE = re.compile(r'^\s*(?:case ":\$PATH:" in \*":[^"]*:"\*\) ;; \*\)\s*)?(?:export\s+)?PATH=(.+)$', re.M)
 
 
 def reads_home(ext: Extension) -> Path:

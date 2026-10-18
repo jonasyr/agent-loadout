@@ -987,14 +987,16 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
             return 1
         return code
-    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex")) if here[a])
+    names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex"))
+                        if here[a] and not (a == "claude" and claude_ext))
+    also = ", and open VS Code's Claude Code extension" if claude_ext else ""  # it runs Claude Code here
     if not run:  # Codex only, and its step stopped: on Windows, or a CODEX_HOME shared with Windows
         print(f"\nNext: {WINDOWS_WAY}." if WINDOWS_WAY in gate else "\nNext: settle Codex's side (see the Codex step above).")
     elif out.VERBOSE:
-        print(f"\nThen start {names}." if path_changed else f"\nRestart {names} to load plugins and rules.")
+        print(f"\nThen start {names}{also}." if path_changed else f"\nRestart {names} to load plugins and rules{also}.")
     else:
-        print(f"\nNext: run {run} in a new terminal." if path_changed
-              else f"\nNext: run {run} (restart it if it is open). The kit loads automatically.")
+        print(f"\nNext: run {run} in a new terminal{also}." if path_changed
+              else f"\nNext: run {run} (restart it if it is open){also}. The kit loads automatically.")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1

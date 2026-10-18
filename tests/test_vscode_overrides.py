@@ -105,3 +105,11 @@ def test_bootstrap_prints_the_override_path_escaped(fake_home, fake_runner, tmp_
     bootstrap._vscode_step(wsl.CodexSide("wsl", [], windows_home=home), lambda q: "", False, None, False)
     text = capsys.readouterr().out
     assert "settings.json" in text and "\x1b[31m" not in text
+
+
+def test_a_profile_is_no_override_where_the_folder_turns_it_on(fake_home, tmp_path, monkeypatch):
+    home = _win(tmp_path)
+    _repo(tmp_path, monkeypatch, '{"%s": true}' % KEY)
+    _profile(home)
+    rows = check._vscode(wsl.CodexSide("wsl", [], windows_home=home))
+    assert [r.ok for r in rows] == [True]

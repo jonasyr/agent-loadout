@@ -88,3 +88,10 @@ def test_check_names_the_flag(server, fake_home, monkeypatch):
                            fake_home, "26.1", None)
     rows = check._vscode_path([ext])
     assert rows and "loadout bootstrap --vscode-path" in rows[0].fix
+
+
+def test_a_users_conditional_case_arm_is_not_read_as_path(server, fake_home):
+    server.write_text('case "$TERM" in xterm*) PATH=/opt/x ;; esac\n')
+    assert vscode.remote_path_dirs() == list(vscode.SYSTEM_DIRS)
+    server.write_text('case $X in a*) PATH="$HOME/.local/bin:$PATH" ;; esac\n')
+    assert str(fake_home / ".local/bin") not in vscode.remote_path_dirs()
