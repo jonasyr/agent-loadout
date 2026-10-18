@@ -549,9 +549,14 @@ def setup_vscode_path(bk: Backup | None) -> str:
     target = paths.home() / vscode.SERVER_ENV
     block = _path_block(dirs)
     line = _refresh_path_block(target, block, bk)
-    if line is None:
-        if target.exists() and bk is not None:  # an append is undone from the copy
+    if line is None and target.exists():
+        raw = target.read_bytes()
+        if bk is not None:  # the addition is undone from the copy
             bk.save_copy(target, f"{target} before adding the tool folders to PATH")
+        from .jsonio import write_atomic_bytes  # the user's bytes plus the block, never half a block
+        write_atomic_bytes(target, raw + (b"" if not raw or raw.endswith(b"\n") else b"\n") + block.encode("utf-8"))
+        line = f"added the tool folders to PATH to {target}"
+    elif line is None:
         line = _add_block(target, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH")
     return line or ""
 

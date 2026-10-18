@@ -95,3 +95,18 @@ def test_a_users_conditional_case_arm_is_not_read_as_path(server, fake_home):
     assert vscode.remote_path_dirs() == list(vscode.SYSTEM_DIRS)
     server.write_text('case $X in a*) PATH="$HOME/.local/bin:$PATH" ;; esac\n')
     assert str(fake_home / ".local/bin") not in vscode.remote_path_dirs()
+
+
+def test_vscode_path_adds_to_an_existing_file_atomically(server, monkeypatch):
+    """The live file is never opened for append: a cut-off write must not leave half a block in it."""
+    mine = b"export FOO=1\n"
+    server.write_bytes(mine)
+    real_open = type(server).open
+
+    def no_append(self, mode="r", *a, **k):
+        if self == server and "a" in mode:
+            raise AssertionError("appended to the live file")
+        return real_open(self, mode, *a, **k)
+    monkeypatch.setattr(type(server), "open", no_append)
+    assert bootstrap.setup_vscode_path(backup.Backup(description="t")).startswith("added")
+    assert server.read_bytes().startswith(mine + bootstrap.PATH_MARKER.encode())

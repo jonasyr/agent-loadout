@@ -95,6 +95,7 @@ def test_vscode_wsl_flag_names_the_override_and_leaves_it(fake_home, fake_runner
     assert wsl.vscode_wsl_mode(home) is True and str(folder) in text and folder.read_bytes() == before
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="Windows file names cannot hold an escape character")
 def test_bootstrap_prints_the_override_path_escaped(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
     home = _win(tmp_path)
     repo = tmp_path / "re\x1b[31mpo"
