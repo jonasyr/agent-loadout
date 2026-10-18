@@ -36,7 +36,8 @@ def unavailable(allow_shared_home: bool = False) -> str | None:
     """None when a usable codex is on PATH, else the reason in one line. In WSL, a Windows codex and a
     CODEX_HOME that points into Windows are reasons too (ADR 0029); only bootstrap --codex-side wsl allows the latter."""
     if not runner.have("codex"):
-        return "codex not found on PATH"
+        ext, why = extension_state()  # VS Code's Codex extension alone: loadout sets Codex up for it
+        return None if ext is not None else why or "codex not found on PATH"
     from . import wsl
     found = runner.which("codex")
     if found and wsl.detect() is not None and wsl._on_windows_drive(Path(found), wsl.MOUNT):
@@ -55,6 +56,41 @@ def unavailable(allow_shared_home: bool = False) -> str | None:
     if (int(m.group(1)), int(m.group(2))) < MIN_VERSION:
         return f"codex {m.group(0)} is too old; loadout needs 0.161 or newer (update it: mise upgrade codex)"
     return None
+
+
+EXT_OLD = ("VS Code's Codex extension runs codex {version}; loadout needs 0.161 or newer: update the extension in "
+           "VS Code (or install the Codex CLI: loadout bootstrap --install)")
+PLUGINS_EXTENSION = ("plugins: not installed: VS Code's Codex extension loads none (use the Codex CLI alongside it "
+                     "for them: loadout bootstrap --install)")
+HOOKS_NO_CLI = ("approve the loadout hooks once in the Codex CLI's /hooks (VS Code's Codex extension has none), and use "
+                "the CLI for plugin skills: install it with loadout bootstrap --install, then run `codex` in VS Code's "
+                "terminal and /hooks")
+
+
+def extension_state():
+    """With no Codex CLI: (the VS Code Codex extension on this side whose own codex loadout can use, None), or
+    (None, why not) when there is one but its codex is too old or gives no version, or (None, None) when none."""
+    from . import vscode
+    why = None
+    for ext in vscode.extensions({"codex": True}, look=False):  # this side only: no cmd.exe lookup per call
+        if ext.install.where == "windows" or ext.binary is None:
+            continue
+        version = vscode.bundled_version(ext)
+        if version is None:
+            continue
+        if vscode.too_old(version):
+            why = EXT_OLD.format(version=version)
+            continue
+        return ext, None
+    return None, why
+
+
+def program() -> str:
+    """The codex to run read-only commands with: the CLI, else the VS Code extension's own (extension mode)."""
+    if runner.have("codex"):
+        return "codex"
+    ext, _ = extension_state()
+    return str(ext.binary) if ext is not None else "codex"
 
 
 START = "<!-- loadout:start -->"
@@ -790,6 +826,8 @@ def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False) -> li
     """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs).
     auto: an automatic refresh (the daily sync): marketplaces set to `autoUpdate: false` stay as they are, as in
     Claude Code; an explicit `loadout update` passes False and updates every marketplace."""
+    if not runner.have("codex"):
+        return [PLUGINS_EXTENSION]  # extension mode: the extension loads no plugins, and they install through the CLI
     say = say or (lambda line: None)
     from .settings_merge import desired_settings
     desired = desired_settings()
@@ -822,7 +860,7 @@ def apply_skills(bk) -> list[str]:
 
 
 def mcp_names() -> set[str] | None:
-    res = runner.run(["codex", "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
+    res = runner.run([program(), "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
     data = _json(res.stdout) if res.ok else None
     return {s["name"] for s in data if isinstance(s, dict) and isinstance(s.get("name"), str)} if isinstance(data, list) else None
 
@@ -911,7 +949,7 @@ def remove_server(name: str, bk) -> str:
     path = paths.codex_home() / "config.toml"
     if path.exists():
         bk.save_copy(path, f"Codex config.toml before removing mcp {name}")
-    res = runner.run(["codex", "mcp", "remove", name], cwd=str(paths.home()), timeout=120)
+    res = runner.run([program(), "mcp", "remove", name], cwd=str(paths.home()), timeout=120)
     return f"mcp {name}: removed from Codex" if res.ok else f"mcp {name}: failed: {_tail(res)}"
 
 
@@ -1123,7 +1161,7 @@ def hooks_status(remember: bool = False) -> str | None:
 
 
 def _not_logged_in() -> list[str]:
-    res = runner.run(["codex", "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
+    res = runner.run([program(), "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
     data = _json(res.stdout) if res.ok else None
     return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"
             and isinstance(s.get("name"), str)] if isinstance(data, list) else []
@@ -1137,7 +1175,7 @@ def logins_optional() -> list[str]:
 
 def logins_needed() -> list[str]:
     """Codex MCP servers that wait for an OAuth login (`codex mcp login NAME`)."""
-    res = runner.run(["codex", "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
+    res = runner.run([program(), "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
     data = _json(res.stdout) if res.ok else None
     # Codex says not_logged_in for every server that offers OAuth, also when it answers anonymously; the servers
     # loadout writes itself are chosen to work without a login (Context7's plain address, verified live)
@@ -1148,10 +1186,14 @@ def logins_needed() -> list[str]:
 
 def open_steps() -> list[str]:
     """What the user still has to do in Codex, for "Still to do" lists; empty when nothing is open."""
-    if not enabled() or not runner.have("codex"):
+    if not enabled():
+        return []
+    cli = runner.have("codex")
+    if not cli and extension_state()[0] is None:
         return []
     status = hooks_status(remember=True)
     # unknown (unreadable config): remind, since the approval cannot be confirmed
-    steps = [HOOKS_CHANGED] if status == "changed" else [] if status == "trusted" else [HOOKS_TODO]
+    todo = HOOKS_TODO if cli else HOOKS_NO_CLI
+    steps = [HOOKS_CHANGED if cli else HOOKS_NO_CLI] if status == "changed" else [] if status == "trusted" else [todo]
     return (steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
             + [f"optional: log in to {name} in Codex for higher limits: codex mcp login {name}" for name in logins_optional()])
