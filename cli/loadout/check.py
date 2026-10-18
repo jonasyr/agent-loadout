@@ -433,26 +433,51 @@ def _surface_rows(ext, windows_only: bool = False) -> list[CheckResult]:
 
 
 def _vscode_path(found, windows_only: bool = False) -> list[CheckResult]:
-    """A Remote-WSL window runs no shell startup file: an MCP server's command may not be on its PATH."""
+    """An MCP server whose command the extension's agent may not find on its PATH: a Remote-WSL window's Codex gets
+    VS Code's server PATH (no shell startup file runs there); the others get the shell's PATH (Claude Code reads
+    the login shell, a desktop-launched VS Code the shell environment). A Windows window seen from WSL is not
+    checked: its PATH is not readable from here. loadout's own plugin servers have their own MCP PATH row."""
     from . import vscode
-    if windows_only or not any(e.agent == "codex" and e.install.where == "remote-wsl" for e in found):
-        return []  # Claude Code's extension takes PATH from the login shell; Codex's takes VS Code's
-    dirs = vscode.remote_path_dirs()
     from .new_skill import repo_root
     try:
         project = repo_root(Path(os.path.abspath(Path.cwd())))
     except OSError:
         project = None
-    servers = vscode.mcp_commands("codex", project)
-    missing = sorted(n for n, cmd in servers.items() if not vscode.findable(cmd, dirs))
-    if not missing:
-        return []
-    return [CheckResult("VS Code PATH", False,
-                        printable(f"in a Remote-WSL window the Codex extension may not find the command of the "
-                                  f"MCP servers {', '.join(missing)}: no shell startup files run there"),
-                        "use an absolute command in the server entry, or put its folder on PATH in "
-                        f"~/{vscode.SERVER_ENV} (export PATH=\"$HOME/.local/bin:$PATH\"), then run WSL: Restart",
-                        "warn")]
+    rows, seen = [], set()
+    for ext in found:
+        if (ext.install.where == "windows" and not vscode.runs_in_wsl(ext)) or (ext.agent == "codex" and windows_only):
+            continue
+        remote = ext.agent == "codex" and ext.install.where == "remote-wsl"
+        if (ext.agent, remote) in seen:
+            continue
+        seen.add((ext.agent, remote))
+        if ext.agent == "codex":
+            servers = vscode.mcp_commands("codex", project)
+        else:
+            servers = vscode.mcp_commands("claude", plugin=False)
+        if remote:
+            dirs = vscode.remote_path_dirs()
+            missing = sorted(n for n, cmd in servers.items() if not vscode.findable(cmd, dirs))
+        else:
+            missing = sorted(n for n, cmd in servers.items()
+                             if not (vscode.findable(cmd, []) if os.path.isabs(cmd) else runner.which(cmd)))
+        if not missing:
+            continue
+        label = vscode.LABEL[ext.agent]
+        if remote:
+            rows.append(CheckResult("VS Code PATH", False,
+                                    printable(f"in a Remote-WSL window the Codex extension may not find the command "
+                                              f"of the MCP servers {', '.join(missing)}: no shell startup files run "
+                                              "there"),
+                                    "use an absolute command in the server entry, or put its folder on PATH in "
+                                    f"~/{vscode.SERVER_ENV} (export PATH=\"$HOME/.local/bin:$PATH\"), then run "
+                                    "WSL: Restart", "warn"))
+        else:
+            rows.append(CheckResult("VS Code PATH", False,
+                                    printable(f"the {label} extension may not find the command of the MCP servers "
+                                              f"{', '.join(missing)}: it is not on your shell's PATH"),
+                                    "install it, or use an absolute command in the server entry", "warn"))
+    return rows
 
 
 def _vscode_surfaces(cs=None) -> list[CheckResult]:

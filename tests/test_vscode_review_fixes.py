@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import host_arch, linux_codex_bin
+from conftest import host_arch, host_claude_bin, host_codex_bin, linux_codex_bin
 
 from loadout import check, paths, runner, targets, vscode, wsl
 
@@ -408,3 +408,28 @@ def test_an_untrusted_projects_codex_servers_do_not_count(vs, tmp_path):
     (project / ".codex").mkdir(parents=True)
     (project / ".codex" / "config.toml").write_text('[mcp_servers.p]\ncommand = "projtool"\n[mcp_servers.s]\nenabled = false\n')
     assert vscode.mcp_commands("codex", project) == {"s": "tool"}  # Codex ignores an untrusted project's layer
+
+
+def test_local_codex_extension_mcp_command_not_on_the_shell_path(vs, fake_runner):
+    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", host_codex_bin())
+    fake_runner.paths["codex"] = "/usr/bin/codex"
+    paths.codex_home().mkdir()
+    (paths.codex_home() / "config.toml").write_text('[mcp_servers.gone]\ncommand = "nosuchtool"\n')
+    (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"]
+    assert "gone" in row.detail and "Codex" in row.detail
+
+
+def test_claude_extension_mcp_commands_are_checked_too(vs, fake_runner):
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", host_claude_bin())
+    paths.claude_json().write_text(json.dumps({"mcpServers": {"mine": {"command": "nosuchtool"}}}))
+    fake_runner.paths.update({"serena": "/x/serena", "codebase-memory-mcp": "/x/cbm"})
+    (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"]
+    assert "mine" in row.detail and "Claude Code" in row.detail and "serena" not in row.detail
+
+
+def test_a_found_command_gives_no_path_row(vs, fake_runner):
+    _ext(vs / ".vscode" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", host_codex_bin())
+    fake_runner.paths.update({"codex": "/usr/bin/codex", "tool": "/usr/bin/tool"})
+    paths.codex_home().mkdir()
+    (paths.codex_home() / "config.toml").write_text('[mcp_servers.ok]\ncommand = "tool"\n')
+    assert [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"] == []

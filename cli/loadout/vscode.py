@@ -340,7 +340,7 @@ def _toml_tables(path: Path) -> dict[str, dict]:
     return {n: t for n, t in servers.items() if isinstance(t, dict)} if isinstance(servers, dict) else {}
 
 
-def mcp_commands(agent: str, project: Path | None = None) -> dict[str, str]:
+def mcp_commands(agent: str, project: Path | None = None, plugin: bool = True) -> dict[str, str]:
     """The commands of the MCP servers an extension starts: Codex's [mcp_servers.*] in config.toml, and in a
     project its .codex/config.toml, which wins for a name it shares (the extension loads no plugins); Claude Code's
     user servers in ~/.claude.json plus the loadout plugin's."""
@@ -353,8 +353,8 @@ def mcp_commands(agent: str, project: Path | None = None) -> dict[str, str]:
                 tables[name] = {**tables.get(name, {}), **table}
         return _commands(tables)
     found = {}
-    plugin = paths.kit_root() / "plugins" / "loadout" / ".mcp.json"
-    for path in (plugin, paths.claude_json()):
+    sources = ([paths.kit_root() / "plugins" / "loadout" / ".mcp.json"] if plugin else []) + [paths.claude_json()]
+    for path in sources:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

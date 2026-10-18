@@ -108,3 +108,8 @@ def host_codex_bin() -> str:
 @pytest.fixture
 def codex_bin() -> str:
     return host_codex_bin()
+
+
+def host_claude_bin() -> str:
+    import sys
+    return "resources/native-binary/claude.exe" if sys.platform == "win32" else "resources/native-binary/claude"
