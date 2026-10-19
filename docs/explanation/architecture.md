@@ -1,10 +1,10 @@
 # Architecture
 
-loadout has three parts: the kit repo (shared), your personal layer (yours) and the configuration folders of your agents (where Claude Code and Codex read theirs). The CLI merges the first two into the third and keeps it current. Which agents it serves is your choice ([Use loadout with Codex](../how-to/codex.md#switch-it-on)); one stays on. Where a page says "your agent", it holds for both. A repo is a fourth, shared place: loadout keeps no list of repos, and each repo names its own agents in a committed `.loadout.json` ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)).
+loadout has three parts: the kit repo (shared), your personal layer (yours) and the configuration folders of your agents (where Claude Code and Codex read theirs). The CLI merges the first two into the third and keeps it current. Which agents it serves is your choice ([Use loadout with Codex](../how-to/codex.md#switch-it-on)); one stays on. Where a page says "your agent", it holds for both. A repo is a fourth, shared place: loadout keeps no list of repos, and each repo names its own agents in a committed `.loadout.json` ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)). Which agents, surfaces and bootstrap flags fit your machine: [Pick your setup](../how-to/setups.md#recommended-setups). Where each module of the CLI lives: [Modules](../reference/modules.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-overview.dark.svg">
-  <img alt="For Claude Code: Claude Code installs the kit's plugin and the kit's rules are linked into ~/.claude/rules/loadout. Your personal layer's rules, skills and hooks are linked into ~/.claude, and its mcp.json is added with claude mcp add-json. settings.base.json and your settings.json go through a three-way merge, which reads and rewrites a snapshot and writes ~/.claude/settings.json. For Codex: loadout installs and refreshes the same plugins, copies the kit's rules and your personal rules (rules/*.md, such as me.md) into its block in ~/.codex/AGENTS.md, links your skills into ~/.agents/skills, and writes your MCP servers, the kit's Serena (and Context7) servers, effort and notifications as owned sections of ~/.codex/config.toml." src="../diagrams/architecture-overview.light.svg">
+  <img alt="For Claude Code: Claude Code installs the kit's plugin and the kit's rules are linked into ~/.claude/rules/loadout. Your personal layer's rules, skills and hooks are linked into ~/.claude, and its mcp.json is added with claude mcp add-json. settings.base.json and your settings.json go through a three-way merge, which reads and rewrites a snapshot and writes ~/.claude/settings.json. For Codex: loadout installs and refreshes the same plugins (only with the Codex CLI), copies the kit's rules and your personal rules into its block in ~/.codex/AGENTS.md, links your skills into ~/.agents/skills, writes Serena's documented hooks as owned entries in ~/.codex/hooks.json, and writes your MCP servers, effort, notifications and plugin switches as owned sections of ~/.codex/config.toml. The VS Code extensions of both agents read these same folders. For a repo: the kit's profiles go through repo writes (a plan, your yes, a backup) into the repo's .claude, .mcp.json, .codex and .agents/skills files, merged three-way against the record in the repo's .loadout.json." src="../diagrams/architecture-overview.light.svg">
 </picture>
 
 <sub>[Source](../diagrams/architecture-overview.mmd)</sub>
@@ -33,24 +33,38 @@ loadout has three parts: the kit repo (shared), your personal layer (yours) and 
 | Your hooks | linked into `~/.claude/hooks/personal` | not linked |
 | Your MCP servers | `claude mcp add-json` (user scope) | owned `[mcp_servers.*]` sections in `config.toml`, secrets as `env_vars` names; loadout also owns a `serena` section unless you have your own Serena server, and a `context7` section when the Context7 plugin is on; Serena's hooks are owned entries in `hooks.json` |
 | Settings | three-way merge into `settings.json` | effort and notifications as `model_reasoning_effort` and `tui.notifications` in `config.toml`; for plugins a project profile installed, a `plugins.<id>.enabled` switch that keeps them off at user level |
-| Plugins | the kit marketplace; Claude Code installs and updates them | loadout installs and refreshes the same plugins through the `codex` CLI |
+| Plugins | the kit marketplace; Claude Code installs and updates them | loadout installs and refreshes the same plugins through the Codex CLI; with only VS Code's Codex extension, none (it loads no plugins; [Codex in VS Code without the CLI](../how-to/vscode.md#codex-in-vs-code-without-the-cli)) |
 | Your own text | `~/.claude/CLAUDE.md` is not edited, unless you ask adopt to move its content into your personal layer | the rest of `AGENTS.md` is not edited; `AGENTS.override.md` would shadow the block (`loadout check` warns) |
 
 What the Codex side maps, and what stays different, is in [Use loadout with Codex](../how-to/codex.md).
 
+## VS Code extensions
+
+The Claude Code extension and VS Code's Codex extension are a surface of the same agent, not a third target. They read the same folders as the CLIs (`~/.claude` and `~/.claude.json`; `~/.codex` and `~/.agents/skills`), so loadout sets up no folder of their own for them ([ADR 0032](../adr/0032-vscode-extensions-are-a-surface-of-an-agent.md)). What loadout does around them:
+
+- **Detection, read-only.** `vscode.py` finds the extensions on this side: a local install, a Remote-WSL server (`~/.vscode-server`), and from WSL a Windows window's install. `loadout check` reports one row per extension and window type, all warnings.
+- **Codex extension mode.** With VS Code's Codex extension and no Codex CLI on `PATH`, loadout still writes the rules block, `config.toml`, Serena's hooks and the skills for it. It skips plugins, because the extension loads none, and it runs the extension's own `codex` for its `codex mcp` commands. The extension has no `/hooks` ([ADR 0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md)). The Codex CLI next to the extension is the recommended setup.
+- **The extensions' binaries as runners.** With no `claude` on `PATH`, loadout's `claude plugin` and `claude mcp` commands run the binary bundled in the Claude Code extension on this side (`runner.FALLBACK`; never a Windows window's copy from WSL). `which` and `have` still answer only for `PATH` ([ADR 0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md)).
+- **VS Code files only when asked.** `bootstrap --vscode-wsl` sets the Codex extension's WSL switch in VS Code's Windows user settings, and `--vscode-path` adds a PATH block to `~/.vscode-server/server-env-setup`; each takes a flag or a yes, and makes a backup first (or records a file it creates), so `loadout restore` undoes it ([ADR 0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md)).
+
+What each extension sees, what it lacks, and the fixes: [Use loadout with VS Code](../how-to/vscode.md).
+
+## Repos
+
+A repo is shared, so loadout keeps no list of repos and writes into one only when you run `loadout init`, `loadout profile` or `loadout configure new skill --to repo` there (or let `loadout adopt` apply a profile to it).
+
+- **`.loadout.json`** (`repo_config.py`) is committed. It names the repo's agents, so a Codex-only repo gets no Claude Code files; `"manage": false` keeps loadout out; and it holds the record of what each profile wrote ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)).
+- **Repo writes are a plan** (`repo_writes.py`): every change is collected, shown, and applied after your yes, with a backup that `loadout restore` replays. Only a `run` step (a profile's `commands`, `git init`) cannot be undone, and the plan says so ([Repo writes](../reference/cli.md#repo-writes)).
+- **Profile entries merge three-way** (`repo_merge.py`) against the record, so a re-run keeps a value someone changed in the repo unless they say yes. The record keeps a secret-looking value only as a hash ([ADR 0031](../adr/0031-repo-profile-entries-merge-three-way.md)).
+- **`loadout explain FILE`** shows which entries of a repo file loadout wrote, from which profile, and whether each is unchanged ([loadout explain](../reference/cli.md#loadout-explain)).
+
+The session hook and the daily sync never write repo files.
+
 ## loadout's own files
 
-Two folders belong to loadout itself, for every user, Codex-only included. They sit in `$XDG_STATE_HOME/loadout` (an absolute path), or `~/.local/state/loadout` when that is not set, on every OS. The path does not depend on whether Claude Code is on (`paths.state_dir`, `paths.backups_root`), so a Codex-only machine has no `~/.claude`. See [ADR 0025](../adr/0025-state-in-xdg-state-home.md).
+loadout keeps its own state and backups in one folder of its own, `~/.local/state/loadout` (or `$XDG_STATE_HOME/loadout`), on every OS and for every user. The state is what makes a safe re-run possible: the snapshot of what the settings merge applied, the record of the entries loadout owns in Codex's files, your `leave` decisions and the sync's bookkeeping. The backups are what makes every change undoable. Both belong to this machine and are never synced. The folder does not depend on Claude Code being on, so a Codex-only machine has no `~/.claude` ([ADR 0025](../adr/0025-state-in-xdg-state-home.md)).
 
-- `~/.local/state/loadout/`: machine-local state. It records what the merge last applied (the snapshot), which `config.toml` entries loadout owns (`codex-config.json`), your `leave` decisions, queued notices, the maintenance timestamps and the tool hints' per-session counters (`tool-hint/`, removed after 7 days). It is not synced.
-- `~/.local/state/loadout/backups/`: one `loadout-<timestamp>` folder per change that moved or replaced something you own, with a manifest of undo steps. A run of `init`, `profile`, `configure new skill --to repo`, or `adopt` when it applies a profile to a repo, makes one too, for the repo files it changes (the manifest names the repo). See [Undo what loadout changed](../how-to/undo-and-restore.md).
-
-Older versions kept both folders in `~/.claude`. loadout moves them in two steps, because an older loadout run or the hooks of a Claude Code session that has not reloaded its plugins can still write the old place:
-
-1. **Copy.** At the start of every loadout command that can change something (and of the session hook; `check`, `usage` and `kit-path` stay read-only and skip it), under a lock, everything of loadout's in `~/.claude/.loadout` and its own `loadout-<timestamp>` folders in `~/.claude/backups` are copied to the new place; nothing there is overwritten (Claude Code's own `.claude.json` copies in `~/.claude/backups` stay where they are). Another run waits up to 10 seconds for the lock. Until everything is copied, commands that change things stop with exit code 1 and say why; `kit-path`, `check`, `usage` and `restore` still run, the session hook exits quietly, and the next run continues. If an entry can never be copied (for example a file owned by root after a `sudo` run), move or delete it by hand; `loadout check` names it.
-2. **Retire.** Ten minutes later at the earliest, and only when no older loadout run holds its maintenance lock, a later run deletes each old copy that is still exactly what was copied. An old copy that an older run changed after the copy replaces the new copy right away, in the next run and before the command does anything, if the new copy is untouched; when both changed, both stay, the old one is named once, and `loadout check` warns (row `loadout state`) until you delete it by hand. Session files of an older plugin are never copied back over the new ones; their old copies go once they have been untouched for a day.
-
-An empty `~/.claude` is removed afterwards only when Claude Code is off.
+Older versions kept both in `~/.claude`. loadout moves them in two steps, copy now and delete the old copy later, because an older loadout run or the hooks of a Claude Code session that has not reloaded its plugins can still write the old place; deleting at once could lose what they write. The folders are listed in [State folders](../reference/state-and-sync.md#state-folders); the exact rules of the move, and what `loadout check` reports while it is unfinished, are in [The move out of ~/.claude](../reference/state-and-sync.md#the-move-out-of-claude).
 
 ## The settings merge
 
@@ -58,28 +72,20 @@ This part is about Claude Code. Codex has no settings file that loadout merges; 
 
 ## The daily sync
 
-At each session start the plugin runs `loadout hook-session-start`. It prints queued notices and, when the daily pull or the weekly check is due, starts `loadout maintenance` as a detached process. The session never waits for it. Both agents run the same hook through the plugin: Claude Code from `hooks/hooks.json`, Codex from `hooks/codex.json` (after you approve the hooks in `/hooks`).
+loadout keeps a machine current without a scheduler of its own: the start of an agent session is the trigger. The plugin's session hook prints the notices queued since the last session and, when the daily pull or the weekly check is due, starts `loadout maintenance` in the background. The session never waits for it, and nothing it does can break the session: problems become notices for the next one.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/architecture-daily-sync.dark.svg">
-  <img alt="When a session starts, hook-session-start returns queued notices at once and, when due, starts maintenance in the background without making the session wait. Maintenance runs one at a time: daily it runs git pull --ff-only on the kit and personal repos (skipping a checkout with uncommitted changes or untracked files) and, after new commits, merges settings and relinks skills and hooks for Claude Code and refreshes plugins, config and skills for Codex (each only when that agent is on, Codex also only when it is usable); weekly it checks tool versions without installing anything. It queues notices for the next session." src="../diagrams/architecture-daily-sync.light.svg">
+  <img alt="When a Claude Code or Codex CLI session starts, hook-session-start returns queued notices at once and, when due, starts maintenance in the background without making the session wait. Maintenance runs one at a time: daily it runs git pull --ff-only on the kit and personal repos (skipping a checkout with uncommitted changes or untracked files) and, after new commits, merges settings and relinks skills and hooks for Claude Code and refreshes the rules block, config, hooks and skills for Codex, plugins only with the Codex CLI (each only when that agent is on, Codex also only when it is usable); weekly it checks tool versions without installing anything. It queues notices for the next session." src="../diagrams/architecture-daily-sync.light.svg">
 </picture>
 
 <sub>[Source](../diagrams/architecture-daily-sync.mmd)</sub>
 
-**Plugin updates.** In Claude Code the sync does not run `claude plugin update`. `settings.base.json` sets `"autoUpdate": true` on the marketplaces it declares, so Claude Code updates those plugins itself (after a random delay in a running session; then `/reload-plugins`). For Codex, loadout refreshes the plugins in the Codex step below, after a pull that brought commits. That refresh leaves marketplaces set to `autoUpdate: false` as they are. `loadout update` updates the enabled plugins at once, in Claude Code and Codex, after a yes. How both agents' plugins are updated is decided in [0024](../adr/0024-codex-parity-update-model.md).
+The pull is fast-forward only and skips a checkout with local changes, so it never overwrites your work. Only a pull that brought new commits makes the sync re-apply anything, and only for the agents that are on. The weekly check only reports updates; installing them is `loadout update`, after a yes. In Claude Code the sync leaves plugin updates to Claude Code itself, which updates the kit's marketplaces; for Codex, loadout refreshes the plugins after a pull, when the Codex CLI is installed ([0024](../adr/0024-codex-parity-update-model.md)).
 
-Details, from `maintenance._maintain`:
+The hook runs in Claude Code and in the Codex CLI; VS Code's Codex extension without the Codex CLI does not start the sync ([At each session start](../reference/state-and-sync.md#at-each-session-start)).
 
-- One maintenance run at a time: a lock file in the state folder, taken over only after an hour.
-- The pull is `git pull --ff-only` on the kit and on the personal layer (when each is a git checkout), at most once a day, with git's terminal and credential prompts turned off (`maintenance.pull_if_clean`). It is skipped for a checkout with uncommitted changes or untracked files.
-- With `LOADOUT_NO_AUTO_PULL=1` the pull and the re-apply are skipped; the weekly version check still runs.
-- Only when a pull brought new commits does the sync re-apply anything (`maintenance._maintain`). Errors become a notice for the next session instead of a crash.
-  - **Claude Code** (when it is on): settings, personal MCP servers and links (skills, hook scripts, and copies in copy mode).
-  - **Codex** (when it is on and usable, meaning a supported `codex` is on `PATH`): `codex.apply_all(refresh=True)` refreshes the plugins, the `AGENTS.md` block, `config.toml` entries and skill links, then the drift check (when both agents are on, since it compares them) queues a notice for anything that no longer matches. Replaced or edited files go to a backup first.
-- The next session runs the pulled `loadout` code and the plugin's hooks. Whoever can push to the kit or your personal layer reaches every machine that follows it; see [the trust boundary](security-and-trust.md#the-trust-boundary).
-- Plugins newly enabled through the personal layer are installed by Claude Code at its next start, not by this job ([0015](../adr/0015-claude-code-installs-synced-plugins.md)).
-- The weekly check compares installed and latest versions (through mise when it manages the tool, so its pins and release-age rules count). It queues "updates available, run `loadout update`". It never installs.
+Each step, the locks, the timestamps and `LOADOUT_NO_AUTO_PULL=1` are in [The daily sync](../reference/state-and-sync.md#the-daily-sync). Whoever can push to the kit or your personal layer reaches every machine that follows it; see [the trust boundary](security-and-trust.md#the-trust-boundary).
 
 ## Why it is built this way
 
@@ -89,6 +95,8 @@ The main decisions, in short. Each has a decision record in [`docs/adr/`](../adr
 - **The kit is a plugin marketplace** ([0002](../adr/0002-kit-is-a-plugin-marketplace.md)). Claude Code already knows how to install, enable and update plugins. loadout reuses that instead of copying files into `~/.claude` itself.
 - **Three-way settings merge** ([0003](../adr/0003-three-way-settings-merge.md)). A plain overwrite would destroy your own settings. A plain merge cannot tell whether you or the kit changed a value. The snapshot makes both safe and lets you delete a kit hook without it coming back.
 - **Rules are linked as folders** ([0004](../adr/0004-rules-linked-as-directories.md)). Linking `rules/` leaves `~/.claude/CLAUDE.md` yours, and a pull updates the rules without touching a file you own.
+- **Repo files follow the repo's agents** ([0030](../adr/0030-repo-files-follow-the-repos-agents.md), [0031](../adr/0031-repo-profile-entries-merge-three-way.md)). A repo is shared, so what loadout writes there depends on the agents the repo names, not on yours, and a re-run never overwrites a teammate's change without a yes.
+- **VS Code extensions are a surface of an agent** ([0032](../adr/0032-vscode-extensions-are-a-surface-of-an-agent.md), [0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md), [0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md)). They read the agents' folders, so one setup serves the CLI and the extension; loadout adds only detection, the extension mode for Codex, the bundled binaries as runners, and VS Code fixes you ask for.
 
 All decisions, including the ones not summarised here, are in the [ADR index](../adr/README.md).
 

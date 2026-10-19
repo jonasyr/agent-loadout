@@ -9,7 +9,7 @@ Answer from `loadout usage`, the read-only counter of tool calls in this machine
 
 ## 1. Run it
 
-`loadout usage --json` (default: the last 14 days). If the user names a period, pass `--days N`; "since the hints shipped", "this week" and similar become a number of days. If the command is missing or exits 1 (no transcript folder for an agent that is on), say so and suggest `loadout check`; do not count by hand.
+`loadout usage --json` (default: the last 14 days). If the user names a period, pass `--days N`; "since the hints shipped", "this week" and similar become a number of days. If the command is missing or exits 1 (no transcript folder for any agent that is on), say so and suggest `loadout check`; do not count by hand.
 
 ## 2. Read the JSON
 

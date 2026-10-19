@@ -335,6 +335,14 @@ def settings_files(install: Install) -> list[Path]:
     return [install.user_dir / "settings.json", *profiles]  # which profile is active is not on disk: any may be
 
 
+def settings_label(install: Install) -> str:
+    """Where a person edits the settings settings_files reads first: a Remote-WSL server reads its machine settings,
+    which VS Code opens as the remote settings."""
+    if install.user_dir is None:
+        return "VS Code's remote settings for WSL (Preferences: Open Remote Settings)"
+    return "VS Code's user settings"
+
+
 def windows_claude(install: Install) -> bool:
     """VS Code on Windows, seen from WSL: a claude where the Windows installers put it (the native installer's
     .local\\bin, npm's global folder). The Windows PATH itself cannot be read from WSL."""

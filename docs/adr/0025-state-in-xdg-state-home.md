@@ -23,3 +23,7 @@ loadout kept its state (`~/.claude/.loadout`) and its undo backups (`~/.claude/b
 - An entry kept in `~/.claude` because both places have it is named by the migration and by `loadout check` (row `loadout state`) until you delete it by hand.
 - Until everything is copied, commands that change things stop with exit code 1; old copies wait about ten minutes (on a Codex-only machine, `~/.claude` disappears with them).
 - No step deletes an old entry that changed after it was copied, so neither an ownership record nor a backup can be lost to an older process writing at the same time.
+
+## In the code
+- `cli/loadout/paths.py` (`state_dir`, `backups_root`)
+- `cli/loadout/migrate.py` (`RETIRE_AFTER`), `cli/loadout/restore_cmd.py`

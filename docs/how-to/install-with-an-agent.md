@@ -26,7 +26,7 @@ command -v loadout claude codex serena serena-hooks uv python3 git gh
 ls ~/.config/loadout/personal 2>/dev/null && echo "a personal layer exists"
 ```
 
-In WSL, also check which Codex the user runs: `command -v codex.exe`, and whether `command -v codex` prints a path under `/mnt/`. A Codex under `/mnt/` is the Windows one ([Codex in WSL](wsl.md#codex)).
+In WSL, also check which Codex the user runs: `command -v codex.exe`, and whether `command -v codex` prints a path under `/mnt/`. A Codex under `/mnt/` is the Windows one ([Codex in WSL](wsl.md#codex)). Bootstrap also counts Codex sessions in the Windows home and VS Code's Codex extension on Windows (until its WSL switch is on); if it prints `Codex step skipped: …`, ask question 3 and run it again with `--codex-side`.
 
 If `loadout` is already installed, also run `loadout check` and keep its output for step 6.
 
@@ -37,7 +37,8 @@ On native Windows (not WSL), loadout is experimental: show the user the commands
 Ask these, one at a time:
 
 1. **Which agents** should loadout set up: Claude Code, Codex, or both? This becomes `--agents claude`, `--agents codex` or `--agents claude,codex`.
-2. **VS Code** (only when Codex is chosen): does the user work in VS Code with the Codex extension, and do they also use Codex in a terminal? The extension runs its own Codex, so loadout sets Codex up for it without the CLI; the CLI adds `/hooks` (approving loadout's hooks) and plugins. If they want the extension only, add `--without-codex-cli`; otherwise `--install` installs the CLI ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)).
+2. **VS Code** (only when Codex is chosen): does the user work in VS Code with VS Code's Codex extension, and do they also use Codex in a terminal? Recommend the Codex CLI next to the extension, which `--install` installs ([Recommended setups](setups.md#recommended-setups)): without it they lose plugins and `/hooks` ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). If they still want the extension only, add `--without-codex-cli` ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). The flag acts only when no Codex CLI is on PATH and the extension on this side runs a new enough codex ([version](codex.md#switch-it-on)): on Linux and macOS a local install, in WSL only one installed in WSL (`~/.vscode-server/extensions` has it; the user installs it from the Extensions view in a Remote-WSL window); otherwise bootstrap prints `--without-codex-cli: not used` and installs the CLI. In WSL with the walkthrough [below](#codex-only-on-windows-with-vs-code), skip this question: it installs the CLI.
+   For the Claude Code extension there is no question: `--install` also installs the Claude Code CLI, which is the intended path ([Claude Code in VS Code without the CLI](vscode.md#claude-code-in-vs-code-without-the-cli)).
 3. **In WSL, only when the user's Codex is the Windows one:** set up Codex in WSL (installs Codex here) or on Windows (they run `bootstrap.ps1` there)? This becomes `--codex-side wsl` or `--codex-side windows`. See [Codex in WSL](wsl.md#codex).
 4. **The personal layer:** the URL of their private git repo for it, or a new one? This becomes `--personal <URL>` or `--personal new`. If a personal layer exists already (step 1), skip this question and the next two; loadout keeps it.
 5. **About them** (only with `--personal new`; a cloned layer has its own): their name, their role, their main languages, and anything else about how they like to work. Every answer is optional.
@@ -98,19 +99,20 @@ Without a terminal, bootstrap skips the review of what was installed before load
 
 ## 6. Finish
 
-- **Codex:** Codex runs loadout's hooks only after the user approves them once: they start `codex` and run `/hooks`. In a repo with a `.codex/config.toml`, they accept Codex's trust question once ([Use loadout with Codex](codex.md#switch-it-on)).
+- **Codex:** Codex runs loadout's hooks only after the user approves them once: they start `codex` and run `/hooks` (this needs the Codex CLI; VS Code's Codex extension has no `/hooks`, see [Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). In a repo with a `.codex/config.toml`, they accept Codex's trust question once ([Use loadout with Codex](codex.md#switch-it-on)).
 - **Claude Code:** they restart it, or run `/reload-plugins`.
+- **VS Code in WSL:** after the user's first `code .` from WSL, `~/.vscode-server` exists. Without a terminal bootstrap never offers the PATH block, so if `loadout check` warns `VS Code PATH`, show `loadout bootstrap --vscode-path </dev/null` and run it after a yes; then the user restarts VS Code's WSL server: close every Remote-WSL window, run `wsl --shutdown` in Windows, which stops every WSL distro, then reopen the folder ([MCP servers in a Remote-WSL window](vscode.md#mcp-servers-in-a-remote-wsl-window)).
 - **Logins:** bootstrap's "Still to do" list names the logins that are missing.
 - Run `loadout check`. For each `warn` or `FAIL` line, give the user the fix from [Troubleshooting](troubleshooting.md), in one line each.
 - For a new repo, they can run `loadout init` there. Without a terminal that is two steps: you run `loadout init --dry-run --agents claude`, `codex` or `claude,codex` (the repo's agents; ask which) and show the plan, then run `loadout init --yes --agents …` after their yes. For later changes, they ask you, and you use the `loadout:configure` skill.
 
 ## Codex only on Windows with VS Code
 
-When the commands in section 1 printed `WSL`, the user chose Codex only, and Codex runs in WSL (question 3 answered WSL, or not asked), take sections 4 to 6 in this order; the steps are the same as in [Find the path for your setup](setups.md#codex-only-on-windows-with-vs-code). Show each command and run it only after a yes, as above. If the user answered Windows to question 3, follow section 4 with `--codex-side windows` instead: these steps do not apply.
+When the commands in section 1 printed `WSL`, the user chose Codex only, and Codex runs in WSL (question 3 answered WSL, or not asked), take sections 4 to 6 in the order of the six steps in [Pick your setup](setups.md#codex-only-on-windows-with-vs-code), which say why each step is there. Below is only what changes for you, the agent. Show each command and run it only after a yes, as above. If the user answered Windows to question 3, follow section 4 with `--codex-side windows` instead: these steps do not apply.
 
-1. **WSL 2:** if the user is not sure their distribution is WSL 2, they run `wsl -l -v` in PowerShell ([WSL 2](wsl.md#1-use-wsl-2-not-wsl-1)).
-2. **bootstrap:** the command from section 4 with `--agents codex --codex-side wsl --vscode-wsl`, with its personal-layer flags, the answers file and the two things to say first; for example `loadout bootstrap --install --agents codex --codex-side wsl --vscode-wsl </dev/null` when loadout and a personal layer are installed. Ask first whether they use VS Code with the Codex extension; only then add `--vscode-wsl`, which sets one VS Code setting so the extension runs the Codex in WSL, with a backup. Without VS Code, leave it out and skip `code .` in step 5. Then review their existing setup as in section 5.
+1. **WSL 2:** if the user is not sure their distribution is WSL 2, they run `wsl -l -v` in PowerShell.
+2. **bootstrap:** the command from section 4 with `--agents codex --codex-side wsl`, its personal-layer flags, the answers file and the two things to say first; for example `loadout bootstrap --install --agents codex --codex-side wsl </dev/null` when loadout and a personal layer are installed. Recommend a Remote-WSL window (`code .` from WSL). Ask whether the user also opens repos in a Windows window; only then add `--vscode-wsl`, which switches VS Code's Codex extension to the Codex in WSL, with a backup. Then review their existing setup as in section 5.
 3. **`codex login`:** the user types it in the WSL terminal.
 4. **`/hooks`:** the user starts `codex` in the WSL terminal and approves loadout's hooks once.
-5. **The first repo** (`loadout init --agents codex`), in a repo in the Linux home: run `loadout init --dry-run --agents codex </dev/null`, show the plan, and after a yes run `loadout init --yes --agents codex </dev/null`. The user starts `codex` once in the WSL terminal in that repo and accepts the trust question, then opens the repo with `code .` from WSL.
-6. **`loadout check`:** give the fix for each `warn` or `FAIL` line in one line.
+5. **The first repo** (`loadout init --agents codex`), in a repo in the Linux home: run `loadout init --dry-run --agents codex </dev/null`, show the plan, and after a yes run `loadout init --yes --agents codex </dev/null`. The user starts `codex` once in the WSL terminal in that repo and accepts the trust question, then opens the repo with `code .` from WSL (without VS Code, they skip `code .`).
+6. **`loadout check`:** give the fix for each `warn` or `FAIL` line in one line. For `VS Code PATH`, run `loadout bootstrap --vscode-path </dev/null` after a yes, as in section 6.

@@ -13,6 +13,6 @@ Pick the tool by the question, not by habit:
 | Questions about loadout, or changes to the loadout setup (tools, preferences, agents, profiles, undo) | The `loadout:configure` skill, even when the user does not name it; never edit `~/.claude` or `~/.codex` settings by hand |
 | Shell commands | rtk rewrites them automatically when installed; use `rtk proxy <cmd>` when you need raw output |
 
-loadout's hooks add a one-line hint when a search or a web lookup would be better answered by these tools; follow it when it fits.
+loadout's hooks add a one-line hint when a search or a web lookup would be better answered by these tools (in Codex: shell searches only); follow it when it fits.
 
 Before ending a task that touched UI, verify it in a browser with playwright-cli. Never claim it "looks right" without having looked. If playwright-cli is missing or fails, say so (and suggest `loadout check`) instead of launching a browser binary yourself.

@@ -19,12 +19,12 @@ The file is one JSON object with one key, `entries`, a list of entries. Ids are 
 | `offer` | no | Makes the entry a global add-on in `loadout configure`. See below. |
 | `connector` | no | For a plugin: the name of the claude.ai connector with the same tools, as Claude Code lists it (for example "claude.ai Context7"). `loadout check` warns when the plugin is enabled and the connector has been connected. |
 | `category` | no | Group heading in the configure wizard. Default: `other`. |
-| `required` | no | For a `binary`: a missing one is a `FAIL` in `loadout check` and is installed by `bootstrap --install`. |
+| `required` | no | For a `binary`: a missing one is a `FAIL` in `loadout check` and is installed by `bootstrap --install`. Exceptions: a missing `codex` or `claude` is only a warning while VS Code's extension for that agent brings its own binary, and in WSL `codex` is not checked when your only Codex is the Windows one ([`binary <name>`](cli.md#loadout-check)). |
 | `version` | for `binary` | How to read and look up versions. See below. |
 | `install` | no | Platform commands that install a `binary`. |
 | `update` | no | Platform commands that update a `binary`. |
 | `manual` | no | Text shown when loadout cannot install or update a `binary` itself. |
-| `mise` | no | For a `binary`: the tool name to use with `mise upgrade`, when it differs from the id. `codex` sets it (the mise tool is also called `codex`; set for clarity). |
+| `mise` | no | For a `binary` installed through mise: the mise tool name for `mise upgrade`. Without it, loadout derives the name from the mise install folder (`npm:<package>` for mise's npm backend, else the id). `codex` sets it to `codex`. |
 | `needs` | no | For a binary: ids of binaries it is installed with (for example "node" needs "mise"). Bootstrap installs those first and skips this one if they failed. |
 | `target` | no | For a `binary`: `claude` or `codex`. The binary is installed, checked and updated only while that coding agent is chosen (`targets.json`, see [Use loadout with Codex](../how-to/codex.md)). |
 | `helper` | no | For a binary: installed only when another binary needs it; `loadout check` does not report it. |
@@ -56,7 +56,7 @@ An entry with `offer` appears as a global add-on in `loadout configure show` and
 
 | Key | Meaning |
 |---|---|
-| `plugin` | A plugin id `name@marketplace`. The marketplace must be declared in `settings.base.json`. |
+| `plugin` | A plugin id `name@marketplace`. The marketplace must be `claude-plugins-official` or declared in `settings.base.json`. |
 | `mcp` | An object `{server name: server config}`. Switching the add-on on writes these servers into the personal `mcp.json`. Arguments must not use `@latest`. |
 | `needs` | Environment variable names the servers use, for example `DATABASE_URL`. If one is unset, `configure set mcp` prints a note to add it to `secrets.env`. |
 

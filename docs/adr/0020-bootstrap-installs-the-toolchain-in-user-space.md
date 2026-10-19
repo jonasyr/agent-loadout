@@ -1,6 +1,6 @@
 # 0020. Bootstrap installs the toolchain in user space
 
-- Status: Accepted. For Codex, see [ADR 0024](0024-codex-parity-update-model.md).
+- Status: Accepted; its Python minimum (3.10) is superseded by [0023](0023-python-3-11-minimum.md). For Codex, see [ADR 0024](0024-codex-parity-update-model.md).
 - Date: 2026-10-11
 - Source: [One-command setup design](../superpowers/specs/2026-10-11-one-command-setup-design.md)
 
@@ -19,3 +19,8 @@ Bootstrap installs every missing tool it can without sudo or administrator right
 - More upstream installers run with `--install` (uv, Claude Code, mise); they are listed in [Security and trust](../explanation/security-and-trust.md).
 - A fresh-machine CI workflow runs the real installers on throwaway machines.
 - Native Windows remains experimental.
+
+## In the code
+- `bootstrap.sh`, `bootstrap.ps1`
+- `cli/loadout/bootstrap.py` (`check_prereqs`, `prepend_tool_dirs`, `PATH_MARKER`), `cli/loadout/paths.py` (`tool_dirs`)
+- `bin/loadout`, `plugins/loadout/hooks/run.sh` (the uv fallback)

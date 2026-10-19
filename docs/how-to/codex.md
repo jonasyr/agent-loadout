@@ -4,9 +4,9 @@ Most of loadout works the same in both agents: the kit, your personal layer, the
 
 ## Switch it on
 
-On a new machine, bootstrap asks which coding agents to set up, Claude Code, Codex or both, right after the personal layer step. With Codex and `--install`, it installs Codex too (through mise); without `--install` it reports Codex as missing. Scripts can pass the choice: `bootstrap.sh --install --agents codex` (or `claude`, or `claude,codex`). On a machine set up before this choice existed, bootstrap asks only when `codex` is on your PATH. A personal layer you clone that already holds a choice (`targets.json`) decides without the question, and bootstrap says so; `--agents` wins over it ([bootstrap flags](../reference/cli.md#loadout-bootstrap)).
+On a new machine, bootstrap asks which coding agents to set up, Claude Code, Codex or both, right after the personal layer question. With Codex and `--install`, it installs Codex too (through mise); without `--install` it reports Codex as missing. Scripts can pass the choice: `bootstrap.sh --install --agents codex` (or `claude`, or `claude,codex`). On a machine set up before this choice existed, bootstrap asks only when `codex` is on your PATH (in WSL, also a Windows `codex.exe`). A personal layer you clone that already holds a choice (`targets.json`) decides without the question, and bootstrap says so; `--agents` wins over it ([bootstrap flags](../reference/cli.md#loadout-bootstrap)).
 
-With VS Code's Codex extension and no Codex CLI, loadout sets Codex up for the extension ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)).
+With VS Code's Codex extension and no Codex CLI, loadout sets Codex up for the extension. That is supported, not recommended: keep the Codex CLI next to the extension, which bootstrap installs by default ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli), [ADR 0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md)).
 
 To switch an agent on or off later:
 
@@ -21,7 +21,7 @@ One agent must stay on. Switching an agent off uninstalls nothing; loadout just 
 
 The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; a progress line names each step (with `--verbose`, or without a terminal, one line each). Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
 
-Then approve loadout's hooks once in Codex: start `codex` and run `/hooks`. Codex runs plugin hooks, and the Serena hooks loadout puts into `~/.codex/hooks.json`, only after you approve them, and again after they change ([which hooks](../reference/hooks.md), [Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)).
+Then approve loadout's hooks once in the Codex CLI: start `codex` and run `/hooks` (VS Code's Codex extension has no `/hooks`; see [Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). Codex runs plugin hooks, and the Serena hooks loadout puts into `~/.codex/hooks.json`, only after you approve them, and again after they change ([which hooks](../reference/hooks.md), [Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)).
 
 ## What Codex gets
 
@@ -32,7 +32,7 @@ The same kit and personal layer reach Codex. Where each part goes (the instructi
 - **Hooks need your approval once** in `/hooks` (see above).
 - **Commit attribution.** Codex adds `Co-authored-by: Codex` to commits when your ChatGPT account has commit attribution turned on. That is an account setting, not a config key: turn it off in your ChatGPT account settings. loadout's rule against AI attribution reaches Codex through the instruction block, but cannot remove the trailer.
 - **Context7 without a login.** The plugin's Context7 address asks Codex for an OAuth login; loadout sets the plain address for Codex instead, which works without one. Anonymous use has Context7's lower rate limit, so loadout lists an optional `codex mcp login context7` until you log in.
-- **Logins and approvals are named where you work.** Bootstrap's "Still to do", `loadout configure set target codex on` and `loadout check` list what is still open in Codex: the hook approval in `/hooks` (until you approved them, and again after loadout's hooks change) and any MCP server that waits for a login (`codex mcp login NAME`). loadout does not approve hooks for you: that approval is Codex's safety gate.
+- **Logins and approvals are named where you work.** Bootstrap's "Still to do", `loadout configure set target codex on` and `loadout check` list what is still open in Codex: the hook approval in `/hooks` (until you approved them, and again after loadout's hooks change) and any MCP server that waits for a login (`codex mcp login NAME`). With only VS Code's Codex extension, the login is in the extension (gear, MCP servers, Authenticate), and the hook approval needs the Codex CLI ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). loadout does not approve hooks for you: that approval is Codex's safety gate.
 - **Serena already set up?** If you followed Serena's docs (`serena setup codex`), loadout uses your Serena server whatever its name and adds no second one, and it adds only the Serena hooks your `~/.codex/hooks.json` lacks ([Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)).
 - **MCP tools load on demand in Codex.** Codex shows the model Serena's, codebase-memory's and the other servers' tools only when it searches for them, so a session can claim "Serena is not available" without looking. loadout's instruction block tells Codex to search first; if it still does not use them, ask for them by name ("use Serena's find_symbol").
 - **Tool hints cover shell searches only.** Codex gives hooks no Grep, Glob or web tools, so there is no docs hint; whether the hints run in Codex subagents is not known yet ([ADR 0026](../adr/0026-tool-hints-never-block.md)).
@@ -40,7 +40,7 @@ The same kit and personal layer reach Codex. Where each part goes (the instructi
 
 ## Project trust
 
-When the repo is for Codex (its `.loadout.json`, or your agents without one), `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you. Like every repo write, these show a plan and ask first, and `loadout restore` undoes them ([Repo writes](../reference/cli.md#repo-writes)).
+When the repo is for Codex (its `.loadout.json`, or your agents without one), `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout prints the same step with only VS Code's Codex extension; whether the extension asks the trust question itself is not confirmed yet, and the Codex CLI in VS Code's terminal does ask it. loadout never trusts a project for you. Like every repo write, these show a plan and ask first, and `loadout restore` undoes them ([Repo writes](../reference/cli.md#repo-writes)).
 
 ## Where to read more
 

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. This page covers setup, tests, evals, catalog changes, issues and the pull request flow. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). How the code fits together is in [Architecture](docs/explanation/architecture.md); the documentation rules are in [Documentation strategy](docs/explanation/documentation-strategy.md).
+Thanks for helping. This page covers setup, tests, evals, catalog changes, issues and the pull request flow. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). How the code fits together is in [Architecture](docs/explanation/architecture.md), and which file does what in [Modules](docs/reference/modules.md); the documentation rules are in [Documentation strategy](docs/explanation/documentation-strategy.md).
 
 ## Setup
 
@@ -11,7 +11,7 @@ git clone https://github.com/jonasyr/agent-loadout
 cd agent-loadout
 ```
 
-You do not need to run bootstrap to work on the code. If you do run it from your clone, it links your real `~/.claude` to that clone (and with Codex on, it writes your real `~/.codex` and `~/.agents/skills` from it).
+Run the CLI from the clone with `bin/loadout` (for example `bin/loadout check --help`); `python -m loadout` registers only `init` and `profile`. You do not need to run bootstrap to work on the code. If you do run it from your clone, it links your real `~/.claude` to that clone (and with Codex on, it writes your real `~/.codex` and `~/.agents/skills` from it).
 
 ## Tests and validation
 
@@ -86,11 +86,11 @@ Open an issue with one of the forms on the [New issue](https://github.com/jonasy
 
 | Form | Use it for | Asks for |
 |---|---|---|
-| Bug report | Something does not work as documented | What happened, steps, platform, `loadout --version`, `claude --version`, optionally `codex --version` (if you use Codex), the output of `loadout check --verbose` |
+| Bug report | Something does not work as documented | What happened, steps, platform, `loadout --version`, `claude --version`, optionally `codex --version` (if you use Codex), the output of `loadout check --verbose`; optionally the failing command's output with `--verbose` |
 | Feature request | An idea for the CLI, bootstrap or the plugin | The problem or use case; optionally a solution and alternatives |
 | Propose a tool for the catalog | Adding, replacing or dropping a tool | Kind, why, what it overlaps, license, install method, maintenance (what a [catalog](docs/how-to/add-to-catalog.md) decision needs) |
-| Docs problem | A wrong, missing or unclear page | The page and the problem |
-| Question | Anything else | Your question and what you read |
+| Docs problem | A wrong, missing or unclear page | The page and the problem; optionally a fix |
+| Question | Anything else | Your question, what you tried and what you read; optionally your platform |
 
 Blank issues are off. Read command output before you paste it, and replace tokens and private paths. Security problems never go in an issue: use the private advisory form linked on the New issue page (details in [SECURITY.md](SECURITY.md)).
 

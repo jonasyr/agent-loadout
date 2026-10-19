@@ -22,4 +22,4 @@ Include what you found, how to reproduce it, and which commit you tested. You wi
 
 ## Supported versions
 
-Only the current `main` branch is supported. loadout pulls the branch your clone tracks (`main` by default), so fixes reach users through the daily pull, plugin auto-update in Claude Code and loadout's plugin refresh for Codex.
+Only the current `main` branch is supported. loadout pulls the branch your clone tracks (`main` by default), so fixes reach users through the daily pull, plugin auto-update in Claude Code and loadout's plugin refresh for the Codex CLI.

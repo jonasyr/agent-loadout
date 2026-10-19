@@ -6,12 +6,12 @@ A profile is one JSON file `NAME.json`. Kit profiles live in `profiles/` in the 
 
 ## Fields
 
-Every field is optional; a missing field is empty. Kit profiles must have a `description` (a test checks it). The table says what each field does in Claude Code; what it does in Codex is in [In Codex](#in-codex).
+Every field is optional; a missing field is empty. Kit profiles must have a `description` and a `why` reason for each `settings` and `mcp` entry, and may use only the fields below except `skills` (a test checks this). The table says what each field does in Claude Code; what it does in Codex is in [In Codex](#in-codex).
 
 | Field | Type | Meaning |
 |---|---|---|
 | `description` | string | One line. `loadout configure show` uses it as the reason for the plugins the profile installs. |
-| `install` | list of plugin ids | Plugins to install at project scope with `claude plugin install ID --scope project`. Each id is `name@marketplace`; anything else is skipped with a message and `loadout profile` exits 1. This step is skipped when the repo is not for Claude Code, or when Claude Code is off for you (the plan says which). The marketplace of each id must be declared in `settings.base.json` for the kit's own profiles; a test checks this. |
+| `install` | list of plugin ids | Plugins to install at project scope with `claude plugin install ID --scope project`. Each id is `name@marketplace`; anything else is skipped with a message and `loadout profile` exits 1. This step is skipped when the repo is not for Claude Code, or when Claude Code is off for you. Only the second case gets a plan note (`plugin ID: …`); for a repo that is not for Claude Code the skipped installs are not named. For the kit's own profiles, the marketplace of each id must be `claude-plugins-official` or declared in `settings.base.json`; a test checks this. |
 | `settings` | object | Merged (three-way, see below) into the repo's `.claude/settings.json` (when the repo is for Claude Code). |
 | `mcp` | object | Merged (three-way, see below) into the repo's `.mcp.json` (when the repo is for Claude Code). Usually `{"mcpServers": {...}}`. Pin versions: the kit's own profiles must not use `@latest`. |
 | `commands` | list of commands | Commands run in the repo after the plugins, each a list of arguments, for example `["playwright-cli", "install", "--skills"]`. |
@@ -33,6 +33,10 @@ Example, the kit's `web` profile:
   },
   "settings": { "disabledMcpjsonServers": ["chrome-devtools"] },
   "commands": [["playwright-cli", "install", "--skills"]],
+  "why": {
+    "mcp.mcpServers": "Chrome DevTools for performance and network debugging",
+    "settings.disabledMcpjsonServers": "keeps Chrome DevTools off until you enable it in /mcp"
+  },
   "notes": "chrome-devtools is for performance/network debugging; enable it in /mcp when needed. ..."
 }
 ```
@@ -44,7 +48,7 @@ In this order:
 1. `settings` is merged into `<repo>/.claude/settings.json`, and `mcp` into `<repo>/.mcp.json`. The merge is three-way against the profile's record in [`.loadout.json`](cli.md#loadoutjson) ([ADR 0031](../adr/0031-repo-profile-entries-merge-three-way.md)): a missing entry is added; a profile update applies when the file still has the value loadout wrote; a value someone changed stays (loadout asks once when the profile has a new one, and `--take-profile` takes it); a list entry someone removed stays removed; an entry the profile dropped is removed when it still has loadout's value and no other profile recorded it. Without a record (a repo from before this rule), only missing entries are added, and a different existing value is named in the plan. An MCP server's definition is one entry. `loadout explain <file>` shows which entries are loadout's. A file is written only when the result differs, and only in the layout it already has (see [Repo writes](cli.md#repo-writes)). A profile with an empty `settings` or `mcp` does not touch that file, unless its record holds entries there (then the dropped entries are removed as above). The agents come from the repo's [`.loadout.json`](cli.md#loadoutjson); these two files are written only when it names Claude Code (or, without the file, when Claude Code is on for you).
 2. `skills` are copied. See below.
 3. `install` and `commands` run, unless `--no-install` was given. A failing command prints `failed: ...` and the rest continues.
-4. With Codex on, the Codex side is set up (see [In Codex](#in-codex)).
+4. When the repo is for Codex, the Codex side is set up (see [In Codex](#in-codex)).
 5. `notes` is printed.
 
 The repo's `.claude/settings.json` and `.mcp.json` are normal project files that you commit. Before it writes them, loadout shows the plan and asks, and the run's backup holds a copy of each changed file and a record of each created one, so `loadout restore` undoes the file changes ([Repo writes](cli.md#repo-writes)). It does not undo `commands`.
@@ -79,7 +83,9 @@ When the repo is for Codex, `loadout init` and `loadout profile NAME` also set u
 | `commands` | Run once, for both agents. |
 | `skills` | Copied as above (into `.agents/skills/` for a Codex-only repo). When the repo is for Codex, every skill in the repo's `.claude/skills`, including ones a `commands` entry installed there, is linked into `.agents/skills` as `../../.claude/skills/NAME`. A different item already at that path stays and is reported. |
 
-Codex reads a repo's `.codex/config.toml` only in a trusted project. Until then, loadout prints the step on every run: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you. In a repo that is for Codex only, the Claude Code parts of a profile are not written: no `.claude/settings.json`, no `.mcp.json`, nothing in `.claude/skills`. The plan names each file the profile would have written and why it was left out; add Claude Code with `loadout init --agents claude,codex` and run `loadout profile NAME` again to add them ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)).
+Codex reads a repo's `.codex/config.toml` only in a trusted project. Until then, loadout prints the step on every run: start `codex` in the repo once and accept the trust question. loadout never trusts a project for you.
+
+With only VS Code's Codex extension and no Codex CLI (extension mode), the `install` step cannot list the Codex plugins, so each profile plugin is reported as `not installed (could not list Codex plugins; run loadout profile again)`; running it again does not change that without the CLI. The extension would not load the plugins anyway. The trust step above also names the Codex CLI. Recommended: the Codex CLI next to the extension (`loadout bootstrap --install`), then run `codex` in the repo from VS Code's terminal for the trust question ([The Codex CLI alongside VS Code](../how-to/vscode.md#the-codex-cli-alongside-vs-code)). In a repo that is for Codex only, the Claude Code parts of a profile are not written: no `.claude/settings.json`, no `.mcp.json`, nothing in `.claude/skills`. The plan names each file the profile would have written and why it was left out; add Claude Code with `loadout init --agents claude,codex` and run `loadout profile NAME` again to add them ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)).
 
 What `init` and `profile` write per agent is tabled in [the CLI reference](cli.md#loadout-profile).
 

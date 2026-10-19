@@ -36,7 +36,7 @@ A repo gets the files of the agents that are on (`targets.json`), and only those
 
 ## In the code
 
-- `cli/loadout/profiles.py` (`repo_skill_dirs`, `copy_skills`, `link_skills`, `claude_off_notes`, `apply_profile`)
+- `cli/loadout/profiles.py` (`repo_skill_dirs`, `copy_skills`, `link_skills`, `repo_off_notes`, `apply_profile`)
 - `cli/loadout/project.py` (`add_profile` runs `link_skills` after the commands)
 - `cli/loadout/new_skill.py` (`--to repo`)
 - `cli/loadout/scaffold.py` (`CLAUDE.md` and the `.gitignore` line)

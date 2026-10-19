@@ -1,6 +1,6 @@
 # 0032. VS Code extensions are a surface of an agent
 
-- Status: Accepted
+- Status: Accepted; amended by [0034](0034-vscode-extension-binaries-and-vscode-fixes.md) (loadout runs the extensions' own binaries and writes VS Code files when asked)
 - Date: 2026-10-17
 - Source: [Design: VS Code extensions as a surface of each agent](../superpowers/specs/2026-10-17-vscode-extensions-design.md)
 
@@ -18,3 +18,8 @@ loadout treats each extension as a surface of its agent: `targets.json` still sa
 - Every check reads the newest extension folder again, because extensions update themselves; the bundled Codex is asked `--version` once per installed Codex extension (in WSL up to twice: VS Code on Windows and its Remote-WSL server).
 - What only the installed code shows (the binary resolution, a Remote-WSL window's PATH) is checked again in the live tour; the PATH row says "may not find" until then.
 - Editors other than VS Code (Insiders, Cursor, VSCodium, Windsurf) are not covered.
+
+## In the code
+- `cli/loadout/vscode.py`
+- `cli/loadout/check.py` (`_surface_rows`, `_vscode_path`, `_vscode`)
+- [Use loadout with VS Code](../how-to/vscode.md)

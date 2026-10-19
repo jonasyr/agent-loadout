@@ -11,7 +11,7 @@ Thorough by design: it may take long and use many tokens. Correctness over speed
 ## 0. Resume or start
 
 - If `.loadout/docs-audit/` contains a checklist, resume it from the first unchecked item.
-- Otherwise create `.loadout/docs-audit/<YYYY-MM-DD>.md` and make sure `.loadout/` is in `.gitignore` while the audit runs.
+- Otherwise create `.loadout/docs-audit/<YYYY-MM-DD>.md` and add `.loadout/` to `.gitignore` if it is not there yet (note in the checklist that you added it).
 - Update the checklist after every step, so the audit survives context compaction or a new session.
 
 ## 1. Inventory
@@ -90,4 +90,4 @@ Present:
 - open items the user deferred;
 - the diff grouped by layer.
 
-After approval, commit per layer (`docs: ...`, `docs(agents): ...`, `docs(memories): ...`). Delete the checklist and the temporary `.gitignore` entry.
+After approval, commit per layer (`docs: ...`, `docs(agents): ...`, `docs(memories): ...`). Delete the checklist, and the `.gitignore` entry only if the audit added it.

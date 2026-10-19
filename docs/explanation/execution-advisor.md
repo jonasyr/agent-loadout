@@ -37,7 +37,7 @@ Two hooks of the loadout plugin and one command catch the moment a plan is finis
 
 Each version of a plan is nudged at most once. Ticking boxes while executing does not count as a change, so execution never triggers it again. The hooks are stdlib only, use no network and always exit 0, so they cannot break a session. State is in `~/.local/state/loadout/advisor-pending.json` and `advisor-done.json`.
 
-The nudge works in Claude Code and in Codex. Codex runs the same hooks and writes files through `apply_patch`; `record` reads the `*** Add File:` and `*** Update File:` headers of the patch (paths relative to the session's folder), so a plan written in Codex is remembered like one written by Claude Code's Write and Edit tools.
+The nudge works in Claude Code, and in the Codex CLI once you approve the plugin's hooks in `/hooks` (VS Code's Codex extension runs no plugin hooks). Codex runs the same hooks and writes files through `apply_patch`; `record` reads the `*** Add File:` and `*** Update File:` headers of the patch (paths relative to the session's folder), so a plan written in Codex is remembered like one written by Claude Code's Write and Edit tools.
 
 ## Why not SDD by default
 

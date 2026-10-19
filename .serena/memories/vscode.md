@@ -1,0 +1,3 @@
+# VS Code
+VS Code's extensions are a surface of an agent (ADR 0032, amended by 0034): detection is read-only in `cli/loadout/vscode.py`, check rows in `check._vscode_surfaces` (per extension and window), `check._vscode_path` and `check._vscode` (the WSL switch); Codex extension mode (no Codex CLI, no plugins) in `codex.py` (ADR 0033). Details: docs/how-to/vscode.md, docs/how-to/setups.md#recommended-setups.
+Gotcha: `vscode.use_bundled_claude` puts the Claude Code extension's `claude` in `runner.FALLBACK`, so `runner.have("claude")` (PATH only) and what `runner.run` starts can differ: docs/reference/modules.md.

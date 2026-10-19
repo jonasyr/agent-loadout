@@ -7,6 +7,7 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 - Tests: `uv run --python 3.12 --with pytest pytest -q`
 - Validate: `claude plugin validate .` and `claude plugin validate plugins/loadout`
 - Skill evals: only via `plugins/loadout/evals/run.sh` (see `docs/how-to/run-evals.md`); never `claude plugin eval` directly
+- CLI help from a checkout: `bin/loadout <sub> --help` ([why not `python -m loadout`](CONTRIBUTING.md#setup))
 
 ## Hard conventions
 
@@ -34,29 +35,14 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 
 ## Where things are
 
-`cli/loadout/` modules:
+Every module and kit part, grouped, is in [docs/reference/modules.md](docs/reference/modules.md). Start with these:
 
-- `__main__.py` CLI entry (the parser, `init`, `profile`, the state-move gate); `commands.py` registers the other subcommands; `migrate.py` moves loadout's state out of `~/.claude` (ADR 0025); `ui.py` prompt helpers; `out.py` calm status lines and `--verbose`
-- `paths.py` locations from HOME; `runner.py` the only place external commands run; `jsonio.py` JSON and deep merge
-- `bootstrap.py` first-time setup (`answers.py` checks its `--answers` file); `adopt.py` migrate an existing machine; `maintenance.py` session hook and `update`
-- `link.py` rule links and PATH; `settings_merge.py` three-way settings merge; `personal_mcp.py` personal MCP servers
-- `catalog.py`, `versions.py`, `pkgmgr.py` tool knowledge, versions, binary updates
-- `profiles.py`, `project.py`, `detect.py`, `scaffold.py` profiles, `init`, detection, templates
-- `repo_config.py` `.loadout.json` (the repo's agents, `manage`, the profiles' record); `repo_writes.py` repo writes as a plan, applied with a backup; `repo_merge.py` the three-way merge of profile entries against the record; `explain.py` `loadout explain`; `skill_links.py` committed skill links a checkout wrote as plain files
-- `preferences.py`, `configure.py` structured preferences and the wizard
-- `own.py` your own tools; `new_skill.py` `configure new skill` (a SKILL.md stub in one of the three scopes); `inventory.py` machine inventory; `duplicates.py` exact plugin duplicates; `wsl.py` WSL detection and checks, which side Codex runs on, the VS Code switch; `vscode.py` VS Code and the agents' extensions (read-only)
-- `targets.py` which agents are on (`targets.json` in the personal layer); `codex.py` Codex as a second target (rules block, owned config.toml entries, plugins, skills, drift); `codex_hooks.py` Serena's hooks as owned entries in `~/.codex/hooks.json`; `codex_project.py` the Codex side of `init` and `profile`
-- `secrets.py` secret detection and storage; `backup.py` undo backups; `restore_cmd.py` `loadout restore` (path, `--list`, `--last`, `--show`, the numbered pick); `check.py` health report; `advisor.py` advisor marker; `usage.py` `loadout usage` (tool-family counts from local transcripts)
+- `cli/loadout/__main__.py` (the parser, `init`, `profile`) and `commands.py` (the other subcommands); `bin/loadout` runs them from a checkout
+- `cli/loadout/runner.py`, the only place external commands run; `paths.py`, every location from `HOME`
+- `cli/loadout/bootstrap.py` (setup), `check.py` (health report), `codex.py` (Codex as a second target), `vscode.py` (VS Code's extensions)
+- `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`); `catalog.json`, `profiles/`, `rules/`, `templates/`; `tests/conftest.py` (the fixtures)
+- loadout's state folders and the daily sync: [docs/reference/state-and-sync.md](docs/reference/state-and-sync.md)
 
-Other kit parts:
-
-- `plugins/loadout/`: the plugin (`.claude-plugin/` and `.codex-plugin/` manifests, `skills/`, `hooks/` with `hooks.json` for Claude Code and `codex.json` for Codex; `tool_hint.sh`/`tool_hint.py` give the tool hints, `evals/`, `evals-browser/`, `.mcp.json`)
-- `.claude/skills/diagrams`: repo-local skill for editing the docs diagrams (Codex finds it through a short pointer in `.agents/skills/diagrams`)
-- `.github/`: CI workflows, issue forms and the PR template (see CONTRIBUTING.md)
-- `demo/`: the README demo (VHS tape, sandbox, container render; see CONTRIBUTING.md)
-- `bootstrap.sh`, `bootstrap.ps1` entry scripts; `bin/` the `loadout` launchers; `templates/` the files `init` and bootstrap create; `dev/codex-sandbox.sh`; `tests/`
-- `catalog.json` tool knowledge; `profiles/` kit profiles; `rules/` rules linked into `~/.claude/rules/loadout`; `settings.base.json`, `preferences.json`
-
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security), `adr/` (decisions 0001-0032), `examples/`, `assets/` (wordmark, demo GIF), `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security, documentation strategy, execution advisor), `adr/` (decisions 0001-0034), `examples/`, `assets/` (wordmark, demo GIF), `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).

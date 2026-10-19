@@ -19,13 +19,14 @@ Options after the script go to `claude plugin eval`. The useful ones:
 | `--runs N` | Runs per case. Without it, a case's own `runs:` applies, and `claude plugin eval` uses 3 when the case sets none. |
 | `-j N` | Run up to N agent runs at once. They share one rate limit. |
 | `--keep-temp` | Keep the scaffold directories, to see what the agent saw. |
+| `--ablation none` | Skip the no-plugin baseline runs (about half the cost; no score delta). |
 | `--max-cost-usd USD` | Stop when the estimated cost (at API prices) reaches the ceiling. |
 
-Results land in `plugins/loadout/evals/results/<timestamp>/`, which git ignores. The HTML report is not published (`run.sh` passes `--no-publish`).
+Results land in `plugins/loadout/evals/results/<timestamp>/`, which git ignores (with `--eval-dir evals-browser`: in `plugins/loadout/evals-browser/results/`, also ignored). The HTML report is not published (`run.sh` passes `--no-publish`).
 
 ## What it costs
 
-The runs are real model calls with your own Claude credential: on a subscription they count against your plan's usage limits, with an API key they are billed. A full run is every case three times (no case sets a different `runs:`), so run one case with `--case` while you iterate.
+The runs are real model calls with your own Claude credential: on a subscription they count against your plan's usage limits, with an API key they are billed. A full run is every case three times (no case sets a different `runs:`), plus a baseline run without the plugin for each (`claude plugin eval`'s default `--ablation with-without`, since `run.sh` passes the plugin's path). While you iterate, run one case with `--case`, and add `--ablation none` to skip the baseline.
 
 ## Never run `claude plugin eval` on the plugin directly
 

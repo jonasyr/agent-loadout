@@ -17,3 +17,7 @@ loadout runs upstream installers with their "do not configure agents" flag (`--s
 ## Consequences
 - A new catalog binary whose installer configures agents needs the same flag; `tests/test_repo_static.py` checks it for codebase-memory-mcp.
 - Users who install the tool by hand without the flag get duplicates, which `loadout adopt` reports.
+
+## In the code
+- `catalog.json` (the `codebase-memory-mcp` install commands with `--skip-config`)
+- `tests/test_repo_static.py`, `cli/loadout/duplicates.py`

@@ -1,6 +1,6 @@
 # Settings merge
 
-`loadout apply-settings` merges the kit's settings and your personal settings into `~/.claude/settings.json`. Bootstrap, `loadout configure` and the daily maintenance run the same merge. The code and its docstrings are in `cli/loadout/settings_merge.py`.
+`loadout apply-settings` merges the kit's settings and your personal settings into `~/.claude/settings.json`. Bootstrap, `loadout configure` and the daily sync (after a pull that brought new commits) run the same merge. `loadout update` does not merge, but when an installer it ran changed `~/.claude/settings.json`, it puts back the version from before the update (the kit-merged one) and keeps the installer's version in a backup. With Claude Code turned off (`targets.json`), no run merges or touches `~/.claude/settings.json`. The code and its docstrings are in `cli/loadout/settings_merge.py`.
 
 This merge is for Claude Code. Codex has no settings file to merge: loadout writes the few settings Codex understands as its own keys in `~/.codex/config.toml` (see [Personal layer](personal-layer.md)).
 
@@ -8,7 +8,7 @@ The merge uses three inputs:
 
 | Input | Is |
 |---|---|
-| desired | `settings.base.json` from the kit, overlaid with `<personal>/settings.json`. Dicts merge recursively, lists are joined without duplicates, and for any other value your personal file wins. |
+| desired | `settings.base.json` from the kit, overlaid with `<personal>/settings.json`. Dicts merge recursively, lists are joined without duplicates, and for any other value your personal file wins. An `enabledPlugins`, `extraKnownMarketplaces` or `hooks` value that is not an object (for example `"hooks": []` written by hand), in either file, is dropped and counts as missing; so is a marketplace `source` that is not an object. |
 | previous | The snapshot `~/.local/state/loadout/managed-settings.json`: what the merge applied last time. |
 | current | Your `~/.claude/settings.json` as it is now. |
 

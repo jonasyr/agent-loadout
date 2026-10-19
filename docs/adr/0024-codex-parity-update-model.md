@@ -1,6 +1,6 @@
 # 0024. Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook
 
-- Status: Accepted
+- Status: Accepted; amended by [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) (Codex is usable without its CLI for VS Code's Codex extension, with no plugins to install or refresh)
 - Date: 2026-10-13
 - Source: [Hardening 3 design](../superpowers/specs/2026-10-13-hardening-3-docs-parity-design.md)
 
@@ -26,3 +26,7 @@ Codex became a second target in [ADR 0022](0022-codex-as-a-second-target.md), bu
 - Switching a plugin off reaches Codex as an owned `enabled = false`.
 - The automatic Codex refresh honours `autoUpdate: false`; `loadout update` updates all.
 - Tool binaries keep their weekly notice ([ADR 0011](0011-tool-binaries-notice-and-deliberate-update.md)); `loadout update` now refreshes plugins in the same run, and says which ones changed.
+
+## In the code
+- `cli/loadout/codex.py` (`apply_plugins`, `server`), `cli/loadout/maintenance.py` (`update`)
+- `plugins/loadout/hooks/typecheck.py`, `plugins/loadout/hooks/codex.json`

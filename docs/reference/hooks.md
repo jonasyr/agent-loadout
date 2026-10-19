@@ -6,7 +6,7 @@ This page covers two things: the hooks that the loadout plugin ships, and how lo
 
 They are defined in `plugins/loadout/hooks/hooks.json` and run from the installed plugin. They are not written into your `~/.claude/settings.json`.
 
-Most commands go through `plugins/loadout/hooks/run.sh`. It runs the command only if its binary is on `PATH`; on a machine without the tool, the hook does nothing and exits 0. With `--soft` it also discards errors and always exits 0. With `--python` it runs a Python script with `python3` or `python` 3.11+, else a uv-managed Python.
+Most commands go through `plugins/loadout/hooks/run.sh`. It runs the command only if its binary is on `PATH`; on a machine without the tool, the hook does nothing and exits 0. With `--soft` it also discards errors and always exits 0. With `--python` it runs a Python script with `python3` or `python` 3.11+, else a uv-managed Python. The `PATH` that counts is the one the agent was started with. In a Remote-WSL window, VS Code's Codex extension gets VS Code's server `PATH`, where no shell startup file runs, so a hook whose binary lives in loadout's tool folders (such as `~/.local/bin`) finds nothing there; `loadout bootstrap --vscode-path` puts those folders on that `PATH` ([MCP servers in a Remote-WSL window](../how-to/vscode.md#mcp-servers-in-a-remote-wsl-window)).
 
 The last column says how `plugins/loadout/hooks/codex.json` differs: `same` means the same command, matcher and timeout; `argument` means the same hook with Codex arguments; `—` means Codex has no such hook.
 
@@ -38,17 +38,19 @@ In Codex, Serena's hooks are not in the plugin. loadout writes the six that Sere
 | Event | Matcher | Runs | Timeout |
 |---|---|---|---|
 | `PreToolUse` | `Bash` | `serena-hooks remind --client=codex` | 5 s |
-| `PreToolUse` | `^mcp__serena__` | `serena-hooks plan-guard --client=codex` | Codex default |
+| `PreToolUse` | `^mcp__serena__` | `serena-hooks plan-guard --client=codex` | 5 s |
 | `PostToolUse` | `^mcp__serena__.*$` | `serena-hooks reset --client=codex` | Codex default |
-| `SessionStart` | `startup\|resume` | `serena-hooks activate --client=codex` | Codex default |
-| `UserPromptSubmit` | — | `serena-hooks plan-context --client=codex` | Codex default |
+| `SessionStart` | `startup\|resume` | `serena-hooks activate --client=codex` | 5 s |
+| `UserPromptSubmit` | — | `serena-hooks plan-context --client=codex` | 5 s |
 | `SessionEnd` | — | `serena-hooks cleanup --client=codex` (a `cleanup` under `Stop` counts too) | 3 s |
 
-loadout records the entries it wrote and never changes yours. It rewrites the file only when it is in loadout's own format (two-space JSON with one kind of line ending, LF or CRLF, which it keeps); otherwise it leaves it as it is and `loadout check` lists the entries to add by hand. Serena hooks you keep inline as `[hooks]` in `config.toml` count as present too, and next to inline hooks loadout creates no `hooks.json` (Codex warns about mixed forms); it lists what to add there instead. Without `serena-hooks` and `serena` on `PATH` it removes its own entries, but never in the background daily sync, whose `PATH` can lack Serena's folder. An entry of loadout's that you delete comes back on the next run, as a `config.toml` section does; to keep Serena's hooks out, turn Serena off. The matchers name the server `serena`: with your own Serena under another name, Serena's `mcp__serena__` hooks (and the tool hints' reset) do not match its tools, as in Serena's own docs. Codex runs them only after you review them in `/hooks`, and `loadout check` waits for that approval of every Serena hook there, yours included ([ADR 0028](../adr/0028-serena-codex-hooks-in-hooks-json.md)).
+When Serena changes an entry (as with the 5 s timeouts it added to `plan-guard`, `activate` and `plan-context`), the next loadout run replaces the entry loadout wrote earlier, with a backup first; Codex then asks you to approve it again in `/hooks`. An entry you changed yourself stays yours.
+
+loadout records the entries it wrote and never changes yours. It rewrites the file only when it is in loadout's own format (two-space JSON with one kind of line ending, LF or CRLF, which it keeps); otherwise it leaves it as it is and `loadout check` lists the entries to add by hand. Serena hooks you keep inline as `[hooks]` in `config.toml` count as present too, and next to inline hooks loadout creates no `hooks.json` (Codex warns about mixed forms); it lists what to add there instead. When neither `serena-hooks` nor `serena` is on `PATH`, it removes its own entries (with only `serena` on `PATH` it keeps them and changes nothing), but never in the background daily sync, whose `PATH` can lack Serena's folder. An entry of loadout's that you delete comes back on the next run, as a `config.toml` section does; to keep Serena's hooks out, turn Serena off. The matchers name the server `serena`: with your own Serena under another name, Serena's `mcp__serena__` hooks (and the tool hints' reset) do not match its tools, as in Serena's own docs. Codex runs them only after you review them in `/hooks`, and `loadout check` waits for that approval of every Serena hook there, yours included ([ADR 0028](../adr/0028-serena-codex-hooks-in-hooks-json.md)).
 
 ### Maintenance
 
-What `loadout hook-session-start` and the background `loadout maintenance` job do: [The daily sync](../explanation/architecture.md#the-daily-sync).
+What `loadout hook-session-start` and the background `loadout maintenance` job do: [The daily sync](state-and-sync.md#the-daily-sync).
 
 ### The execution-advisor hooks
 
@@ -57,6 +59,8 @@ When `advisor.py record` and `advisor.py stop` act, and where they keep state: [
 ### In Codex
 
 Codex reads the plugin's `.codex-plugin/plugin.json`, which points to `hooks/codex.json` instead of `hooks/hooks.json`; the last column above shows how the two differ. Codex runs plugin hooks only after you approve them once in `/hooks`, and again after they change. loadout never approves them for you: that is Codex's safety gate. `loadout check` (`Codex hooks`), bootstrap's "Still to do" and `loadout configure set target codex on` list the approval while it is open. More on Codex: [Use loadout with Codex](../how-to/codex.md#what-stays-different).
+
+VS Code's Codex extension loads no plugins and has no `/hooks`. In the extension, none of the `codex.json` hooks above run, and the Serena hooks in `~/.codex/hooks.json` wait until you approve them once in the Codex CLI. Recommended: the Codex CLI next to the extension (`loadout bootstrap --install`), then run `codex` in VS Code's terminal and approve the hooks in `/hooks` ([The Codex CLI alongside VS Code](../how-to/vscode.md#the-codex-cli-alongside-vs-code)). With only the extension (`--without-codex-cli`), the plugin hooks do not run at all, and with them neither the session-start maintenance hook ([Codex in VS Code without the CLI](../how-to/vscode.md#codex-in-vs-code-without-the-cli)).
 
 ## Naming hooks of your own tools
 

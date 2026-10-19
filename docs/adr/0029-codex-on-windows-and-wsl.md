@@ -1,6 +1,6 @@
 # 0029. Codex on Windows and WSL: one loadout per side
 
-- Status: Accepted
+- Status: Accepted; amended by [0034](0034-vscode-extension-binaries-and-vscode-fixes.md) (`--vscode-wsl` is the yes as a flag, since #47; a folder's or a profile's setting that turns the switch off is named, never edited)
 - Date: 2026-10-16
 - Source: [Design: Codex anywhere](../superpowers/specs/2026-10-15-codex-anywhere-design.md), section "PR B"
 

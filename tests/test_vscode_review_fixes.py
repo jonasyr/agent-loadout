@@ -706,3 +706,42 @@ def test_remote_wsl_terminal_mode_comes_from_the_desktop_settings(vs, fake_runne
     machine.write_text('{"claudeCode.useTerminal": false}')  # the remote's machine value overrides the desktop's
     rows = [r for r in check._vscode_surfaces(_cs(win)) if r.name == "VS Code (Claude Code, Remote-WSL window)"]
     assert rows[0].ok
+
+
+def test_a_broken_settings_file_names_where_to_open_it(vs, fake_runner, monkeypatch, tmp_path):
+    """The fix names the settings VS Code opens for that file: user, remote (a Remote-WSL server) or the folder's."""
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda: None)
+    _ext(vs / ".vscode-server" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", host_claude_bin())
+    machine = vs / ".vscode-server" / "data" / "Machine" / "settings.json"
+    machine.parent.mkdir(parents=True)
+    machine.write_text('{"a": ')
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".vscode").mkdir()
+    (repo / ".vscode" / "settings.json").write_text('{"a": ')
+    monkeypatch.chdir(repo)
+    fixes = {("Machine" in r.detail, ".vscode" + __import__("os").sep + "settings" in r.detail): r.fix
+             for r in check._vscode_surfaces() if r.name == "VS Code settings"}
+    assert "Remote Settings" in fixes[(True, False)] and "Workspace Settings" in fixes[(False, True)]
+
+
+def test_a_broken_user_settings_file_names_the_user_settings(vs, fake_runner):
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", host_claude_bin())
+    user = vscode._user_dir(vs, sys.platform)
+    user.mkdir(parents=True)
+    (user / "settings.json").write_text('{"a": ')
+    (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code settings"]
+    assert "User Settings" in row.fix
+
+
+def test_a_broken_profile_settings_file_names_its_profile(vs, fake_runner):
+    """Open User Settings opens the base file: a profile's file is opened with that profile active."""
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", host_claude_bin())
+    profile = vscode._user_dir(vs, sys.platform) / "profiles" / "abc123"
+    profile.mkdir(parents=True)
+    (profile / "settings.json").write_text('{"a": ')
+    (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code settings"]
+    assert "switch to that VS Code profile" in row.fix
