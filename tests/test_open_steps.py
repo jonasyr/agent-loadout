@@ -84,7 +84,8 @@ def test_steps_of_an_agent_that_is_off_are_never_shown(monkeypatch):
         "1. Codex: restart Codex"]
     assert m.session_start(0.0, "claude", source="startup") is None
     assert _ids(steps.pending("claude")) == ["claude/reload-plugins"]  # not shown, not cleared
-    assert "restart Codex" in json.loads(m.session_start(0.0, "codex"))["systemMessage"]
+    assert m.session_start(0.0, "codex") is None  # the Codex start is the restart: cleared, not shown
+    assert steps.pending("codex") == []
 
 
 def test_bootstrap_only_needs_name_bootstrap(monkeypatch):
@@ -104,9 +105,21 @@ def test_claude_steps_clear_only_at_a_fresh_start():
     for source in ("clear", "compact", None):
         assert m.session_start(0.0, "claude", source=source) is not None
     assert _ids(steps.pending("claude")) == ["claude/reload-plugins"]
-    assert m.session_start(0.0, "claude", source="startup") is not None  # shown one last time, then cleared
-    assert steps.pending("claude") == []
+    # a fresh start loaded the new plugins: cleared without telling this session to reload them
     assert m.session_start(0.0, "claude", source="startup") is None
+    assert steps.pending("claude") == []
+
+
+def test_a_fresh_start_shows_only_the_steps_it_does_not_settle():
+    steps.save([steps.Step("claude/reload-plugins", "claude", "run /reload-plugins", "x"),
+                steps.Step("claude/mcp:serena", "claude", "run /mcp and reconnect serena", "x"),
+                _bootstrap_step("claude")])
+    shown = json.loads(m.session_start(0.0, "claude", source="startup"))["systemMessage"]
+    assert "run loadout bootstrap" in shown and "/reload-plugins" not in shown and "/mcp" not in shown
+    assert _ids(steps.pending("claude")) == ["claude/bootstrap"]
+    steps.save([steps.Step("codex/restart", "codex", "restart Codex", "x")])
+    assert m.session_start(0.0, "codex") is None  # this Codex session is the restart
+    assert steps.pending("codex") == []
 
 
 def test_codex_hooks_step_clears_when_trusted(monkeypatch):
@@ -114,7 +127,7 @@ def test_codex_hooks_step_clears_when_trusted(monkeypatch):
                 steps.Step("codex/restart", "codex", "restart Codex", "x")])
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
     shown = json.loads(m.session_start(0.0, "codex"))["systemMessage"]
-    assert "/hooks" in shown and "restart Codex" in shown
+    assert "/hooks" in shown and "restart Codex" not in shown  # this start is the restart
     assert _ids(steps.pending("codex")) == ["codex/hooks"]  # the restart step is done: a Codex session started
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "trusted")
     assert m.session_start(0.0, "codex") is None
@@ -135,12 +148,13 @@ def test_an_old_hook_without_agent_keeps_todays_behaviour():
     assert _ids(steps.pending("claude")) == ["claude/reload-plugins"]
 
 
-def test_save_merges_by_id_and_a_notice_comes_first():
+def test_save_merges_by_id_and_a_notice_comes_first(monkeypatch):
     steps.save([steps.Step("codex/restart", "codex", "restart Codex", "a")])
     steps.save([steps.Step("codex/restart", "codex", "restart Codex", "b"),
                 steps.Step("codex/hooks", "codex", "approve", "c")])
     assert _ids(steps.pending("codex")) == ["codex/restart", "codex/hooks"]
     (paths.state_dir() / "pending-notice").write_text("news")
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
     msg = json.loads(m.session_start(0.0, "codex"))["systemMessage"]
     assert msg.startswith("news") and "Now do this" in msg
 

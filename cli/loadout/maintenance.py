@@ -66,7 +66,8 @@ def notify(text: str) -> None:
 def _session_steps(agent: str, source: str | None) -> str | None:
     """The agent's open "Now do this" lines for a session start, and which of them this start settles: a Claude Code
     step only at a fresh start (source "startup": resume, clear and compact keep the old plugins loaded); in Codex
-    "restart" at any start and the hooks step once /hooks has approved them. None when there is nothing to say."""
+    "restart" at any start and the hooks step once /hooks has approved them. What this start settles is cleared
+    without being shown: the session already loaded the new plugins and servers. None when there is nothing to say."""
     from . import steps, targets
     on = targets.claude_enabled() if agent == "claude" else targets.codex_enabled()
     if agent not in steps.NAMES or not on:
@@ -75,11 +76,14 @@ def _session_steps(agent: str, source: str | None) -> str | None:
     items = steps.pending(agent)
     if not items:
         return None
+    done: set[str] = set()
     if agent == "claude" and source == "startup":  # a bootstrap step stays until its rows pass (settle)
-        steps.clear("claude", {s.id for s in items if s.id != "claude/bootstrap"})
+        done = {s.id for s in items if s.id != "claude/bootstrap"}
     elif agent == "codex":
-        steps.clear("codex", {"codex/restart"})
-    return "\n".join(steps.block(items, agent == "claude", agent == "codex"))
+        done = {"codex/restart"}
+    steps.clear(agent, done)
+    lines = steps.block([s for s in items if s.id not in done], agent == "claude", agent == "codex")
+    return "\n".join(lines) if lines else None
 
 
 def session_start(now: float, agent: str | None = None, source: str | None = None) -> str | None:
