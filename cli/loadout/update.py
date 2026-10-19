@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, NoReturn
 
-from . import apply, bootstrap, check, codex, locks, maintenance, out, paths, pkgmgr, runner, targets, ui, versions
+from . import apply, bootstrap, check, codex, locks, maintenance, out, paths, pkgmgr, runner, steps, targets, ui, versions
 from .backup import Backup
 from .jsonio import get_dict, load_json
 from .secrets import redact
@@ -183,7 +183,6 @@ def confirm(plan: list[PlanItem], yes: bool, ask: Callable[[str], str], interact
 # --- the run: lock, pull, restart, plan, apply, report ----------------------------------------------------------
 
 PULLED = "LOADOUT_UPDATE_PULLED"  # set by the restart after a kit pull: the new process neither pulls nor restarts
-PLUGIN_FACTS = {"claude_plugins_installed", "claude_plugins_updated", "codex_plugins_installed", "codex_plugins_updated"}
 AGAIN = "run loadout update again"
 
 FACT_LINES = {  # one plain "What changed" line per fact a step reported
@@ -207,11 +206,11 @@ STEP_NAMES = {"links": "links", "settings": "rules and settings", "claude_plugin
 @dataclass
 class Summary:
     """What one update run did. changed: one plain line each (backups with their undo); failed: (what, fix);
-    steps: the person's steps per agent ("Now do this"). facts: the apply steps' facts plus claude_plugins_updated;
+    steps: the person's open steps ("Now do this"; steps.derive). facts: the apply steps' facts plus claude_plugins_updated;
     upgraded: the tool ids updated or installed in this run (for the MCP-server steps)."""
     changed: list[str] = field(default_factory=list)
     failed: list[tuple[str, str]] = field(default_factory=list)
-    steps: dict[str, list[str]] = field(default_factory=dict)
+    steps: list[steps.Step] = field(default_factory=list)
     facts: set[str] = field(default_factory=set)
     upgraded: list[str] = field(default_factory=list)
 
@@ -483,19 +482,23 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
                                        f"(undo: loadout restore {out.printable(str(dupes.root))})")
     if not bk.empty:
         summary.changed.append(f"files the re-apply replaced are in a backup (undo: loadout restore {out.printable(str(bk.root))})")
-    _health()
-    if summary.facts & PLUGIN_FACTS:
-        summary.steps["all"] = [targets.restart_hint()]  # Task 10 derives the per-agent steps from the facts
+    results = _health()
+    try:  # a failure here must not hide the report
+        summary.steps = steps.derive(summary.facts, summary.upgraded, claude_on, codex_ok, results)
+        steps.save(summary.steps)  # shown at that agent's next session until done
+    except Exception:
+        pass
     report(summary)
     return summary
 
 
-def _health() -> None:
+def _health() -> list:
     results = check.run_checks()
     bad = [r for r in results if not r.ok]
     _, code = check.format_results(bad)
     out.status("Health check", f"{len(results) - len(bad)} of {len(results)} OK"
                + ("; details: loadout check" if bad else ""), "fail" if code else "warn" if bad else "ok")
+    return results
 
 
 def report(summary: Summary) -> None:
@@ -507,8 +510,6 @@ def report(summary: Summary) -> None:
         print(f"  {what} (fix: {fix})")
     if not summary.changed and not summary.failed:
         print("  nothing: everything was already current")
-    steps = [s for agent in summary.steps.values() for s in agent]
-    if steps:
-        print("\nNow do this")
-        for n, line in enumerate(steps, 1):
-            print(f"  {n}. {line}")
+    lines = steps.block(summary.steps, targets.claude_enabled(), targets.codex_enabled())
+    if lines:
+        print("\n" + "\n".join(lines))

@@ -114,7 +114,7 @@ def test_codex_hint_follows_real_version_changes_not_notes(fake_home, fake_runne
     monkeypatch.setattr(runner, "run", _codex_versions(fake_runner, monkeypatch, {"x@m": "1"}, {"x@m": "2"}))
     _run(True)
     out = capsys.readouterr().out
-    assert "Codex: plugins updated" in out and "Restart Codex" in out
+    assert "Codex: plugins updated" in out and "Now do this" in out and "Codex: start codex and approve the changed hooks in /hooks" in out
 
 
 def test_an_unusable_codex_gets_no_plugin_commands(fake_home, fake_runner, monkeypatch, capsys):

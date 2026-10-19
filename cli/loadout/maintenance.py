@@ -61,12 +61,42 @@ def notify(text: str) -> None:
         fh.write(text.rstrip() + "\n")
 
 
-def session_start(now: float) -> str | None:
+def _session_steps(agent: str, source: str | None) -> str | None:
+    """The agent's open "Now do this" lines for a session start, and which of them this start settles: a Claude Code
+    step only at a fresh start (source "startup": resume, clear and compact keep the old plugins loaded); in Codex
+    "restart" at any start and the hooks step once /hooks has approved them. None when there is nothing to say."""
+    from . import codex, steps, targets
+    on = targets.claude_enabled() if agent == "claude" else targets.codex_enabled()
+    if agent not in steps.NAMES or not on:
+        return None
+    items = steps.pending(agent)
+    if agent == "codex" and any(s.id == "codex/hooks" for s in items):
+        if codex.hooks_status() == "trusted":
+            steps.clear("codex", {"codex/hooks"})
+            items = [s for s in items if s.id != "codex/hooks"]
+    if not items:
+        return None
+    if agent == "claude" and source == "startup":
+        steps.clear("claude", {s.id for s in items})
+    elif agent == "codex":
+        steps.clear("codex", {"codex/restart"})
+    return "\n".join(steps.block(items, agent == "claude", agent == "codex"))
+
+
+def session_start(now: float, agent: str | None = None, source: str | None = None) -> str | None:
+    """The systemMessage for a session start. agent: which agent starts (an older plugin copy passes none: only the
+    notice, as before); source: Claude Code's "startup", "resume", "clear" or "compact" from the hook's stdin."""
     out = None
     notice = _stamp(NOTICE)
-    if notice.exists():
-        out = json.dumps({"systemMessage": notice.read_text(encoding="utf-8").strip()})
+    text = notice.read_text(encoding="utf-8").strip() if notice.exists() else None
+    if text is not None:
         notice.unlink()
+    try:
+        extra = _session_steps(agent, source) if agent else None
+    except Exception:  # a hook never breaks a session
+        extra = None
+    if text is not None or extra:
+        out = json.dumps({"systemMessage": "\n\n".join(p for p in (text, extra) if p)})
     pull_due = os.environ.get("LOADOUT_NO_AUTO_PULL") != "1" and is_due("last-pull", DAY, now)
     if pull_due or is_due("last-update-check", WEEK, now):
         try:

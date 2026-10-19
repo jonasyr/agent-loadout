@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" loadout hook-session-start",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" loadout hook-session-start --agent codex",
             "shell": "bash",
             "timeout": 10
           }

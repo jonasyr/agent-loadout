@@ -989,6 +989,11 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             print(text)
     here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
     todo = still_to_do(os_key(), codex_here=here["codex"])
+    try:  # the same steps `loadout update` leaves: shown at that agent's next session until done
+        from . import steps
+        steps.save(steps.derive(set(), [], here["claude"], here["codex"]))
+    except Exception:
+        pass
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
         print(f"\n{adopt.UNDO_LINE}")
     if path_changed and out.VERBOSE:

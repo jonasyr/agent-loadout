@@ -88,6 +88,23 @@ def _register_check(sub):
 EXTRA_COMMANDS.append(_register_check)
 
 
+def _hook_source(agent) -> str | None:
+    """Claude Code's `source` (startup, resume, clear, compact) from the hook's stdin JSON; None when stdin is a
+    terminal, empty, not JSON or has none (then the steps stay)."""
+    import json
+    import sys
+    if agent != "claude":
+        return None
+    try:
+        if sys.stdin is None or sys.stdin.isatty():
+            return None
+        data = json.loads(sys.stdin.read() or "null")
+    except Exception:
+        return None
+    source = data.get("source") if isinstance(data, dict) else None
+    return source if isinstance(source, str) else None
+
+
 def _register_maintenance(sub):
     import time
 
@@ -95,10 +112,11 @@ def _register_maintenance(sub):
     from .__main__ import _ask
 
     p = sub.add_parser("hook-session-start")  # internal: no help=, so it stays out of --help
+    p.add_argument("--agent", choices=("claude", "codex"), default=None)  # an older plugin copy passes none
 
     def hook(a):
         try:
-            out = maintenance.session_start(time.time())
+            out = maintenance.session_start(time.time(), a.agent, _hook_source(a.agent))
         except Exception:
             return 0  # a hook must never break a session
         if out:
