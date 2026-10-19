@@ -281,6 +281,7 @@ def _repos() -> list[CheckResult]:
     """Dirty alone is fine (git refuses a pull only when it would overwrite something); a recorded refusal is not."""
     from . import maintenance
     from .out import printable
+    from .update import _paused_fix  # the fix `loadout update` names: commit or stash only when git named files
     held = maintenance.paused()
     out = []
     for label, root in (("kit", paths.kit_root()), ("personal", paths.personal_root())):
@@ -293,7 +294,7 @@ def _repos() -> list[CheckResult]:
         files = [printable(str(f)) for f in rec.get("files") or []]
         detail = f"daily sync paused: {printable(rec['reason'])}" + (f": {', '.join(files)}" if files else "")
         out.append(CheckResult(f"{label} repo clean", False, detail,
-                               f"commit or stash them in {root}, then run loadout update", "warn"))
+                               _paused_fix(label, root, "", files)[1], "warn"))
     return out
 
 
