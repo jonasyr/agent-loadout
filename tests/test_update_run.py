@@ -331,3 +331,29 @@ def test_ctrl_c_in_the_windows_child_exits_130(monkeypatch):
     with pytest.raises(SystemExit) as stop:
         update._exec(["update"], windows=True)
     assert stop.value.code == 130
+
+
+# --- final review fixes -------------------------------------------------------------------------------------------
+
+def test_a_kit_pull_by_another_run_during_the_wait_still_restarts(fake_home, fake_runner, monkeypatch):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    kit = str(paths.kit_root())
+    head = {"now": "aaa"}
+
+    def run(cmd, cwd=None, timeout=300, env=None):
+        if cmd[:2] == ["git", "-C"] and cmd[3:] == ["rev-parse", "HEAD"] and cmd[2] == kit:
+            fake_runner.calls.append(list(cmd))
+            return runner.Result(0, head["now"] + "\n", "")
+        return fake_runner(cmd, cwd, timeout, env)
+    monkeypatch.setattr(runner, "run", run)
+    real_acquire = maintenance._acquire_lock
+
+    def acquire(command="maintain", wait=0):  # the daily sync pulled while this run waited for the lock
+        head["now"] = "bbb"
+        return real_acquire(command, wait)
+    monkeypatch.setattr(maintenance, "_acquire_lock", acquire)
+    restarts = []
+    monkeypatch.setattr(update, "_exec", lambda argv: restarts.append(list(argv)) or 0)
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert restarts == [["update", "--yes"]]

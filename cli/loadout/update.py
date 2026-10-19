@@ -234,7 +234,10 @@ def _exec(argv: list[str], windows: bool | None = None) -> NoReturn:
 
 def run(yes: bool, ask: Callable[[str], str], *, argv: list[str]) -> int:
     """`loadout update`: one run brings the machine current. argv: the command's flags, passed on to the restart.
-    0 when finished (failed items are listed, not an exit code); 1 when another run still holds the lock."""
+    0 when finished (failed items are listed, not an exit code); 1 when another run still holds the lock.
+    The kit's HEAD is read before the lock: another run (the daily sync) can pull the kit while this one waits, and
+    this run must then continue in the pulled code too."""
+    start = None if os.environ.get(PULLED) else _kit_head()
     if not maintenance._acquire_lock("update", locks.foreground_wait()):
         print(locks.busy_message(maintenance.LOCK))
         return 1
@@ -242,7 +245,7 @@ def run(yes: bool, ask: Callable[[str], str], *, argv: list[str]) -> int:
         summary = Summary()
         if os.environ.get(PULLED):
             _after_restart(summary)
-        elif _pull(summary):
+        elif _pull(summary, start):
             maintenance._release_lock()  # the new process takes it again (POSIX keeps the pid, Windows gets a new one)
             # "1": the kit moved; "personal": the personal layer moved too (the new process names both)
             os.environ[PULLED] = "personal" if "personal layer: pulled new commits" in summary.changed else "1"
@@ -275,9 +278,19 @@ def _after_restart(summary: Summary) -> None:
             summary.failed.append(_paused_fix(label, root, entry["reason"], files))
 
 
-def _pull(summary: Summary) -> bool:
+def _kit_head() -> str | None:
+    """The kit checkout's HEAD; None when it is no git checkout, pulls are off or git cannot tell."""
+    root = paths.kit_root()
+    if os.environ.get("LOADOUT_NO_AUTO_PULL") == "1" or not (root / ".git").exists():
+        return None
+    res = runner.run(["git", "-C", str(root), "rev-parse", "HEAD"], timeout=30)
+    return (res.stdout.strip() or None) if res.ok else None
+
+
+def _pull(summary: Summary, start: str | None = None) -> bool:
     """Pull the kit and the personal layer (each only as a git checkout), as the daily sync does; a pull git
-    refuses is recorded (sync-paused.json) and listed, a later one clears it. True when the kit moved."""
+    refuses is recorded (sync-paused.json) and listed, a later one clears it. True when the kit moved: by this pull,
+    or since start (the kit's HEAD before this run took the lock: another run pulled meanwhile)."""
     if os.environ.get("LOADOUT_NO_AUTO_PULL") == "1":
         out.status("Pull", "skipped (LOADOUT_NO_AUTO_PULL=1)")
         return False
@@ -301,6 +314,9 @@ def _pull(summary: Summary) -> bool:
             out.status(label.capitalize(), "up to date")
     if pulled_any:
         maintenance.touch("last-pull", time.time())
+    if not kit_moved and start is not None:
+        now = _kit_head()
+        kit_moved = now is not None and now != start
     return kit_moved
 
 
