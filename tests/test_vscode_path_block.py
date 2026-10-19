@@ -57,7 +57,7 @@ def test_vscode_path_refreshes_its_block(server, fake_home):
 
 def test_flag_writes_without_asking(server, fake_runner, capsys):
     bootstrap._vscode_path_step(lambda q: pytest.fail("asked"), False, True, backup.Backup(description="t"))
-    assert server.is_file() and "WSL: Restart" in capsys.readouterr().out
+    assert server.is_file() and "wsl --shutdown" in capsys.readouterr().out
 
 
 def test_terminal_asks_and_no_leaves_it(server, fake_runner):

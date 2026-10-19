@@ -526,7 +526,8 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
 
 SERVER_ENV_QUESTION = ("Add loadout's tool folders to PATH for VS Code's Remote-WSL windows "
                        "(~/.vscode-server/server-env-setup, backup first)? [y/N] ")
-SERVER_ENV_AFTER = 'takes effect after "WSL: Restart" in VS Code, or a reconnect'
+SERVER_ENV_AFTER = ("takes effect when VS Code's WSL server restarts: close every Remote-WSL window, run "
+                    "wsl --shutdown in Windows (it stops every WSL distro), then reopen the folder")
 
 
 def vscode_path_wanted() -> bool:

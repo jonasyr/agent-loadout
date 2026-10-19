@@ -476,15 +476,15 @@ def _surface_rows(ext, windows_only: bool = False, vscode_row: bool = False) -> 
         if not terminal_ok and isinstance(configured, str) and configured.strip() and vscode.wrapper(ext.install) is None:
             gaps.append((printable(f"claudeCode.claudeProcessWrapper names {configured.strip()}, which is not a file "
                                    "it can run, and the extension starts Claude through it"),
-                         "point it at an installed claude, or remove the setting from VS Code's user settings"))
+                         f"point it at an installed claude, or remove the setting from {vscode.settings_label(ext.install)}"))
         elif ext.binary is None and not terminal_ok and vscode.wrapper(ext.install) is None:
             # it never uses the claude on PATH, except in terminal mode on Windows
             profile = (" (a VS Code profile sets claudeCode.claudeProcessWrapper; loadout cannot tell which profile "
                        "is active)") if vscode.profile_wrapper(ext.install) else ""
             gaps.append(("the extension has no bundled Claude Code for this platform, so it cannot start Claude"
                          + profile,
-                         "set claudeCode.claudeProcessWrapper in VS Code's user settings to an installed claude "
-                         "(loadout bootstrap --install installs one), or reinstall the extension"))
+                         f"set claudeCode.claudeProcessWrapper in {vscode.settings_label(ext.install)} to an installed "
+                         "claude (loadout bootstrap --install installs one), or reinstall the extension"))
     if not gaps:
         return [CheckResult(name, True)]
     return [CheckResult(name, False, detail, fix, "warn") for detail, fix in gaps]
@@ -528,7 +528,8 @@ def _vscode_path(found, windows_only: bool = False) -> list[CheckResult]:
                                               f"of the MCP servers {', '.join(missing)}: no shell startup files run "
                                               "there"),
                                     "loadout bootstrap --vscode-path puts loadout's tool folders on PATH in "
-                                    f"~/{vscode.SERVER_ENV} (then run WSL: Restart); for a command elsewhere, use "
+                                    f"~/{vscode.SERVER_ENV} (then restart VS Code's WSL server: close every Remote-WSL window, run "
+                                    "wsl --shutdown in Windows, reopen); for a command elsewhere, use "
                                     "an absolute command in the server entry", "warn"))
         else:
             rows.append(CheckResult("VS Code PATH", False,
@@ -550,13 +551,14 @@ def _vscode_surfaces(cs=None) -> list[CheckResult]:
     broken = []
     folder = vscode.folder_settings() if found else None
     read = [i for e in found for i in (e.install, e.desktop) if i is not None]  # every install whose settings count
-    files = [p for install in dict.fromkeys(read) for p in vscode.broken_settings(install)]
+    files = [(p, "Remote" if install.user_dir is None else "User")  # the command VS Code opens that file with
+             for install in dict.fromkeys(read) for p in vscode.broken_settings(install)]
     if folder is not None and os.path.isfile(folder) and vscode.read_jsonc(folder) is None:
-        files.append(folder)  # the open folder's settings: they override the user's
-    for p in files:
+        files.append((folder, "Workspace"))  # the open folder's settings: they override the user's
+    for p, kind in files:
         broken += [CheckResult("VS Code settings", False,
                                printable(f"{p} does not parse, so loadout cannot read the settings that matter there"),
-                               "fix its JSON in VS Code (Preferences: Open User Settings (JSON))", "warn")]
+                               f"fix its JSON in VS Code (Preferences: Open {kind} Settings (JSON))", "warn")]
     said = bool(cs is not None and getattr(cs, "side", None) in ("wsl", "both") and getattr(cs, "vscode_windows", False))
     return [*broken, *(row for ext in found for row in _surface_rows(ext, only, said)), *_vscode_path(found, only)]
 

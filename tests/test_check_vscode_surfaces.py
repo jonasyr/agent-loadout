@@ -228,3 +228,32 @@ def test_mcp_server_names_from_config_are_shown_escaped(vs, fake_runner, monkeyp
     (vs / ".codex" / "config.toml").write_text('[mcp_servers."x\\u001b[31m"]\ncommand = "serena"\n')
     (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"]
     assert "\x1b" not in row.detail
+
+
+def test_remote_wsl_path_fix_names_a_restart_that_exists(vs, fake_runner, monkeypatch):
+    """VS Code's WSL extension has no "WSL: Restart" command: the fix names steps that restart its server."""
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda: None)
+    _codex_ext(vs, fake_runner, root=vs / ".vscode-server" / "extensions")
+    fake_runner.paths["codex"] = "/usr/bin/codex"
+    (vs / ".codex").mkdir()
+    (vs / ".codex" / "config.toml").write_text('[mcp_servers.tool]\ncommand = "no-such-tool"\n')
+    (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code PATH"]
+    assert "WSL: Restart" not in row.fix and "wsl --shutdown" in row.fix
+
+
+def test_claude_wrapper_fix_names_the_remote_settings_in_a_remote_wsl_window(vs, fake_runner, monkeypatch):
+    """claudeCode.claudeProcessWrapper has machine scope: a Remote-WSL server reads it from its remote settings."""
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda: None)
+    _ext(vs / ".vscode-server" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
+    fake_runner.missing.add("claude")
+    (row,) = [r for r in check._vscode_surfaces() if r.name.startswith("VS Code (Claude Code")]
+    assert "remote settings" in row.fix and "user settings" not in row.fix
+
+
+def test_claude_wrapper_fix_names_the_user_settings_locally(vs, fake_runner):
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64")
+    fake_runner.missing.add("claude")
+    (row,) = check._vscode_surfaces()
+    assert "user settings" in row.fix
