@@ -202,7 +202,13 @@ def test_no_terminal_and_no_yes_changes_nothing(fake_home, fake_runner, monkeypa
 def test_exec_replaces_the_process_on_posix_and_waits_on_windows(monkeypatch):
     seen = []
     monkeypatch.setattr(os, "execv", lambda exe, args: seen.append(("execv", exe, args)), raising=False)
-    monkeypatch.setattr(subprocess, "call", lambda args: seen.append(("call", args)) or 3)
+    class Child:
+        def __init__(self, args):
+            seen.append(("call", args))
+
+        def wait(self):
+            return 3
+    monkeypatch.setattr(subprocess, "Popen", Child)
     script = str(paths.kit_root() / "bin" / "loadout")
     update._exec(["update", "--yes"], windows=False)
     assert seen[-1] == ("execv", sys.executable, [sys.executable, script, "update", "--yes"])
@@ -324,10 +330,17 @@ def test_nothing_to_do_says_so(fake_home, fake_runner, monkeypatch, capsys):
     assert _changed(capsys.readouterr().out).strip() == "nothing: everything was already current"
 
 
-def test_ctrl_c_in_the_windows_child_exits_130(monkeypatch):
-    def interrupted(args):
-        raise KeyboardInterrupt
-    monkeypatch.setattr(subprocess, "call", interrupted)
+def test_ctrl_c_in_the_windows_child_exits_with_its_code(monkeypatch):
+    class Child:
+        def __init__(self, args):
+            self.n = 0
+
+        def wait(self):
+            self.n += 1
+            if self.n == 1:
+                raise KeyboardInterrupt
+            return 130  # the interrupted child's own exit code
+    monkeypatch.setattr(subprocess, "Popen", Child)
     with pytest.raises(SystemExit) as stop:
         update._exec(["update"], windows=True)
     assert stop.value.code == 130
@@ -357,3 +370,22 @@ def test_a_kit_pull_by_another_run_during_the_wait_still_restarts(fake_home, fak
     monkeypatch.setattr(update, "_exec", lambda argv: restarts.append(list(argv)) or 0)
     assert update.run(True, lambda q: "", argv=["--yes"]) == 0
     assert restarts == [["update", "--yes"]]
+
+
+def test_ctrl_c_on_windows_waits_for_the_child_to_release_its_locks(monkeypatch):
+    monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("the child can be killed mid-cleanup"))
+    waits = []
+
+    class Child:
+        def __init__(self, args):
+            self.args = args
+
+        def wait(self):
+            waits.append(1)
+            if len(waits) < 3:  # Ctrl+C twice while the child runs its finally
+                raise KeyboardInterrupt
+            return 7
+    monkeypatch.setattr(subprocess, "Popen", Child)
+    with pytest.raises(SystemExit) as stop:
+        update._exec(["update"], windows=True)
+    assert stop.value.code == 7 and len(waits) == 3

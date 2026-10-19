@@ -218,16 +218,20 @@ class Summary:
 def _exec(argv: list[str], windows: bool | None = None) -> NoReturn:
     """Continue in the pulled code: the same Python runs the kit's launcher again (as bin/loadout's continue_under).
     POSIX replaces the process; Windows has no real exec (os.execv returns at once and splits arguments), so it waits
-    for the child and exits with its code."""
+    for the child and exits with its code. Ctrl+C reaches both there: the parent keeps waiting until the child has
+    ended (its finally releases the locks; Windows has no dead-holder probe, a killed child would block for an hour)."""
     exe = sys.executable
     cmd = [exe, str(paths.kit_root() / "bin" / "loadout"), *argv]
     sys.stdout.flush()
     sys.stderr.flush()
     if os.name == "nt" if windows is None else windows:
-        try:
-            code = subprocess.call(cmd)
-        except KeyboardInterrupt:  # Ctrl+C reaches both: the child prints the interrupt message, the parent just ends
-            code = 130
+        child = subprocess.Popen(cmd)
+        while True:
+            try:
+                code = child.wait()
+                break
+            except KeyboardInterrupt:  # the child prints the interrupt message and cleans up; wait for it
+                continue
         sys.exit(code)
     os.execv(exe, cmd)
 
