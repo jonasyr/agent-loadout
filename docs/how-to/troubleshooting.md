@@ -10,6 +10,7 @@ These are bootstrap and launcher messages.
 
 | Symptom | Fix |
 |---|---|
+| `waiting for the other loadout run (update, started 12:03)… 14s` | Nothing to do: another loadout run (the background sync, `update`, `bootstrap`) holds the lock, and this run continues by itself when it is done. Ctrl+C stops the wait. Without a terminal it gives up after 10 minutes with `the other loadout run (…) is still running; run this again when it has finished`. |
 | `loadout` or `claude` not found right after bootstrap | Open a new terminal. Bootstrap added `~/.local/bin` and the mise shims to your profile (block `# loadout PATH`); Windows: your user PATH, which also gets npm's global folder (wherever `npm prefix -g` points) and codebase-memory-mcp's folder. |
 | `note: /home/you/.local/bin can be written by other users (mode 0775)` after a failed install (with your path and mode) | Some installers, codebase-memory-mcp's among them, refuse to put a program into a folder that other users can write to. Debian and Ubuntu create folders like that by default (umask 002). Run `chmod go-w ~/.local/bin`, then run bootstrap again. Bootstrap creates the folder without group write access itself, so this only happens when it already existed. |
 | `missing node: not installed because mise failed to install` | mise failed to install; see the line above it. Fix that, then re-run bootstrap. |

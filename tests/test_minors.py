@@ -262,12 +262,15 @@ def test_gh_setup_git_is_announced(fake_home, fake_runner, capsys):
     assert "gh auth setup-git" in capsys.readouterr().out
 
 
-def test_update_waits_for_background_maintenance(fake_home, fake_runner, capsys):
+def test_update_waits_for_background_maintenance(fake_home, fake_runner, capsys, monkeypatch):
+    from loadout import locks
+    monkeypatch.setattr(locks, "FOREGROUND_LIMIT", 0.1)
+    monkeypatch.setattr(locks, "POLL", 0.02)
     lock = paths.state_dir() / "maintenance.lock"
     lock.parent.mkdir(parents=True)
     lock.write_text("1")
     assert m.update(yes=True, ask=lambda q: "") == 1
-    assert fake_runner.calls == [] and "try" in capsys.readouterr().out
+    assert fake_runner.calls == [] and "run this again when it has finished" in capsys.readouterr().out
 
 
 def test_stale_lock_taken_by_someone_else_in_between_is_given_back(fake_home, monkeypatch):

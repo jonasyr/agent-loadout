@@ -50,7 +50,7 @@ While the move out of `~/.claude` is unfinished, the hook exits quietly before a
 
 ### The background run
 
-`loadout maintenance` (`maintenance._maintain`) runs one at a time: it takes `maintenance.lock` in the state folder and gives up when another run holds it. A lock older than an hour counts as left over from a crash and is taken over. `loadout update` takes the same lock.
+`loadout maintenance` (`maintenance._maintain`) runs one at a time: it takes `maintenance.lock` in the state folder (`locks.py`) and gives up silently when another run holds it. A foreground command (`loadout update`, `bootstrap`, `configure`) takes the same locks but waits for the holder instead: `waiting for the other loadout run (<command>, started <HH:MM>)… <n>s` on a terminal until it is free, up to 10 minutes without a terminal, then it stops with `the other loadout run (…) is still running; run this again when it has finished`. The lock file holds the holder's command and start time as JSON. A lock not touched for an hour counts as left over from a crash and is taken over. When both are needed, `maintenance.lock` comes first, then `codex.lock`.
 
 **The daily pull**, at most once a day, unless `LOADOUT_NO_AUTO_PULL=1`:
 

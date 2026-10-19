@@ -386,7 +386,7 @@ Some installers re-register what the loadout plugin already provides (for exampl
 
 They go into a backup, and `update` prints what it undid and how to restore it. Look-alikes (a forked or reconfigured server, your own context7) are only reported; review them with `loadout adopt`. Skills, plugins and marketplaces are never removed automatically.
 
-Exit codes: 0 when finished (a failed update command is printed but does not change the code); 1 when the background maintenance job holds the lock. Try again after a minute.
+Exit codes: 0 when finished (a failed update command is printed but does not change the code); 1 when another loadout run still holds the lock after the wait (on a terminal `update` waits until it is free; without one it waits 10 minutes). Run it again when that run has finished.
 
 ## loadout restore
 

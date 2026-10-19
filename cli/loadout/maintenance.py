@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, link, paths, pkgmgr, runner, versions
+from . import catalog, link, locks, paths, pkgmgr, runner, versions
 from .backup import Backup
 from .jsonio import load_json, save_json
 from .secrets import redact
@@ -153,61 +153,27 @@ LOCK = "maintenance.lock"
 STALE_LOCK = 3600.0
 
 
-def _acquire_lock() -> bool:
+_held: locks.Lock | None = None
+
+
+def _acquire_lock(command: str = "maintain", wait: float | None = 0) -> bool:
     """One maintenance/update run at a time; a lock older than an hour is from a crashed run."""
-    lock = _stamp(LOCK)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(3):
-        try:
-            fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            try:
-                if time.time() - lock.stat().st_mtime < STALE_LOCK:
-                    return False
-                # rename first: only one taker gets the file; re-check it is really the stale one
-                aside = lock.with_name(f"{LOCK}.stale-{os.getpid()}-{time.time_ns()}")
-                os.rename(lock, aside)
-                fresh = time.time() - aside.stat().st_mtime < STALE_LOCK
-                if fresh:  # another run took over in between: give its lock back
-                    try:
-                        os.link(aside, lock)
-                    except OSError:
-                        pass
-                aside.unlink()
-                if fresh:
-                    return False
-            except OSError:
-                return False
-            continue
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(str(os.getpid()))
-        return True
-    return False
-
-
-def _own_lock() -> bool:
-    try:
-        return _stamp(LOCK).read_text(encoding="utf-8").strip() == str(os.getpid())
-    except OSError:
-        return False
+    global _held
+    _held = locks.acquire(LOCK, command, wait, stale=STALE_LOCK)
+    return _held is not None
 
 
 def _touch_lock() -> None:
     """Long runs refresh the lock, so nobody takes it over as stale while we still work."""
-    if _own_lock():
-        try:
-            os.utime(_stamp(LOCK), None)
-        except OSError:
-            pass
+    if _held:
+        _held.touch()
 
 
 def _release_lock() -> None:
-    """Only our own lock: if it was taken over as stale meanwhile, the new owner keeps it."""
-    if _own_lock():
-        try:
-            _stamp(LOCK).unlink()
-        except OSError:
-            pass
+    global _held
+    if _held:
+        _held.release()
+    _held = None
 
 
 def maintain(now: float) -> None:
@@ -255,7 +221,7 @@ def _maintain(now: float) -> None:
                 from . import codex
                 if codex.enabled() and codex.unavailable() is None:
                     bk = Backup(description="maintenance: Codex refreshed after a pull")
-                    for line in codex.apply_all(bk, refresh=True):
+                    for line in codex.apply_all(bk, refresh=True, command="maintain"):
                         if codex_notice(line):
                             notify(f"loadout (Codex): {line}")
                     if not bk.empty:
@@ -328,8 +294,8 @@ def undo_reregistered(bk: Backup) -> tuple[list[str], list[str]]:
 
 
 def update(yes: bool, ask: Callable[[str], str]) -> int:
-    if not _acquire_lock():
-        print("loadout maintenance is running in the background; try `loadout update` again in a minute")
+    if not _acquire_lock("update", locks.foreground_wait()):
+        print(locks.busy_message(LOCK))
         return 1
     try:
         return _update(yes, ask)
@@ -372,9 +338,9 @@ def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[s
             print(f"plugin {pid}: updated")
             changed = True
     if codex_on:
-        lock = codex._lock()
+        lock = codex._lock(locks.foreground_wait(), "update")
         if lock is None:
-            print("Codex: another loadout run is setting it up right now; run this again when it has finished")
+            print(f"Codex: {locks.busy_message(codex.LOCK)}")
         else:
             bk = Backup(description="update: Codex plugins")
             try:
@@ -386,10 +352,7 @@ def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[s
                     changed = changed or line.endswith(": installed")
                 after = codex.plugin_versions()
             finally:
-                try:
-                    lock.unlink()
-                except OSError:
-                    pass
+                lock.release()
             for pid in sorted(after):
                 if pid in before and before[pid] != after[pid]:
                     print(f"plugin {pid}: updated")

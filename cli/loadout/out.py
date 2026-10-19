@@ -79,6 +79,30 @@ def end_progress() -> None:
         _shown = 0
 
 
+_waiting_key: tuple | None = None
+
+
+def waiting(command: str, started: float, elapsed: float) -> None:
+    """A run is waiting for another loadout run. One in-place line with the seconds on a terminal; once elsewhere."""
+    global _waiting_key
+    line = (f"waiting for the other loadout run ({command}, started "
+            f"{time.strftime('%H:%M', time.localtime(started))})…")
+    if VERBOSE or not _tty():
+        if _waiting_key != (command, started):
+            _waiting_key = (command, started)
+            print(line, flush=True)
+        return
+    _waiting_key = (command, started)
+    progress(f"{line} {int(elapsed)}s")
+
+
+def end_waiting() -> None:
+    """The wait is over (or interrupted): end the line."""
+    global _waiting_key
+    _waiting_key = None
+    end_progress()
+
+
 _clock = time.monotonic  # tests replace these two
 _TICK = 1.0
 

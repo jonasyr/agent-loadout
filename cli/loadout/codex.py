@@ -1015,42 +1015,25 @@ LOCK = "codex.lock"
 STALE_LOCK = 3600.0
 
 
-def _lock():
-    """One Codex setup at a time (bootstrap, configure, the daily sync); a lock older than an hour is from a crash."""
-    import os
-    import time
-    path = paths.state_dir() / LOCK
-    path.parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(2):
-        try:
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            try:
-                if time.time() - path.stat().st_mtime < STALE_LOCK:
-                    return None
-                path.unlink()
-            except OSError:
-                return None
-            continue
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(str(os.getpid()))
-        return path
-    return None
+def _lock(wait: float | None = 0, command: str = "setup"):
+    """One Codex setup at a time (bootstrap, configure, the daily sync, update); a lock older than an hour is from a
+    crash. wait: 0 tries once (background, session start), None waits until free, a number waits that long."""
+    from . import locks
+    return locks.acquire(LOCK, command, wait, stale=STALE_LOCK)
 
 
-def apply_all(bk, refresh: bool = False, say=None) -> list[str]:
-    lock = _lock()
+def apply_all(bk, refresh: bool = False, say=None, command: str = "setup") -> list[str]:
+    """refresh=True is the background sync: it never waits for another run. Foreground callers wait for it."""
+    from . import locks
+    lock = _lock(0 if refresh else locks.foreground_wait(), command)
     if lock is None:
-        return ["skipped: another loadout run is setting up Codex right now; run this again when it has finished"]
+        return [f"skipped: {locks.busy_message(LOCK)}"]
     try:
         from . import codex_hooks
         return [apply_instructions(bk), *apply_config(bk), *codex_hooks.apply(bk, keep=refresh), *apply_skills(bk),
                 *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
     finally:
-        try:
-            lock.unlink()
-        except OSError:
-            pass
+        lock.release()
 
 
 def checks() -> list:
