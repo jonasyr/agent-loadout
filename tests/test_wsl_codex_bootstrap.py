@@ -265,3 +265,13 @@ def test_choosing_windows_against_the_detection_reaches_the_final_check(fake_hom
     out = capsys.readouterr().out
     assert not [line for line in out.splitlines() if "binary codex" in line]
     assert any(line.startswith("[ok  ] Codex") for line in out.splitlines())
+
+
+def test_codex_set_up_on_the_windows_side_keeps_its_open_steps(fake_home, fake_runner, monkeypatch):
+    from loadout import steps
+    _side(monkeypatch, "windows")
+    monkeypatch.setattr(codex, "apply_all", lambda *a, **k: pytest.fail("set up the WSL Codex home"))
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
+    steps.save([steps.Step("codex/hooks", "codex", "approve the changed hooks in /hooks", "x")])
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex")
+    assert [s.id for s in steps.pending("codex")] == ["codex/hooks"]  # Codex is on, only not set up from here

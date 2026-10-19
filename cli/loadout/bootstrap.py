@@ -992,7 +992,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     from . import steps
     try:  # the steps visible without a run's facts (hooks, plugin copy), as `loadout update` leaves them: shown at that agent's next session until done
         steps.save(steps.derive(set(), [], here["claude"], here["codex"]))
-        steps.settle(here["claude"], here["codex"], results)
+        steps.settle(here["claude"], chosen["codex"], results)  # Codex on but set up on the Windows side keeps its steps
     except Exception:
         pass
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
@@ -1004,7 +1004,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         for line in todo:
             print(f"  - {line}")
     try:  # steps an earlier run left open (the hooks one is in "Still to do" above)
-        steps.print_pending(here["claude"], here["codex"], skip={"codex/hooks"})
+        steps.print_pending(here["claude"], chosen["codex"], skip={"codex/hooks"}, show_codex=here["codex"])
     except Exception:
         pass
     extension = here["codex"] and not runner.have("codex") and codex.extension_state()[0] is not None

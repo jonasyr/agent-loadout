@@ -271,13 +271,15 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
         save_json(_path(), keep)
 
 
-def print_pending(claude_on: bool, codex_on: bool, skip: set[str] = frozenset()) -> None:
+def print_pending(claude_on: bool, codex_on: bool, skip: set[str] = frozenset(), show_codex: bool | None = None) -> None:
     """The end of a command that prints a summary: every open step, so a step that its agent's session hook cannot
-    show (Codex does not run an unapproved hook) still reaches you. skip: ids already said by the caller."""
+    show (Codex does not run an unapproved hook) still reaches you. skip: ids already said by the caller.
+    codex_on: whether Codex is on (what settle keeps); show_codex: whether to print its steps (default codex_on;
+    False when Codex is on but set up elsewhere, as on the Windows side of WSL)."""
     try:
         settle(claude_on, codex_on)
         items = [s for agent in NAMES for s in pending(agent) if s.id not in skip]
-        lines = block(items, claude_on, codex_on)
+        lines = block(items, claude_on, codex_on if show_codex is None else show_codex)
     except Exception:
         return
     if lines:
