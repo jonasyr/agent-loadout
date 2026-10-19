@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from loadout import maintenance as m, paths, runner, versions
 
@@ -189,3 +190,50 @@ def test_session_start_no_auto_pull_still_spawns_for_weekly_check(fake_home, mon
     m.touch("last-update-check", 5.0)
     m.session_start(5.0 + m.WEEK)
     assert spawned == [1]
+
+
+def test_an_unknown_failure_reason_is_redacted(fake_home, fake_runner, tmp_path):
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"  # built, so the repo scan finds no literal token
+    err = f"fatal: repository 'https://jonas:{token}@github.com/x/y.git/' not found\n"
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(128, "", err)
+    m.pull(tmp_path)
+    texts = [(paths.state_dir() / "sync-paused.json").read_text(), (paths.state_dir() / "pending-notice").read_text()]
+    assert all("ghp_" not in t for t in texts) and "github.com/x/y.git" in texts[0]
+
+
+@pytest.mark.parametrize("err,code", [("fatal: unable to access 'https://jonas:ghp_x@github.com/x/y.git/': Could not resolve host\n", 128),
+                                      ("ssh: connect to host h: Connection timed out\n", 128),
+                                      ("fatal: Failed to connect to github.com port 443\n", 128),
+                                      ("git: timed out after 120s", 124)])
+def test_network_failures_are_not_a_pause(fake_home, fake_runner, tmp_path, err, code):
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(code, "", err)
+    res = m.pull(tmp_path)
+    assert res.paused is None and m.paused() == {}
+    assert not (paths.state_dir() / "pending-notice").exists()
+
+
+def test_the_record_is_raw_and_escaped_once_when_printed(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(1, "", REFUSAL.replace(".serena/project.yml", "a\x1bb"))
+    m.pull(tmp_path)
+    assert m.paused()[str(tmp_path)]["files"] == ["a\x1bb"]
+    notice = (paths.state_dir() / "pending-notice").read_text()
+    assert "a\\x1bb" in notice and "\\\\x1b" not in notice and "\x1b" not in notice
+
+
+def test_untracked_overwrite_has_its_own_reason(fake_home, fake_runner, tmp_path):
+    err = "error: The following untracked working tree files would be overwritten by merge:\n\tx\nAborting\n"
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(1, "", err)
+    assert m.pull(tmp_path).paused == "untracked files the pull would overwrite"
+
+
+def test_a_message_that_only_mentions_fast_forward_is_not_diverged(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(1, "", "error: cannot pull: fast-forward merge unsupported here\n")
+    assert m.pull(tmp_path).paused == "error: cannot pull: fast-forward merge unsupported here"
+
+
+def test_skips_clear_an_old_record(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(1, "", REFUSAL)
+    m.pull(tmp_path)
+    fake_runner.responses[("git", "-C", str(tmp_path), "rev-parse", "--abbrev-ref", "@{u}")] = runner.Result(128, "", "")
+    m.pull(tmp_path)
+    assert m.paused() == {}

@@ -120,8 +120,16 @@ def _record_paused(root: Path, entry: dict | None) -> bool:
     return entry is not None and (old is None or (old.get("reason"), old.get("files")) != (entry["reason"], entry["files"]))
 
 
-def _refusal(stderr: str) -> tuple[str, list[str]]:
-    """A failed `git pull --ff-only`: the reason in plain words and the files git named (tab-indented lines)."""
+NETWORK = ("unable to access", "could not resolve", "connection timed out", "failed to connect", "timed out after")
+
+
+def _refusal(code: int, stderr: str) -> tuple[str, list[str]] | None:
+    """A failed `git pull --ff-only`: (reason, files git named), or None for a network failure, which is no
+    refusal (nothing to fix in the checkout). Text is redacted (a remote URL can carry a token), not escaped:
+    printing escapes it."""
+    low = stderr.lower()
+    if code == 124 or any(n in low for n in NETWORK):
+        return None
     lines = stderr.splitlines()
     for i, line in enumerate(lines):
         if "would be overwritten by merge:" in line:
@@ -129,12 +137,13 @@ def _refusal(stderr: str) -> tuple[str, list[str]]:
             for item in lines[i + 1:]:
                 if not item.startswith("\t"):
                     break
-                files.append(item[1:])
-            return "local changes the pull would overwrite", files
-    if "fast-forward" in stderr or "diverg" in stderr.lower():
+                files.append(redact(item[1:]))
+            what = "untracked files" if "untracked working tree files" in line else "local changes"
+            return f"{what} the pull would overwrite", files
+    if "Not possible to fast-forward" in stderr or "diverg" in low:
         return "your branch and its upstream have diverged", []
     first = next((l.strip() for l in lines if l.strip()), "")
-    return printable(first) or "git pull failed", []
+    return redact(first) or "git pull failed", []
 
 
 def pull(root: Path) -> PullResult:
@@ -145,8 +154,10 @@ def pull(root: Path) -> PullResult:
         return PullResult()
     git = ["git", "-c", "core.quotePath=false", "-C", str(root)]
     if not runner.run(["git", "-C", str(root), "symbolic-ref", "-q", "HEAD"], timeout=30).ok:
+        _record_paused(root, None)
         return PullResult()  # detached HEAD: nothing to follow
     if not runner.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "@{u}"], timeout=30).ok:
+        _record_paused(root, None)
         return PullResult()  # no upstream: nothing to pull
     head = ["git", "-C", str(root), "rev-parse", "HEAD"]
     before = runner.run(head, timeout=30).stdout.strip()
@@ -154,13 +165,16 @@ def pull(root: Path) -> PullResult:
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never", "LC_ALL": "C"}
     res = runner.run([*git, "pull", "--ff-only", "-q"], timeout=120, env=env)
     if not res.ok:
-        reason, files = _refusal(res.stderr or "")
+        found = _refusal(res.returncode, res.stderr or "")
+        if found is None:
+            return PullResult()  # offline or unreachable: as before, nothing is recorded or said
+        reason, files = found
         if _record_paused(root, {"reason": reason, "files": files, "at": time.time()}):
             if files:
-                notify(f"loadout: the daily sync of {root} paused: {reason}: {', '.join(printable(f) for f in files)}; "
+                notify(f"loadout: the daily sync of {root} paused: {printable(reason)}: {', '.join(printable(f) for f in files)}; "
                        "commit or stash them, then run loadout update")
             else:
-                notify(f"loadout: the daily sync of {root} paused: {reason}; resolve it, then run loadout update")
+                notify(f"loadout: the daily sync of {root} paused: {printable(reason)}; resolve it, then run loadout update")
         return PullResult(False, reason, files)
     _record_paused(root, None)
     after = runner.run(head, timeout=30).stdout.strip()
