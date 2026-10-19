@@ -185,22 +185,21 @@ def offer_commit(ask: Ask) -> None:
 
 def apply_all(ask: Ask, setup: bool = True) -> None:
     """setup=False: the caller (bootstrap) applies settings, MCP servers and plugins itself afterwards."""
-    from . import bootstrap, codex, targets
+    from . import apply, codex, targets
     from .personal_mcp import apply_mcp
     from .settings_merge import apply_settings
 
     claude_on, codex_on = targets.claude_enabled(), targets.codex_enabled()
     if setup and claude_on:
         apply_settings()
-        plugin_lines = bootstrap.setup_plugins(say=out.progress)
+        plugin_lines = apply.claude_plugins_step(say=out.progress, on=True).lines  # settings again on an added marketplace
         out.end_progress()
-        if any(line.endswith(": added") for line in plugin_lines):
-            apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
         for line in plugin_lines + apply_mcp():
             print(line)
     if setup and codex_on and codex.unavailable() is None:  # the same choices reach Codex (plugins, MCP servers)
         from .backup import Backup
-        codex_lines = codex.apply_all(Backup(description="configure: apply to Codex"), say=out.progress)
+        codex_lines = apply.codex_step(Backup(description="configure: apply to Codex"), refresh_plugins=False,
+                                       auto=False, keep=False, say=out.progress, on=True).lines
         out.end_progress()
         for line in codex_lines:
             print(line)
