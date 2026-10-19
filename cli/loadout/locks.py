@@ -103,8 +103,21 @@ def _host() -> str:
         return ""
 
 
+def _ns() -> str:
+    """Which process-id namespace this run lives in: two runs whose pids can be compared have the same value.
+    Linux: the pid namespace's inode plus the boot id (a container or distrobox sharing the hostname and the state
+    folder has another one). Elsewhere: empty, so a dead holder is never assumed and only the lock's age counts."""
+    try:
+        ino = os.stat("/proc/self/ns/pid").st_ino
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+    except (OSError, ValueError):
+        return ""
+    return f"{ino}:{boot}" if boot else ""
+
+
 def _holder_gone(path: Path) -> bool:
-    """POSIX: the lock names a process on this host that no longer runs (a run killed before it could release it).
+    """POSIX: the lock names a process in this host's and this pid namespace's view that no longer runs (a run
+    killed before it could release it).
     Windows has no safe probe (os.kill would end the process), so there only the age counts."""
     if os.name == "nt":
         return False
@@ -114,6 +127,9 @@ def _holder_gone(path: Path) -> bool:
         return False
     pid = data.get("pid") if data else None
     if not isinstance(pid, int) or pid <= 0 or pid == os.getpid() or not data.get("host") or data["host"] != _host():
+        return False
+    ns = _ns()
+    if not ns or data.get("ns") != ns:  # another pid namespace (or one we cannot tell): its pids mean nothing here
         return False
     try:
         os.kill(pid, 0)
@@ -180,7 +196,8 @@ def acquire(name: str, command: str, wait: float | None, *, stale: float = 3600.
     path = _path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     token = f"{os.getpid()}-{time.time_ns()}"
-    body = json.dumps({"pid": os.getpid(), "token": token, "command": command, "started": _now(), "host": _host()})
+    body = json.dumps({"pid": os.getpid(), "token": token, "command": command, "started": _now(), "host": _host(),
+                       "ns": _ns()})
     began = time.monotonic()
     shown = False
     try:
