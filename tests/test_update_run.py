@@ -389,3 +389,22 @@ def test_ctrl_c_on_windows_waits_for_the_child_to_release_its_locks(monkeypatch)
     with pytest.raises(SystemExit) as stop:
         update._exec(["update"], windows=True)
     assert stop.value.code == 7 and len(waits) == 3
+
+
+def test_the_restart_marker_does_not_reach_child_processes(fake_home, fake_runner, monkeypatch):
+    _world(monkeypatch)
+    monkeypatch.setenv(PULLED, "1")
+    seen = []
+    monkeypatch.setattr(check, "run_checks", lambda *a, **k: seen.append(os.environ.get(PULLED)) or [])
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert seen == [None]
+
+
+def test_a_missing_launcher_after_the_pull_is_a_plain_message(monkeypatch, capsys):
+    def gone(exe, args):
+        raise FileNotFoundError(2, "No such file or directory")
+    monkeypatch.setattr(os, "execv", gone, raising=False)
+    with pytest.raises(SystemExit) as stop:
+        update._exec(["update"], windows=False)
+    assert stop.value.code == 1
+    assert capsys.readouterr().out.strip().endswith("run loadout update again")

@@ -225,7 +225,10 @@ def _exec(argv: list[str], windows: bool | None = None) -> NoReturn:
     sys.stdout.flush()
     sys.stderr.flush()
     if os.name == "nt" if windows is None else windows:
-        child = subprocess.Popen(cmd)
+        try:
+            child = subprocess.Popen(cmd)
+        except OSError as exc:
+            _no_restart(exc)
         while True:
             try:
                 code = child.wait()
@@ -233,7 +236,15 @@ def _exec(argv: list[str], windows: bool | None = None) -> NoReturn:
             except KeyboardInterrupt:  # the child prints the interrupt message and cleans up; wait for it
                 continue
         sys.exit(code)
-    os.execv(exe, cmd)
+    try:
+        os.execv(exe, cmd)
+    except OSError as exc:  # the launcher is missing or broken in the pulled commit
+        _no_restart(exc)
+
+
+def _no_restart(exc: OSError) -> NoReturn:
+    print(f"could not continue in the pulled code ({out.printable(str(exc))}); {AGAIN}")
+    sys.exit(1)
 
 
 def run(yes: bool, ask: Callable[[str], str], *, argv: list[str]) -> int:
