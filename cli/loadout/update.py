@@ -248,7 +248,7 @@ def run(yes: bool, ask: Callable[[str], str], *, argv: list[str]) -> int:
     try:
         summary = Summary()
         if os.environ.get(PULLED):
-            _after_restart(summary)
+            _after_restart(summary, os.environ.pop(PULLED))  # read once: no child process (claude, codex, installers) gets it
         elif _pull(summary, start):
             maintenance._release_lock()  # the new process takes it again (POSIX keeps the pid, Windows gets a new one)
             # "1": the kit moved; "personal": the personal layer moved too (the new process names both)
@@ -269,10 +269,11 @@ def _paused_fix(label: str, root, reason: str, files: list[str]) -> tuple[str, s
     return what, f"resolve it in {out.printable(str(root))}, then run loadout update"
 
 
-def _after_restart(summary: Summary) -> None:
-    """The restarted run: what the first process pulled, and every pull git refused (sync-paused.json)."""
+def _after_restart(summary: Summary, marker: str) -> None:
+    """The restarted run: what the first process pulled (marker: the PULLED value), and every pull git refused
+    (sync-paused.json)."""
     summary.changed.append("kit: pulled new commits (this run continued in them)")
-    if os.environ.get(PULLED) == "personal":
+    if marker == "personal":
         summary.changed.append("personal layer: pulled new commits")
     paused = maintenance.paused()
     for label, root in (("kit", paths.kit_root()), ("personal layer", paths.personal_root())):
