@@ -407,3 +407,10 @@ def test_a_missing_launcher_after_the_pull_is_a_plain_message(monkeypatch, capsy
         update._exec(["update"], windows=False)
     assert stop.value.code == 1
     assert capsys.readouterr().out.strip().endswith("run loadout update again")
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_no_test_can_restart_into_the_real_loadout(windows):
+    """conftest guards the restart: a test that forgets to fake it fails instead of running the real launcher."""
+    with pytest.raises(pytest.fail.Exception, match="restart"):
+        update._exec(["update"], windows=windows)
