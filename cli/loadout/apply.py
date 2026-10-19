@@ -6,16 +6,26 @@ per-item lines (callers print them their own way) and the facts, what the step c
 - claude_plugins_step: claude_plugins_installed, claude_marketplace_added
 - codex_step: codex_block_written, codex_config_changed, serena_hooks_added, codex_hooks_removed,
   codex_skills_linked, codex_plugins_installed, codex_plugins_updated
-- any step: failed:<step> (links, settings, claude_plugins, codex) when one of its lines says "failed"
+- any step: failed:<step> (links, settings, claude_plugins, codex) when one of its lines has a failure in the
+  forms loadout prints (": failed", "failed to ")
+- codex_step: skipped:codex when it did not run (another loadout run held the Codex lock): nothing changed, but
+  nothing was checked either
+
+codex_config_changed covers what apply_config writes to config.toml; the `enabled = true` lines `codex plugin add`
+writes there itself are not counted (codex_plugins_installed covers those).
 
 With dry=True a step changes nothing and its facts are what it would change. An agent that is off gives an empty
 StepResult, and nothing of that agent is read."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from . import out, targets
 from .backup import Backup
+
+
+_FAILED = re.compile(r": failed\b|\bfailed to ")
 
 
 @dataclass
@@ -28,7 +38,7 @@ class StepResult:
 
 
 def _finish(result: StepResult, step: str) -> StepResult:
-    if any("failed" in line for line in result.lines):
+    if any(_FAILED.search(line) for line in result.lines):
         result.facts.add(f"failed:{step}")
     if any(out.PROBLEM.search(line) for line in result.lines):
         result.level = "warn"
@@ -128,20 +138,25 @@ def _codex_summary(lines: list[str]) -> str:
 
 
 def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say=None,
-               skip_unchanged: bool = False, dry: bool = False, on: bool | None = None) -> StepResult:
+               skip_unchanged: bool = False, dry: bool = False, on: bool | None = None, command: str = "setup",
+               on_wait=None) -> StepResult:
     """Codex's rules block, config.toml, Serena's hooks, skills and plugins (codex.apply_all, under the Codex lock).
     The caller checks codex.unavailable() first. refresh_plugins: re-add every plugin and upgrade the marketplaces;
     auto: the daily sync's freeze of `autoUpdate: false` marketplaces; keep: never remove Serena's hooks.
-    skip_unchanged: passed through (not used yet). on: whether Codex is on (default: targets.json)."""
+    skip_unchanged: passed through (not used yet). on: whether Codex is on (default: targets.json).
+    command, on_wait: for the Codex lock, as in codex.apply_all (the wait line's command; a run holding another lock
+    touches it in on_wait)."""
     if not (targets.codex_enabled() if on is None else on):
         return StepResult("Codex", "")
     if dry:
-        return _codex_dry(refresh_plugins)
+        return _codex_dry(refresh_plugins, auto, keep)
     from . import codex
     changed: set[str] = set()
     lines = codex.apply_all(bk, refresh=refresh_plugins, say=say, auto=auto, keep=keep,
-                            skip_unchanged=skip_unchanged, changed=changed)
+                            skip_unchanged=skip_unchanged, changed=changed, command=command, on_wait=on_wait)
     facts = _codex_facts(lines)
+    if any(line.startswith("skipped: ") for line in lines):
+        facts.add("skipped:codex")
     if "config" in changed:
         facts.add("codex_config_changed")
     if "plugins_updated" in changed:
@@ -149,8 +164,9 @@ def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say
     return _finish(StepResult("Codex", _codex_summary(lines), lines, facts), "codex")
 
 
-def _codex_dry(refresh_plugins: bool) -> StepResult:
-    """What codex_step would change; read-only (config.toml and hooks.json through their dry runs)."""
+def _codex_dry(refresh_plugins: bool, auto: bool, keep: bool) -> StepResult:
+    """What codex_step would change; read-only (config.toml and hooks.json through their dry runs). auto and keep as
+    in the real run: frozen marketplaces are not refreshed, and Serena's hooks are not removed."""
     from . import codex, codex_hooks, link, paths, runner, settings_merge
     lines, facts = [], set()
     path = paths.codex_home() / "AGENTS.md"
@@ -165,7 +181,7 @@ def _codex_dry(refresh_plugins: bool) -> StepResult:
     lines += config
     if "config.toml: changes pending" in config:
         facts.add("codex_config_changed")
-    lines += codex_hooks.apply(object(), dry_run=True)
+    lines += codex_hooks.apply(object(), dry_run=True, keep=keep)
     skills = [(dest, src) for dest, src in codex.skill_links() if src.exists() and not link._points_to(dest, src)]
     lines += [f"skill {out.printable(dest.name)}: to link" for dest, _ in skills]
     if skills:
@@ -173,7 +189,13 @@ def _codex_dry(refresh_plugins: bool) -> StepResult:
     if not runner.have("codex"):
         lines.append(codex.PLUGINS_EXTENSION)
     else:
-        routes, missing = codex.plugin_routes(settings_merge.desired_settings())
+        from .jsonio import get_dict
+        desired = settings_merge.desired_settings()
+        routes, missing = codex.plugin_routes(desired)
+        frozen = {codex.OFFICIAL if name == "claude-plugins-official" else get_dict(cfg, "source").get("repo")
+                  for name, cfg in
+                  get_dict(desired, "extraKnownMarketplaces").items()
+                  if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False}
         lines += [f"plugin {out.printable(pid)}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
         have = {pid.split("@")[0] for pid in codex.installed_plugins() or ()}
         new_plugins = [name for names in routes.values() for name in names if name not in have]
@@ -181,6 +203,6 @@ def _codex_dry(refresh_plugins: bool) -> StepResult:
         if new_plugins:
             facts.add("codex_plugins_installed")
         if refresh_plugins:
-            lines += [f"marketplace {out.printable(src)}: to refresh" for src in routes]
+            lines += [f"marketplace {out.printable(src)}: to refresh" for src in routes if src not in frozen]
     summary = f"{len(facts)} part(s) to change" if facts else "up to date"
     return _finish(StepResult("Codex", summary, lines, facts), "codex")

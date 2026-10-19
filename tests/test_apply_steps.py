@@ -222,3 +222,48 @@ def test_install_tool_reports_ok_and_failure(fake_home, fake_runner, monkeypatch
     fake_runner.responses[("install-rg",)] = runner.Result(1, "", "boom")
     ok, lines = b.install_tool(entry, [["install-rg"]])
     assert not ok and lines[0] == "failed to install rg: boom"
+
+
+def test_codex_step_passes_command_and_on_wait_to_the_lock(fake_home, fake_runner, monkeypatch):
+    from loadout import locks
+    _codex_parts(monkeypatch)
+    held = locks.acquire(codex.LOCK, "bootstrap", 0)
+    monkeypatch.setattr(locks, "foreground_wait", lambda: 0.1)
+    waits = []
+    r = apply.codex_step(_bk(), refresh_plugins=True, auto=False, keep=False, on=True, command="update",
+                         on_wait=lambda: waits.append(1))
+    held.release()
+    assert waits, "on_wait never reached the Codex lock"
+    assert r.facts == {"skipped:codex"} and r.lines[0].startswith("skipped: ") and r.level == "warn"
+
+
+def test_codex_step_names_its_command(fake_home, fake_runner, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: seen.update(kw) or [])
+    apply.codex_step(_bk(), refresh_plugins=False, auto=False, keep=False, on=True, command="update")
+    assert seen["command"] == "update" and seen["on_wait"] is None
+
+
+def test_codex_dry_follows_keep_and_the_frozen_marketplaces(fake_home, fake_runner, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(codex_hooks, "apply", lambda bk, dry_run=False, keep=False: seen.update(keep=keep) or [])
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    monkeypatch.setattr(codex, "installed_plugins", lambda: set())
+    from loadout import settings_merge
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {
+        "extraKnownMarketplaces": {"frozen": {"source": {"source": "github", "repo": "me/frozen"}, "autoUpdate": False},
+                                   "live": {"source": {"source": "github", "repo": "me/live"}}},
+        "enabledPlugins": {"a@frozen": True, "b@live": True}})
+    r = apply.codex_step(_bk(), refresh_plugins=True, auto=True, keep=True, on=True, dry=True)
+    assert seen == {"keep": True}
+    assert "marketplace me/live: to refresh" in r.lines and "marketplace me/frozen: to refresh" not in r.lines
+    assert "plugin a: to install" in r.lines  # a missing plugin is still installed from a frozen marketplace
+    r = apply.codex_step(_bk(), refresh_plugins=True, auto=False, keep=False, on=True, dry=True)
+    assert "marketplace me/frozen: to refresh" in r.lines
+
+
+def test_failed_matches_what_loadout_prints_not_names(fake_home, fake_runner, monkeypatch):
+    _codex_parts(monkeypatch, skills=["linked /x/failed-ideas -> /y/failed-ideas"])
+    assert "failed:codex" not in apply.codex_step(_bk(), refresh_plugins=False, auto=False, keep=False, on=True).facts
+    _codex_parts(monkeypatch, plugins=["plugin x@y: failed: boom"])
+    assert "failed:codex" in apply.codex_step(_bk(), refresh_plugins=False, auto=False, keep=False, on=True).facts
