@@ -19,7 +19,7 @@ def _codex_parts(monkeypatch, instructions="instructions up to date", config=(),
         seen["keep"] = keep
         return list(hooks)
 
-    def plugins_apply(bk, refresh=False, say=None, auto=False):
+    def plugins_apply(bk, refresh=False, say=None, auto=False, skip_unchanged=False):
         seen.update(refresh=refresh, auto=auto)
         return list(plugins)
     monkeypatch.setattr(codex_hooks, "apply", hooks_apply)

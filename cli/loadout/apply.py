@@ -143,7 +143,7 @@ def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say
     """Codex's rules block, config.toml, Serena's hooks, skills and plugins (codex.apply_all, under the Codex lock).
     The caller checks codex.unavailable() first. refresh_plugins: re-add every plugin and upgrade the marketplaces;
     auto: the daily sync's freeze of `autoUpdate: false` marketplaces; keep: never remove Serena's hooks.
-    skip_unchanged: passed through (not used yet). on: whether Codex is on (default: targets.json).
+    skip_unchanged: passed through (Codex marketplaces and plugins whose upstream did not move). on: whether Codex is on (default: targets.json).
     command, on_wait: for the Codex lock, as in codex.apply_all (the wait line's command; a run holding another lock
     touches it in on_wait)."""
     if not (targets.codex_enabled() if on is None else on):
