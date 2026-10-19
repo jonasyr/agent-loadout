@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "loadout",
-      "description": "Core of agent-loadout: Serena and codebase-memory MCP servers, tool hooks, onboarding and documentation skills.",
+      "description": "Core of agent-loadout: Serena and codebase-memory MCP servers, tool hooks, and skills for onboarding, docs, changing your loadout setup, plan execution advice and tool-use reports.",
       "source": "./plugins/loadout",
       "category": "development"
     }

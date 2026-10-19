@@ -1,6 +1,6 @@
 {
   "name": "loadout",
-  "description": "Core of agent-loadout: the codebase-memory MCP server (Serena comes from config.toml), tool hooks with type errors after edits, onboarding and documentation skills.",
+  "description": "Core of agent-loadout: the codebase-memory MCP server (Serena comes from config.toml), tool hooks with type errors after edits, and skills for onboarding, docs, changing your loadout setup, plan execution advice and tool-use reports.",
   "author": { "name": "Jonas Weirauch" },
   "homepage": "https://github.com/jonasyr/agent-loadout",
   "repository": "https://github.com/jonasyr/agent-loadout",

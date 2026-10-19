@@ -109,6 +109,6 @@ OUTPUT FORMAT:
 - Report findings of priority P0 to P2 only; Codex's GitHub review posts those.
 - Apply the "Code Review Rules" in `AGENTS.md` and cite the rule a finding rests on.
 - Trace call paths across files to prove a finding's impact; do not guess from the diff alone.
-- Consider Codex-only machines (Claude Code off), Windows with Git Bash, valid-but-odd input shapes, and commands that report success on failure.
+- Consider Codex-only machines (Claude Code off), VS Code's Codex extension without the Codex CLI, WSL with a Windows-side Codex, the Claude Code extension's bundled `claude` as runner, Windows with Git Bash, valid-but-odd input shapes, and commands that report success on failure.
 - Run only read-only commands and `uv run --python 3.12 --with pytest pytest -q <files>`. Never run real `claude`, `codex` or `loadout` against the real home, never run installers or evals, and never edit files.
 - Output exactly the JSON the rubric specifies, nothing else.

@@ -16,4 +16,4 @@ Follow the kit's `rules/docs-policy.md`. Before you add or move a page, read the
 4. Check every link and path in the files you touched: relative links resolve, referenced files and symbols exist.
 5. Show the diff. Commit separately from code (`docs: ...`) after approval.
 
-Keep it proportional: a small change usually touches zero or one doc file. If you find widespread rot, stop and recommend `/loadout:docs-audit`.
+Keep it proportional: a small change usually touches zero or one doc file. If you find widespread rot, stop and recommend `/loadout:docs-audit` (`$loadout:docs-audit` in Codex).
