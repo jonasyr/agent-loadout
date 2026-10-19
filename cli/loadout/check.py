@@ -551,14 +551,19 @@ def _vscode_surfaces(cs=None) -> list[CheckResult]:
     broken = []
     folder = vscode.folder_settings() if found else None
     read = [i for e in found for i in (e.install, e.desktop) if i is not None]  # every install whose settings count
-    files = [(p, "Remote" if install.user_dir is None else "User")  # the command VS Code opens that file with
-             for install in dict.fromkeys(read) for p in vscode.broken_settings(install)]
+    def opens(install, p) -> str:  # how VS Code opens that file
+        if install.user_dir is None:
+            return "Preferences: Open Remote Settings (JSON)"
+        if p.parent.parent == install.user_dir / "profiles":
+            return "switch to that VS Code profile, then Preferences: Open User Settings (JSON)"
+        return "Preferences: Open User Settings (JSON)"
+    files = [(p, opens(install, p)) for install in dict.fromkeys(read) for p in vscode.broken_settings(install)]
     if folder is not None and os.path.isfile(folder) and vscode.read_jsonc(folder) is None:
-        files.append((folder, "Workspace"))  # the open folder's settings: they override the user's
-    for p, kind in files:
+        files.append((folder, "Preferences: Open Workspace Settings (JSON)"))  # the folder's: they override the user's
+    for p, how in files:
         broken += [CheckResult("VS Code settings", False,
                                printable(f"{p} does not parse, so loadout cannot read the settings that matter there"),
-                               f"fix its JSON in VS Code (Preferences: Open {kind} Settings (JSON))", "warn")]
+                               f"fix its JSON in VS Code ({how})", "warn")]
     said = bool(cs is not None and getattr(cs, "side", None) in ("wsl", "both") and getattr(cs, "vscode_windows", False))
     return [*broken, *(row for ext in found for row in _surface_rows(ext, only, said)), *_vscode_path(found, only)]
 

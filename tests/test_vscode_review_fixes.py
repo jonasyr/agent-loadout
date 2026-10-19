@@ -734,3 +734,14 @@ def test_a_broken_user_settings_file_names_the_user_settings(vs, fake_runner):
     (user / "settings.json").write_text('{"a": ')
     (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code settings"]
     assert "User Settings" in row.fix
+
+
+def test_a_broken_profile_settings_file_names_its_profile(vs, fake_runner):
+    """Open User Settings opens the base file: a profile's file is opened with that profile active."""
+    import sys
+    _ext(vs / ".vscode" / "extensions", "anthropic.claude-code-2.1.217-linux-x64", host_claude_bin())
+    profile = vscode._user_dir(vs, sys.platform) / "profiles" / "abc123"
+    profile.mkdir(parents=True)
+    (profile / "settings.json").write_text('{"a": ')
+    (row,) = [r for r in check._vscode_surfaces() if r.name == "VS Code settings"]
+    assert "switch to that VS Code profile" in row.fix
