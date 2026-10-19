@@ -10,9 +10,9 @@ from . import paths, runner
 from .jsonio import save_json, write_atomic
 
 # (event, matcher or None, serena-hooks subcommand, timeout or None), exactly as Serena documents them
-SERENA_HOOKS = (("PreToolUse", "Bash", "remind", 5), ("PreToolUse", "^mcp__serena__", "plan-guard", None),
-                ("PostToolUse", "^mcp__serena__.*$", "reset", None), ("SessionStart", "startup|resume", "activate", None),
-                ("UserPromptSubmit", None, "plan-context", None), ("SessionEnd", None, "cleanup", 3))
+SERENA_HOOKS = (("PreToolUse", "Bash", "remind", 5), ("PreToolUse", "^mcp__serena__", "plan-guard", 5),
+                ("PostToolUse", "^mcp__serena__.*$", "reset", None), ("SessionStart", "startup|resume", "activate", 5),
+                ("UserPromptSubmit", None, "plan-context", 5), ("SessionEnd", None, "cleanup", 3))
 ALSO = {"cleanup": ("SessionEnd", "Stop")}  # Serena: cleanup under exactly one of these, never both
 
 

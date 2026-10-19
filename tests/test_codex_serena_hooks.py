@@ -146,3 +146,34 @@ def test_codex_setup_and_check_include_the_serena_hooks(hooks, monkeypatch):
         monkeypatch.setattr(codex, name, value)
     (r,) = [r for r in codex.checks() if r.name == "Codex Serena hooks"]
     assert not r.ok and "pending" in r.detail
+
+
+# Serena's clients page (oraios.github.io/serena/02-usage/030_clients.html), checked 2026-10-19
+DOCUMENTED_TIMEOUTS = {"remind": 5, "plan-guard": 5, "reset": None, "activate": 5, "plan-context": 5, "cleanup": 3}
+
+
+def test_the_timeouts_are_the_documented_ones(hooks):
+    codex_hooks.apply(backup.Backup(description="t"))
+    data = json.loads(hooks.read_text())["hooks"]
+    got = {h["command"].split()[1]: h.get("timeout") for groups in data.values() for g in groups for h in g["hooks"]}
+    assert got == DOCUMENTED_TIMEOUTS
+
+
+def test_loadouts_older_entries_without_a_timeout_are_replaced_with_a_backup(hooks):
+    old = dict(DOCUMENTED_TIMEOUTS, **{"plan-guard": None, "activate": None, "plan-context": None})
+    old_table = tuple((e, m, s, old[s]) for e, m, s, _ in codex_hooks.SERENA_HOOKS)
+    import loadout.codex_hooks as ch
+    real = ch.SERENA_HOOKS
+    ch.SERENA_HOOKS = old_table  # what an earlier loadout wrote and recorded
+    try:
+        codex_hooks.apply(backup.Backup(description="t"))
+    finally:
+        ch.SERENA_HOOKS = real
+    before = hooks.read_text()
+    bk = backup.Backup(description="t2")
+    codex_hooks.apply(bk)
+    data = json.loads(hooks.read_text())["hooks"]
+    got = {h["command"].split()[1]: h.get("timeout") for groups in data.values() for g in groups for h in g["hooks"]}
+    assert got == DOCUMENTED_TIMEOUTS and _commands(hooks) == OFFICIAL
+    _, ok, _ = backup.restore(bk.root)
+    assert ok and hooks.read_text() == before
