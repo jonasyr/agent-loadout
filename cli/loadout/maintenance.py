@@ -65,19 +65,16 @@ def _session_steps(agent: str, source: str | None) -> str | None:
     """The agent's open "Now do this" lines for a session start, and which of them this start settles: a Claude Code
     step only at a fresh start (source "startup": resume, clear and compact keep the old plugins loaded); in Codex
     "restart" at any start and the hooks step once /hooks has approved them. None when there is nothing to say."""
-    from . import codex, steps, targets
+    from . import steps, targets
     on = targets.claude_enabled() if agent == "claude" else targets.codex_enabled()
     if agent not in steps.NAMES or not on:
         return None
+    steps.settle(targets.claude_enabled(), targets.codex_enabled())  # hooks approved, rows passing, servers gone
     items = steps.pending(agent)
-    if agent == "codex" and any(s.id == "codex/hooks" for s in items):
-        if codex.hooks_status() == "trusted":
-            steps.clear("codex", {"codex/hooks"})
-            items = [s for s in items if s.id != "codex/hooks"]
     if not items:
         return None
-    if agent == "claude" and source == "startup":
-        steps.clear("claude", {s.id for s in items})
+    if agent == "claude" and source == "startup":  # a bootstrap step stays until its rows pass (settle)
+        steps.clear("claude", {s.id for s in items if s.id != "claude/bootstrap"})
     elif agent == "codex":
         steps.clear("codex", {"codex/restart"})
     return "\n".join(steps.block(items, agent == "claude", agent == "codex"))

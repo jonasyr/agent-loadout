@@ -107,14 +107,26 @@ def _codex_versions(fake_runner, monkeypatch, before, after):
 
 
 def test_codex_hint_follows_real_version_changes_not_notes(fake_home, fake_runner, monkeypatch, capsys):
+    from loadout import codex
     _setup(fake_home, monkeypatch, claude=False, codex=True)
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "trusted")
     monkeypatch.setattr(runner, "run", _codex_versions(fake_runner, monkeypatch, {"x@m": "1"}, {"x@m": "1"}))
     _run(True)
     assert "Restart" not in capsys.readouterr().out
     monkeypatch.setattr(runner, "run", _codex_versions(fake_runner, monkeypatch, {"x@m": "1"}, {"x@m": "2"}))
     _run(True)
     out = capsys.readouterr().out
-    assert "Codex: plugins updated" in out and "Now do this" in out and "Codex: start codex and approve the changed hooks in /hooks" in out
+    assert "Codex: plugins updated" in out and "Now do this" in out
+    assert "Codex: restart Codex (it loads plugins per session)" in out and "/hooks" not in out
+
+
+def test_codex_plugin_update_names_the_hooks_when_not_approved(fake_home, fake_runner, monkeypatch, capsys):
+    from loadout import codex
+    _setup(fake_home, monkeypatch, claude=False, codex=True)
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "untrusted")
+    monkeypatch.setattr(runner, "run", _codex_versions(fake_runner, monkeypatch, {"x@m": "1"}, {"x@m": "2"}))
+    _run(True)
+    assert "Codex: restart Codex and approve the changed hooks in /hooks" in capsys.readouterr().out
 
 
 def test_an_unusable_codex_gets_no_plugin_commands(fake_home, fake_runner, monkeypatch, capsys):

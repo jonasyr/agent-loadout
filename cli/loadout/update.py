@@ -484,8 +484,9 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
         summary.changed.append(f"files the re-apply replaced are in a backup (undo: loadout restore {out.printable(str(bk.root))})")
     results = _health()
     try:  # a failure here must not hide the report
-        summary.steps = steps.derive(summary.facts, summary.upgraded, claude_on, codex_ok, results)
-        steps.save(summary.steps)  # shown at that agent's next session until done
+        steps.save(steps.derive(summary.facts, summary.upgraded, claude_on, codex_ok, results))
+        steps.settle(claude_on, codex_on, results)  # drop what no longer holds
+        summary.steps = [s for agent in steps.NAMES for s in steps.pending(agent)]  # also the ones still open
     except Exception:
         pass
     report(summary)

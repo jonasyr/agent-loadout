@@ -50,8 +50,16 @@ def test_a_personal_and_a_uvx_server_match_by_command(monkeypatch, tmp_path):
 
 def test_plugin_changes_give_reload_and_hooks_steps():
     found = steps.derive({"claude_plugins_updated", "codex_plugins_installed"}, [], True, True)
-    assert "claude/reload-plugins" in _ids(found) and "codex/hooks" in _ids(found)
+    assert "claude/reload-plugins" in _ids(found) and "codex/restart" in _ids(found)  # hooks are approved
+    assert next(s.text for s in found if s.id == "codex/restart") == "restart Codex (it loads plugins per session)"
     assert steps.derive({"serena_hooks_added"}, [], True, True)[0].id == "codex/hooks"
+
+
+def test_codex_plugin_changes_name_the_hooks_when_they_are_not_approved(monkeypatch):
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
+    found = steps.derive({"codex_plugins_updated"}, [], False, True)
+    assert _ids(found) == ["codex/hooks"]
+    assert found[0].text == "restart Codex and approve the changed hooks in /hooks"
 
 
 def test_unapproved_or_changed_codex_hooks_give_the_hooks_step(monkeypatch):
@@ -161,3 +169,60 @@ def test_render_numbers_across_agents_and_skips_agents_that_are_off():
             steps.Step("codex/restart", "codex", "restart Codex", "x")]
     assert steps.render(both, True, True) == ["1. Claude Code: run /reload-plugins", "2. Codex: restart Codex"]
     assert steps.render(both, False, True) == ["1. Codex: restart Codex"]
+
+
+def _bootstrap_step(agent):
+    return steps.Step(f"{agent}/bootstrap", agent, "run loadout bootstrap", "secrets.env: loadout bootstrap")
+
+
+def test_a_bootstrap_step_clears_when_its_rows_pass_for_both_agents():
+    steps.save([_bootstrap_step("claude"), _bootstrap_step("codex")])
+    assert not paths.secrets_file().exists()
+    assert "Now do this" in json.loads(m.session_start(0.0, "claude", source="startup"))["systemMessage"]
+    assert "run loadout bootstrap" in json.loads(m.session_start(0.0, "codex"))["systemMessage"]
+    assert _ids(steps.pending("claude")) == ["claude/bootstrap"] and _ids(steps.pending("codex")) == ["codex/bootstrap"]
+    paths.secrets_file().parent.mkdir(parents=True, exist_ok=True)
+    paths.secrets_file().write_text("X=1\n")
+    paths.secrets_file().chmod(0o600)
+    assert m.session_start(0.0, "codex") is None
+    assert steps.pending("codex") == [] and steps.pending("claude") == []  # the rows pass for both
+    assert m.session_start(0.0, "claude", source="startup") is None
+
+
+def test_derive_names_the_rows_in_the_bootstrap_reason():
+    from loadout.check import CheckResult
+    found = steps.derive(set(), [], True, False, results=[CheckResult("secrets.env", False, "x", "loadout bootstrap")])
+    assert "secrets.env" in found[0].reason
+
+
+def test_settle_drops_stale_steps(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOADOUT_ROOT", str(tmp_path))
+    _write_mcp(tmp_path / "plugins" / "loadout" / ".mcp.json", {"serena": {"command": "serena"}})
+    monkeypatch.setattr(steps, "_claude_wants_plugin", lambda: True)
+    steps.save([steps.Step("claude/mcp:plugin:loadout:serena", "claude", "a", "x"),
+                steps.Step("claude/mcp:gone", "claude", "b", "x"),
+                steps.Step("codex/hooks", "codex", "approve", "x"),
+                steps.Step("claude/reload-plugins", "claude", "reload", "x")])
+    steps.settle(True, True)
+    assert _ids(steps.pending("claude")) == ["claude/mcp:plugin:loadout:serena", "claude/reload-plugins"]
+    assert steps.pending("codex") == []  # hooks are trusted
+    targets.set_agents({"claude": False, "codex": True})
+    steps.settle(False, True)
+    assert steps.pending("claude") == []
+
+
+def test_matching_strips_shim_extensions_and_wants_a_whole_segment():
+    assert steps._starts({"command": "C:\\x\\serena.cmd"}, "serena")
+    assert steps._starts({"command": "serena.BAT"}, "serena")
+    assert steps._starts({"command": "uvx", "args": ["--from", "git+https://github.com/oraios/serena.git"]}, "serena")
+    assert not steps._starts({"command": "uvx", "args": ["serena-agent"]}, "serena")
+    assert not steps._starts({"command": "uv", "args": ["run", "myserenaish"]}, "serena")
+
+
+def test_check_ends_with_pending_codex_steps(monkeypatch, capsys):
+    from loadout import check
+    monkeypatch.setattr(check, "run_checks", lambda *a, **k: [])
+    steps.save([steps.Step("codex/hooks", "codex", "start codex and approve the changed hooks in /hooks", "x")])
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
+    main(["check"])
+    assert "Now do this" in capsys.readouterr().out

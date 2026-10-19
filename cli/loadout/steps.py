@@ -13,7 +13,6 @@ from .jsonio import get_dict, load_json, save_json
 NAMES = {"claude": "Claude Code", "codex": "Codex"}
 HOOKS_TEXT = "start codex and approve the changed hooks in /hooks"
 BOOTSTRAP_ROWS = {"MCP servers on PATH", "secrets.env", "VS Code PATH"}  # rows only `loadout bootstrap` fixes
-HOOK_FACTS = {"serena_hooks_added", "codex_plugins_installed", "codex_plugins_updated"}
 CLAUDE_FACTS = {"claude_plugins_installed", "claude_plugins_updated", "claude_marketplace_added"}
 
 
@@ -40,7 +39,8 @@ def _load() -> dict[str, list[dict]]:
 
 
 def save(new: list[Step]) -> None:
-    """Merge into the saved steps by id (a step already open keeps its first time)."""
+    """Merge into the saved steps by id (a step already open keeps its first time). save and clear write the file
+    atomically but take no lock: two runs at once can lose a reminder, which is acceptable."""
     if not new:
         return
     data = _load()
@@ -87,12 +87,15 @@ def block(items: list[Step], claude_on: bool, codex_on: bool, indent: str = "  "
 def _starts(table, binary_id: str) -> bool:
     if not isinstance(table, dict) or not isinstance(table.get("command"), str):
         return False
-    base = re.split(r"[\\/]", table["command"])[-1].lower().removesuffix(".exe")
-    if base == binary_id.lower():
+    want = binary_id.lower()
+    base = re.split(r"[\\/]", table["command"])[-1].lower()
+    base = re.sub(r"\.(exe|cmd|bat)$", "", base)
+    if base == want:
         return True
     args = table.get("args")
     return base in ("uv", "uvx") and isinstance(args, list) and any(
-        isinstance(a, str) and binary_id.lower() in a.lower() for a in args)
+        isinstance(a, str) and want in [seg.removesuffix(".git") for seg in re.split(r"[\\/]", a.lower())]
+        for a in args)
 
 
 def _servers(file) -> dict:
@@ -173,11 +176,102 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
             status = codex.hooks_status()
         except Exception:
             pass
-        if facts & HOOK_FACTS or status in ("untrusted", "changed"):
-            out.append(Step("codex/hooks", "codex", HOOKS_TEXT, "Codex runs a changed hook only after you approve it"))
+        plugins = bool(facts & {"codex_plugins_installed", "codex_plugins_updated"})
+        if "serena_hooks_added" in facts or status in ("untrusted", "changed"):
+            text = "restart Codex and approve the changed hooks in /hooks" if plugins else HOOKS_TEXT
+            out.append(Step("codex/hooks", "codex", text, "Codex runs a changed hook only after you approve it"))
+        elif plugins:
+            out.append(Step("codex/restart", "codex", "restart Codex (it loads plugins per session)",
+                            "Codex plugins were installed or updated"))
     needs = [r for r in results or [] if not r.ok and r.name in BOOTSTRAP_ROWS]
     if needs:
         for agent, on in (("claude", claude_on), ("codex", codex_on)):
             if on:
-                out.append(Step(f"{agent}/bootstrap", agent, "run loadout bootstrap", f"{needs[0].name}: {needs[0].fix}"))
+                out.append(Step(f"{agent}/bootstrap", agent, "run loadout bootstrap", f"{', '.join(r.name for r in needs)}: {needs[0].fix}"))
     return out
+
+
+# --- dropping steps that no longer hold ----------------------------------------------------------------------------
+
+def server_names() -> dict[str, set[str]]:
+    """Every MCP server name each agent that is on has (see mcp_servers_started_by for where they come from)."""
+    from . import codex, targets
+    plugin = _servers(paths.kit_root() / "plugins" / "loadout" / ".mcp.json")
+    names: dict[str, set[str]] = {"claude": set(), "codex": set()}
+    if targets.claude_enabled():
+        if _claude_wants_plugin():
+            names["claude"] |= {f"plugin:loadout:{n}" for n in plugin}
+        names["claude"] |= set(_servers(paths.claude_json())) | set(_servers(paths.personal_root() / "mcp.json"))
+    if targets.codex_enabled():
+        names["codex"] |= set(plugin)
+        try:
+            cfg = paths.codex_home() / "config.toml"
+            data = codex._tomllib().loads(cfg.read_text(encoding="utf-8")) if cfg.exists() else {}
+            names["codex"] |= set(get_dict(data, "mcp_servers"))
+        except Exception:
+            pass
+        for root in (paths.codex_home() / "plugins" / "cache").glob("*/*/*"):
+            names["codex"] |= set(_servers(root / ".mcp.json"))
+    return names
+
+
+def _rows_pass(reason: str, results: list | None) -> bool:
+    """Do the health rows named in a bootstrap step's reason pass now? With the check's rows: those. Without: only
+    the rows that are local file checks (secrets.env, MCP servers on PATH); any other row cannot be told, so False."""
+    from . import check
+    named = [n for n in BOOTSTRAP_ROWS if n in reason]
+    if not named:
+        return False
+    local = {"secrets.env": check._secrets, "MCP servers on PATH": check._mcp_path}
+    for name in named:
+        if results is not None:
+            if any(r.name == name and not r.ok for r in results):
+                return False
+        elif name not in local or any(not r.ok for r in local[name]()):
+            return False
+    return True
+
+
+def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None:
+    """Drop saved steps that no longer hold: every step of an agent that is off; the /hooks step once the hooks are
+    approved; a bootstrap step once the rows that produced it pass (checked with local files only, never the
+    network); an /mcp step whose server is gone. Others stay until their agent's session start clears them."""
+    from . import codex
+    data = _load()
+    if not data:
+        return
+    on = {"claude": claude_on, "codex": codex_on}
+    names = server_names() if any(e["id"].startswith("claude/mcp:") for e in data.get("claude", [])) else {}
+    trusted = None
+    keep: dict[str, list[dict]] = {}
+    for agent, entries in data.items():
+        for e in entries:
+            drop = not on.get(agent)
+            if not drop and e["id"] == "codex/hooks":
+                if trusted is None:
+                    try:
+                        trusted = codex.hooks_status() == "trusted"
+                    except Exception:
+                        trusted = False
+                drop = trusted
+            elif not drop and e["id"] == f"{agent}/bootstrap":
+                drop = _rows_pass(str(e.get("reason", "")), results)
+            elif not drop and e["id"].startswith("claude/mcp:"):
+                drop = e["id"][len("claude/mcp:"):] not in names.get("claude", set())
+            if not drop:
+                keep.setdefault(agent, []).append(e)
+    if keep != data:
+        save_json(_path(), keep)
+
+
+def print_pending(claude_on: bool, codex_on: bool, skip: set[str] = frozenset()) -> None:
+    """The end of a command that prints a summary: every open step, so a step that its agent's session hook cannot
+    show (Codex does not run an unapproved hook) still reaches you. skip: ids already said by the caller."""
+    try:
+        settle(claude_on, codex_on)
+        items = [s for agent in NAMES for s in pending(agent) if s.id not in skip]
+        lines = block(items, claude_on, codex_on)
+    except Exception:
+        return
+    if lines:
+        print("\n" + "\n".join(lines))

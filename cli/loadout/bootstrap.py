@@ -989,9 +989,10 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             print(text)
     here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
     todo = still_to_do(os_key(), codex_here=here["codex"])
-    try:  # the same steps `loadout update` leaves: shown at that agent's next session until done
-        from . import steps
+    from . import steps
+    try:  # the steps visible without a run's facts (hooks, plugin copy), as `loadout update` leaves them: shown at that agent's next session until done
         steps.save(steps.derive(set(), [], here["claude"], here["codex"]))
+        steps.settle(here["claude"], here["codex"], results)
     except Exception:
         pass
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
@@ -1002,6 +1003,10 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
+    try:  # steps an earlier run left open (the hooks one is in "Still to do" above)
+        steps.print_pending(here["claude"], here["codex"], skip={"codex/hooks"})
+    except Exception:
+        pass
     extension = here["codex"] and not runner.have("codex") and codex.extension_state()[0] is not None
     claude_ext = here["claude"] and claude_bundled is not None and not runner.have("claude")
     run = " or ".join(f"`{a}`" for a in ("claude", "codex")

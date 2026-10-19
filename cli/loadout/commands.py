@@ -67,6 +67,8 @@ def _register_check(sub):
             out.VERBOSE = True
         text, code = (check.format_results if out.VERBOSE else check.format_summary)(check.run_checks())
         print(text)
+        from . import steps, targets
+        steps.print_pending(targets.claude_enabled(), targets.codex_enabled())
         return code
 
     p.set_defaults(func=run_check)
