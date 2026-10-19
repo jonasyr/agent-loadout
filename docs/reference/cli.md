@@ -278,7 +278,7 @@ Changing the list with `init --agents`: an added agent gets its missing files an
 
 ## loadout check
 
-Verify this machine. Read-only: it reports problems and names the fix, and never changes anything, also not in VS Code's or a repo's files.
+Verify this machine. Read-only: it reports problems and names the fix, and changes nothing, also not in VS Code's or a repo's files. The one exception is loadout's own state: it drops open "Now do this" steps that no longer hold from `open-steps.json` ([when they clear](state-and-sync.md#at-each-session-start)) before it prints the ones still open.
 
 ```
 loadout check [--verbose]
