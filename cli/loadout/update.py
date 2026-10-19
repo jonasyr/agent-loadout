@@ -34,6 +34,7 @@ class PlanItem:
     entry: dict | None = None  # the catalog entry (tool items)
     local: tuple = ()  # the installed version (tool-update)
     how: str = ""  # who updates it: mise, brew or the catalog command (tool-update)
+    ids: tuple = ()  # the plugin ids the item refreshes (claude-plugins-refresh)
 
 
 def _date(ts) -> str:
@@ -76,7 +77,7 @@ def _claude_refresh_item(items: list) -> None:
     cmds = [["claude", "plugin", "marketplace", "update"],
             *(["claude", "plugin", "update", out.printable(pid), "--scope", "user"] for pid in todo)]
     items.append(("claude-plugins-refresh", f"Claude Code plugins: refresh {len(todo)}", cmds, False, "", (), None, (),
-                  ""))
+                  "", tuple(todo)))
 
 
 def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) -> list[PlanItem]:
@@ -115,8 +116,9 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
                       cmds, optional, entry["id"], (), entry, (), ""))
     first = "Re-apply the loadout setup" + (f": {', '.join(parts)}" if parts else "")
     plan = [PlanItem(1, "reapply", first, [])]
-    for kind, label, cmds, optional, key, latest, entry, local, how in items:
-        plan.append(PlanItem(len(plan) + 1, kind, label, cmds, optional, key, latest, entry, local, how))
+    for kind, label, cmds, optional, key, latest, entry, local, how, *ids in items:
+        plan.append(PlanItem(len(plan) + 1, kind, label, cmds, optional, key, latest, entry, local, how,
+                             ids[0] if ids else ()))
     return plan
 
 
@@ -223,7 +225,11 @@ def _exec(argv: list[str], windows: bool | None = None) -> NoReturn:
     sys.stdout.flush()
     sys.stderr.flush()
     if os.name == "nt" if windows is None else windows:
-        sys.exit(subprocess.call(cmd))
+        try:
+            code = subprocess.call(cmd)
+        except KeyboardInterrupt:  # Ctrl+C reaches both: the child prints the interrupt message, the parent just ends
+            code = 130
+        sys.exit(code)
     os.execv(exe, cmd)
 
 
@@ -235,17 +241,39 @@ def run(yes: bool, ask: Callable[[str], str], *, argv: list[str]) -> int:
         return 1
     try:
         summary = Summary()
-        if os.environ.get(PULLED) == "1":
-            summary.changed.append("kit: pulled new commits (this run continued in them)")
+        if os.environ.get(PULLED):
+            _after_restart(summary)
         elif _pull(summary):
             maintenance._release_lock()  # the new process takes it again (POSIX keeps the pid, Windows gets a new one)
-            os.environ[PULLED] = "1"
+            # "1": the kit moved; "personal": the personal layer moved too (the new process names both)
+            os.environ[PULLED] = "personal" if "personal layer: pulled new commits" in summary.changed else "1"
             out.status("Restart", "continuing in the pulled code")
             return _exec(["update", *argv])
         _apply(yes, ask, summary)
         return 0
     finally:
         maintenance._release_lock()
+
+
+def _paused_fix(label: str, root, reason: str, files: list[str]) -> tuple[str, str]:
+    what = f"{label}: not pulled: {out.printable(reason)}"
+    if files:
+        what += ": " + ", ".join(out.printable(f) for f in files)
+        return what, f"commit or stash them in {out.printable(str(root))}, then run loadout update"
+    return what, f"resolve it in {out.printable(str(root))}, then run loadout update"
+
+
+def _after_restart(summary: Summary) -> None:
+    """The restarted run: what the first process pulled, and every pull git refused (sync-paused.json)."""
+    summary.changed.append("kit: pulled new commits (this run continued in them)")
+    if os.environ.get(PULLED) == "personal":
+        summary.changed.append("personal layer: pulled new commits")
+    paused = maintenance.paused()
+    for label, root in (("kit", paths.kit_root()), ("personal layer", paths.personal_root())):
+        entry = paused.get(str(root))
+        if entry:
+            files = [f for f in entry.get("files") or [] if isinstance(f, str)]
+            summary.failed.append(_paused_fix(label, root, entry["reason"], files))
 
 
 def _pull(summary: Summary) -> bool:
@@ -262,13 +290,7 @@ def _pull(summary: Summary) -> bool:
         pulled_any = True
         res = maintenance.pull(root)
         if res.paused:
-            what = f"{label}: not pulled: {out.printable(res.paused)}"
-            if res.files:
-                what += ": " + ", ".join(out.printable(f) for f in res.files)
-                fix = f"commit or stash them in {out.printable(str(root))}, then run loadout update"
-            else:
-                fix = f"resolve it in {out.printable(str(root))}, then run loadout update"
-            summary.failed.append((what, fix))
+            summary.failed.append(_paused_fix(label, root, res.paused, res.files))
             out.status(label.capitalize(), f"not pulled: {out.printable(res.paused)}", "warn")
         elif res.pulled:
             out.status(label.capitalize(), "pulled new commits")
@@ -327,8 +349,9 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, kinds: set[str], in_pl
         summary.changed.append("Codex plugins: left as they are (they refresh together with item 1, the re-apply)")
 
 
-def _refresh_claude_plugins(summary: Summary) -> None:
-    todo = _claude_refresh_todo()
+def _refresh_claude_plugins(item: PlanItem, summary: Summary) -> None:
+    """Exactly the plugins the plan showed (a plugin installed by this run is already current)."""
+    todo = list(item.ids)
     runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)  # the marketplaces first
     updated = failed = 0
     with out.step("Claude Code plugins", total=len(todo)) as st:
@@ -358,9 +381,10 @@ def _update_tool(item: PlanItem, summary: Summary) -> None:
                 print("  command: " + " ".join(cmd))
             res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
             all_ok = all_ok and res.ok
+            text = redact((res.stderr or res.stdout).strip()[:300])
             if not res.ok:
-                errors.append(res.stderr.strip()[:300])
-            out.detail("ok" if res.ok else f"failed: {res.stderr.strip()[:300]}")
+                errors.append(text)
+            out.detail("ok" if res.ok else f"failed: {out.printable(text)}")
     now = versions.local_version(entry)
     if how == "mise":  # mise decides what is outdated (minimum_release_age): no bookkeeping of our own
         maintenance._remember_refused(tid, None)
@@ -421,8 +445,9 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
     kinds, in_plan = {i.kind for i in chosen}, {i.kind for i in plan}
     bk = Backup(description="update: re-apply the setup")
     _reapply(bk, claude_on, codex_ok, kinds, in_plan, summary)
-    if claude_on and "claude-plugins-refresh" in kinds:
-        _refresh_claude_plugins(summary)
+    for item in chosen:
+        if claude_on and item.kind == "claude-plugins-refresh":
+            _refresh_claude_plugins(item, summary)
     settings_path = paths.claude_home() / "settings.json"
     before = load_json(settings_path) if claude_on else {}  # Codex only: Claude Code's file is not read at all
     ran = False
