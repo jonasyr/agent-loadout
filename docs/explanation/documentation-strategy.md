@@ -65,7 +65,7 @@ Examples from two kinds of projects:
 
 Diátaxis is a guide, not a template. **A small repo creates only the types it has content for.** A 500-line CLI may need nothing but `docs/reference/` and one ADR. Empty folders help nobody.
 
-Canonical adopted Diátaxis across its technical documentation [Canonical 2021]; the Diátaxis site carries testimonials from teams at Gatsby, Cloudflare and Vonage [Diátaxis].
+Canonical announced in 2021 that it was adopting Diátaxis across its documentation [Canonical 2021]; the Diátaxis site carries testimonials from teams at Gatsby, Cloudflare and Vonage [Diátaxis].
 
 ## ADRs: decisions with their reasons
 
@@ -105,20 +105,20 @@ keeping tables as single chunks.
 - Tables longer than 512 tokens still need a separate rule (open).
 ```
 
-Why it matters: for humans, an ADR answers "why on earth is it like this?" in a minute instead of an afternoon of `git blame`. For agents, it is the difference between "this looks odd, let me clean it up" and "this was decided on purpose, see ADR 0003". Thoughtworks put lightweight ADRs in the "Adopt" ring of its Technology Radar and prefers keeping them in source control over a wiki [Thoughtworks 2018].
+Why it matters: for humans, an ADR answers "why on earth is it like this?" in a minute instead of an afternoon of `git blame`. For agents, it is the difference between "this looks odd, let me clean it up" and "this was decided on purpose, see ADR 0003". Thoughtworks first put lightweight ADRs in the "Adopt" ring of its Technology Radar in November 2017 and recommends keeping them in source control instead of a wiki or website [Thoughtworks 2017].
 
 ## Why this suits coding agents
 
 - **Lean always-loaded context.** AGENTS.md is loaded into every session, so it should hold only what is needed on every task: commands, hard conventions, a map. Anthropic's guidance for agents is "the smallest possible set of high-signal tokens", and Claude Code's docs recommend keeping each CLAUDE.md under 200 lines, because longer files cost context and reduce adherence [Anthropic 2025; Claude Code memory docs].
 - **Details on demand.** The map tells the agent where the facts are, and it reads the one page it needs, when it needs it. This is the "just in time" pattern Anthropic describes: keep lightweight identifiers such as file paths and load the data with tools at runtime [Anthropic 2025].
 - **Verifiable claims.** A fact with one home can be checked against the code once and fixed once. A fact with five copies cannot.
-- **Agent-neutral.** AGENTS.md works with the agents listed above; nothing about the structure is tied to Claude Code. (loadout's skills that maintain it run in Claude Code and Codex.)
+- **Agent-neutral.** AGENTS.md works with the agents listed above; nothing about the structure is tied to Claude Code. (loadout's skills that maintain it run in Claude Code and the Codex CLI.)
 
 The evidence on context files themselves is mixed, which is exactly why the kit keeps AGENTS.md small. One 2026 study found that context files, both LLM-generated and developer-written, did not generally improve task success, raised inference cost by over 20%, and that repository overviews in particular did not help; agents did follow the instructions, and the files were useful for specifying non-standard practices [Gloaguen 2026]. Another found that an AGENTS.md was associated with 28.64% lower median runtime and 16.58% fewer output tokens with comparable task completion [Lulla 2026]. Both are preprints. The common thread: a short file with the non-obvious commands and conventions earns its place; a long overview mostly costs tokens.
 
 ## How the kit keeps it true
 
-Writing good docs once is the easy part. loadout ships three skills for keeping them right, in Claude Code and Codex:
+Writing good docs once is the easy part. loadout ships three skills for keeping them right, in Claude Code and the Codex CLI (VS Code's Codex extension loads no plugins: run them from `codex` in its terminal):
 
 | Skill | When | What it does |
 |---|---|---|
@@ -126,7 +126,7 @@ Writing good docs once is the easy part. loadout ships three skills for keeping 
 | `/loadout:docs-sync` | End of every feature, before merging | Reads the branch diff, decides which facts changed and which layer owns each, updates only those (a new decision becomes an ADR), checks every link and path it touched, and commits separately as `docs: …` after approval. A small change usually touches zero or one doc file; if it finds widespread rot, it stops and recommends an audit. |
 | `/loadout:docs-audit` | On request, when docs may be stale or duplicated | Inventories every doc artifact, extracts each claim (commands, paths, symbols, defaults, behaviour, decisions, status), verifies it against the current code, and classifies it: correct, stale, wrong, unclear, contradictory, duplicated, misplaced or unverifiable. It also lists what is missing. Anything the code cannot settle it asks you, in batches; it never guesses intent. It proposes the target structure before rewriting, validates every link afterwards, and commits per layer after approval. Its checklist lives in `.loadout/docs-audit/<date>.md`, so it can resume after a context reset or in a new session. |
 
-All three read the rules and the sections of this page they need (the four kinds of docs, ADRs) from your clone of the kit (`loadout kit-path`), so they write pages and ADRs in this format in Claude Code and Codex alike.
+All three read the rules and the sections of this page they need (the four kinds of docs, ADRs) from your clone of the kit (`loadout kit-path`), so they write pages and ADRs in this format in Claude Code and the Codex CLI alike.
 
 The audit is deliberately thorough and expensive; it runs only when you invoke it. docs-sync is the cheap habit that makes audits rare.
 
@@ -183,12 +183,12 @@ The copy had already drifted: the code says `MAX_TITLE_LEN = 120`.
 
 | Situation | Steps |
 |---|---|
-| New project | `loadout init`, then the onboard skill (`/loadout:onboard` in Claude Code, `$loadout:onboard` in Codex, or ask Codex to use the `loadout:onboard` skill) |
+| New project | `loadout init`, then the onboard skill: `/loadout:onboard` in Claude Code, `$loadout:onboard` in the Codex CLI (VS Code's Codex extension cannot run it) |
 | Existing repo | `loadout init` (never overwrites a scaffold file; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then the onboard skill |
 | Existing repo with messy docs | Then `/loadout:docs-audit` |
 | Every feature | `/loadout:docs-sync` before merging |
 
-`loadout init` shows a plan, asks, then scaffolds whatever is missing of `.loadout.json`, AGENTS.md, CLAUDE.md (`@AGENTS.md`), `docs/README.md` and `docs/adr/README.md`, and adds `.claude/settings.local.json` and `.serena/cache/` to `.gitignore`. In a repo that is not for Claude Code it leaves out CLAUDE.md and the `.claude/settings.local.json` line ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)).
+`loadout init` shows a plan, asks, then scaffolds what is missing ([loadout init](../reference/cli.md#loadout-init)).
 
 **Without the kit**
 
@@ -246,7 +246,7 @@ Practitioner sources:
 - [Canonical 2021] Daniele Procida. *Diátaxis, a new foundation for Canonical documentation.* <https://canonical.com/blog/diataxis-a-new-foundation-for-canonical-documentation>
 - [Nygard 2011] Michael Nygard. *Documenting Architecture Decisions.* <https://www.cognitect.com/blog/2011/11/15/documenting-architecture-decisions>
 - [adr.github.io] *Architectural Decision Records.* <https://adr.github.io/>
-- [Thoughtworks 2018] Thoughtworks Technology Radar. *Lightweight Architecture Decision Records* (Adopt, May 2018). <https://www.thoughtworks.com/radar/techniques/lightweight-architecture-decision-records>
+- [Thoughtworks 2017] Thoughtworks Technology Radar. *Lightweight Architecture Decision Records* (Adopt since November 2017; also Adopt in May 2018). <https://www.thoughtworks.com/radar/techniques/lightweight-architecture-decision-records>
 - [Write the Docs] *Docs as Code.* <https://www.writethedocs.org/guide/docs-as-code/>
 - [agents.md] *AGENTS.md.* <https://agents.md/>
 - [Anthropic 2025] Anthropic. *Effective context engineering for AI agents.* <https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents>

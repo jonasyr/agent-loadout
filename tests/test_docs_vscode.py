@@ -44,7 +44,7 @@ def test_pr3_fixes_are_documented():
     cli = (root / "docs/reference/cli.md").read_text(encoding="utf-8")
     trouble = (root / "docs/how-to/troubleshooting.md").read_text(encoding="utf-8")
     skill = (root / "plugins/loadout/skills/configure/SKILL.md").read_text(encoding="utf-8")
-    assert "loadout bootstrap --vscode-path" in howto and "WSL: Restart" in howto
+    assert "loadout bootstrap --vscode-path" in howto and "wsl --shutdown" in howto and "WSL: Restart" not in howto
     assert "bundled" in howto and "claude plugin" in howto
     assert "profile" in howto and ".vscode/settings.json" in howto
     assert "[--vscode-path]" in cli and "| `--vscode-path` |" in cli

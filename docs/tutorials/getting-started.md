@@ -1,6 +1,6 @@
 # Getting started
 
-This tutorial takes you from nothing to a first session in Claude Code or Codex with loadout. It follows one path. For details on any step, follow the links to the how-to and reference pages. For Windows, WSL, Codex on the other side, or a machine or repo that already has parts set up, first find your path in [Find the path for your setup](../how-to/setups.md).
+This tutorial takes you from nothing to a first session in Claude Code or Codex with loadout. It follows one path: Linux, macOS or WSL 2, in a terminal, with bootstrap asking its questions. To choose your platform, agents and surface (terminal, VS Code or both) first, read [Pick your setup](../how-to/setups.md#recommended-setups); it names the flags for each path. For details on any step, follow the links.
 
 ## Before you start
 
@@ -9,13 +9,13 @@ This tutorial takes you from nothing to a first session in Claude Code or Codex 
 | git and curl | `sudo apt install git curl` (Debian/Ubuntu; other distros: their package manager) | `xcode-select --install` (provides git; curl is included) | `winget install --id Git.Git -e`, then open a new PowerShell (Git Bash runs the hooks) |
 | After bootstrap | log in to your agents (`claude`, `codex`), then `gh auth login` and `gh auth setup-git` | same | same |
 
-Bootstrap installs everything else that is missing, in your home folder and without sudo: uv (which also provides Python), the agents you chose (Claude Code, Codex), Node.js, gh and the tools in [Included tools](../reference/included-tools.md#command-line-tools). It never replaces a tool you already have. The installers run without a further prompt; see [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
+Bootstrap installs everything else that is missing, in your home folder and without sudo: uv (which also provides Python), the agents you chose (Claude Code, Codex), Node.js, gh and the tools in [Included tools](../reference/included-tools.md#command-line-tools). It never replaces a tool you already have. The installers run without a further prompt (one exception: with VS Code's Codex extension and no Codex CLI, bootstrap asks before it installs the Codex CLI); see [Security and trust](../explanation/security-and-trust.md#what-runs-when-you-ask).
 
 Optional, only if you turn on Claude Code's sandbox (Linux, WSL 2): `sudo apt-get install bubblewrap socat`.
 
-## Step 1: Run bootstrap
+Working in VS Code? The steps are the same; what differs is in [Use loadout with VS Code](../how-to/vscode.md).
 
-To let Codex or Claude Code run these steps for you, give it [Set loadout up from inside an agent](../how-to/install-with-an-agent.md).
+## Step 1: Run bootstrap
 
 On Linux, macOS and WSL 2, run the one-liner. It clones the kit into `./agent-loadout` (to choose another folder, add `--dir PATH` after the `--`, for example `bash -s -- --install --dir ~/tools/agent-loadout`) and runs bootstrap:
 
@@ -24,7 +24,7 @@ cd ~
 curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install
 ```
 
-The `cd ~` matters because the clone stays where you run this (on WSL, a shell started from Windows opens in `/mnt/c`).
+The `cd ~` matters because the clone stays where you run this (in WSL, a shell started from Windows opens in `/mnt/c`).
 
 Prefer to read the code first? Clone it and run the same script:
 
@@ -34,7 +34,7 @@ git clone https://github.com/jonasyr/agent-loadout && cd agent-loadout && ./boot
 
 Keep the clone where it is. The installed links point into it. `~/.local/bin/loadout` is a small launcher script. Bootstrap adds `~/.local/bin` and the folders of the tools it installed to your shell profile (block `# loadout PATH`), so open a new terminal when it is done. It ends with the steps still open on your machine.
 
-On Windows, use WSL 2: open a WSL terminal, not PowerShell, and follow the steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md) (WSL version, repo location, Windows binaries on your `PATH`, sandbox packages); `loadout check` warns about each of these it can see.
+On Windows, use WSL 2: open a WSL terminal, not PowerShell, and run the steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md); `loadout check` warns about each problem from that page it can see.
 
 Go on with [What bootstrap asks](#what-bootstrap-asks).
 
@@ -42,7 +42,7 @@ Go on with [What bootstrap asks](#what-bootstrap-asks).
 
 Native Windows is experimental and not recommended. Use WSL 2 if you can.
 
-1. Install Git for Windows (`winget install --id Git.Git -e`), then open a new PowerShell. `bootstrap.ps1` only warns when `bash` is missing, but the hooks of both agents run in Git Bash. Python is not needed: uv provides it.
+1. Install Git for Windows (`winget install --id Git.Git -e`), then open a new PowerShell. The hooks of both agents run in Git Bash. Python is not needed: uv provides it.
 2. In PowerShell, run the one-liner (it clones into `.\agent-loadout` in the current folder):
 
    ```powershell
@@ -58,25 +58,29 @@ Native Windows is experimental and not recommended. Use WSL 2 if you can.
    powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap.ps1 --install
    ```
 
-   If you plan to keep secrets in `secrets.env`, also run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`: `Bypass` only lets this one command run, `RemoteSigned` lets your PowerShell profiles (and with them the secrets loader) run. Why: [Troubleshooting, Windows](../how-to/troubleshooting.md#windows).
-3. Bootstrap writes the secrets loader into both your Windows PowerShell and PowerShell 7 profiles, and adds the tool folders to your user PATH.
-4. Bootstrap installs codebase-memory-mcp with its `install.ps1`. The optional rtk has no Windows install command; install it by hand if you want it.
-5. Without Developer Mode, Windows cannot create the links, and loadout copies files instead. Enable Developer Mode and re-run bootstrap to switch back to links. See [Troubleshooting](../how-to/troubleshooting.md).
+What differs from the path above:
+
+- Bootstrap writes the secrets loader into your Windows PowerShell and PowerShell 7 profiles and adds the tool folders to your user PATH. If you keep secrets in `secrets.env`, also run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` so those profiles run ([why](../how-to/troubleshooting.md#windows)).
+- codebase-memory-mcp is installed with its `install.ps1`. The optional rtk has no Windows install command; install it by hand if you want it.
+- Without Developer Mode, Windows cannot create links, and loadout copies files instead. Turn on Developer Mode and re-run bootstrap to switch back to links ([Troubleshooting](../how-to/troubleshooting.md#windows)).
 
 Go on with [What bootstrap asks](#what-bootstrap-asks).
 
 ## What bootstrap asks
 
-Bootstrap is safe to re-run. It works in four steps, prints one status line for each (`--verbose` prints every detail) and asks only where it needs your answer.
+Bootstrap is safe to re-run. It prints one status line per stage (`--verbose` prints every detail) and asks only where it needs your answer, in this order:
 
-1. **Your personal layer.** Paste the git URL of your own personal repo to clone it. Leave it empty to create a starter. The starter asks four short questions about you, then shows the recommended working preferences on one screen: Enter takes them, `n` asks each one. If you already have a personal layer on this machine, bootstrap uses it and asks nothing. To sync it across machines, keep it in a private git repo: [Keep your personal layer in a private git repo](../how-to/personal-repo.md).
-2. **Your coding agents.** Claude Code, Codex, or both; bootstrap installs and sets up exactly those. It asks only when your personal layer has not chosen yet: a layer you just cloned, or the one already on this machine, brings its choice (`targets.json`), and bootstrap says so. A starter asks before its own questions. `--agents codex` (or `claude,codex`) chooses without asking and wins over the layer's choice. Bootstrap also skips the question and sets up Claude Code with `--yes`, without a terminal, or when a personal layer exists but `codex` is not installed (details: [`loadout bootstrap`](../reference/cli.md#loadout-bootstrap)). See [Use loadout with Codex](../how-to/codex.md).
-3. **Preferences and add-ons.** `Customize preferences and global add-ons now? [y/N]` starts the configure wizard. You can run it later with `loadout configure`. See [Set your working preferences](../how-to/set-preferences.md).
-4. **Your existing setup.** If Claude Code already has plugins, MCP servers, skills or hooks, `loadout adopt` reviews them. It offers to remove superseded or duplicate tools, to disable per-project tools globally, and to move plaintext secrets into `secrets.env`. For tools loadout does not manage, it asks whether to record them globally, put them in a personal profile, leave them, or remove them. Nothing changes without your answer. See [Handle your own tools](../how-to/your-own-tools.md).
+1. **Your personal layer.** `Personal layer: git URL to clone (empty = create a starter one):` Paste the git URL of your own personal repo to clone it, or press Enter to create a starter. If a personal layer already exists on this machine, bootstrap uses it and asks nothing. To sync it across machines, keep it in a private git repo: [Keep your personal layer in a private git repo](../how-to/personal-repo.md).
+2. **Your coding agents.** `Which coding agents should loadout set up?  1) Claude Code  2) Codex  3) both  [1]`. Bootstrap installs and sets up exactly those. Enter takes the default in brackets: both (`[3]`) when bootstrap sees a Codex (a Codex CLI; VS Code's Codex extension alone does not count), that is a `codex` on your PATH or, in WSL, a Windows `codex.exe`; otherwise Claude Code (`[1]`). A layer that already chose brings its choice (`targets.json`); after a clone bootstrap says so (`using your personal layer's agents: ...`). With a starter, this question comes before the starter's own questions. See [Use loadout with Codex](../how-to/codex.md); flags, and when bootstrap does not ask: [`loadout bootstrap`](../reference/cli.md#loadout-bootstrap).
+3. **About you (starter only).** Four short questions (name, role, main languages, anything else about how you work), then the recommended working preferences on one screen: `Use these? [Y/n]`. Enter takes them; `n` asks each one.
+4. **Only in some setups.** In WSL with a Codex on Windows: which side to set up (`Your Codex runs on Windows. Set loadout up for:  1) Codex in WSL (…)  2) Codex on Windows (…)  [1]`) and whether to switch VS Code's Codex extension to WSL ([Codex in WSL](../how-to/wsl.md#codex)). With VS Code's Codex extension and no Codex CLI: `Install the Codex CLI alongside VS Code (for /hooks and plugins)? [Y/n]`; Enter (yes) is the recommended answer ([The Codex CLI alongside VS Code](../how-to/vscode.md#the-codex-cli-alongside-vs-code)).
+5. **Preferences and add-ons.** `Customize preferences and global add-ons now? [y/N]` starts the configure wizard. Enter skips it; the defaults are the recommended ones, and you can run it later with `loadout configure`. See [Set your working preferences](../how-to/set-preferences.md).
+6. **Your existing setup (with Claude Code on).** If Claude Code already has plugins, MCP servers, skills or hooks, `loadout adopt` reviews them. It offers to remove superseded or duplicate tools, to disable per-project tools globally, and to move plaintext secrets into `secrets.env`. For tools loadout does not manage, it asks whether to record them globally, put them in a personal profile, leave them, or remove them. Nothing changes without your answer. See [Handle your own tools](../how-to/your-own-tools.md).
+7. **VS Code's PATH (WSL only).** In WSL with VS Code's Remote-WSL server (`~/.vscode-server`), when a tool folder is missing from its PATH, bootstrap prints a plan and asks `Add loadout's tool folders to PATH for VS Code's Remote-WSL windows (~/.vscode-server/server-env-setup, backup first)? [y/N]` ([MCP servers in a Remote-WSL window](../how-to/vscode.md#mcp-servers-in-a-remote-wsl-window)).
 
-Items you own that bootstrap removes or replaces go into a backup first. The end of the output names it and shows the undo command. See [Undo what loadout changed](../how-to/undo-and-restore.md).
+Items you own that bootstrap removes or replaces go into a backup first. The end of the output shows how to undo it (`Undo any time: loadout restore --list`); `--verbose` also names the backup folder. See [Undo what loadout changed](../how-to/undo-and-restore.md).
 
-Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input), or with `--yes`, bootstrap asks nothing. Without a terminal it also skips the configure prompt and the adopt step and says so. It still runs `--install` when given, links files, creates the personal layer from `--personal` (a starter with default preferences, or your `--answers`, when not given), merges settings, applies your MCP servers and sets up plugins. Pass `--yes` to apply adopt's default groups (remove, migrate, scope-down) plus moving plaintext secrets, without asking. The flags are in the [CLI reference](../reference/cli.md#loadout-bootstrap).
+Without a terminal (CI, `ssh host ./bootstrap.sh`, piped input), or with `--yes`, bootstrap asks nothing and takes the defaults. What it then does and skips is in the [CLI reference](../reference/cli.md#when-bootstrap-does-not-ask).
 
 ## Log in
 
@@ -94,9 +98,11 @@ Log in only to the agents you chose.
 
 Codex runs plugin hooks, and the Serena hooks loadout writes into `~/.codex/hooks.json`, only after you approve them. Start `codex`, run `/hooks` and approve them. loadout never does this for you; which hooks there are is in [Hooks](../reference/hooks.md).
 
+Using VS Code's Codex extension without the Codex CLI? The extension has no `/hooks`, and you log in to MCP servers in the extension. Bootstrap's "Still to do" says how to approve the hooks (install the CLI, then run `codex` once in VS Code's terminal). See [Codex in VS Code without the CLI](../how-to/vscode.md#codex-in-vs-code-without-the-cli).
+
 ## Verify
 
-Restart your agent: Claude Code (or run `/reload-plugins`) and Codex; if you chose only one, restart that one. Then run:
+Restart your agent: Claude Code (or run `/reload-plugins`) and Codex; if you chose only one, restart that one. In VS Code, reload the window (Developer: Reload Window). Then run:
 
 ```bash
 loadout check
@@ -106,14 +112,20 @@ It is read-only. It prints `Health check: N of M OK`, then only the problems, an
 
 ## Prepare a project
 
-In a repo, new or old:
+In a project folder (`loadout init` offers `git init` if it is not a git repo yet):
 
 ```bash
 cd my-project
 loadout init
 ```
 
-`loadout init` asks which agents the repo is for and which profiles to apply (domain tools), then shows a plan of every file it would write and asks `Apply these changes? [y/N]`. It creates `.loadout.json` (the repo's agents, committed), `AGENTS.md`, a `docs/` folder and `.gitignore` entries (with Claude Code also `CLAUDE.md`), and never overwrites an existing scaffold file. Profiles write the repo's shared files for the repo's agents, which your teammates' agents read too: for Claude Code `.claude/settings.json`, `.mcp.json` and `.claude/skills`, for Codex `.codex/config.toml` and `.agents/skills` ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)). The table and the rules are in the [CLI reference](../reference/cli.md#loadout-profile). Without a terminal it writes nothing unless you pass `--yes`; `--dry-run` shows the plan only. An applied run ends with `undo: loadout restore <dir>`. With Codex, start `codex` in the repo once and accept the trust question, or Codex ignores the repo's `.codex/config.toml` ([project trust](../how-to/codex.md#project-trust)). Then open your agent in the repo and run the onboard skill:
+1. **Agents.** `Which agents is this repo for? 1 Claude Code, 2 Codex, 3 both`. Enter takes the agents you use. The answer decides the repo's files for everyone who clones it, so pick the agents your team uses. A repo whose `.loadout.json` already names its agents is not asked.
+2. **Profiles.** It prints the profiles (domain tools) it suggests for what it finds in the repo, then asks `profiles to apply (comma separated, empty = suggested, '-' = none):`. Enter takes the suggested ones.
+3. **The plan.** It lists every file it would write: `.loadout.json` (the repo's agents, commit it), `AGENTS.md`, a `docs/` folder, `.gitignore` entries (with Claude Code also `CLAUDE.md`), and the shared files the profiles write for the repo's agents. It never overwrites an existing scaffold file. Which files each agent gets: [`loadout profile`](../reference/cli.md#loadout-profile).
+4. **Apply.** `Apply these changes? [y/N]`: answer `y`. The run ends with `undo: loadout restore <dir>`; a planned `git init` is the one step restore does not undo.
+5. **Codex only: trust the repo.** Start `codex` in the repo once and accept the trust question, or Codex ignores the repo's `.codex/config.toml` ([Project trust](../how-to/codex.md#project-trust)).
+
+Then open your agent in the repo and run the onboard skill:
 
 ```
 /loadout:onboard      # Claude Code
@@ -126,11 +138,12 @@ The skill reads the project and fills in the documentation. To add a profile lat
 
 After setup you do not have to run anything to stay current.
 
-A session hook pulls the kit and your personal layer once a day, and a weekly check tells you when tool binaries have updates (`loadout update` applies them after asking). Claude Code updates its plugins itself; for Codex, loadout refreshes them after a pull that brought new commits. How this works: [The daily sync](../explanation/architecture.md#the-daily-sync). What runs without asking, and how to opt out, is in [Security and trust](../explanation/security-and-trust.md).
+A session hook pulls the kit and your personal layer once a day, and a weekly check tells you when tool binaries have updates (`loadout update` applies them after asking). Claude Code updates its plugins itself; for Codex, loadout refreshes them after a pull that brought new commits, when the Codex CLI is installed. How this works: [The daily sync](../reference/state-and-sync.md#the-daily-sync). What runs without asking, and how to opt out, is in [Security and trust](../explanation/security-and-trust.md).
 
 ## Next
 
 - Questions or changes from now on: ask your agent in plain words ([Ask your agent about loadout](../how-to/ask-about-loadout.md)).
+- Let your agent run these steps on the next machine: [Set loadout up from inside an agent](../how-to/install-with-an-agent.md).
 - Change preferences: [Set your working preferences](../how-to/set-preferences.md).
 - Something went wrong: [Undo what loadout changed](../how-to/undo-and-restore.md).
 - All commands: [CLI reference](../reference/cli.md).

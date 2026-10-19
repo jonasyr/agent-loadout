@@ -17,6 +17,8 @@ flowchart LR
     how your agent uses the tools`"]
     kBase["`**settings.base.json**
     the keys loadout manages`"]
+    kProf["`**profiles/**
+    per-repo add-ons`"]
   end
 
   subgraph PER["Personal layer · your git repo"]
@@ -54,8 +56,27 @@ flowchart LR
     xAgents["`**~/.codex/AGENTS.md**
     loadout's block: kit and personal rules`"]
     xConf["`**~/.codex/config.toml**
-    MCP servers, effort, notifications`"]
+    MCP servers, effort, notifications, plugin switches`"]
+    xHooks["`**~/.codex/hooks.json**
+    Serena's hooks`"]
     xSkills["`**~/.agents/skills/**`"]
+  end
+
+  serena{{"`**Serena's documented hooks**
+  written by loadout`"}}
+
+  vsc["`**VS Code extensions**
+  Claude Code and Codex read the same folders`"]
+
+  plan{{"`**repo writes**
+  plan, yes, backup`"}}
+
+  subgraph REPO["Your repo · its agents in .loadout.json"]
+    direction TB
+    rCfg["`**.loadout.json**
+    agents, manage, the record`"]
+    rFiles["`**.claude/ · .mcp.json · .codex/ · .agents/skills/**
+    settings, MCP servers, skills`"]
   end
 
   kPlugin -. "Claude Code installs and auto-updates" .-> cPlugin
@@ -67,22 +88,31 @@ flowchart LR
   snap <-. "read, then rewrite" .-> merge
   merge e7@==> cSet
   pMcp -- "claude mcp add-json" --> cMcp
-  kPlugin -. "loadout installs and refreshes" .-> xPlugin
+  kPlugin -. "loadout installs and refreshes (Codex CLI only)" .-> xPlugin
+  serena -- "owned entries" --> xHooks
   kRules -- "copied into the block" --> xAgents
   pRules -- "copied into the block" --> xAgents
   pSkills -- "link skills" --> xSkills
   pMcp -- "owned sections" --> xConf
   pSet -- "effort, notifications" --> xConf
+  vsc e16@-. reads .-> CC
+  vsc e17@-. reads .-> CX
+  kProf e18@==> plan
+  plan e19@==> rFiles
+  plan <-. "three-way against the record" .-> rCfg
 
-  class kPlugin,kRules,kBase kit
+  class kPlugin,kRules,kBase,kProf kit
   class pRules,pSkills,pSet,pMcp personal
   class cPlugin,cRulesK,cRulesP,cSkills,cSet,cMcp claude
-  class merge engine
-  class snap state
+  class merge,plan,serena engine
+  class snap,vsc state
+  class rCfg,rFiles local
   class KIT kitGroup
   class PER personalGroup
   class CC claudeGroup
-  class xPlugin,xAgents,xConf,xSkills codex
+  class xPlugin,xAgents,xConf,xHooks,xSkills codex
   class CX codexGroup
-  class e4,e5,e7 emph
+  class REPO engineGroup
+  class e4,e5,e7,e18,e19 emph
+  class e16,e17 muted
 %% palette

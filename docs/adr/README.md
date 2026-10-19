@@ -2,7 +2,7 @@
 
 An ADR records one decision: the situation, what was decided, what else was considered and what follows from it. Each file is one decision.
 
-An accepted ADR is not edited when the decision changes. A new ADR supersedes it, and the old one gets the status "Superseded by 00NN"; when only part of it is superseded, the status names that part ("Accepted; decision line superseded by 00NN"). Small corrections (a typo, a renamed file) are fine.
+An accepted ADR is not edited when the decision changes. A new ADR supersedes it, and the old one gets the status "Superseded by 00NN"; when only part of it is superseded, the status names that part ("Accepted; decision line superseded by 00NN"). The new ADR names what it supersedes in a `Supersedes:` line. An ADR that adds to an earlier one without replacing any part of it names it in an `Amends:` line, and the earlier one gets "amended by 00NN" in its status. Small corrections (a typo, a renamed file or symbol) are fine.
 
 The records 0001 to 0013 were decided when the design was written and were written down afterwards, with the date of the original decision. Each links to its source in the design specs under [`docs/superpowers/`](../superpowers/).
 
@@ -14,6 +14,8 @@ Template:
 - Status: Accepted
 - Date: YYYY-MM-DD
 - Source: link
+- Supersedes: (optional) the ADR and the part it replaces
+- Amends: (optional) the ADR it adds to
 
 ## Context
 ## Decision
@@ -43,16 +45,18 @@ Template:
 | [0017](0017-hooks-merge-per-hook-with-tombstones.md) | Hooks merge per hook (event, matcher, command) with tombstones | Accepted |
 | [0018](0018-secret-guard-fails-closed.md) | The secret guard fails closed | Accepted |
 | [0019](0019-upstream-installers-without-agent-configuration.md) | Upstream installers run without agent configuration | Accepted |
-| [0020](0020-bootstrap-installs-the-toolchain-in-user-space.md) | Bootstrap installs the toolchain in user space | Accepted |
+| [0020](0020-bootstrap-installs-the-toolchain-in-user-space.md) | Bootstrap installs the toolchain in user space | Accepted; Python minimum superseded by 0023 |
 | [0021](0021-diagrams-as-code-rendered-to-svg.md) | Diagrams as code, rendered to committed SVGs | Accepted |
 | [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted |
 | [0023](0023-python-3-11-minimum.md) | Python 3.11 minimum | Accepted |
-| [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted |
+| [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted; amended by 0033 |
 | [0025](0025-state-in-xdg-state-home.md) | loadout's own files live in XDG state, not in `~/.claude` | Accepted |
 | [0026](0026-tool-hints-never-block.md) | Tool hints add context, never block | Accepted |
 | [0027](0027-repo-files-follow-the-agents.md) | Repo files follow the agents that are on | Accepted; decision line superseded by 0030 |
 | [0028](0028-serena-codex-hooks-in-hooks-json.md) | Serena's Codex hooks as owned entries in hooks.json | Accepted |
-| [0029](0029-codex-on-windows-and-wsl.md) | Codex on Windows and WSL: one loadout per side | Accepted |
+| [0029](0029-codex-on-windows-and-wsl.md) | Codex on Windows and WSL: one loadout per side | Accepted; amended by 0034 |
 | [0030](0030-repo-files-follow-the-repos-agents.md) | Repo files follow the repo's agents | Accepted |
 | [0031](0031-repo-profile-entries-merge-three-way.md) | Profile entries in repo files merge three-way against a record | Accepted |
-| [0032](0032-vscode-extensions-are-a-surface-of-an-agent.md) | VS Code extensions are a surface of an agent | Accepted |
+| [0032](0032-vscode-extensions-are-a-surface-of-an-agent.md) | VS Code extensions are a surface of an agent | Accepted; amended by 0034 |
+| [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) | Codex set up for VS Code's Codex extension without its CLI | Accepted |
+| [0034](0034-vscode-extension-binaries-and-vscode-fixes.md) | The extensions' own binaries as runners, and VS Code fixes as asked-for plans | Accepted |

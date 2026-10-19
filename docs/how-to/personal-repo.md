@@ -43,7 +43,7 @@ git push -u origin main
 
 Bootstrap first asks for your personal layer. Paste your repo's URL there, and bootstrap clones it to `~/.config/loadout/personal` instead of creating a starter. If the cloned layer already holds an agent choice (`targets.json`), bootstrap uses it without asking which agents to set up, and says so ("using your personal layer's agents: …").
 
-A private repo needs access:
+A private repo needs access. Recommended: log in with gh and use the HTTPS URL (bootstrap's `--install` installs gh); use the SSH URL on a machine that already has an SSH key for GitHub.
 
 - **With an SSH key on that machine:** confirm GitHub's host key once with `ssh -T git@github.com` (it also tells you whether GitHub accepts your key), then paste the SSH URL (`git@github.com:YOU/loadout-personal.git`).
 - **With gh already logged in** (`gh auth status`): the HTTPS URL just works; bootstrap set git up to use your gh login.
@@ -66,6 +66,6 @@ If bootstrap already created a starter on that machine, move it aside first (`mv
 ## Day to day
 
 - **Changes:** after `loadout configure` or an interactive `loadout adopt`, loadout offers to commit and push your personal layer. It refuses while a `*.env` file or a key or credential file would be committed. You can also commit and push yourself, like any repo.
-- **Other machines:** the daily sync pulls your personal layer in the background and re-applies settings, MCP servers and links when new commits arrive, for each agent that is on ([the daily sync](../explanation/architecture.md#the-daily-sync)). A checkout with uncommitted changes is skipped, so a local edit is never overwritten.
-- **What stays on one machine:** your `leave` decisions for own tools and the state in `~/.local/state/loadout/`, which also holds Codex's records ([Machine-local state](../reference/personal-layer.md#machine-local-state), [loadout's own files](../explanation/architecture.md#loadouts-own-files)).
+- **Other machines:** the daily sync pulls your personal layer in the background and re-applies settings, MCP servers and links when new commits arrive, for each agent that is on ([the daily sync](../reference/state-and-sync.md#the-daily-sync)). A checkout with uncommitted changes is skipped, so a local edit is never overwritten (`loadout check` then warns `personal repo clean: uncommitted changes (daily sync paused)`). With only VS Code's Codex extension (no Codex CLI) the sync never starts ([At each session start](../reference/state-and-sync.md#at-each-session-start)); pull yourself (`git -C ~/.config/loadout/personal pull`) and run `loadout bootstrap`.
+- **What stays on one machine:** your `leave` decisions for own tools and the state in `~/.local/state/loadout/`, which also holds Codex's records ([Machine-local state](../reference/personal-layer.md#machine-local-state), [State folders](../reference/state-and-sync.md#state-folders)).
 - **Which agents:** the choice of Claude Code, Codex or both is `targets.json` in your personal layer, so it follows you and every machine gets the same choice. `bootstrap --agents` and `loadout configure set target` change that stored choice, for all your machines once you commit it ([Use loadout with Codex](codex.md#switch-it-on)).

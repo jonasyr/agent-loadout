@@ -19,3 +19,7 @@ The user works with Claude Code and the Codex CLI on the same machine and wants 
 - Codex runs plugin hooks only after the user approves them in `/hooks`; commit attribution stays an account setting.
 - `config.toml` sections the user edits stop being managed by loadout.
 - Project profiles and adopt for Codex follow in a second step.
+
+## In the code
+- `cli/loadout/codex.py` (`apply_instructions`, `apply_config`, `apply_skills`, `apply_plugins`, `drift`)
+- `plugins/loadout/.codex-plugin/plugin.json`, `plugins/loadout/hooks/codex.json`

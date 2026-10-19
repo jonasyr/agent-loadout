@@ -6,14 +6,14 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 
 ## Tutorials
 
-- [Getting started](tutorials/getting-started.md). Read this when you install loadout for the first time, on Linux, macOS, WSL 2 or native Windows (experimental).
+- [Getting started](tutorials/getting-started.md). Read this when you install loadout for the first time, on Linux, macOS, WSL 2 (recommended on Windows) or native Windows (experimental).
 
 ## How-to guides
 
 - [Ask your agent about loadout](how-to/ask-about-loadout.md). Read this when you have a question about loadout or want to change your setup without looking up the command.
 - [Handle your own tools](how-to/your-own-tools.md). Read this when you installed a skill, MCP server or plugin yourself (`npx`, `claude mcp add`, ...), when `adopt` or `check` lists tools loadout does not manage, or when you want to create a skill of your own.
 - [Keep your personal layer in a private git repo](how-to/personal-repo.md). Read this when you want your preferences and own tools on more than one machine.
-- [Find the path for your setup](how-to/setups.md). Read this before installing when you use Windows, WSL, Codex, or a machine or repo that already has parts set up: it names the path for each platform, agent and starting point.
+- [Pick your setup](how-to/setups.md). Read this before installing: it names one recommended path for each platform, agent choice and surface (terminal, VS Code or both), and what to do on a machine or repo that already has parts set up.
 - [Use loadout with Codex](how-to/codex.md). Read this for the Codex-only details: switching Codex on, hook approval, project trust and where it stays different.
 - [Undo what loadout changed](how-to/undo-and-restore.md). Read this when something went wrong, you want a removed tool back, or you want to undo what `loadout init`, `loadout profile` or a new repo skill wrote in a repo.
 - [Set your working preferences](how-to/set-preferences.md). Read this when you want to change answer language, commit style, effort or another preference everywhere.
@@ -36,6 +36,9 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 - [Catalog format](reference/catalog-format.md). Read this when you edit `catalog.json`.
 - [Profile format](reference/profile-format.md). Read this when you write or read a profile file.
 - [Preferences format](reference/preferences-format.md). Read this when you want the list of working preferences, their options and where each answer is stored.
+- [loadout's state and the daily sync](reference/state-and-sync.md). Read this when you want to know where loadout keeps its own state, how it moved out of `~/.claude`, and exactly what the daily sync does.
+- [Diagrams](diagrams/README.md). Read this when you change a diagram in the docs: which file in `docs/diagrams/` holds what.
+- [Modules](reference/modules.md). Read this when you want to find the file in the kit to read or change: every module of the CLI and every other part, grouped.
 
 ## Explanation
 
@@ -47,7 +50,7 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 
 ## Decisions
 
-- [Architecture decision records](adr/README.md). Read this when you want to know why something was decided, and what else was considered.
+- [Architecture decision records](adr/README.md). Read this when you want to know why something was decided, and what else was considered. The newest: [0033. Codex set up for VS Code's Codex extension without its CLI](adr/0033-codex-for-the-vscode-extension-without-its-cli.md) and [0034. The extensions' own binaries as runners, and VS Code fixes as asked-for plans](adr/0034-vscode-extension-binaries-and-vscode-fixes.md).
 
 ## Working documents
 

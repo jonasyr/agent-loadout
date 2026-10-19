@@ -9,7 +9,7 @@
 
 ### Claude Code and Codex, fully set up in one command.
 
-The best plugins, MCP servers and rules, preconfigured to work together, on every machine, and kept up to date.
+The best plugins, MCP servers and rules, preconfigured to work together, in the terminal and in VS Code, on every machine, and kept up to date.
 
 [![CI](https://github.com/jonasyr/agent-loadout/actions/workflows/ci.yml/badge.svg)](https://github.com/jonasyr/agent-loadout/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -28,16 +28,18 @@ Claude Code and Codex get much better with the right plugins, MCP servers and in
 
 ## Quick start
 
-You need git and curl; you log in to your agents and gh at the end. The one line per OS is in [Before you start](docs/tutorials/getting-started.md#before-you-start).
+**Recommended:** Linux, macOS, or WSL 2 on Windows, with the CLI of each agent you use, also when you work in VS Code. That is what the steps below set up. For another platform, one agent only, or VS Code's extensions without their CLIs, [Pick your setup](docs/how-to/setups.md#recommended-setups) names one recommended path for each combination.
+
+You need git and curl ([how to get them](docs/tutorials/getting-started.md#before-you-start)); you log in to your agents and gh at the end.
 
 > [!NOTE]
 > On Windows, use WSL 2 and read [Use loadout on Windows with WSL 2](docs/how-to/wsl.md) first. Start in your Linux home folder: a shell started from Windows opens in `/mnt/c`.
 
 ### 1. Install
 
-Both ways do the same: they put the kit in an `agent-loadout` folder and run its setup.
+Both ways put the kit in an `agent-loadout` folder and run its setup.
 
-**Quickest: one command** (clones into your home folder)
+**Recommended: one command** (clones into your home folder)
 
 ```bash
 cd ~
@@ -54,22 +56,20 @@ cd agent-loadout
 
 Keep the folder where it is: the installed links point into it.
 
-On Windows, in WSL, with Codex, or on a machine that already has parts set up: [Find the path for your setup](docs/how-to/setups.md).
-
-**Or let your agent do it.** Paste this into Codex or Claude Code; it asks you a few questions, shows the command and runs it after your yes ([how](docs/how-to/install-with-an-agent.md)):
+**Or let your agent do it.** If you already use Claude Code or Codex, paste this into it. It asks a few questions, shows the command and runs it after your yes ([how](docs/how-to/install-with-an-agent.md)):
 
 ```text
 Set up loadout for me by following https://raw.githubusercontent.com/jonasyr/agent-loadout/main/docs/how-to/install-with-an-agent.md
 ```
 
-Bootstrap first asks for your personal layer, the folder for your own preferences and tools: paste the URL of your private repo for it, or press Enter for a starter you can [turn into one later](docs/how-to/personal-repo.md). Then it asks which coding agents to set up (Claude Code, Codex or both), unless your personal layer already chose.
+Bootstrap asks for your personal layer, the folder for your own preferences and tools: paste the URL of your private repo, or press Enter for a starter you can [turn into one later](docs/how-to/personal-repo.md). Then it asks which agents to set up (Claude Code, Codex or both) and a few preferences ([what bootstrap asks](docs/tutorials/getting-started.md#what-bootstrap-asks)).
 
 <details>
 <summary>What the installer does</summary>
 
-It installs what is missing, in your home folder and without sudo: the agents you chose and every tool in [the toolset](#the-toolset), never replacing a tool you already have. `--install` runs those installers without a further prompt ([what runs when you ask](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). The one-liner clones into `./agent-loadout`; `--dir PATH` chooses another folder ([Getting started](docs/tutorials/getting-started.md#step-1-run-bootstrap)).
+It installs what is missing, in your home folder and without sudo: the agents you chose and every tool in [the toolset](#the-toolset). It never replaces a tool you already have ([what runs when you ask](docs/explanation/security-and-trust.md#what-runs-when-you-ask)). The one-liner clones into `./agent-loadout`; `--dir PATH` chooses another folder.
 
-Then it walks you through four steps (your personal layer, your coding agents, preferences, your existing setup) and, if it replaced anything, names the undo command. It ends with the steps still open on your machine. Step by step: [Getting started](docs/tutorials/getting-started.md).
+With Claude Code on, it then reviews the setup you already have and asks about each change ([your own tools](docs/how-to/your-own-tools.md)); if it replaced anything, it names the undo command. It ends with the steps still open on your machine. Step by step: [Getting started](docs/tutorials/getting-started.md).
 
 </details>
 
@@ -95,6 +95,8 @@ codex                                   # log in to Codex, if you chose it; then
 gh auth login && gh auth setup-git      # log in to GitHub
 ```
 
+**In VS Code:** the extensions read the same setup and login as the CLIs. In WSL, open your repos with `code .` from the WSL terminal ([Use loadout with VS Code](docs/how-to/vscode.md)).
+
 ### 3. Check
 
 ```bash
@@ -110,7 +112,7 @@ cd my-project
 loadout init
 ```
 
-`loadout init` asks which agents the repo is for, shows everything it would write and asks before it writes; without a terminal it writes only with `--yes` ([details](docs/reference/cli.md#loadout-init)). Then open your agent there and run the onboard skill: it reads the project and writes its documentation. In Claude Code that is `/loadout:onboard`; in Codex, write `$loadout:onboard` (or ask Codex to use the `loadout:onboard` skill). Codex reads the repo's `.codex/config.toml` only after you start `codex` there once and accept the trust question.
+`loadout init` asks which agents the repo is for, shows everything it would write and asks before it writes ([details](docs/reference/cli.md#loadout-init)). Then open your agent there and run the onboard skill, which reads the project and writes its documentation: `/loadout:onboard` in Claude Code, `$loadout:onboard` in Codex. Codex reads the repo's `.codex/config.toml` only after you start `codex` there once and accept the trust question.
 
 ### Questions or changes later
 
@@ -119,9 +121,10 @@ Ask your agent in plain words ("how do I undo yesterday's change?", "turn off Co
 ## What you get
 
 - **Both agents.** Claude Code and Codex get the same rules, tools and preferences, from one kit and one personal layer; choose one or both at setup ([Codex-only details](docs/how-to/codex.md)).
+- **Terminal and VS Code.** VS Code's Claude Code and Codex extensions read the same setup, and `loadout check` says what each extension lacks and how to fix it ([VS Code](docs/how-to/vscode.md)).
 - **Curated defaults.** The toolset complements itself instead of overlapping, and every keep or drop decision has a written reason in [`catalog.json`](catalog.json).
 - **Works on existing setups.** `loadout adopt` shows what it would change and why, asks first, and backs up what it replaces ([your own tools](docs/how-to/your-own-tools.md)).
-- **Stays up to date by itself.** loadout pulls the kit and your personal layer daily and you get a notice when tools have updates. Claude Code updates its plugins itself; for Codex, loadout refreshes them after a pull that brought new commits ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
+- **Stays up to date by itself.** loadout pulls the kit and your personal layer daily, re-applies what changed and tells you when tools have updates ([the daily sync](docs/reference/state-and-sync.md#the-daily-sync)).
 - **Yours on top.** Your preferences, own tools and profiles live in your personal layer, ideally a private git repo, so they follow you to every machine ([set it up](docs/how-to/personal-repo.md)); change them with `loadout configure` or by asking your agent ([preferences](docs/how-to/set-preferences.md)).
 - **Projects too.** `loadout init` prepares any repo for the agents you choose for it, profiles add domain tools only where needed, and three skills keep the docs true ([documentation strategy](docs/explanation/documentation-strategy.md)).
 
@@ -149,10 +152,10 @@ Domain tools (research, databases, SonarQube, Android) are added per project wit
 
 ## Why you can trust it
 
-- **It updates itself, so you trust this repo.** A daily background job runs `git pull --ff-only` on this repo and your personal layer, and the next session runs the new code. Turn it off with `LOADOUT_NO_AUTO_PULL=1`, or point your clone at a fork you review ([the daily sync](docs/explanation/architecture.md#the-daily-sync)).
+- **It updates itself, so you trust this repo.** A daily background job runs `git pull --ff-only` on this repo and your personal layer, and the next session runs the new code. Turn it off with `LOADOUT_NO_AUTO_PULL=1`, or point your clone at a fork you review ([the daily sync](docs/reference/state-and-sync.md#the-daily-sync)).
 - **What it replaces can be restored.** Before loadout removes or replaces a tool, file or link you own, it moves it into a timestamped backup, and `loadout restore` puts it back. Writes in a repo (`init`, `profile`, `configure new skill --to repo`) are shown as a plan first and backed up too. The routine sync of the kit's own settings is not backed up ([details](docs/how-to/undo-and-restore.md#what-restore-does-not-undo)).
 - **Your tools never change without your answer.** `loadout adopt` is a dry run until `--apply`, then asks per group and once more before it applies; tools loadout does not know stay as they are, and binary updates show each command and ask first.
-- **Secrets stay out of git.** Keys live in `~/.config/loadout/secrets.env` (readable only by you) and configs refer to them by name (`${VAR}` for Claude Code, `env_vars` for Codex); your own tools recorded into your personal layer pass a secret guard (values you set with `configure set pref` are not checked; [secrets](docs/explanation/security-and-trust.md#secrets)).
+- **Secrets stay out of git.** Keys live in `~/.config/loadout/secrets.env` (readable only by you), and configs refer to them by name. Your own tools recorded into your personal layer pass a secret guard; values you set with `configure set pref` are not checked ([secrets](docs/explanation/security-and-trust.md#secrets)).
 
 What runs automatically and where the trust boundary is: [Security and trust](docs/explanation/security-and-trust.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -163,12 +166,14 @@ The full index is [docs/README.md](docs/README.md).
 | I want to | Read |
 |---|---|
 | Ask a question or change my setup | [Ask your agent about loadout](docs/how-to/ask-about-loadout.md) |
+| Pick the install path for my platform, agents and VS Code | [Pick your setup](docs/how-to/setups.md#recommended-setups) |
 | Install step by step, per platform | [Getting started](docs/tutorials/getting-started.md) |
 | Decide what happens to tools I already have | [Handle your own tools](docs/how-to/your-own-tools.md) |
 | I installed a skill or MCP server myself, or want to write a skill | [You installed a tool yourself](docs/how-to/your-own-tools.md#you-installed-a-tool-yourself), [Create a skill of your own](docs/how-to/your-own-tools.md#create-a-skill-of-your-own) |
 | Undo something loadout changed | [Undo what loadout changed](docs/how-to/undo-and-restore.md) |
 | Change my preferences or add tools globally | [Set your working preferences](docs/how-to/set-preferences.md) |
 | Switch Codex on, or see what is Codex-only | [Use loadout with Codex](docs/how-to/codex.md) |
+| Use VS Code's Claude Code or Codex extension | [Use loadout with VS Code](docs/how-to/vscode.md) |
 | Use my preferences and own tools on every machine | [Keep your personal layer in a private git repo](docs/how-to/personal-repo.md) |
 | Add domain tools to one repo | [Write a personal profile](docs/how-to/write-a-profile.md), [Profile format](docs/reference/profile-format.md) |
 | Fix a problem | [Troubleshooting](docs/how-to/troubleshooting.md) |

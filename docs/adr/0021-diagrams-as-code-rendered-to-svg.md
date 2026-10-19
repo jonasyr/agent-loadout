@@ -18,3 +18,7 @@ Each diagram's Mermaid source lives in `docs/diagrams/<name>.mmd` without colour
 ## Consequences
 - Changing a diagram needs podman or docker locally ([CONTRIBUTING](../../CONTRIBUTING.md#diagrams)).
 - The SVGs are binary-like diffs in review; the `.mmd` diff is what reviewers read.
+
+## In the code
+- `docs/diagrams/` (the `.mmd` sources and their SVGs), `docs/diagrams/render.sh`
+- `tests/test_diagrams.py`

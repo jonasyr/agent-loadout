@@ -25,9 +25,11 @@ WSL 1 has a regression where Claude Code's native binary fails with `Exec format
 
 Open the WSL terminal, not PowerShell. Run `cd ~`, then follow [Step 1 of the tutorial](../tutorials/getting-started.md#step-1-run-bootstrap) inside WSL.
 
-With Codex only and VS Code, follow [Codex only on Windows with VS Code](setups.md#codex-only-on-windows-with-vs-code) instead.
+With Codex only and VS Code, follow [Codex only on Windows with VS Code](setups.md#codex-only-on-windows-with-vs-code) instead. Which path fits your agents and surface: [Pick your setup](setups.md#recommended-setups).
 
-Keep the clone in the Linux home: the installed links point into it. Choose Claude Code, Codex or both when bootstrap asks. Then restart Claude Code and/or Codex, whichever you chose (in Codex, approve loadout's hooks once with `/hooks`, see [Use loadout with Codex](codex.md#switch-it-on)), and run `loadout check`.
+Keep the clone in the Linux home: the installed links point into it. Choose Claude Code, Codex or both when bootstrap asks. Then restart Claude Code and/or Codex, whichever you chose (in the Codex CLI, approve loadout's hooks once with `/hooks`, see [Use loadout with Codex](codex.md#switch-it-on); VS Code's Codex extension has no `/hooks`, see [Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)), and run `loadout check`.
+
+In VS Code, which window to open: [Recommended setups](setups.md#recommended-setups). The windows, their `VS Code (…)` rows in `loadout check` and the PATH fix `--vscode-path` are in [Use loadout with VS Code](vscode.md#windows-and-wsl).
 
 ## 3. Know which install loadout configures
 
@@ -45,7 +47,7 @@ WSL imports the Windows `PATH`. `claude`, `codex`, `node` or `uv` can then resol
 which claude codex node npm uv git
 ```
 
-Each path must be inside WSL, such as `~/.local/bin/claude` or `/usr/bin/node`. A path that starts with `/mnt/c` is the Windows binary. Install the tool inside WSL (`./bootstrap.sh --install` does it for what it can), and make sure its directory comes first in your `PATH`. Re-run `loadout check` afterwards.
+Each path must be inside WSL, such as `~/.local/bin/claude` or `/usr/bin/node`. A path that starts with `/mnt/c` is the Windows binary. Install the tool inside WSL yourself (for example `mise use -g node@lts`; `./bootstrap.sh --install` replaces only a Windows `codex`, and counts any other Windows tool on `PATH` as installed), and make sure its directory comes first in your `PATH`. Re-run `loadout check` afterwards.
 
 The other fix, `appendWindowsPath = false` under `[interop]` in `/etc/wsl.conf`, stops WSL from importing the Windows `PATH` at all. It also hides Windows tools you may want, such as `code` and `explorer.exe`, and needs `wsl --shutdown` to take effect.
 
