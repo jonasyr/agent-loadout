@@ -37,7 +37,11 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 
 | Module | What it does |
 |---|---|
-| `maintenance.py` | The session hook (`hook-session-start`), the background daily and weekly run (`maintenance`) and `loadout update` ([The daily sync](state-and-sync.md#the-daily-sync)). |
+| `maintenance.py` | The session hook (`hook-session-start`), the background daily and weekly run (`maintenance`), the pull both it and `loadout update` use (`pull`, with the pause record `sync-paused.json`) and the tool-update helpers; `update` there only hands over to `update.py` ([The daily sync](state-and-sync.md#the-daily-sync)). |
+| `update.py` | `loadout update`: takes the lock, pulls, restarts into the pulled code, builds and shows the numbered plan, asks once, applies it and prints What changed and Now do this ([ADR 0035](../adr/0035-loadout-update-brings-a-machine-current.md); [`loadout update`](cli.md#loadout-update)). |
+| `apply.py` | The apply steps bootstrap, configure and update share (links, settings merge, Claude Code plugins, the Codex step). Each returns its status text and the facts of what it changed; with `dry=True` it changes nothing. |
+| `steps.py` | "Now do this": derives each agent's open steps from what a run changed, saves them in `open-steps.json`, shows them at that agent's session start and clears them when done ([state-and-sync](state-and-sync.md#at-each-session-start)). |
+| `locks.py` | The run locks `maintenance.lock` and `codex.lock`: a foreground command waits for the holder, the background job does not; a crashed holder's lock is taken over ([The background run](state-and-sync.md#the-background-run)). |
 | `check.py` | `loadout check`: reports problems and names each fix; changes nothing. |
 | `catalog.py` | Reads tool knowledge from `catalog.json`. |
 | `versions.py` | Installed and latest versions of catalog tools; a network failure means "unknown". |

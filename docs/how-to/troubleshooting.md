@@ -38,7 +38,7 @@ Only if Claude Code is on.
 |---|---|
 | `settings.json` is `FAIL` with `invalid JSON in …/settings.json` | Fix the syntax error at the reported position, then run `loadout apply-settings`. |
 | `settings drift: …` | Something changed a kit-managed value. Run `loadout apply-settings`. To keep your own value instead, put it in your personal `settings.json`, as the fix line says. See [settings merge](../reference/settings-merge.md). |
-| `plugins installed: …` (a list of plugin ids) | Enabled plugins that Claude Code has not installed yet. They install at the next Claude Code start; or run `loadout bootstrap`. |
+| `plugins installed: …` (a list of plugin ids) | Enabled plugins that Claude Code has not installed yet. They install at the next Claude Code start; or run `loadout update`, which installs them after a yes. |
 | `plugins installed: invalid JSON …` (or `'plugins' is not an object`) | `~/.claude/plugins/installed_plugins.json` is broken. Fix its JSON syntax, then restart Claude Code. |
 | `loadout plugin (Claude Code): the installed copy differs from the kit, so its hooks and skills may be old` (or a loadout hook acts on old state, for example the execution advisor asks again for a plan you already marked) | The agent runs an old copy of the loadout plugin. Run `loadout update --yes`, then `/reload-plugins` in Claude Code. |
 | `loadout plugin (Claude Code, project …)` or `(Claude Code, local …)` | A copy installed for one project. `loadout update` refreshes only the user scope: in that project run `claude plugin update loadout@agent-loadout --scope project` (or `--scope local`), then `/reload-plugins`. |

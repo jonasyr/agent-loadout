@@ -1,6 +1,6 @@
 # 0024. Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook
 
-- Status: Accepted; amended by [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) (Codex is usable without its CLI for VS Code's Codex extension, with no plugins to install or refresh)
+- Status: Accepted; amended by [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) (Codex is usable without its CLI for VS Code's Codex extension, with no plugins to install or refresh) and by [0035](0035-loadout-update-brings-a-machine-current.md) (`loadout update` covers more than a refresh)
 - Date: 2026-10-13
 - Source: [Hardening 3 design](../superpowers/specs/2026-10-13-hardening-3-docs-parity-design.md)
 

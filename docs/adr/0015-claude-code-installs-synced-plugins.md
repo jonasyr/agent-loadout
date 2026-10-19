@@ -1,6 +1,6 @@
 # 0015. Claude Code, not loadout, installs plugins synced through the personal layer
 
-- Status: Accepted. For Codex, see [ADR 0024](0024-codex-parity-update-model.md).
+- Status: Accepted; amended by [0035](0035-loadout-update-brings-a-machine-current.md) (`loadout update` installs new kit plugins). For Codex, see [ADR 0024](0024-codex-parity-update-model.md).
 - Date: 2026-10-10
 - Source: [Adopt design, gap G1](../superpowers/specs/2026-10-10-adopt-own-tools-design.md#1-problem)
 
