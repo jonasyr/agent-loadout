@@ -103,3 +103,64 @@ def test_off_a_terminal_the_wait_line_is_printed_once(fake_home, monkeypatch, ca
     monkeypatch.setattr(out, "_tty", lambda: False)
     assert locks.acquire("t.lock", "bootstrap", 0.15) is None
     assert capsys.readouterr().out.count("waiting for the other loadout run") == 1
+
+
+def test_a_takeover_in_progress_blocks_a_second_taker(fake_home):
+    locks.acquire("t.lock", "old", 0)
+    old = time.time() - 2 * 3600
+    os.utime(_file(), (old, old))
+    guard = _file("t.lock.takeover")
+    guard.write_text("")  # another run is taking the stale lock over right now
+    assert locks.acquire("t.lock", "new", 0) is None
+    assert _file().exists() and not list(_file().parent.glob("t.lock.stale-*"))
+    guard.unlink()
+    assert locks.acquire("t.lock", "new", 0) is not None
+    assert not guard.exists()
+
+
+def test_a_takeover_never_removes_a_lock_renewed_before_the_guard(fake_home, monkeypatch):
+    locks.acquire("t.lock", "old", 0)
+    old = time.time() - 2 * 3600
+    os.utime(_file(), (old, old))
+    real = os.open
+
+    def renewed(path, *a, **k):
+        if str(path).endswith(".takeover"):
+            os.utime(_file(), None)  # the owner touched it just before we got the guard
+        return real(path, *a, **k)
+    monkeypatch.setattr(os, "open", renewed)
+    assert locks.acquire("t.lock", "new", 0) is None
+    assert locks.holder("t.lock")[0] == "old"
+
+
+def test_on_wait_is_called_while_waiting(fake_home, monkeypatch):
+    locks.acquire("t.lock", "update", 0)
+    calls = []
+    assert locks.acquire("t.lock", "x", 0.1, on_wait=lambda: calls.append(1)) is None
+    assert calls
+
+
+def test_release_retries_when_windows_has_the_file_open(fake_home, monkeypatch):
+    lock = locks.acquire("t.lock", "update", 0)
+    sleeps, real, left = [], os.unlink, [2]
+
+    def flaky(path, *a, **k):
+        if left[0]:
+            left[0] -= 1
+            raise PermissionError("in use")
+        return real(path, *a, **k)
+    monkeypatch.setattr(os, "unlink", flaky)
+    monkeypatch.setattr(locks, "_sleep", sleeps.append)
+    lock.release()
+    assert not _file().exists() and sleeps == [0.05, 0.05]
+
+
+def test_an_immediate_acquire_leaves_a_progress_line_alone(fake_home, monkeypatch, capsys):
+    monkeypatch.setattr(out, "VERBOSE", False)
+    monkeypatch.setattr(out, "_tty", lambda: True)
+    out.progress("slow step 3 of 9")
+    assert out._shown
+    capsys.readouterr()
+    locks.acquire("t.lock", "update", 0)
+    assert out._shown and capsys.readouterr().out == ""
+    out.end_progress()

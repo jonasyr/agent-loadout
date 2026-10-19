@@ -81,22 +81,48 @@ class Lock:
 
     def release(self) -> None:
         """Only our own lock: if it was taken over as stale meanwhile, the new owner keeps it."""
-        if self._ours():
+        if not self._ours():
+            return
+        for attempt in range(5):
             try:
                 self.path.unlink()
+                return
+            except PermissionError:  # Windows: a waiter has the file open for a moment
+                if attempt < 4:
+                    _sleep(0.05)
             except OSError:
-                pass
+                return
 
 
 def _take_over_if_stale(path: Path, name: str, stale: float) -> str:
-    """'gone' (retry at once), 'held' (a live holder) or 'stale-taken' (we removed the stale file)."""
+    """'gone' (retry at once), 'held' (a live holder, or another run is taking over) or 'stale-taken'.
+    Takeovers are serialised by a short `<name>.takeover` guard, so two takers never rename each other's lock."""
     try:
         if _now() - path.stat().st_mtime < stale:
+            return "held"
+    except FileNotFoundError:
+        return "gone"
+    except OSError:
+        return "held"
+    guard = path.with_name(f"{name}.takeover")
+    try:
+        os.close(os.open(guard, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    except FileExistsError:
+        try:  # a guard left by a crashed taker
+            if _now() - guard.stat().st_mtime > 60:
+                guard.unlink()
+        except OSError:
+            pass
+        return "held"
+    except OSError:
+        return "held"
+    try:
+        if _now() - path.stat().st_mtime < stale:  # re-check under the guard
             return "held"
         aside = path.with_name(f"{name}.stale-{os.getpid()}-{time.time_ns()}")
         os.rename(path, aside)
         fresh = _now() - aside.stat().st_mtime < stale
-        if fresh:  # another run took over in between: give its lock back
+        if fresh:  # it was replaced just before our rename: give it back
             try:
                 os.link(aside, path)
             except OSError:
@@ -107,15 +133,22 @@ def _take_over_if_stale(path: Path, name: str, stale: float) -> str:
         return "gone"
     except OSError:
         return "held"
+    finally:
+        try:
+            guard.unlink()
+        except OSError:
+            pass
 
 
-def acquire(name: str, command: str, wait: float | None, *, stale: float = 3600.0) -> Lock | None:
-    """The lock `name`, or None. wait=0: one try; wait=None: until it is free; a number: that many seconds."""
+def acquire(name: str, command: str, wait: float | None, *, stale: float = 3600.0, on_wait=None) -> Lock | None:
+    """The lock `name`, or None. wait=0: one try; wait=None: until it is free; a number: that many seconds.
+    on_wait is called at every poll while waiting (a run holding another lock touches it there)."""
     path = _path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     token = f"{os.getpid()}-{time.time_ns()}"
     body = json.dumps({"pid": os.getpid(), "token": token, "command": command, "started": _now()})
     began = time.monotonic()
+    shown = False
     try:
         while True:
             try:
@@ -135,6 +168,10 @@ def acquire(name: str, command: str, wait: float | None, *, stale: float = 3600.
             who = holder(name)
             if who:
                 out.waiting(who[0], who[1], elapsed)
+                shown = True
+            if on_wait:
+                on_wait()
             _sleep(POLL)
     finally:
-        out.end_waiting()
+        if shown:
+            out.end_waiting()

@@ -1015,17 +1015,17 @@ LOCK = "codex.lock"
 STALE_LOCK = 3600.0
 
 
-def _lock(wait: float | None = 0, command: str = "setup"):
+def _lock(wait: float | None = 0, command: str = "setup", on_wait=None):
     """One Codex setup at a time (bootstrap, configure, the daily sync, update); a lock older than an hour is from a
     crash. wait: 0 tries once (background, session start), None waits until free, a number waits that long."""
     from . import locks
-    return locks.acquire(LOCK, command, wait, stale=STALE_LOCK)
+    return locks.acquire(LOCK, command, wait, stale=STALE_LOCK, on_wait=on_wait)
 
 
-def apply_all(bk, refresh: bool = False, say=None, command: str = "setup") -> list[str]:
+def apply_all(bk, refresh: bool = False, say=None, command: str = "setup", on_wait=None) -> list[str]:
     """refresh=True is the background sync: it never waits for another run. Foreground callers wait for it."""
     from . import locks
-    lock = _lock(0 if refresh else locks.foreground_wait(), command)
+    lock = _lock(0 if refresh else locks.foreground_wait(), command, on_wait)
     if lock is None:
         return [f"skipped: {locks.busy_message(LOCK)}"]
     try:

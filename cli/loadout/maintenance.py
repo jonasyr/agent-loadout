@@ -338,7 +338,7 @@ def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[s
             print(f"plugin {pid}: updated")
             changed = True
     if codex_on:
-        lock = codex._lock(locks.foreground_wait(), "update")
+        lock = codex._lock(locks.foreground_wait(), "update", _touch_lock)
         if lock is None:
             print(f"Codex: {locks.busy_message(codex.LOCK)}")
         else:
