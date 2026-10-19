@@ -91,7 +91,7 @@ EXTRA_COMMANDS.append(_register_check)
 def _register_maintenance(sub):
     import time
 
-    from . import maintenance
+    from . import maintenance, out
     from .__main__ import _ask
 
     p = sub.add_parser("hook-session-start")  # internal: no help=, so it stays out of --help
@@ -120,7 +120,14 @@ def _register_maintenance(sub):
 
     p = sub.add_parser("update", help="update outdated tool binaries")
     p.add_argument("--yes", action="store_true", help="run every update command without asking (each is still printed)")
-    p.set_defaults(func=lambda a: maintenance.update(a.yes, _ask))
+    p.add_argument("--verbose", action="store_true", help="full detail: every command and line")
+
+    def update_cmd(a):
+        if a.verbose:
+            out.VERBOSE = True
+        return maintenance.update(a.yes, _ask)
+
+    p.set_defaults(func=update_cmd)
 
 
 EXTRA_COMMANDS.append(_register_maintenance)

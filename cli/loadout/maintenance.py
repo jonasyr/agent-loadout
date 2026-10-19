@@ -218,10 +218,33 @@ def _refused() -> dict:
     return {k: v for k, v in data.items() if isinstance(v, str)}
 
 
+def _declined_path() -> Path:
+    return paths.state_dir() / "declined-updates.json"
+
+
+def _declined() -> dict:
+    try:
+        data = load_json(_declined_path())
+    except Exception:
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+
+
+def decline(tool_id: str, version: tuple) -> None:
+    """The person left this update out: no weekly notice until a version newer than `version` appears."""
+    data = _declined()
+    data[tool_id] = versions.fmt(version)
+    save_json(_declined_path(), data)
+
+
 def _remember_refused(tool: str, latest: tuple | None) -> None:
     data = _refused()
     if latest is None:
         data.pop(tool, None)
+        declined = _declined()  # the update installed it (or mise did): the left-out note is spent
+        if tool in declined:
+            declined.pop(tool)
+            save_json(_declined_path(), declined)
     else:
         data[tool] = versions.fmt(latest)
     save_json(_refused_path(), data)
@@ -229,9 +252,11 @@ def _remember_refused(tool: str, latest: tuple | None) -> None:
 
 def worth_notifying(outdated: list) -> list:
     """Drop updates a package manager already refused (e.g. mise minimum_release_age) until a newer one appears."""
-    refused = _refused()
+    refused, declined = _refused(), _declined()
 
     def held(e, b):
+        if e["id"] in declined and (versions.parse_version(declined[e["id"]]) or ()) >= b:
+            return True  # left out by the person, mise tools too
         if e["id"] not in refused or pkgmgr.mise_tool(e):  # mise tools: mise already filtered them
             return False
         return (versions.parse_version(refused[e["id"]]) or ()) >= b
