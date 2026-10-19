@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from loadout import codex, maintenance as m, paths, steps, targets
+from loadout import codex, maintenance as m, paths, runner, steps, targets
 from loadout.__main__ import main
 
 
@@ -13,6 +13,7 @@ def quiet(fake_home, monkeypatch):
     monkeypatch.setattr(codex, "refresh_instructions", lambda: None)
     monkeypatch.setattr(steps, "_plugin_copy_differs", lambda: False)
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "trusted")
+    monkeypatch.setattr(runner, "have", lambda binary: True)  # the Codex CLI is on PATH unless a test says not
     targets.set_agents({"claude": True, "codex": True})
 
 
@@ -240,3 +241,16 @@ def test_check_ends_with_pending_codex_steps(monkeypatch, capsys):
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
     main(["check"])
     assert "Now do this" in capsys.readouterr().out
+
+
+def test_without_the_codex_cli_there_is_no_restart_step_and_the_hooks_step_says_how(monkeypatch, tmp_path):
+    monkeypatch.setattr(runner, "have", lambda binary: binary != "codex")  # VS Code's Codex extension only
+    monkeypatch.setenv("LOADOUT_ROOT", str(tmp_path))
+    _write_mcp(tmp_path / "plugins" / "loadout" / ".mcp.json", {"serena": {"command": "serena"}})
+    assert "codex/restart" not in _ids(steps.derive({"codex_plugins_updated"}, ["serena"], False, True))
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
+    found = steps.derive({"serena_hooks_added"}, [], False, True)
+    assert [(s.id, s.text) for s in found] == [("codex/hooks", codex.HOOKS_NO_CLI)]
+    steps.save([steps.Step("codex/restart", "codex", "restart Codex", "x")])  # saved while the CLI was there
+    steps.settle(False, True)
+    assert "codex/restart" not in _ids(steps.pending("codex"))

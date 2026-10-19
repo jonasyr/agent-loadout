@@ -154,9 +154,12 @@ def _plugin_copy_differs() -> bool:
 
 def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool, results: list | None = None) -> list[Step]:
     """The steps a run leaves, for the agents that are on. facts: the apply steps' facts and the plugin refresh's;
-    upgraded: the tool ids a run updated or installed; results: the health check's rows (bootstrap-only needs)."""
-    from . import codex
+    upgraded: the tool ids a run updated or installed; results: the health check's rows (bootstrap-only needs).
+    Without the Codex CLI (VS Code's Codex extension only) no plugin hook runs, so no "restart Codex" step could ever
+    clear: there is none, and the hooks step says how to approve them without the CLI (codex.HOOKS_NO_CLI)."""
+    from . import codex, runner
     out: list[Step] = []
+    cli = runner.have("codex")
     if claude_on and (facts & CLAUDE_FACTS or _plugin_copy_differs()):
         out.append(Step("claude/reload-plugins", "claude", "run /reload-plugins (or restart Claude Code)",
                         "Claude Code plugins were installed or updated"))
@@ -167,7 +170,7 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
             for name in found["claude"]:
                 out.append(Step(f"claude/mcp:{name}", "claude", f"run /mcp and reconnect {name} (it was upgraded)",
                                 f"{binary} was upgraded and starts this MCP server"))
-        restart = restart or bool(codex_on and found["codex"])
+        restart = restart or bool(codex_on and cli and found["codex"])
     if restart:
         out.append(Step("codex/restart", "codex", "restart Codex", "an upgraded binary starts one of its MCP servers"))
     if codex_on:
@@ -178,9 +181,10 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
             pass
         plugins = bool(facts & {"codex_plugins_installed", "codex_plugins_updated"})
         if "serena_hooks_added" in facts or status in ("untrusted", "changed"):
-            text = "restart Codex and approve the changed hooks in /hooks" if plugins else HOOKS_TEXT
+            text = (codex.HOOKS_NO_CLI if not cli
+                    else "restart Codex and approve the changed hooks in /hooks" if plugins else HOOKS_TEXT)
             out.append(Step("codex/hooks", "codex", text, "Codex runs a changed hook only after you approve it"))
-        elif plugins:
+        elif plugins and cli:
             out.append(Step("codex/restart", "codex", "restart Codex (it loads plugins per session)",
                             "Codex plugins were installed or updated"))
     needs = [r for r in results or [] if not r.ok and r.name in BOOTSTRAP_ROWS]
@@ -235,8 +239,9 @@ def _rows_pass(reason: str, results: list | None) -> bool:
 def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None:
     """Drop saved steps that no longer hold: every step of an agent that is off; the /hooks step once the hooks are
     approved; a bootstrap step once the rows that produced it pass (checked with local files only, never the
-    network); an /mcp step whose server is gone. Others stay until their agent's session start clears them."""
-    from . import codex
+    network); an /mcp step whose server is gone; "restart Codex" without the Codex CLI (no session hook would clear
+    it). Others stay until their agent's session start clears them."""
+    from . import codex, runner
     data = _load()
     if not data:
         return
@@ -256,6 +261,8 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
                 drop = trusted
             elif not drop and e["id"] == f"{agent}/bootstrap":
                 drop = _rows_pass(str(e.get("reason", "")), results)
+            elif not drop and e["id"] == "codex/restart":
+                drop = not runner.have("codex")
             elif not drop and e["id"].startswith("claude/mcp:"):
                 drop = e["id"][len("claude/mcp:"):] not in names.get("claude", set())
             if not drop:
