@@ -93,7 +93,7 @@ def test_codex_has_no_update_command_that_could_install_a_second_copy():
 def test_update_leaves_claude_alone_on_codex_only(fake_home, fake_runner, monkeypatch):
     targets.set_agents({"claude": False, "codex": True})
     monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
-    maintenance._update(True, lambda q: "")
+    maintenance.update(True, lambda q: "")
     assert not any(c[0] == "claude" for c in fake_runner.calls)
 
 

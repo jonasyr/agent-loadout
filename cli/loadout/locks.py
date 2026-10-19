@@ -1,10 +1,12 @@
 """Run locks in the state folder (`maintenance.lock`, `codex.lock`): one run at a time. A foreground command
 waits for the holder; the background job and the session start never wait. A lock not touched for `stale`
-seconds is from a crashed run and is taken over (renamed aside first, so only one run gets it)."""
+seconds is from a crashed run and is taken over (renamed aside first, so only one run gets it); on POSIX so is a
+lock whose holder process on this host is gone (a run killed before it could release it)."""
 from __future__ import annotations
 
 import json
 import os
+import socket
 import sys
 import time
 from pathlib import Path
@@ -94,11 +96,43 @@ class Lock:
                 return
 
 
+def _host() -> str:
+    try:
+        return socket.gethostname()
+    except OSError:
+        return ""
+
+
+def _holder_gone(path: Path) -> bool:
+    """POSIX: the lock names a process on this host that no longer runs (a run killed before it could release it).
+    Windows has no safe probe (os.kill would end the process), so there only the age counts."""
+    if os.name == "nt":
+        return False
+    try:
+        data, _ = _read(path)
+    except OSError:
+        return False
+    pid = data.get("pid") if data else None
+    if not isinstance(pid, int) or pid <= 0 or pid == os.getpid() or not data.get("host") or data["host"] != _host():
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:  # it runs under another user: alive
+        return False
+    return False
+
+
+def _is_stale(path: Path, stale: float) -> bool:
+    return _now() - path.stat().st_mtime >= stale or _holder_gone(path)
+
+
 def _take_over_if_stale(path: Path, name: str, stale: float) -> str:
     """'gone' (retry at once), 'held' (a live holder, or another run is taking over) or 'stale-taken'.
     Takeovers are serialised by a short `<name>.takeover` guard, so two takers never rename each other's lock."""
     try:
-        if _now() - path.stat().st_mtime < stale:
+        if not _is_stale(path, stale):
             return "held"
     except FileNotFoundError:
         return "gone"
@@ -117,11 +151,11 @@ def _take_over_if_stale(path: Path, name: str, stale: float) -> str:
     except OSError:
         return "held"
     try:
-        if _now() - path.stat().st_mtime < stale:  # re-check under the guard
+        if not _is_stale(path, stale):  # re-check under the guard
             return "held"
         aside = path.with_name(f"{name}.stale-{os.getpid()}-{time.time_ns()}")
         os.rename(path, aside)
-        fresh = _now() - aside.stat().st_mtime < stale
+        fresh = not _is_stale(aside, stale)
         if fresh:  # it was replaced just before our rename: give it back
             try:
                 os.link(aside, path)
@@ -146,7 +180,7 @@ def acquire(name: str, command: str, wait: float | None, *, stale: float = 3600.
     path = _path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     token = f"{os.getpid()}-{time.time_ns()}"
-    body = json.dumps({"pid": os.getpid(), "token": token, "command": command, "started": _now()})
+    body = json.dumps({"pid": os.getpid(), "token": token, "command": command, "started": _now(), "host": _host()})
     began = time.monotonic()
     shown = False
     try:

@@ -62,8 +62,10 @@ def test_the_bundled_version_is_asked_once_per_process(ext_only, fake_runner):
     assert sum(1 for c in fake_runner.calls if c == [str(ext_only), "--version"]) == 1
 
 
-def test_update_does_not_offer_a_plugin_refresh_in_extension_mode(ext_only, capsys):
-    maintenance._update_plugins(False, True, False, lambda q: pytest.fail("asked"))
+def test_update_does_not_offer_a_plugin_refresh_in_extension_mode(ext_only, capsys, monkeypatch):
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [])
+    maintenance.update(False, lambda q: pytest.fail("asked"))  # no terminal: the plan, no question
     assert codex.PLUGINS_EXTENSION in capsys.readouterr().out
 
 

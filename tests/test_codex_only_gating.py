@@ -48,7 +48,7 @@ def test_update_leaves_claude_settings_and_servers_alone_when_claude_code_is_off
     monkeypatch.setattr(maintenance.versions, "local_version", lambda e: (2,))
     called = []
     monkeypatch.setattr(maintenance, "undo_reregistered", lambda bk: called.append(1) or ([], []))
-    maintenance._update(yes=True, ask=lambda q: "")
+    maintenance.update(True, lambda q: "")
     assert json.loads(settings.read_text()) == {"installer": True}
     assert called == []
 
@@ -59,7 +59,7 @@ def test_update_never_reads_claude_settings_when_claude_code_is_off(fake_home, f
     settings.parent.mkdir(parents=True)
     settings.write_text("{not json")
     monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
-    assert maintenance._update(yes=True, ask=lambda q: "") == 0
+    assert maintenance.update(True, lambda q: "") == 0
 
 
 def test_codex_only_adopt_ignores_a_broken_claude_settings_file(fake_home, monkeypatch):

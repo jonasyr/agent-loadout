@@ -1,0 +1,211 @@
+"""`loadout update` as one run: lock, pull, restart into the new code, plan, re-apply, refresh, tools, health check,
+"What changed" (spec decisions 1, 7, 8)."""
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+
+import pytest
+
+from loadout import apply, backup, bootstrap, check, codex, locks, maintenance, paths, runner, targets, update
+
+PULLED = "LOADOUT_UPDATE_PULLED"
+
+
+def _world(monkeypatch, claude=True, codex_on=False):
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": claude, "codex": codex_on})
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: None)
+    monkeypatch.setattr(codex, "apply_plugins", lambda bk, **kw: [])
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [])
+    monkeypatch.setattr(check, "run_checks", lambda *a, **k: [])
+    monkeypatch.setattr(locks, "FOREGROUND_LIMIT", 1.0)
+    monkeypatch.setattr(locks, "POLL", 0.02)
+
+
+def _heads(fake_runner, monkeypatch, heads: dict):
+    """runner.run where `git -C <root> rev-parse HEAD` answers the next head of heads[root] (the last one repeats)."""
+    seen = {k: list(v) for k, v in heads.items()}
+
+    def run(cmd, cwd=None, timeout=300, env=None):
+        if cmd[:2] == ["git", "-C"] and cmd[3:] == ["rev-parse", "HEAD"] and cmd[2] in seen:
+            fake_runner.calls.append(list(cmd))
+            left = seen[cmd[2]]
+            return runner.Result(0, (left.pop(0) if len(left) > 1 else left[0]) + "\n", "")
+        return fake_runner(cmd, cwd, timeout, env)
+    monkeypatch.setattr(runner, "run", run)
+
+
+def _pulls(fake_runner):
+    return [c for c in fake_runner.calls if c[:1] == ["git"] and "pull" in c]
+
+
+def _changed(text):
+    assert "What changed" in text, text
+    return text.split("What changed", 1)[1]
+
+
+def test_update_reapplies_the_codex_block(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch, claude=False, codex_on=True)
+    path = paths.codex_home() / "AGENTS.md"
+    path.parent.mkdir(parents=True)
+    stale = f"# mine\n\n{codex.START}\nold rules\n{codex.END}\n"
+    path.write_text(stale, encoding="utf-8")
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert path.read_text(encoding="utf-8") == codex.splice(stale, codex.render_instructions())
+    assert "Codex's AGENTS.md block updated" in _changed(capsys.readouterr().out)
+
+
+def test_a_kit_pull_restarts_into_the_new_code_once(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    kit = str(paths.kit_root())
+    _heads(fake_runner, monkeypatch, {kit: ["aaa", "bbb", "bbb"]})
+    restarts = []
+
+    def fake_exec(argv):
+        restarts.append((list(argv), os.environ.get(PULLED), (paths.state_dir() / maintenance.LOCK).exists()))
+        pulls = len(_pulls(fake_runner))
+        code = update.run(True, lambda q: "", argv=argv[1:])  # the new process
+        assert len(_pulls(fake_runner)) == pulls, "the restarted run pulled again"
+        return code
+    monkeypatch.setattr(update, "_exec", fake_exec)
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert restarts == [(["update", "--yes"], "1", False)]  # the lock is free for the new process
+    assert len(_pulls(fake_runner)) == 1
+    assert capsys.readouterr().out.count("What changed") == 1
+
+
+def test_a_personal_only_pull_does_not_restart(fake_home, fake_runner, monkeypatch, tmp_path, capsys):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    personal = tmp_path / "personal"
+    (personal / ".git").mkdir(parents=True)
+    monkeypatch.setenv("LOADOUT_PERSONAL", str(personal))
+    _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["aaa"], str(personal): ["x", "y"]})
+    monkeypatch.setattr(update, "_exec", lambda argv: pytest.fail("restarted for a personal-layer pull"))
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert len(_pulls(fake_runner)) == 2
+    assert "personal layer: pulled" in _changed(capsys.readouterr().out)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a dead holder is detected by its pid on POSIX only")
+def test_a_second_run_after_an_interrupted_one_starts_cleanly(fake_home, fake_runner, monkeypatch):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    proc = subprocess.Popen([sys.executable, "-c", ""])
+    proc.wait()  # its pid is now free: the holder of the lock below is gone
+    lock = paths.state_dir() / maintenance.LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text(json.dumps({"pid": proc.pid, "token": f"{proc.pid}-1", "command": "update",
+                                "started": time.time(), "host": socket.gethostname()}))
+    # the interrupted run had pulled already: this run's pull finds nothing new
+    _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["bbb"]})
+    monkeypatch.setattr(update, "_exec", lambda argv: pytest.fail("restarted without a new pull"))
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert len(_pulls(fake_runner)) == 1
+    assert not lock.exists()
+
+
+def test_a_live_holder_is_not_taken_over(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    monkeypatch.setattr(locks, "FOREGROUND_LIMIT", 0.1)
+    lock = paths.state_dir() / maintenance.LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text(json.dumps({"pid": os.getppid(), "token": "x", "command": "update", "started": time.time(),
+                                "host": socket.gethostname()}))
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 1
+    assert "still running" in capsys.readouterr().out and lock.exists()
+
+
+def test_what_changed_names_each_backup_with_its_undo(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    s = fake_home / ".claude" / "settings.json"
+    real_link_step = apply.link_step
+
+    def link_step(bk, claude_on, retry_symlinks=False):
+        old = fake_home / "old-rule.md"
+        old.write_text("x")
+        bk.move(old, "a replaced rule")
+        return real_link_step(bk, claude_on, retry_symlinks)
+    monkeypatch.setattr(apply, "link_step", link_step)
+    entry = {"id": "tool", "update": {"posix": [["tool-installer"]], "windows": [["tool-installer"]]}}
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [(entry, (1, 0, 0), (2, 0, 0))])
+    monkeypatch.setattr(maintenance.versions, "local_version", lambda e: (2, 0, 0))
+
+    def run(cmd, cwd=None, timeout=300, env=None):
+        if cmd[0] == "tool-installer":
+            s.write_text('{"installer": true}\n')
+        return fake_runner(cmd, cwd, timeout, env)
+    monkeypatch.setattr(runner, "run", run)
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    changed = _changed(capsys.readouterr().out)
+    roots = sorted(p for p in paths.backups_root().iterdir() if p.is_dir())
+    assert len(roots) >= 2
+    for root in roots:
+        assert f"loadout restore {root}" in changed
+    assert "tool 1.0.0 -> 2.0.0" in changed
+
+
+def test_a_failed_step_is_listed_as_failed_with_its_fix(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    entry = {"id": "tool", "update": {"posix": [["tool-installer"]], "windows": [["tool-installer"]]}}
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [(entry, (1, 0, 0), (2, 0, 0))])
+    monkeypatch.setattr(maintenance.versions, "local_version", lambda e: (1, 0, 0))
+    fake_runner.responses[("tool-installer",)] = runner.Result(1, "", "network down")
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    changed = _changed(capsys.readouterr().out)
+    line = next(l for l in changed.splitlines() if "tool" in l and "failed" in l)
+    assert "network down" in line and "fix: run loadout update again" in line
+    assert "  tool 1.0.0 -> 2.0.0\n" not in changed  # not listed as updated
+
+
+def test_a_busy_codex_lock_is_listed_as_not_run(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch, claude=False, codex_on=True)
+    monkeypatch.setattr(locks, "FOREGROUND_LIMIT", 0.1)
+    held = locks.acquire(codex.LOCK, "bootstrap", 0)
+    try:
+        assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    finally:
+        held.release()
+    changed = _changed(capsys.readouterr().out)
+    line = next(l for l in changed.splitlines() if "Codex" in l and "not run" in l)
+    assert "fix: run loadout update again" in line
+    assert "up to date" not in changed
+
+
+def test_codex_only_touches_no_claude_files(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch, claude=False, codex_on=True)
+    claude = fake_home / ".claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text("{not json")
+    before = sorted((p.relative_to(claude), p.read_bytes()) for p in claude.rglob("*") if p.is_file())
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    after = sorted((p.relative_to(claude), p.read_bytes()) for p in claude.rglob("*") if p.is_file())
+    assert after == before
+    assert not any(c[0] == "claude" for c in fake_runner.calls)
+    assert "Claude Code" not in capsys.readouterr().out
+
+
+def test_no_terminal_and_no_yes_changes_nothing(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch, claude=False, codex_on=True)
+    path = paths.codex_home() / "AGENTS.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(f"{codex.START}\nold\n{codex.END}\n", encoding="utf-8")
+    assert update.run(False, lambda q: pytest.fail("asked"), argv=[]) == 0
+    assert path.read_text(encoding="utf-8") == f"{codex.START}\nold\n{codex.END}\n"
+    assert update.NO_TERMINAL in capsys.readouterr().out
+
+
+def test_exec_replaces_the_process_on_posix_and_waits_on_windows(monkeypatch):
+    seen = []
+    monkeypatch.setattr(os, "execv", lambda exe, args: seen.append(("execv", exe, args)), raising=False)
+    monkeypatch.setattr(subprocess, "call", lambda args: seen.append(("call", args)) or 3)
+    script = str(paths.kit_root() / "bin" / "loadout")
+    update._exec(["update", "--yes"], windows=False)
+    assert seen[-1] == ("execv", sys.executable, [sys.executable, script, "update", "--yes"])
+    with pytest.raises(SystemExit) as stop:
+        update._exec(["update"], windows=True)
+    assert stop.value.code == 3 and seen[-1] == ("call", [sys.executable, script, "update"])

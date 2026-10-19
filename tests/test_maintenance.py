@@ -130,15 +130,18 @@ def test_update_reverts_settings_modified_by_installer(fake_home, fake_runner, m
     entry = {"id": "tool", "update": {"posix": [["tool-installer"]], "windows": [["tool-installer"]]}}
     monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (1, 0, 0), (2, 0, 0))])
 
-    def installer(cmd, cwd=None, timeout=300):
+    merged = {}
+
+    def installer(cmd, cwd=None, timeout=300, env=None):
         fake_runner.calls.append(list(cmd))
         if cmd[0] == "tool-installer":
+            merged.update(json.loads(s.read_text()))  # update re-applied the kit merge before the tools ran
             s.write_text('{"a": 1, "hooks": {"X": []}}\n')
         return runner.Result(0, "", "")
 
     monkeypatch.setattr(runner, "run", installer)
     assert m.update(yes=True, ask=lambda q: "") == 0
-    assert json.loads(s.read_text()) == {"a": 1}
+    assert merged["a"] == 1 and json.loads(s.read_text()) == merged
 
 
 def test_update_guard_backs_up_installer_version_and_names_keys(fake_home, fake_runner, monkeypatch, capsys):
@@ -148,16 +151,20 @@ def test_update_guard_backs_up_installer_version_and_names_keys(fake_home, fake_
     entry = {"id": "tool", "update": {"posix": [["tool-installer"]], "windows": [["tool-installer"]]}}
     monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (1, 0, 0), (2, 0, 0))])
 
+    merged = {}
+
     def installer(cmd, cwd=None, timeout=300, env=None):
         if cmd[0] == "tool-installer":
+            merged.update(json.loads(s.read_text()))  # update re-applied the kit merge before the tools ran
             s.write_text('{"a": 2, "hooks": {"X": []}}\n')
         return runner.Result(0, "", "")
 
     monkeypatch.setattr(runner, "run", installer)
     m.update(yes=True, ask=lambda q: "")
     out = capsys.readouterr().out
-    assert json.loads(s.read_text()) == {"a": 1}
-    assert "a, hooks" in out
+    assert merged["a"] == 1 and json.loads(s.read_text()) == merged
+    keys = set(out.split("keys: ", 1)[1].split(")", 1)[0].split(", "))
+    assert {"a", "hooks"} <= keys
     copies = [p for p in paths.backups_root().rglob("files/*settings.json")]
     assert copies and json.loads(copies[0].read_text()) == {"a": 2, "hooks": {"X": []}}
 
