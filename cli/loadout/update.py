@@ -299,7 +299,7 @@ def run(yes: bool, ask: Callable[[str], str], *, argv: list[str]) -> int:
     try:
         summary = Summary()
         if os.environ.get(PULLED):
-            _after_restart(summary, os.environ.pop(PULLED))  # read once: no child process (claude, codex, installers) gets it
+            _after_restart(summary, os.environ[PULLED])  # runner.run keeps it from every child (runner.PROCESS_ONLY)
         elif _pull(summary, start):
             maintenance._release_lock()  # the new process takes it again (POSIX keeps the pid, Windows gets a new one)
             # "1": the kit moved; "personal": the personal layer moved too (the new process names both)

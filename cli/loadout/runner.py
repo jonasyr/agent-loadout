@@ -172,7 +172,12 @@ def write_manual_commands(directory, title: str, cmds: list[list[str]], undo: li
     return str(path)
 
 
+PROCESS_ONLY = ("LOADOUT_UPDATE_PULLED",)  # loadout's own markers: never passed on to claude, codex or an installer
+
+
 def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict | None = None) -> Result:
+    if any(k in (os.environ if env is None else env) for k in PROCESS_ONLY):
+        env = {k: v for k, v in (os.environ if env is None else env).items() if k not in PROCESS_ONLY}
     exe = _resolve(cmd[0]) or _fallback(cmd[0])
     if exe is None:
         return Result(127, "", f"{cmd[0]}: not found")

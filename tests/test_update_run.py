@@ -391,13 +391,12 @@ def test_ctrl_c_on_windows_waits_for_the_child_to_release_its_locks(monkeypatch)
     assert stop.value.code == 7 and len(waits) == 3
 
 
-def test_the_restart_marker_does_not_reach_child_processes(fake_home, fake_runner, monkeypatch):
-    _world(monkeypatch)
-    monkeypatch.setenv(PULLED, "1")
-    seen = []
-    monkeypatch.setattr(check, "run_checks", lambda *a, **k: seen.append(os.environ.get(PULLED)) or [])
-    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
-    assert seen == [None]
+def test_the_restart_marker_does_not_reach_child_processes(monkeypatch):
+    monkeypatch.setenv(PULLED, "personal")
+    probe = [sys.executable, "-c", f"import os; print(os.environ.get({PULLED!r}))"]
+    assert runner.run(probe, timeout=60).stdout.strip() == "None"
+    assert runner.run(probe, timeout=60, env={**os.environ, "X": "1"}).stdout.strip() == "None"
+    assert os.environ[PULLED] == "personal"  # the process itself keeps it (a second update in it neither pulls nor restarts)
 
 
 def test_a_missing_launcher_after_the_pull_is_a_plain_message(monkeypatch, capsys):
