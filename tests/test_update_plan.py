@@ -114,3 +114,29 @@ def test_an_agent_that_is_off_is_not_in_the_plan(fake_home, fake_runner, monkeyp
     plan = update.build_plan(False, False)
     assert [i.kind for i in plan] == ["reapply"]
     assert "Claude" not in "\n".join(update.render(plan)) and "Codex" not in "\n".join(update.render(plan))
+
+
+def test_the_codex_item_shows_what_runs_per_marketplace_and_plugin(fake_home, fake_runner, monkeypatch):
+    from loadout import settings_merge
+    _plan_world(monkeypatch, claude=False, codex_on=True)
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: None)
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {})
+    monkeypatch.setattr(codex, "plugin_routes", lambda s: ({"o/a": ["p1", "p2"], "o/b": ["q1", "q2"], "o/c": ["r1"]}, []))
+    monkeypatch.setattr(codex, "installed_plugins", lambda: {"p1@a-m", "q1@b-m", "q2@b-m"})
+    monkeypatch.setattr(codex, "unchanged_routes", lambda routes, installed=None: ({"o/b"}, {"q1@b-m"}))
+    monkeypatch.setattr(codex, "marketplaces", lambda: {"a-m": {"root": None, "source": None},
+                                                        "b-m": {"root": None, "source": None}})
+    monkeypatch.setattr(codex, "_load_record", lambda: {"o/a": {"name": "a-m", "at": 0},
+                                                        "o/b": {"name": "b-m", "at": 1_699_956_800}})
+    plan = update.build_plan(False, True)
+    text = "\n".join(update.render(plan))
+    lines = [l.strip() for l in text.splitlines()]
+    assert "refresh marketplace o/a" in lines and "skip marketplace o/b (unchanged since 2023-11-14)" in lines
+    assert "command: codex plugin marketplace add o/a --json" in lines
+    assert "command: codex plugin marketplace upgrade a-m" in lines
+    assert "command: codex plugin marketplace upgrade o/a" not in lines
+    assert "re-add plugin p1@a-m" in lines and "add plugin p2@a-m" in lines
+    assert "command: codex plugin add p2@a-m --json" in lines
+    assert "re-add plugin q2@b-m" in lines and not any("q1@b-m" in l for l in lines)
+    assert "add or refresh marketplace o/c" in lines and "add plugin r1@<o/c's marketplace>" in lines
+    assert "command: codex plugin marketplace upgrade <o/c's marketplace> (only when Codex had it)" in lines

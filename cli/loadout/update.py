@@ -35,6 +35,7 @@ class PlanItem:
     local: tuple = ()  # the installed version (tool-update)
     how: str = ""  # who updates it: mise, brew or the catalog command (tool-update)
     ids: tuple = ()  # the plugin ids the item refreshes (claude-plugins-refresh)
+    groups: tuple = ()  # (what, its commands) per marketplace and plugin (codex-plugins); render shows these
 
 
 def _date(ts) -> str:
@@ -42,23 +43,57 @@ def _date(ts) -> str:
 
 
 def _codex_item(items: list) -> None:
-    """The Codex marketplaces and plugins to refresh, and those skipped because upstream did not move."""
+    """The Codex marketplaces and plugins to refresh, and those skipped because upstream did not move. Lists what
+    runs (ADR 0011): per marketplace "refresh", "add" (new) or "skip", each plugin to add or re-add, and the commands
+    in the shape codex._install_routes runs them."""
     if codex.unavailable() is not None or not runner.have("codex"):  # unusable, or extension mode: no plugins
         return
     from .settings_merge import desired_settings
     routes, _ = codex.plugin_routes(desired_settings())
     if not routes:
         return
-    skip_m, _skip_p = codex.unchanged_routes(routes)
-    refresh = [src for src in routes if src not in skip_m]
+    installed = codex.installed_plugins()
+    skip_m, skip_p = codex.unchanged_routes(routes, installed)
+    installed = installed or set()
     record = codex._load_record()
+    listed = codex.marketplaces() or {}
+    refresh = [src for src in routes if src not in skip_m]
     times = [get_dict(record, src).get("at") for src in skip_m]
     times = [t for t in times if isinstance(t, (int, float)) and t]
     label = f"Codex marketplaces and plugins: refresh {len(refresh)}"
     if skip_m:
         label += f", skip {len(skip_m)} (unchanged since {_date(min(times) if times else None)})"
-    cmds = [["codex", "plugin", "marketplace", "upgrade", out.printable(src)] for src in refresh]
-    items.append(("codex-plugins", label, cmds, False, "", (), None, (), ""))
+    groups: list[tuple[str, list[list[str]]]] = []
+    adds = readds = 0
+    for src, names in routes.items():
+        name = out.printable(src)
+        market = get_dict(record, src).get("name")
+        market = market if isinstance(market, str) and market in listed else None
+        if src in skip_m:
+            at = get_dict(record, src).get("at")
+            groups.append((f"skip marketplace {name} (unchanged since {_date(at)})", []))
+        elif market is None:  # no record of it: Codex may have it already, and then upgrades it
+            groups.append((f"add or refresh marketplace {name}",
+                           [["codex", "plugin", "marketplace", "add", name, "--json"],
+                            ["codex", "plugin", "marketplace", "upgrade", f"<{name}'s marketplace>",
+                             "(only when Codex had it)"]]))
+        else:
+            groups.append((f"refresh marketplace {name}", [["codex", "plugin", "marketplace", "add", name, "--json"],
+                                                           ["codex", "plugin", "marketplace", "upgrade",
+                                                            out.printable(market)]]))
+        for plugin in names:
+            pid = f"{plugin}@{market}" if market else f"{plugin}@<{src}'s marketplace>"  # its name comes from the add
+            if pid in skip_p:
+                continue
+            again = pid in installed
+            adds, readds = adds + (not again), readds + again
+            groups.append((f"{'re-add' if again else 'add'} plugin {out.printable(pid)}",
+                           [["codex", "plugin", "add", out.printable(pid), "--json"]]))
+    if adds or readds:
+        label += "; plugins: " + ", ".join(p for p in (f"add {adds}" if adds else "",
+                                                       f"re-add {readds}" if readds else "") if p)
+    cmds = [cmd for _, group in groups for cmd in group]
+    items.append(("codex-plugins", label, cmds, False, "", (), None, (), "", (), tuple(groups)))
 
 
 def _claude_refresh_todo() -> list[str]:
@@ -116,9 +151,9 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
                       cmds, optional, entry["id"], (), entry, (), ""))
     first = "Re-apply the loadout setup" + (f": {', '.join(parts)}" if parts else "")
     plan = [PlanItem(1, "reapply", first, [])]
-    for kind, label, cmds, optional, key, latest, entry, local, how, *ids in items:
+    for kind, label, cmds, optional, key, latest, entry, local, how, *rest in items:
         plan.append(PlanItem(len(plan) + 1, kind, label, cmds, optional, key, latest, entry, local, how,
-                             ids[0] if ids else ()))
+                             rest[0] if rest else (), rest[1] if len(rest) > 1 else ()))
     return plan
 
 
@@ -126,7 +161,12 @@ def render(plan: list[PlanItem]) -> list[str]:
     lines = []
     for item in plan:
         lines.append(f"{item.n}. {item.label}" + ("  [optional: type its number to install it]" if item.optional else ""))
-        lines += ["     command: " + " ".join(cmd) for cmd in item.commands]
+        if item.groups:
+            for what, cmds in item.groups:
+                lines.append("     " + what)
+                lines += ["       command: " + " ".join(cmd) for cmd in cmds]
+        else:
+            lines += ["     command: " + " ".join(cmd) for cmd in item.commands]
     return lines
 
 
