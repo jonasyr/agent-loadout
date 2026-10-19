@@ -15,6 +15,13 @@ def test_a_standard_layout_round_trips(indent, newline):
     assert style is not None and dumps_like(style, json.loads(text)) == text
 
 
+def test_style_detects_ensure_ascii():
+    text = json.dumps({"a": "\u00e9"}, indent=4) + "\n"
+    assert "\\u00e9" in text
+    style = json_style(text)
+    assert style is not None and style.ensure_ascii and dumps_like(style, json.loads(text)) == text
+
+
 def test_new_keys_keep_the_style():
     text = '{\r\n    "a": 1\r\n}\r\n'
     style = json_style(text)

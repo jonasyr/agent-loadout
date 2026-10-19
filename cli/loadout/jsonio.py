@@ -118,6 +118,7 @@ class JsonStyle:
     indent: int | str
     newline: str
     final_newline: bool
+    ensure_ascii: bool = False
 
 
 def json_style(text: str) -> JsonStyle | None:
@@ -134,11 +135,12 @@ def json_style(text: str) -> JsonStyle | None:
     except ValueError:
         return None
     for indent in (2, 4, "\t", None):  # None: one line, as json.dumps writes it by default
-        if json.dumps(data, indent=indent, ensure_ascii=False) == core:
-            return JsonStyle(indent, newline, final)
+        for ascii_ in (False, True):  # True: non-ASCII written as \\uXXXX escapes
+            if json.dumps(data, indent=indent, ensure_ascii=ascii_) == core:
+                return JsonStyle(indent, newline, final, ascii_)
     return None
 
 
 def dumps_like(style: JsonStyle, data) -> str:
-    text = json.dumps(data, indent=style.indent, ensure_ascii=False) + ("\n" if style.final_newline else "")
+    text = json.dumps(data, indent=style.indent, ensure_ascii=style.ensure_ascii) + ("\n" if style.final_newline else "")
     return text.replace("\n", style.newline)

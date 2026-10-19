@@ -188,6 +188,6 @@ def test_a_group_without_a_hooks_list_is_a_line_not_a_crash(hooks):
 
 
 def test_the_add_yourself_line_names_matchers_and_timeouts(hooks):
-    hooks.write_text('{"hooks": {}}')
+    hooks.write_text('{\n   "hooks": {}\n}\n')  # 3-space indent: loadout cannot reproduce it
     (line,) = codex_hooks.apply(backup.Backup(description="t"))
     assert '"matcher": "Bash"' in line and '"timeout": 5' in line and "hooks.md" in line
