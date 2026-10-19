@@ -54,7 +54,9 @@ def _spawn_background() -> None:
 
 
 def notify(text: str) -> None:
-    """Queue a message for the next session start; several messages are all kept."""
+    """Queue a message for the next session start; several messages are all kept. Redacted first: a Codex line can
+    carry a failed clone's stderr."""
+    text = redact(text)
     path = _stamp(NOTICE)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as fh:

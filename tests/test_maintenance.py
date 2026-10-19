@@ -244,3 +244,10 @@ def test_skips_clear_an_old_record(fake_home, fake_runner, tmp_path):
     fake_runner.responses[("git", "-C", str(tmp_path), "rev-parse", "--abbrev-ref", "@{u}")] = runner.Result(128, "", "")
     m.pull(tmp_path)
     assert m.paused() == {}
+
+
+def test_a_notice_is_redacted_before_it_is_queued(fake_home):
+    secret = "ghp_" + "c" * 36
+    m.notify(f"loadout (Codex): plugin x: failed: https://x:{secret}@github.com/o/r")
+    text = (paths.state_dir() / "pending-notice").read_text(encoding="utf-8")
+    assert secret not in text and "failed" in text

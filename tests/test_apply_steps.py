@@ -267,3 +267,11 @@ def test_failed_matches_what_loadout_prints_not_names(fake_home, fake_runner, mo
     assert "failed:codex" not in apply.codex_step(_bk(), refresh_plugins=False, auto=False, keep=False, on=True).facts
     _codex_parts(monkeypatch, plugins=["plugin x@y: failed: boom"])
     assert "failed:codex" in apply.codex_step(_bk(), refresh_plugins=False, auto=False, keep=False, on=True).facts
+
+
+def test_step_lines_are_redacted_before_anyone_prints_them(fake_home, fake_runner, monkeypatch):
+    secret = "ghp_" + "b" * 36
+    _codex_parts(monkeypatch, plugins=[f"plugin x@y: failed: clone https://x:{secret}@github.com/o/r failed"])
+    r = apply.codex_step(_bk(), refresh_plugins=False, auto=False, keep=False, on=True)
+    assert not any(secret in line for line in r.lines)
+    assert "failed:codex" in r.facts

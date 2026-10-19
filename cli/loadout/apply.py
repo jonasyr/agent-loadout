@@ -38,6 +38,10 @@ class StepResult:
 
 
 def _finish(result: StepResult, step: str) -> StepResult:
+    """Redact every line (a failed clone's stderr can carry a token in a rewritten URL) before any caller prints it,
+    then read the facts and the level from the lines."""
+    from .secrets import redact
+    result.lines = [redact(line) for line in result.lines]
     if any(_FAILED.search(line) for line in result.lines):
         result.facts.add(f"failed:{step}")
     if any(out.PROBLEM.search(line) for line in result.lines):
