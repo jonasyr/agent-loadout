@@ -6,12 +6,14 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
 from . import catalog, link, locks, paths, pkgmgr, runner, versions
 from .backup import Backup
 from .jsonio import load_json, save_json
+from .out import printable
 from .secrets import redact
 
 DAY = 86400.0
@@ -79,21 +81,95 @@ def session_start(now: float) -> str | None:
     return out
 
 
-def pull_if_clean(root: Path) -> bool:
-    """True only when a pull brought new commits (so settings/MCP need re-applying)."""
+@dataclass
+class PullResult:
+    pulled: bool = False  # new commits arrived (settings, MCP and links need re-applying)
+    paused: str | None = None  # why git refused; None when the pull ran, or was skipped for want of an upstream
+    files: list[str] = field(default_factory=list)  # the files git named in a refusal
+
+
+def _paused_path() -> Path:
+    return paths.state_dir() / "sync-paused.json"
+
+
+def paused() -> dict[str, dict]:
+    """The checkouts whose daily pull git refused: {root: {"reason", "files", "at"}}; empty when none."""
+    try:
+        data = load_json(_paused_path())
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, dict) and isinstance(v.get("reason"), str)}
+
+
+def _record_paused(root: Path, entry: dict | None) -> bool:
+    """Store (or, with None, drop) the refusal for root. True when it differs from what was recorded."""
+    data = paused()
+    old = data.get(str(root))
+    if entry is None:
+        if old is None:
+            return False
+        del data[str(root)]
+    else:
+        data[str(root)] = entry
+    if data:
+        save_json(_paused_path(), data)
+    else:
+        _paused_path().unlink(missing_ok=True)
+    return entry is not None and (old is None or (old.get("reason"), old.get("files")) != (entry["reason"], entry["files"]))
+
+
+def _refusal(stderr: str) -> tuple[str, list[str]]:
+    """A failed `git pull --ff-only`: the reason in plain words and the files git named (tab-indented lines)."""
+    lines = stderr.splitlines()
+    for i, line in enumerate(lines):
+        if "would be overwritten by merge:" in line:
+            files = []
+            for item in lines[i + 1:]:
+                if not item.startswith("\t"):
+                    break
+                files.append(item[1:])
+            return "local changes the pull would overwrite", files
+    if "fast-forward" in stderr or "diverg" in stderr.lower():
+        return "your branch and its upstream have diverged", []
+    first = next((l.strip() for l in lines if l.strip()), "")
+    return printable(first) or "git pull failed", []
+
+
+def pull(root: Path) -> PullResult:
+    """Fast-forward the checkout and let git refuse on its own: it never overwrites a local change, so a dirty
+    tree is no reason to skip (untracked files and unrelated edits do not block a fast-forward). A refusal is
+    recorded with the files git named and queued once as a notice."""
     if not (root / ".git").exists() and not root.is_dir():
-        return False
-    status = runner.run(["git", "-C", str(root), "status", "--porcelain"], timeout=30)
-    if not status.ok or status.stdout.strip():
-        return False
+        return PullResult()
+    git = ["git", "-c", "core.quotePath=false", "-C", str(root)]
+    if not runner.run(["git", "-C", str(root), "symbolic-ref", "-q", "HEAD"], timeout=30).ok:
+        return PullResult()  # detached HEAD: nothing to follow
+    if not runner.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "@{u}"], timeout=30).ok:
+        return PullResult()  # no upstream: nothing to pull
     head = ["git", "-C", str(root), "rev-parse", "HEAD"]
     before = runner.run(head, timeout=30).stdout.strip()
-    # a background process has no one to answer a credential prompt (or a GCM login window)
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
-    if not runner.run(["git", "-C", str(root), "pull", "--ff-only", "-q"], timeout=120, env=env).ok:
-        return False
+    # a background process has no one to answer a credential prompt (or a GCM login window); C locale for parsing
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never", "LC_ALL": "C"}
+    res = runner.run([*git, "pull", "--ff-only", "-q"], timeout=120, env=env)
+    if not res.ok:
+        reason, files = _refusal(res.stderr or "")
+        if _record_paused(root, {"reason": reason, "files": files, "at": time.time()}):
+            if files:
+                notify(f"loadout: the daily sync of {root} paused: {reason}: {', '.join(printable(f) for f in files)}; "
+                       "commit or stash them, then run loadout update")
+            else:
+                notify(f"loadout: the daily sync of {root} paused: {reason}; resolve it, then run loadout update")
+        return PullResult(False, reason, files)
+    _record_paused(root, None)
     after = runner.run(head, timeout=30).stdout.strip()
-    return not (before and before == after)
+    return PullResult(not (before and before == after))
+
+
+def pull_if_clean(root: Path) -> bool:
+    """True only when a pull brought new commits (kept for callers that want the bare answer)."""
+    return pull(root).pulled
 
 
 def find_outdated() -> list[tuple[dict, tuple, tuple]]:
@@ -192,7 +268,7 @@ def _maintain(now: float) -> None:
         pass  # opt-out: no daily kit/personal sync (see README, Security & trust)
     elif is_due("last-pull", DAY, now):
         touch("last-pull", now)
-        pulled = [pull_if_clean(root) for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
+        pulled = [pull(root).pulled for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
         if any(pulled):
             from . import targets
             from .jsonio import InvalidJSON

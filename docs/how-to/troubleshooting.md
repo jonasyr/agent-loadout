@@ -158,7 +158,7 @@ Native Windows (`bootstrap.ps1`), and repos checked out by a Git without symlink
 | `skills.json: invalid JSON …` | Fix the JSON syntax in your personal `skills.json` (the path is printed). |
 | `secrets.env: … missing` | Run `loadout bootstrap`; it creates the file. |
 | `secrets.env: permissions too open` | Run `chmod 600` on the file (the fix line has the path). |
-| `personal repo clean: uncommitted changes (daily sync paused)` (or `kit repo clean`) | The daily sync skips a checkout with uncommitted changes, so it pulls nothing there. Commit (and push) or discard the changes in the folder the fix line names. |
+| `personal repo clean: daily sync paused: <reason>: <files>` (or `kit repo clean`) | Git refused the daily pull: a local change to the named files would be overwritten (or the branch has diverged). Commit or stash them in the folder the fix line names, then run `loadout update`. Untracked files and unrelated edits do not pause the sync. |
 | `loadout state: kept in ~/.claude because both places have it: …` | The move out of `~/.claude` found a different copy in both places. Compare each named entry with the state folder (path in the fix line), keep what you need, and delete the old ones by hand ([The move out of ~/.claude](../reference/state-and-sync.md#the-move-out-of-claude)). |
 | `loadout state: not everything was copied out of ~/.claude yet` | Run any loadout command. If the row stays, move the entry it names by hand. |
 | `loadout state: cannot read the old folder in ~/.claude (…)` | Check that folder's permissions, then run loadout again. |

@@ -323,7 +323,7 @@ The rows, in the order they are printed:
 | `MCP servers on PATH` | `serena` and `codebase-memory-mcp` are installed but not on the `PATH` a new terminal gets (Claude Code starts them by name). | warn |
 | `gh auth` | `gh auth status`, when `gh` is installed. | warn |
 | `secrets.env` | `~/.config/loadout/secrets.env` exists and is readable only by you (the permissions are not checked on Windows). | warn |
-| `kit repo clean`, `personal repo clean` | The kit and personal git repos have no uncommitted changes. While they have, the daily sync is paused for that repo (`uncommitted changes (daily sync paused)`). | warn |
+| `kit repo clean`, `personal repo clean` | The daily sync of the kit and personal git repos is not paused. Uncommitted changes alone are fine; the warning appears only while git refuses the pull, and it names the files (`daily sync paused: local changes the pull would overwrite: <files>`). | warn |
 | `repo skill links` | Inside a git repo (not your home folder): committed skill links that the checkout wrote as plain files (Git without symlinks), with the fix. | warn |
 | `repo .mcp.json` | Inside a git repo for Claude Code: the committed `.mcp.json` starts a server from a path in one person's home, so teammates' agents cannot start it. loadout does not change the file. | warn |
 

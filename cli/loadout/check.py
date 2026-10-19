@@ -278,14 +278,22 @@ def _secrets() -> list[CheckResult]:
 
 
 def _repos() -> list[CheckResult]:
+    """Dirty alone is fine (git refuses a pull only when it would overwrite something); a recorded refusal is not."""
+    from . import maintenance
+    from .out import printable
+    held = maintenance.paused()
     out = []
     for label, root in (("kit", paths.kit_root()), ("personal", paths.personal_root())):
         if not (root / ".git").exists():
             continue
-        res = runner.run(["git", "-C", str(root), "status", "--porcelain"], timeout=20)
-        clean = res.ok and not res.stdout.strip()
-        out.append(CheckResult(f"{label} repo clean", clean, "" if clean else "uncommitted changes (daily sync paused)",
-                               f"commit or discard changes in {root}", "warn"))
+        rec = held.get(str(root))
+        if rec is None:
+            out.append(CheckResult(f"{label} repo clean", True))
+            continue
+        files = [printable(str(f)) for f in rec.get("files") or []]
+        detail = f"daily sync paused: {printable(rec['reason'])}" + (f": {', '.join(files)}" if files else "")
+        out.append(CheckResult(f"{label} repo clean", False, detail,
+                               f"commit or stash them in {root}, then run loadout update", "warn"))
     return out
 
 

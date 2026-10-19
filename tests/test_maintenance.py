@@ -31,10 +31,71 @@ def test_session_start_spawns_only_when_due(fake_home, monkeypatch):
     assert spawned == [1]
 
 
-def test_pull_skipped_when_dirty(fake_home, fake_runner, tmp_path):
-    fake_runner.responses[("git", "-C", str(tmp_path), "status", "--porcelain")] = runner.Result(0, " M x\n", "")
-    assert m.pull_if_clean(tmp_path) is False
+REFUSAL = ("error: Your local changes to the following files would be overwritten by merge:\n"
+           "\t.serena/project.yml\nPlease commit your changes or stash them before you merge.\nAborting\n")
+
+
+def _pull_key(root):
+    return ("git", "-c", "core.quotePath=false", "-C", str(root), "pull")
+
+
+def test_untracked_files_do_not_pause_the_pull(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[("git", "-C", str(tmp_path), "status", "--porcelain")] = runner.Result(0, "?? x\n", "")
+    res = m.pull(tmp_path)
+    assert any(c[:6] == list(_pull_key(tmp_path)) for c in fake_runner.calls)
+    assert res.paused is None and m.paused() == {}
+    assert not any("status" in c for c in fake_runner.calls)
+
+
+def test_a_refused_pull_names_the_files_and_changes_nothing(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(1, "", REFUSAL)
+    res = m.pull(tmp_path)
+    assert res.pulled is False and res.paused == "local changes the pull would overwrite"
+    assert res.files == [".serena/project.yml"]
+    rec = m.paused()[str(tmp_path)]
+    assert rec["files"] == [".serena/project.yml"] and rec["reason"] == res.paused
+    notice = (paths.state_dir() / "pending-notice").read_text()
+    assert notice == (f"loadout: the daily sync of {tmp_path} paused: local changes the pull would overwrite: "
+                      ".serena/project.yml; commit or stash them, then run loadout update\n")
+    last_pull = max(i for i, c in enumerate(fake_runner.calls) if "pull" in c)
+    assert last_pull == len(fake_runner.calls) - 1  # git refused: nothing else ran (no reset, stash, checkout)
+    m.pull(tmp_path)  # the same refusal again: no second notice
+    assert (paths.state_dir() / "pending-notice").read_text() == notice
+
+
+def test_a_diverged_branch_is_recorded_without_files(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(128, "", "fatal: Not possible to fast-forward, aborting.\n")
+    res = m.pull(tmp_path)
+    assert res.paused == "your branch and its upstream have diverged" and res.files == []
+
+
+def test_the_pull_env_forces_english_and_no_prompts(fake_home, fake_runner, tmp_path):
+    m.pull(tmp_path)
+    pulls = [e for c, e in zip(fake_runner.calls, fake_runner.envs) if "pull" in c]
+    assert pulls
+    for env in pulls:
+        assert env["GIT_TERMINAL_PROMPT"] == "0" and env["GCM_INTERACTIVE"] == "never" and env["LC_ALL"] == "C"
+
+
+def test_no_upstream_is_skipped_not_paused(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[("git", "-C", str(tmp_path), "rev-parse", "--abbrev-ref", "@{u}")] = runner.Result(128, "", "no upstream")
+    res = m.pull(tmp_path)
+    assert res == m.PullResult(False, None, []) and m.paused() == {}
     assert not any("pull" in c for c in fake_runner.calls)
+
+
+def test_a_detached_head_is_skipped_not_paused(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[("git", "-C", str(tmp_path), "symbolic-ref")] = runner.Result(1, "", "")
+    assert m.pull(tmp_path).paused is None and not any("pull" in c for c in fake_runner.calls)
+
+
+def test_a_later_good_pull_clears_the_pause(fake_home, fake_runner, tmp_path):
+    fake_runner.responses[_pull_key(tmp_path)] = runner.Result(1, "", REFUSAL)
+    m.pull(tmp_path)
+    assert m.paused()
+    del fake_runner.responses[_pull_key(tmp_path)]
+    assert m.pull(tmp_path).paused is None
+    assert m.paused() == {} and not (paths.state_dir() / "sync-paused.json").exists()
 
 
 def test_maintain_writes_notice_for_outdated(fake_home, fake_runner, monkeypatch):
@@ -98,14 +159,6 @@ def test_update_guard_backs_up_installer_version_and_names_keys(fake_home, fake_
     assert "a, hooks" in out
     copies = [p for p in paths.backups_root().rglob("files/*settings.json")]
     assert copies and json.loads(copies[0].read_text()) == {"a": 2, "hooks": {"X": []}}
-
-
-def test_background_pull_never_prompts(fake_home, fake_runner, tmp_path):
-    m.pull_if_clean(tmp_path)
-    pulls = [(c, e) for c, e in zip(fake_runner.calls, fake_runner.envs) if "pull" in c]
-    assert pulls
-    for _, env in pulls:
-        assert env["GIT_TERMINAL_PROMPT"] == "0" and env["GCM_INTERACTIVE"] == "never"
 
 
 def test_no_auto_pull_env_skips_pull(fake_home, fake_runner, monkeypatch, tmp_path):
