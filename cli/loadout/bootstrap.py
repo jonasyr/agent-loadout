@@ -203,10 +203,11 @@ def _linux_copy_first(name: str) -> bool:
 
 def _windows_first_note(name: str, installed: bool = False) -> str:
     """A WSL line for a tool whose Windows copy is still found first. Bootstrap does not change the PATH order."""
-    found = runner.which(name)
     folder = _linux_folder(name)
+    shown = next((n for n in (("node", "npm") if name == "node" else (name,)) if wsl.is_windows_program(n)), name)
+    found = runner.which(shown)  # for node: whichever of node or npm is the Windows program
     still = "still " if installed else ""
-    return (f"{name} {still}resolves to the Windows program {found}; the Windows one stays untouched. Put {folder} "
+    return (f"{shown} {still}resolves to the Windows program {found}; the Windows one stays untouched. Put {folder} "
             f"first in PATH (a line in your shell profile: export PATH=\"{folder}:$PATH\"), or set "
             "`appendWindowsPath = false` in `/etc/wsl.conf`; bootstrap does not change the order")
 
