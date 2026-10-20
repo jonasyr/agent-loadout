@@ -5,6 +5,7 @@ refreshes plugins, updates tools, undoes what installers re-registered, checks t
 The plan reads state and runs nothing; an agent that is off is neither read nor named."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -14,7 +15,7 @@ from typing import Callable, NoReturn
 
 from . import apply, bootstrap, check, codex, locks, maintenance, out, paths, pkgmgr, runner, steps, targets, ui, versions
 from .backup import Backup
-from .jsonio import get_dict, load_json
+from .jsonio import get_dict, load_json, write_atomic_bytes
 from .secrets import redact
 
 PROMPT = "Apply all? [Y/n, or the numbers to leave out, e.g. 3 5] "
@@ -500,7 +501,6 @@ def _install_tool(item: PlanItem, summary: Summary) -> None:
 
 
 def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
-    from .jsonio import save_json
     claude_on, codex_on = targets.claude_enabled(), targets.codex_enabled()
     codex_ok = codex_on
     if codex_on and (reason := codex.unavailable()) is not None:
@@ -520,7 +520,7 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
         if claude_on and item.kind == "claude-plugins-refresh":
             _refresh_claude_plugins(item, summary)
     settings_path = paths.claude_home() / "settings.json"
-    before = load_json(settings_path) if claude_on else {}  # Codex only: Claude Code's file is not read at all
+    before = _read_bytes(settings_path) if claude_on else None  # Codex only: Claude Code's file is not read at all
     ran = False
     for item in chosen:
         if item.kind == "tool-update":
@@ -530,16 +530,7 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
             ran = True
             _install_tool(item, summary)
     if claude_on:  # Codex only: Claude Code's settings and servers are not loadout's to fix
-        after = load_json(settings_path)
-        if after != before:
-            changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
-            guard = Backup(description="update: settings.json as modified by an installer")
-            guard.save_copy(settings_path, "settings.json as modified by an installer")
-            print(f"an installer modified ~/.claude/settings.json (keys: {', '.join(changed)}); reverting to the "
-                  f"kit-merged version. The installer's version is in {guard.root}")
-            save_json(settings_path, before)
-            summary.changed.append(f"settings: an installer's change to ~/.claude/settings.json undone "
-                                   f"(undo: loadout restore {out.printable(str(guard.root))})")
+        _guard_settings(settings_path, before, summary)
         if ran:  # installers re-register what the loadout plugin already provides
             dupes = Backup(description="update: duplicates re-registered by installers")
             removed, reported = maintenance.undo_reregistered(dupes)
@@ -563,6 +554,68 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
         pass
     report(summary)
     return summary
+
+
+def _read_bytes(path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _parsed(data: bytes | None) -> tuple[dict | None, str]:
+    """The settings an installer may have left: (the object, "") or (None, why it cannot be read)."""
+    if data is None:
+        return {}, ""
+    try:
+        text = data.decode("utf-8-sig").strip()
+    except UnicodeDecodeError as exc:
+        return None, f"not UTF-8 text ({exc.reason})"
+    if not text:
+        return {}, ""
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return None, f"invalid JSON: {exc}"
+    return (value, "") if isinstance(value, dict) else (None, "not a JSON object at the top level")
+
+
+def _guard_settings(path, before: bytes | None, summary: Summary) -> None:
+    """Undo what the tool installers did to ~/.claude/settings.json: their version goes into a backup first, then
+    the bytes from before they ran come back atomically. An unreadable file (malformed, not UTF-8) is undone the
+    same way, never parsed into a crash that leaves it broken."""
+    after = _read_bytes(path)
+    if after == before:
+        return
+    old, _ = _parsed(before)
+    new, why = _parsed(after)
+    if old is not None and new is not None and old == new:
+        return  # only the formatting moved
+    guard = Backup(description="update: settings.json as modified by an installer")
+    if after is None:
+        if before is not None:
+            write_atomic_bytes(path, before)
+        what = "removed it"
+    elif before is None:  # it did not exist: the installer's file moves into the backup (restore puts it back)
+        guard.move(path, "settings.json as created by an installer")
+        what = "created it"
+    else:
+        guard.save_copy(path, "settings.json as modified by an installer")
+        write_atomic_bytes(path, before)
+        what = "left it unreadable: " + why if new is None else "changed it"
+    if new is None:
+        detail = f"it could not be read: {why}"
+    else:
+        keys = sorted(k for k in set(old or {}) | set(new) if (old or {}).get(k) != new.get(k)) if old is not None else []
+        detail = "keys: " + ", ".join(out.printable(k) for k in keys) if keys else what
+    where = f" The installer's version is in {guard.root}" if not guard.empty else ""
+    print(f"an installer modified ~/.claude/settings.json ({out.printable(detail)}); reverting to the kit-merged "
+          f"version.{where}")
+    line = (f"settings: an installer's change to ~/.claude/settings.json undone"
+            + (f" ({out.printable(detail)})" if new is None else ""))
+    if not guard.empty:
+        line += f" (undo: loadout restore {out.printable(str(guard.root))})"
+    summary.changed.append(line)
 
 
 def _health() -> list:
