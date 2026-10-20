@@ -468,3 +468,17 @@ def test_in_wsl_a_linux_node_with_a_windows_npm_gets_its_folder_first(fake_home,
     order = os.environ["PATH"].split(os.pathsep)
     assert order.index(str(shims)) < order.index(in_wsl), "the Linux npm must come before the Windows one"
     assert "node" not in missing and not any("because node failed" in n for n in notes)
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="simulates a Linux PATH in WSL; Windows paths use backslashes")
+def test_in_wsl_an_old_node_without_npm_does_not_stop_the_search(fake_home, fake_runner, monkeypatch, in_wsl):
+    """~/.local/bin has an older Linux node but no npm; the new install put node and npm in mise's shims: the
+    shims must come first, not ~/.local/bin."""
+    import os
+    _path_order_which(monkeypatch, fake_runner)
+    shims = _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy=True)
+    (fake_home / ".local" / "bin" / "node").write_text("x")  # old Linux node, no npm next to it
+    os.environ["PATH"] = os.pathsep.join([in_wsl, str(fake_home / ".local" / "bin"), str(shims)])
+    assert bootstrap._linux_copy_first("node") is True
+    order = os.environ["PATH"].split(os.pathsep)
+    assert order.index(str(shims)) < order.index(in_wsl)

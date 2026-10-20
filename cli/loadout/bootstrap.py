@@ -192,11 +192,12 @@ def _linux_copy_first(name: str) -> bool:
     """WSL, right after an install: put the folder that holds the new Linux copy first in this run's PATH, so the
     next installs (npm install -g, mise use) run the Linux tool, not the Windows one; new shells still need the
     profile line. Returns whether the Linux copy is now the one found."""
-    for d in paths.tool_dirs():
+    for d in paths.tool_dirs():  # try each folder that has it: an older copy (node without npm) may not suffice
         if (d / name).is_file():
             parts = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p and p != str(d)]
             os.environ["PATH"] = os.pathsep.join([str(d), *parts])
-            break
+            if not missing_binary(name):
+                return True
     return not missing_binary(name)
 
 
