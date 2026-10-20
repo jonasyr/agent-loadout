@@ -366,3 +366,6 @@ def test_the_codex_plugin_item_runs_alone_without_item_1(fake_home, fake_runner,
            and "list" not in c]
     assert ran == shown
     assert not (paths.codex_home() / "AGENTS.md").exists() and not (paths.codex_home() / "config.toml").exists()
+    text = capsys.readouterr().out
+    assert "rules, plugins, MCP servers and skills set up" not in text
+    assert "plugins refreshed; rules, config, hooks and skills left as they are (item 1 was left out)" in text
