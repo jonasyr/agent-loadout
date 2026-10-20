@@ -148,8 +148,8 @@ def mcp_servers_started_by(binary_id: str) -> dict[str, list[str]]:
             found["codex"] += [n for n, t in get_dict(data, "mcp_servers").items() if _starts(t, binary_id)]
         except Exception:
             pass
-        for root in (paths.codex_home() / "plugins" / "cache").glob("*/*/*"):
-            found["codex"] += [n for n, t in _servers(root / ".mcp.json").items() if _starts(t, binary_id)]
+        for mcp in codex.plugin_mcp_files():  # the file each plugin's manifest names, as Codex reads it
+            found["codex"] += [n for n, t in _servers(mcp).items() if _starts(t, binary_id)]
         found["codex"] = list(dict.fromkeys(found["codex"]))
     return found
 

@@ -1189,12 +1189,23 @@ def _codex_serenas() -> set[str]:
     return {n for n, t in get_dict(data, "mcp_servers").items() if isinstance(t, dict) and is_serena(t)}
 
 
+def plugin_mcp_files() -> list[Path]:
+    """Each installed Codex plugin's MCP server file: the one its .codex-plugin/plugin.json names (inside the plugin),
+    else .mcp.json."""
+    files = []
+    for root in (paths.codex_home() / "plugins" / "cache").glob("*/*/*"):
+        try:
+            ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
+        except Exception:  # an unreadable manifest: the default file
+            ref = None
+        files.append(root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json")
+    return files
+
+
 def _plugin_servers() -> set[str]:
     """MCP servers that Codex has from installed plugins, from the file each manifest names (else .mcp.json)."""
     names: set[str] = set()
-    for root in (paths.codex_home() / "plugins" / "cache").glob("*/*/*"):
-        ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
-        mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
+    for mcp in plugin_mcp_files():
         names |= set(get_dict(load_json(mcp), "mcpServers"))
     return names
 

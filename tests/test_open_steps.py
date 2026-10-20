@@ -277,3 +277,13 @@ def test_a_server_name_with_a_token_is_redacted_in_steps(fake_home, fake_runner,
     saved = steps.Step("claude/mcp:x", "claude", f"run /mcp and reconnect {name}", "why")  # saved before the fix
     lines = steps.render([saved], True, False)
     assert "ghp_" not in lines[0] and "github.com/o/r" in lines[0]
+
+
+def test_a_codex_plugin_whose_manifest_names_its_server_file_is_found(fake_home, fake_runner, monkeypatch):
+    targets.set_agents({"claude": False, "codex": True})
+    root = paths.codex_home() / "plugins" / "cache" / "market" / "plug" / "1.0.0"
+    (root / ".codex-plugin").mkdir(parents=True)
+    (root / ".codex-plugin" / "plugin.json").write_text(json.dumps({"mcpServers": "config/servers.json"}))
+    (root / "config").mkdir()
+    (root / "config" / "servers.json").write_text(json.dumps({"mcpServers": {"own-srv": {"command": "mytool"}}}))
+    assert "own-srv" in steps.mcp_servers_started_by("mytool")["codex"]
