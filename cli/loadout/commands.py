@@ -1,8 +1,9 @@
 """Registers subcommands implemented in other modules (kept separate to avoid import cycles)."""
-from .__main__ import EXTRA_COMMANDS  # noqa: F401
 from pathlib import Path
 
 from . import backup
+
+EXTRA_COMMANDS: list = []  # register(subparsers) functions; __main__.build_parser runs them (one registry, also under `python -m`)
 
 
 def _register_restore(sub):

@@ -70,7 +70,8 @@ def build_parser() -> argparse.ArgumentParser:
         approve=project.approver(a.yes, _ask, ui.is_interactive()),
         decide=project.chooser(a.take_profile, _ask, ui.is_interactive() and not a.yes, a.dry_run)))
 
-    for register in EXTRA_COMMANDS:
+    from . import commands
+    for register in commands.EXTRA_COMMANDS:
         register(sub)
     return parser
 
@@ -85,12 +86,7 @@ def _verbose(a) -> None:
 EXEMPT = {"kit-path", "check", "restore", "usage", "explain", None}
 READ_ONLY = {"kit-path", "check", "usage"}  # promised read-only: no migration, no state folder
 
-EXTRA_COMMANDS: list = []  # later modules append register(subparsers) functions here
-
-
 def main(argv: list[str] | None = None) -> int:
-    from . import commands  # noqa: F401  (registers the remaining subcommands)
-
     for stream in (sys.stdout, sys.stderr):  # legacy Windows code pages must not crash on non-ASCII output
         try:
             stream.reconfigure(errors="replace")

@@ -11,7 +11,7 @@ git clone https://github.com/jonasyr/agent-loadout
 cd agent-loadout
 ```
 
-Run the CLI from the clone with `bin/loadout` (for example `bin/loadout check --help`); `python -m loadout` registers only `init` and `profile`. You do not need to run bootstrap to work on the code. If you do run it from your clone, it links your real `~/.claude` to that clone (and with Codex on, it writes your real `~/.codex` and `~/.agents/skills` from it).
+Run the CLI from the clone with `bin/loadout` (for example `bin/loadout check --help`); `python -m loadout` from `cli/` works too. You do not need to run bootstrap to work on the code. If you do run it from your clone, it links your real `~/.claude` to that clone (and with Codex on, it writes your real `~/.codex` and `~/.agents/skills` from it).
 
 ## Tests and validation
 
