@@ -173,3 +173,19 @@ def test_the_plugin_install_item_runs_exactly_the_commands_it_shows(fake_home, f
     update.run(False, lambda q: f"1 {refresh}", argv=[])  # leave out the re-apply and the refresh
     ran = [c for c in fake_runner.calls if c[:3] == ["claude", "plugin", "install"] or c[:4] == ["claude", "plugin", "marketplace", "add"]]
     assert ran == shown
+
+
+def test_leaving_out_the_codex_plugin_item_runs_no_codex_plugin_command(fake_home, fake_runner, monkeypatch):
+    from loadout import codex, ui
+    _setup(fake_home, monkeypatch, claude=False, codex=True)
+    monkeypatch.setattr(codex, "plugin_routes", lambda desired: ({"owner/repo": ["x"]}, []))
+    monkeypatch.setattr(codex, "installed_plugins", lambda: set())
+    monkeypatch.setattr(codex, "unchanged_routes", lambda routes, installed: (set(), set()))
+    seen = []
+    monkeypatch.setattr(codex, "apply_plugins", lambda bk, **kw: seen.append(kw) or [])
+    plan = update.build_plan(False, True)
+    item = next(i for i in plan if i.kind == "codex-plugins")
+    monkeypatch.setattr(ui, "is_interactive", lambda: True)
+    update.run(False, lambda q: str(item.n), argv=[])  # keep item 1, leave out the Codex plugins
+    assert seen == []
+    assert not [c for c in fake_runner.calls if c[:2] == ["codex", "plugin"] and "list" not in c]  # reads only

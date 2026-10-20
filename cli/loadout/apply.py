@@ -144,13 +144,13 @@ def _codex_summary(lines: list[str]) -> str:
 
 def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say=None,
                skip_unchanged: bool = False, dry: bool = False, on: bool | None = None, command: str = "setup",
-               on_wait=None) -> StepResult:
+               on_wait=None, plugins: bool = True) -> StepResult:
     """Codex's rules block, config.toml, Serena's hooks, skills and plugins (codex.apply_all, under the Codex lock).
     The caller checks codex.unavailable() first. refresh_plugins: re-add every plugin and upgrade the marketplaces;
     auto: the daily sync's freeze of `autoUpdate: false` marketplaces; keep: never remove Serena's hooks.
     skip_unchanged: passed through (Codex marketplaces and plugins whose upstream did not move). on: whether Codex is on (default: targets.json).
     command, on_wait: for the Codex lock, as in codex.apply_all (the wait line's command; a run holding another lock
-    touches it in on_wait)."""
+    touches it in on_wait). plugins: False leaves Codex's marketplaces and plugins alone."""
     if not (targets.codex_enabled() if on is None else on):
         return StepResult("Codex", "")
     if dry:
@@ -158,7 +158,8 @@ def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say
     from . import codex
     changed: set[str] = set()
     lines = codex.apply_all(bk, refresh=refresh_plugins, say=say, auto=auto, keep=keep,
-                            skip_unchanged=skip_unchanged, changed=changed, command=command, on_wait=on_wait)
+                            skip_unchanged=skip_unchanged, changed=changed, command=command, on_wait=on_wait,
+                            plugins=plugins)
     facts = _codex_facts(lines)
     if any(line.startswith("skipped: ") for line in lines):
         facts.add("skipped:codex")

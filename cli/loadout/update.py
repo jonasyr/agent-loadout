@@ -455,10 +455,13 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem]
     if codex_ok and reapply:
         refresh = "codex-plugins" in kinds or "codex-plugins" not in in_plan  # no item: nothing was left out
         slow = "Codex clones each changed plugin's source; this can take a few minutes" if refresh else None
-        with out.step("Codex", slow=slow) as st:
+        with out.step("Codex", slow=slow) as st:  # its plugin item left out: no marketplace or plugin command
             result = apply.codex_step(bk, refresh_plugins=refresh, auto=False, keep=False, skip_unchanged=True,
-                                      say=_say(st), on=True, command="update", on_wait=maintenance._touch_lock)
+                                      say=_say(st), on=True, command="update", on_wait=maintenance._touch_lock,
+                                      plugins=refresh)
         _show(result, summary)
+        if not refresh:
+            summary.changed.append("Codex plugins: left as they are (their item was left out)")
     elif codex_ok and "codex-plugins" in kinds:
         summary.changed.append("Codex plugins: left as they are (they refresh together with item 1, the re-apply)")
 
