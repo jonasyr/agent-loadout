@@ -305,3 +305,15 @@ def test_update_runs_the_codex_commands_the_plan_showed_when_ls_remote_flips(fak
     ran = [c for c in fake_runner.calls if c[:2] == ["codex", "plugin"] and c[2:3] in (["add"], ["marketplace"])
            and "list" not in c]
     assert ran == shown
+
+
+@pytest.mark.parametrize("url", ["git@github.com:obra/superpowers.git", "ssh://git@github.com/obra/superpowers.git",
+                                 "file:///home/x/superpowers", "/home/x/superpowers"])
+def test_an_external_source_that_cannot_be_compared_is_re_added(fake_home, fake_runner, monkeypatch, tmp_path, url):
+    src = {"source": "url", "url": url}
+    _setup(fake_home, fake_runner, monkeypatch, tmp_path / "m", plugin_sources=src)
+    _record(fake_home, "aaaaaaa1")
+    _heads(fake_runner, URL, "aaaaaaa1")
+    calls = _apply(fake_runner)
+    assert not [c for c in calls if c[:4] == ["codex", "plugin", "marketplace", "upgrade"]]  # the marketplace did not move
+    assert ["codex", "plugin", "add", "loadout@agent-loadout", "--json"] in calls

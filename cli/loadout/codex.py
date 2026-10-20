@@ -860,9 +860,11 @@ def _same_source(listed: dict | None, url: str) -> bool:
     return mine is not None and _norm_source((listed or {}).get("source")) == mine
 
 
-def _sha_less_plugins(info: dict | None) -> dict[str, tuple[str, str | None]]:
-    """{plugin name: (url, ref)} for the plugins of a marketplace whose own source is a git URL without a pinned sha
-    (read from its .claude-plugin/marketplace.json). Those can move without the marketplace head moving."""
+def _sha_less_plugins(info: dict | None) -> dict[str, tuple[str | None, str | None]]:
+    """{plugin name: (url, ref)} for the plugins of a marketplace with a source of their own and no pinned sha (read
+    from its .claude-plugin/marketplace.json). Those can move without the marketplace head moving. url is None for a
+    source that cannot be compared (SSH, git@, file or a local path): such a plugin is always refreshed. A plugin
+    in the marketplace's own repo (a path string) or pinned to a sha is not listed: the marketplace head covers it."""
     root = info.get("root") if info else None
     if not root:
         return {}
@@ -877,6 +879,8 @@ def _sha_less_plugins(info: dict | None) -> dict[str, tuple[str, str | None]]:
         if isinstance(url, str) and url.startswith("https://"):
             ref = src.get("ref")
             found[plug["name"]] = (url, ref if isinstance(ref, str) else None)
+        else:
+            found[plug["name"]] = (None, None)
     return found
 
 
@@ -910,6 +914,8 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
                 skip_p.add(pid)
                 continue
             purl, ref = own[name]
+            if purl is None:  # an external source that cannot be compared: refreshed as before
+                continue
             old = recorded.get(pid)
             now = remote_head(purl, ref)
             if now is not None and isinstance(old, dict) and old.get("head") == now and old.get("url") == purl:
@@ -1001,7 +1007,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             if src in skip_m or refreshed or record_has(src):
                 if own is None:
                     own = _sha_less_plugins((marketplaces() or {}).get(market))
-                if name in own:
+                if name in own and own[name][0] is not None:
                     purl, ref = own[name]
                     _remember(src, market, plugin=(pid, purl, ref, remote_head(purl, ref)))
     return lines, installed
