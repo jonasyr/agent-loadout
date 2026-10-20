@@ -228,6 +228,9 @@ def find_outdated() -> list[tuple[dict, tuple, tuple]]:
     for entry in catalog.binaries():
         if entry.get("helper") or not runner.have(entry["id"]):
             continue  # helpers (mise) only install other tools; they are not offered as updates
+        from . import bootstrap  # local: bootstrap imports this module
+        if bootstrap.windows_first(entry["id"]):
+            continue  # WSL: the Windows copy stays untouched; missing_tools plans a Linux install instead
         tool = pkgmgr.mise_tool(entry)
         if tool:  # ask mise: it knows the user's minimum_release_age and pins
             status = pkgmgr.mise_outdated(tool)

@@ -517,3 +517,23 @@ def test_in_wsl_update_with_a_failed_reinstall_still_uses_the_linux_copy(fake_ho
     assert "node" not in failed
     assert any("failed to install node" in f[0] for f in summary.failed)  # the reinstall failure stays reported
     assert any(c.startswith("node:") and "first in PATH" in c for c in summary.changed)
+
+
+def test_in_wsl_a_windows_first_tool_is_not_offered_as_an_update(fake_home, fake_runner, monkeypatch, in_wsl):
+    """uv resolves to the Windows program: updating it would change the Windows copy, which stays untouched."""
+    from loadout import maintenance, pkgmgr, versions
+    fake_runner.paths["uv"] = in_wsl + "/uv"
+    monkeypatch.setattr(pkgmgr, "mise_tool", lambda entry: None)
+    monkeypatch.setattr(versions, "local_version", lambda entry: (1, 0, 0))
+    monkeypatch.setattr(versions, "latest_version", lambda entry: (2, 0, 0))
+    assert "uv" not in [e["id"] for e, _l, _n in maintenance.find_outdated()]
+    fake_runner.paths["uv"] = "/home/u/.local/bin/uv"
+    assert "uv" in [e["id"] for e, _l, _n in maintenance.find_outdated()]
+
+
+def test_in_wsl_the_windows_note_names_the_one_that_is_windows(fake_home, fake_runner, in_wsl):
+    fake_runner.paths["node"] = "/home/u/.local/share/mise/shims/node"
+    fake_runner.paths["npm"] = in_wsl + "/npm"
+    note = bootstrap._windows_first_note("node")
+    assert f"npm resolves to the Windows program {in_wsl}/npm" in note
+    assert not note.startswith("node ")
