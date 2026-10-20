@@ -131,7 +131,7 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
     failures: list[str] = []
     _, skipped = profiles.apply_profile(prof, project, w=w, decide=decide, notes=notes)
     failures += skipped
-    notes += profiles.repo_off_notes(prof, project)
+    notes += profiles.repo_off_notes(prof, project, install)
     before = len(w.changes)
     for line in profiles.copy_skills(prof, project, w=w):
         if not line.startswith("copied skill"):
@@ -341,7 +341,7 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
         parts.append(path.relative_to(project).as_posix() if paths.inside(path, project) else path.name)
     for line in skipped:
         warn(line)
-    for line in profiles.repo_off_notes(prof, project):
+    for line in profiles.repo_off_notes(prof, project, install):
         (steps.append if calm else info)(line)
     skills_ok = True
     for line in profiles.copy_skills(prof, project, w=w):

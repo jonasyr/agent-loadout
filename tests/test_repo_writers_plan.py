@@ -134,3 +134,24 @@ def test_gitignore_with_mixed_endings_keeps_each_line(repo):
     (repo / ".gitignore").write_bytes(b"a\r\nb\n")
     scaffold.ensure_gitignore(repo)
     assert (repo / ".gitignore").read_bytes().startswith(b"a\r\nb\n")
+
+
+def _plugins_profile():
+    return profiles.Profile(name="thesis", description="", install=["a@m", "b@m"])
+
+
+def test_a_repo_not_for_claude_names_the_plugins_it_skips(repo):
+    targets.set_agents({"claude": True, "codex": True})
+    (repo / ".loadout.json").write_text('{\n  "agents": [\n    "codex"\n  ]\n}\n')
+    assert profiles.repo_off_notes(_plugins_profile(), repo) == []
+    assert profiles.repo_off_notes(_plugins_profile(), repo, install=True) == [
+        "skipped for this repo (not for Claude Code): plugin a@m, plugin b@m"]
+
+
+def test_the_plan_names_the_skipped_plugins(repo, monkeypatch, capsys):
+    from loadout import project
+    targets.set_agents({"claude": True, "codex": True})
+    (repo / ".loadout.json").write_text('{\n  "agents": [\n    "codex"\n  ]\n}\n')
+    monkeypatch.setattr(profiles, "load_profile", lambda name: _plugins_profile())
+    assert project.add_profile(repo, "thesis", install=True, dry_run=True) == 0
+    assert "skipped for this repo (not for Claude Code): plugin a@m, plugin b@m" in capsys.readouterr().out

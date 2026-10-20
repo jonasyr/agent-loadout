@@ -84,19 +84,22 @@ def reason(profile: Profile, entry: str | None = None) -> str:
                                         f" ({profile.description})" if profile.description and entry is None else "")
 
 
-def repo_off_notes(profile: Profile, project: Path) -> list[str]:
-    """One line when the repo is not for Claude Code but the profile has Claude Code files (ADR 0030)."""
+def repo_off_notes(profile: Profile, project: Path, install: bool = False) -> list[str]:
+    """When the repo is not for Claude Code: one line for the profile's Claude Code files and, with install, one
+    naming the plugins that are not installed for it (ADR 0030)."""
     from . import repo_config
     if repo_config.agents(project)["claude"]:
         return []
     files = [rel.as_posix() for attr, rel in CLAUDE_FILES if getattr(profile, attr)]
+    ids = [p for p in profile.install if install and isinstance(p, str) and PLUGIN_ID.match(p)]
+    out = [f"skipped for this repo (not for Claude Code): {', '.join(f'plugin {p}' for p in ids)}"] if ids else []
     if not files:
-        return []
+        return out
     chosen = str(project) in repo_config._PENDING or repo_config.load(project).agents is not None
     why = ("this repo is for Codex only (.loadout.json; add Claude Code with loadout init --agents claude,codex)"
            if chosen else "Claude Code is off for you (turn it on and run loadout profile "
            f"{profile.name} again, or choose the repo's agents with loadout init --agents claude,codex)")
-    return [f"{' and '.join(files)}: not written, {why}"]
+    return [f"{' and '.join(files)}: not written, {why}"] + out
 
 
 def apply_profile(profile: Profile, project: Path, w=None, decide=None, notes: list | None = None) -> tuple[list[Path], list[str]]:
