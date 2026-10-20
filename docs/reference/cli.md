@@ -54,7 +54,7 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [-
 
 | Flag | Meaning |
 |---|---|
-| `--install` | Install missing tool binaries. |
+| `--install` | Install missing tool binaries (in WSL a Windows one on `PATH` counts as missing; the Windows one stays untouched). |
 | `--yes` | Accept defaults without asking, also in a terminal (see [When bootstrap does not ask](#when-bootstrap-does-not-ask)). Adopt applies remove, migrate and scope-down; binary updates are never applied. Without `--agents`, a machine that has not chosen gets Claude Code. |
 | `--no-plugins` | Skip adding marketplaces and installing plugins (offline or CI). |
 | `--no-adopt` | Skip reviewing the existing setup. |

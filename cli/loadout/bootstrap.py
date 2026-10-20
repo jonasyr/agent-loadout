@@ -62,7 +62,7 @@ def _report(name: str, summary: str, lines: list[str] = (), level: str = "ok") -
 def _prereq_summary(missing: list[str], installed: list[str],
                     recommended: frozenset = frozenset()) -> tuple[str, str]:
     entries = [e for e in catalog.binaries() if not e.get("helper") and _wanted(e)]
-    ready = sum(1 for e in entries if runner.have(e["id"]))
+    ready = sum(1 for e in entries if not missing_binary(e["id"]))
     text = f"{ready} tools ready"
     if installed:
         text += f", installed {', '.join(installed)}"
@@ -160,14 +160,20 @@ def _tail(res: runner.Result, limit: int = 400) -> str:
     return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
 
 
-def missing_binary(name: str) -> bool:
-    """Not on PATH, or (in WSL) a codex that resolves to the Windows one: --install then installs a Linux Codex."""
-    if not runner.have(name):
-        return True
-    if name != "codex" or wsl.detect() is None:
-        return False
+def _windows_program(name: str) -> bool:
+    """In WSL: the name resolves to a program on a Windows drive (/mnt/<drive>/...)."""
     found = runner.which(name)
     return bool(found) and wsl._on_windows_drive(Path(found), wsl.MOUNT)
+
+
+def missing_binary(name: str) -> bool:
+    """Not on PATH, or (in WSL) one that resolves to a Windows program under /mnt/<drive>/ (node also when its npm
+    does): --install then installs the Linux copy in the home; the Windows one stays untouched."""
+    if not runner.have(name):
+        return True
+    if wsl.detect() is None:
+        return False
+    return any(_windows_program(n) for n in (("node", "npm") if name == "node" else (name,)))
 
 
 RECOMMENDED_WHY = {"codex": "recommended next to VS Code's Codex extension, for /hooks and plugins",
