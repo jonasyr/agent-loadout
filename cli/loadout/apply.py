@@ -7,8 +7,8 @@ per-item lines (callers print them their own way) and the facts, what the step c
 - codex_step: codex_block_written, codex_config_changed, serena_hooks_added, codex_hooks_removed,
   codex_skills_linked, codex_plugins_installed, codex_plugins_updated
 - any step: failed:<step> (links, settings, claude_plugins, codex) when one of its lines has a failure in the
-  forms loadout prints (": failed", "failed to ") or a change it refused ("skipped <file>: …", "left as is",
-  "by hand", "cannot", …; apply.refused lists them)
+  forms loadout prints (": failed", "failed to ") or a change it refused ("skipped <file>: …", "by hand",
+  "cannot", …; not "left as is", a value the user kept; apply.refused lists them)
 - codex_step: skipped:codex when it did not run (another loadout run held the Codex lock): nothing changed, but
   nothing was checked either
 
@@ -27,9 +27,10 @@ from .backup import Backup
 
 
 _FAILED = re.compile(r": failed\b|\bfailed to ")
-# a change the step refused to make (unbalanced markers, a file that does not parse, an entry the user owns): a
-# problem line in the forms loadout prints. "skipped: " (with the colon) is the busy Codex lock: skipped:codex.
-_REFUSED = re.compile(r"^skipped (?!:)|\bleft as is\b|\bby hand\b|\bcannot\b|\bcould not\b|\bnot changed\b"
+# a change the step refused to make (unbalanced markers, a file that does not parse): a problem line in the forms
+# loadout prints. "left as is" is not one: a value the user kept on purpose is noted, not a failure.
+# "skipped: " (with the colon) is the busy Codex lock: skipped:codex.
+_REFUSED = re.compile(r"^skipped (?!:)|\bby hand\b|\bcannot\b|\bcould not\b|\bnot changed\b"
                       r"|\bnot effective\b|\bdo not run\b|^warning:")
 
 

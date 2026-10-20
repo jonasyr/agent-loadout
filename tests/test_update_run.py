@@ -491,3 +491,17 @@ def test_a_refused_codex_change_is_listed_not_called_current(fake_home, fake_run
     assert "everything was already current" not in changed
     line = next(l for l in changed.splitlines() if "AGENTS.md" in l)
     assert "markers are unbalanced" in line and "fix:" in line
+
+
+def test_a_value_the_user_kept_is_not_a_failure(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch, claude=False, codex_on=True)
+    monkeypatch.delenv(PULLED, raising=False)  # not a restarted run: nothing pulled to report
+    _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["aaa"]})
+    update.run(True, lambda q: "", argv=["--yes"])  # the first run sets Codex up
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [
+        "model: left as is in config.toml (your value)"])
+    capsys.readouterr()
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    changed = _changed(capsys.readouterr().out)
+    assert "left as is" not in changed and "fix:" not in changed
+    assert "nothing: everything was already current" in changed
