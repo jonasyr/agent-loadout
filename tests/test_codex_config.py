@@ -212,9 +212,43 @@ def test_release_is_remembered_even_when_the_file_does_not_change(fake_home):
     path.write_text(_config().replace('command = "gh-mcp"', 'command = "gh-mcp"\nstartup_timeout_sec = 30'), encoding="utf-8")
     first = _apply()
     second = _apply()
-    assert any("changed by you" in l for l in first) and not any("changed by you" in l for l in second)
+    assert len(first) == 1 and "changed by you" in first[0]  # one line for one table, no "already has a server"
+    assert second == []
+
+
+def test_a_released_table_stays_quiet_until_you_remove_it(fake_home):
+    _personal_mcp({"gh": {"command": "gh-mcp"}})
+    _apply()
+    path = paths.codex_home() / "config.toml"
+    path.write_text(_config().replace('command = "gh-mcp"', 'command = "gh-mcp"\nstartup_timeout_sec = 30'), encoding="utf-8")
+    mine = path.read_bytes()
+    _apply()
+    assert codex.apply_config(object(), dry_run=True) == []  # check and the update plan say nothing about it
+    assert codex.read_record()["released"] == ["gh"] and path.read_bytes() == mine
+    path.write_text(_config().replace('[mcp_servers.gh]\ncommand = "gh-mcp"\nstartup_timeout_sec = 30\n', ""),
+                    encoding="utf-8")
+    _apply()
+    assert '[mcp_servers.gh]\ncommand = "gh-mcp"\n' in _config() and "released" not in codex.read_record()
 
 
 def test_dry_run_does_not_promise_an_edit_that_would_be_skipped(fake_home):
     _write('tui.notifications = false\n')
     assert not any("changes pending" in l for l in codex.apply_config(backup.Backup(description="t"), dry_run=True))
+
+
+def test_existing_key_after_multiline_values_is_found(fake_home):
+    user = ('[tui]\ntext = """\nline one\n[not a header]\n"""\nlist = [\n  "a",\n  "b",\n]\n'
+            'notifications = true\ntheme = "dark"\n')
+    _write(user)
+    _apply()
+    text = _config()
+    assert text.count("notifications") == 1 and "notifications = true" in text
+    assert codex._tomllib().loads(text)["tui"]["notifications"] is True
+    assert user in text
+
+
+def test_find_key_uses_the_header_flag_it_already_has(fake_home):
+    lines = ('[tui]\ntext = """\nline one\n[not a header]\n"""\nlist = [\n  "a",\n  "b",\n]\n'
+             'notifications = true\n').splitlines()
+    target, found = codex._find_key(codex._sections(lines, codex._tomllib()), ("tui",), "notifications")
+    assert found == 9 and target[1][found] == "notifications = true"

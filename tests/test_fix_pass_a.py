@@ -93,9 +93,10 @@ def test_fresh_machine_workflow_fails_on_fail_lines_and_never_interpolates_the_b
     text = (paths.kit_root() / ".github/workflows/fresh-machine.yml").read_text()
     assert "! printf" not in text  # `! cmd` never fails a bash -e step
     assert text.count("""if printf '%s\\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi""") == 2
-    for path in ("bin/loadout", "cli/loadout/__main__.py", "cli/loadout/settings_merge.py", "cli/loadout/personal_mcp.py",
-                 "cli/loadout/adopt.py", "cli/loadout/link.py", "settings.base.json", "plugins/loadout/hooks/**"):
+    for path in ("bin/loadout", "cli/loadout/**", "settings.base.json", "plugins/loadout/hooks/**"):
         assert f'"{path}"' in text, path
+    for module in sorted((paths.kit_root() / "cli/loadout").glob("*.py")):
+        assert '"cli/loadout/**"' in text or f'"cli/loadout/{module.name}"' in text, module.name
     assert "su -w LOADOUT_REPO_URL,LOADOUT_REF - oneliner -c '" in text
     assert "LOADOUT_REF=$REF" not in text
     fork_guard = "if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"

@@ -51,6 +51,24 @@ def test_set_target_claude_on_without_claude_points_to_bootstrap(fake_home, fake
     assert "loadout bootstrap --install" in capsys.readouterr().out and applied == []
 
 
+def test_set_target_claude_on_with_only_the_extensions_claude_sets_it_up(fake_home, fake_runner, monkeypatch, capsys):
+    """VS Code's Claude Code extension ships a claude: it counts as installed (spec Part 3.3)."""
+    from conftest import host_claude_bin
+    from loadout import configure, link
+    exe = fake_home / ".vscode" / "extensions" / "anthropic.claude-code-2.1.10" / host_claude_bin()
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    targets.set_agents({"claude": False, "codex": True})
+    fake_runner.missing.add("claude")
+    applied = []
+    monkeypatch.setattr(link, "link_all", lambda bk: None)
+    monkeypatch.setattr(configure, "apply_all", lambda ask: applied.append(1))
+    monkeypatch.setattr(configure, "offer_commit", lambda ask: None)
+    assert main(["configure", "set", "target", "claude", "on"]) == 0
+    assert applied == [1] and "not installed yet" not in capsys.readouterr().out
+
+
 def test_cloned_choice_is_announced(fake_home, fake_runner, monkeypatch, capsys):
     def cloned_layer(ask, bk, interactive, **kw):
         paths.personal_root().mkdir(parents=True)

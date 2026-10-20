@@ -195,3 +195,33 @@ def test_an_agent_that_is_off_gets_no_tool_install_or_update(fake_home, fake_run
     monkeypatch.setattr(pkgmgr, "mise_tool", lambda e: None)
     outdated = [e["id"] for e, _, _ in m.find_outdated()]
     assert off not in outdated and (("codex" if off == "claude" else "claude") in outdated)
+
+
+def test_a_first_update_names_codex_marketplaces_from_codex_list(fake_home, fake_runner, monkeypatch):
+    """No codex-marketplaces.json yet: the marketplace name comes from Codex's own list (matched by source), so the
+    plugin ids are real and an installed plugin is a re-add."""
+    from loadout import settings_merge
+    _plan_world(monkeypatch, claude=False, codex_on=True)
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: None)
+    monkeypatch.setattr(settings_merge, "desired_settings",
+                        lambda: {"enabledPlugins": {"superpowers@claude-plugins-official": True}})
+    monkeypatch.setattr(codex, "installed_plugins", lambda: {"superpowers@claude-plugins-official"})
+    monkeypatch.setattr(codex, "unchanged_routes", lambda routes, installed=None: (set(), set()))
+    monkeypatch.setattr(codex, "marketplaces", lambda: {"claude-plugins-official": {
+        "root": None, "source": "https://github.com/anthropics/claude-plugins-official.git"}})
+    monkeypatch.setattr(codex, "_load_record", lambda: {})
+    text = "\n".join(update.render(update.build_plan(False, True)))
+    assert "re-add plugin superpowers@claude-plugins-official" in text
+    assert "codex plugin marketplace upgrade claude-plugins-official" in text
+    assert "plugins: re-add 1" in text and "no record to compare yet" in text
+    assert "<" not in text
+
+
+def test_a_missing_tool_with_no_install_command_is_a_note_not_an_item(fake_home, fake_runner, monkeypatch):
+    """git has no install command in the catalog: the plan says how to install it by hand instead of an empty item."""
+    _plan_world(monkeypatch, missing=[(_entry("git"), [], False)])
+    notes: list[str] = []
+    plan = update.build_plan(True, False, notes=notes)
+    assert not any(i.kind == "tool-install" and i.key == "git" for i in plan)
+    assert any(n.startswith("git: missing, no install command for this platform") and "package manager" in n
+               for n in notes)

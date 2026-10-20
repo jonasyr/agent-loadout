@@ -161,3 +161,27 @@ def test_failed_handoff_hint_names_a_command_that_reapplies(codex_on, fake_runne
         rec.machine()
 
 
+
+
+def test_adopt_backs_up_the_record_as_it_is_after_it_takes_the_lock(codex_on, fake_runner, monkeypatch):
+    """Another run holds the Codex lock and changes the record meanwhile: adopt's copy is of that newer record, so
+    restoring adopt's backup keeps the other run's entry."""
+    from loadout import locks
+    record = codex.record_path()
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps({"keys": {"old": "1"}}))
+    bk = backup.Backup(description="t")
+    rec = own.record_global(_mcp({"type": "stdio", "command": "m"}), bk)
+    holder = codex._lock(0, "other")
+    assert holder is not None
+
+    def other_run_finishes(_s):
+        record.write_text(json.dumps({"keys": {"old": "1", "theirs": "2"}}))
+        holder.release()
+    monkeypatch.setattr(locks, "_sleep", other_run_finishes)
+    monkeypatch.setattr(locks, "foreground_wait", lambda: 5)
+    rec.machine()
+    copies = [s for s in bk.steps if "codex-config.json" in s.get("label", "")]
+    assert len(copies) == 1
+    saved = copies[0]["undo"]["restore-file"][0]
+    assert "theirs" in open(saved).read()

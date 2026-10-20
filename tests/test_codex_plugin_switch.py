@@ -59,10 +59,11 @@ def test_turning_it_back_on_by_hand_with_exactly_enabled_true_stays_yours(fake_h
     _apply()
     path = paths.codex_home() / "config.toml"
     path.write_text(_config().replace("enabled = false", "enabled = true"), encoding="utf-8")  # your edit
+    runs = []
     for _ in range(2):  # released once, never taken over again
-        lines = _apply()
+        runs.append(_apply())
         assert "enabled = true" in _config() and "enabled = false" not in _config()
-    assert any("your value" in line for line in lines)
+    assert any("your value" in line for line in runs[0]) and runs[1] == []  # said once, then quiet
     assert 'plugins."x@m".enabled' not in codex.read_record()["keys"]
 
 

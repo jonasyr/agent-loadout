@@ -11,7 +11,7 @@ git clone https://github.com/jonasyr/agent-loadout
 cd agent-loadout
 ```
 
-Run the CLI from the clone with `bin/loadout` (for example `bin/loadout check --help`); `python -m loadout` registers only `init` and `profile`. You do not need to run bootstrap to work on the code. If you do run it from your clone, it links your real `~/.claude` to that clone (and with Codex on, it writes your real `~/.codex` and `~/.agents/skills` from it).
+Run the CLI from the clone with `bin/loadout` (for example `bin/loadout check --help`); `python -m loadout` from `cli/` works too. You do not need to run bootstrap to work on the code. If you do run it from your clone, it links your real `~/.claude` to that clone (and with Codex on, it writes your real `~/.codex` and `~/.agents/skills` from it).
 
 ## Tests and validation
 
@@ -86,7 +86,7 @@ Open an issue with one of the forms on the [New issue](https://github.com/jonasy
 
 | Form | Use it for | Asks for |
 |---|---|---|
-| Bug report | Something does not work as documented | What happened, steps, platform, `loadout --version`, `claude --version`, optionally `codex --version` (if you use Codex), the output of `loadout check --verbose`; optionally the failing command's output with `--verbose` |
+| Bug report | Something does not work as documented | What happened, steps, platform, `loadout --version`, which agents and editors you use (CLI or VS Code extension) and optionally their versions, the output of `loadout check --verbose`; optionally the failing command's output with `--verbose` |
 | Feature request | An idea for the CLI, bootstrap or the plugin | The problem or use case; optionally a solution and alternatives |
 | Propose a tool for the catalog | Adding, replacing or dropping a tool | Kind, why, what it overlaps, license, install method, maintenance (what a [catalog](docs/how-to/add-to-catalog.md) decision needs) |
 | Docs problem | A wrong, missing or unclear page | The page and the problem; optionally a fix |
@@ -100,5 +100,5 @@ Blank issues are off. Read command output before you paste it, and replace token
 - Work on a branch and open a pull request against `main`. The [template](.github/pull_request_template.md) asks for three things: a summary with the issue it fixes, how you tested it (only what you actually ran, and on which platform), and which docs page you updated or why none was needed.
 - Whatever tools you use to write a change, you must understand it and have tested it yourself.
 - When Codex's GitHub review quota is used up, ask Claude Code to "run the codex-reviewer agent on this branch" (it applies Codex's open-source review rubric, see [`.claude/agents/codex-reviewer.md`](.claude/agents/codex-reviewer.md)). Post its findings and the fixes as PR comments, and repeat until it reports no findings.
-- CI must be green before a merge: the test suite on Linux and on Windows (including the hook scripts under Git Bash), the suite plus a WSL 2 smoke test inside WSL 2, and `claude plugin validate` for the marketplace and the plugin. Pull requests that touch bootstrap and its setup code, the catalog, the base settings or the hooks also run `fresh-machine`, which installs for real on a clean Ubuntu container and on Windows (experimental, allowed to fail); it also runs weekly.
+- CI must be green before a merge: the test suite on Linux and on Windows (including the hook scripts under Git Bash), the suite plus a WSL 2 smoke test inside WSL 2, and `claude plugin validate` for the marketplace and the plugin. Pull requests that touch the CLI (`cli/loadout/`), bootstrap, the catalog, templates, rules, the base settings or the hooks also run `fresh-machine`, which installs for real on a clean Ubuntu container and on Windows (experimental, allowed to fail); it also runs weekly.
 - Issue forms show only from the default branch and only to signed-in users, so validate them before merging: `uvx check-jsonschema --builtin-schema vendor.github-issue-forms .github/ISSUE_TEMPLATE/[0-9]-*.yml`.

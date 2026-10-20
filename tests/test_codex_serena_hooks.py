@@ -206,3 +206,18 @@ def test_loadouts_older_entries_without_a_timeout_are_replaced_with_a_backup(hoo
     assert got == DOCUMENTED_TIMEOUTS and _commands(hooks) == OFFICIAL
     _, ok, _ = backup.restore(bk.root)
     assert ok and hooks.read_text() == before
+
+
+def test_old_serena_hooks_left_in_an_odd_file_say_to_remove_them_by_hand(hooks, monkeypatch):
+    from loadout import codex
+    codex_hooks.apply(backup.Backup(description="t"))  # loadout writes and records its entries
+    hooks.write_text(json.dumps(json.loads(hooks.read_text()), indent=3))  # a layout json_style cannot reproduce
+    monkeypatch.setattr(runner, "have", lambda b: b == "codex")  # no serena-hooks any more: loadout wants none
+    for name, value in (("enabled", lambda: True), ("unavailable", lambda: None), ("hooks_status", lambda: "trusted"),
+                        ("logins_needed", lambda: []), ("drift", lambda: []),
+                        ("installed_plugins", lambda: {"loadout@agent-loadout"}),
+                        ("apply_config", lambda bk, dry_run=False: [])):
+        monkeypatch.setattr(codex, name, value)
+    (r,) = [r for r in codex.checks() if r.name == "Codex Serena hooks"]
+    assert "old Serena hooks are still in it" in r.detail
+    assert "remove" in r.fix and "bootstrap" not in r.fix and "hooks.json" in r.fix, r.fix

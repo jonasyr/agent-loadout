@@ -131,7 +131,7 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
     failures: list[str] = []
     _, skipped = profiles.apply_profile(prof, project, w=w, decide=decide, notes=notes)
     failures += skipped
-    notes += profiles.repo_off_notes(prof, project)
+    notes += profiles.repo_off_notes(prof, project, install)
     before = len(w.changes)
     for line in profiles.copy_skills(prof, project, w=w):
         if not line.startswith("copied skill"):
@@ -177,7 +177,13 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
         if install and not targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: not installed for Codex, which is off for you "
                          "(a Codex user installs them with loadout profile here)")
-        if install and targets.codex_enabled() and codex_project._wanted(prof)[1]:
+        if install and targets.codex_enabled() and codex_project._wanted(prof)[1] and not runner.have("codex"):
+            from . import codex
+            if codex.extension_state()[0] is not None:
+                notes.append(codex_project.PLUGINS_EXTENSION_NOTE)
+            else:  # no usable extension either: the plan shows the failures the run will report (runs nothing)
+                failures.extend(codex_project.plugins(prof, dry_run=True))
+        elif install and targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: installed in your Codex (outside this repo, "
                          "with their own backup)")
     return notes, failures
@@ -217,7 +223,10 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
         if install:
             lines = codex_project.plugins(prof, False)
             for line in lines:
-                if line.startswith("backup: "):  # Codex's own backup: its undo line must reach the user
+                if line == codex_project.PLUGINS_EXTENSION_NOTE:
+                    if line not in notes:
+                        notes.append(line)
+                elif line.startswith("backup: "):  # Codex's own backup: its undo line must reach the user
                     notes.append(line)
                 elif line.startswith("skipped") or any(s in line for s in (": failed", "not installed", "no Codex route")):
                     problems.append(line)
@@ -227,7 +236,7 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
                     problems.append(line)
                 elif line.startswith(repo_config.FILE + ":") and line not in notes:
                     notes.append(line)
-            for pid in sorted(failed):
+            for pid in sorted(failed if codex_project.PLUGINS_EXTENSION_NOTE not in lines else ()):
                 notes.append(f"plugin {pid}: not named in .codex/config.toml, its install failed")
         tables, plugins_, _ = codex_project._wanted(prof)
         if (tables or plugins_ or any((project / ".agents" / "skills").glob("*"))) and not codex_project._trusted(project):
@@ -336,7 +345,7 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
         parts.append(path.relative_to(project).as_posix() if paths.inside(path, project) else path.name)
     for line in skipped:
         warn(line)
-    for line in profiles.repo_off_notes(prof, project):
+    for line in profiles.repo_off_notes(prof, project, install):
         (steps.append if calm else info)(line)
     skills_ok = True
     for line in profiles.copy_skills(prof, project, w=w):
@@ -370,7 +379,7 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
                                         user_codex=targets.codex_enabled()):
             bad = line.startswith("skipped") or any(s in line for s in (
                 ": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is"))
-            step = line == codex_project.TRUST_NOTE or line.startswith("backup: ")
+            step = line in (codex_project.TRUST_NOTE, codex_project.PLUGINS_EXTENSION_NOTE) or line.startswith("backup: ")
             (warn if bad else steps.append if step and calm else info)(line)
             if bad:
                 ok = codex_ok = False

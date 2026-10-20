@@ -62,7 +62,7 @@ def _report(name: str, summary: str, lines: list[str] = (), level: str = "ok") -
 def _prereq_summary(missing: list[str], installed: list[str],
                     recommended: frozenset = frozenset()) -> tuple[str, str]:
     entries = [e for e in catalog.binaries() if not e.get("helper") and _wanted(e)]
-    ready = sum(1 for e in entries if runner.have(e["id"]))
+    ready = sum(1 for e in entries if not missing_binary(e["id"]))
     text = f"{ready} tools ready"
     if installed:
         text += f", installed {', '.join(installed)}"
@@ -161,13 +161,55 @@ def _tail(res: runner.Result, limit: int = 400) -> str:
 
 
 def missing_binary(name: str) -> bool:
-    """Not on PATH, or (in WSL) a codex that resolves to the Windows one: --install then installs a Linux Codex."""
+    """Not on PATH, or (in WSL) one that resolves to a Windows program under /mnt/<drive>/ (node also when its npm
+    does): --install then installs the Linux copy in the home; the Windows one stays untouched."""
     if not runner.have(name):
         return True
-    if name != "codex" or wsl.detect() is None:
+    if wsl.detect() is None:
         return False
-    found = runner.which(name)
-    return bool(found) and wsl._on_windows_drive(Path(found), wsl.MOUNT)
+    return any(wsl.is_windows_program(n) for n in (("node", "npm") if name == "node" else (name,)))
+
+
+def _linux_folder(name: str) -> str:
+    """Where the Linux copy of a tool lands: the tool folder that holds it, else (before an install) mise's shims
+    folder for a tool mise installs, else ~/.local/bin."""
+    for d in paths.tool_dirs():
+        if (d / name).exists():
+            return str(d)
+    entry = next((e for e in catalog.binaries() if e["id"] == name), None)
+    if entry and any(cmd and cmd[0] == "mise" for cmd in catalog.platform_cmds(entry, "install")):
+        return "~/.local/share/mise/shims"
+    return "~/.local/bin"
+
+
+def windows_first(name: str) -> bool:
+    """WSL: the tool (for node: node or its npm) resolves to the Windows program."""
+    return wsl.detect() is not None and any(wsl.is_windows_program(n)
+                                            for n in (("node", "npm") if name == "node" else (name,)))
+
+
+def _linux_copy_first(name: str) -> bool:
+    """WSL, right after an install: put the folder that holds the new Linux copy first in this run's PATH, so the
+    next installs (npm install -g, mise use) run the Linux tool, not the Windows one; new shells still need the
+    profile line. Returns whether the Linux copy is now the one found."""
+    for d in paths.tool_dirs():  # try each folder that has it: an older copy (node without npm) may not suffice
+        if (d / name).is_file():
+            parts = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p and p != str(d)]
+            os.environ["PATH"] = os.pathsep.join([str(d), *parts])
+            if not missing_binary(name):
+                return True
+    return not missing_binary(name)
+
+
+def _windows_first_note(name: str, installed: bool = False) -> str:
+    """A WSL line for a tool whose Windows copy is still found first. Bootstrap does not change the PATH order."""
+    folder = _linux_folder(name)
+    shown = next((n for n in (("node", "npm") if name == "node" else (name,)) if wsl.is_windows_program(n)), name)
+    found = runner.which(shown)  # for node: whichever of node or npm is the Windows program
+    still = "still " if installed else ""
+    return (f"{shown} {still}resolves to the Windows program {found}; the Windows one stays untouched. Put {folder} "
+            f"first in PATH (a line in your shell profile: export PATH=\"{folder}:$PATH\"), or set "
+            "`appendWindowsPath = false` in `/etc/wsl.conf`; bootstrap does not change the order")
 
 
 RECOMMENDED_WHY = {"codex": "recommended next to VS Code's Codex extension, for /hooks and plugins",
@@ -258,13 +300,30 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 missing.append(name)
             continue
         if install and cmds:
-            install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
+            _, problems = install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
             if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
+            if missing_binary(name) and windows_first(name):
+                note(_windows_first_note(name, installed=True), problem=True)
+                if _linux_copy_first(name):  # also after a failed reinstall: an existing Linux copy may do
+                    if installed is not None and not entry.get("helper"):
+                        installed.append(name)
+                    continue  # this run uses the Linux copy now; new shells need the PATH line the note names
+                if not problems:  # no Linux copy to put first: what needs it must not run the Windows tool
+                    failed.add(name)
+                    if not entry.get("helper"):
+                        note(f"missing {name}: the install left no Linux {name} to use; what needs it waits")
+                        missing.append(name)
+                    continue
         if missing_binary(name):
             failed.add(name)
             if not entry.get("helper"):
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
+                if wsl.detect() is not None and wsl.is_windows_program(name):
+                    if cmds:
+                        hint = f"{hint}; {_windows_first_note(name)}"
+                    elif name == "git":
+                        hint = "install git inside WSL with your package manager (sudo apt install git)"
                 why = RECOMMENDED_WHY.get(name, "") if name in recommended else ""
                 tag = f"({why}) " if why else "(required) " if entry.get("required") else ""
                 note(f"missing {tag}{name}: {hint}")
@@ -902,7 +961,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         targets.set_agents(chosen)
     # in WSL the Codex side is settled first: a Windows-side choice installs no Linux Codex (ADR 0029)
     gate = codex_gate(codex_side, ask, interactive and not yes, bk, vscode=vscode_wsl) if codex_gate_needed(chosen) else None
-    if vscode_wsl and not codex_gate_needed(chosen):
+    if vscode_wsl and wsl.detect() is not None and not codex_gate_needed(chosen):  # outside WSL the CLI already said so
         out.status("VS Code", "--vscode-wsl: Codex is not set up in WSL in this run; nothing changed", "warn")
     _step("Prerequisites")
     installed: list[str] = []

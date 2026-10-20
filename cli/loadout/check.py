@@ -413,7 +413,7 @@ def _codex_cli_here() -> bool:
     if wsl.detect() is None:
         return runner.have("codex")
     found = runner.which("codex")
-    return bool(found) and not wsl._on_windows_drive(Path(found), wsl.MOUNT)
+    return bool(found) and not wsl.is_windows_program("codex")
 
 
 def _surface_rows(ext, windows_only: bool = False, vscode_row: bool = False) -> list[CheckResult]:
@@ -591,7 +591,7 @@ def _repo_mcp_paths() -> list[CheckResult]:
     try:
         if not repo_config.agents(root)["claude"]:
             return []  # .mcp.json is Claude Code's project file; the repo is not for Claude Code (ADR 0030)
-    except ValueError:  # an invalid .loadout.json: its own row says so
+    except ValueError:  # an invalid .loadout.json: init, profile and explain stop on it and say why; check stays quiet here
         return []
     path = root / ".mcp.json"
     try:

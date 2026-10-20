@@ -30,3 +30,23 @@ def test_building_the_parser_runs_nothing(fake_runner):
     """Hooks call loadout at every session start; the version is looked up only when asked for."""
     build_parser()
     assert fake_runner.calls == []
+
+
+def test_python_dash_m_registers_every_subcommand(tmp_path):
+    """`python -m loadout` runs this module as __main__; the registry must not be a second copy of it."""
+    import os, subprocess, sys
+    root = paths.kit_root()
+    env = {**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path), "PYTHONPATH": str(root / "cli"),
+           "LOADOUT_UPDATE_PULLED": "1"}
+    for name in ("LOADOUT_PERSONAL", "CODEX_HOME", "XDG_STATE_HOME"):
+        env.pop(name, None)
+    run = lambda *args: subprocess.run([sys.executable, "-m", "loadout", *args], cwd=root / "cli", env=env,
+                                       capture_output=True, text=True)
+    sub = run("check", "--help")
+    assert sub.returncode == 0 and "--verbose" in sub.stdout, sub.stderr
+    top = run("--help")
+    assert top.returncode == 0 and all(name in top.stdout for name in ("update", "check", "configure"))
+
+
+def test_the_parser_knows_every_subcommand_without_importing_commands_first():
+    assert build_parser().parse_args(["check"]).command == "check"

@@ -47,7 +47,7 @@ WSL imports the Windows `PATH`. `claude`, `codex`, `node` or `uv` can then resol
 which claude codex node npm uv git
 ```
 
-Each path must be inside WSL, such as `~/.local/bin/claude` or `/usr/bin/node`. A path that starts with `/mnt/c` is the Windows binary. Install the tool inside WSL yourself (for example `mise use -g node@lts`; `./bootstrap.sh --install` replaces only a Windows `codex`, and counts any other Windows tool on `PATH` as installed), and make sure its directory comes first in your `PATH`. Re-run `loadout check` afterwards.
+Each path must be inside WSL, such as `~/.local/bin/claude` or `/usr/bin/node`. A path that starts with `/mnt/c` is the Windows binary. Install the tool inside WSL yourself (for example `mise use -g node@lts`; `./bootstrap.sh --install` and `loadout update` treat a Windows tool on `PATH` as missing and install the Linux one in your home, git with your package manager; the Windows one stays as it is; a custom automount root, `root=` in `/etc/wsl.conf`, is not recognised as the Windows drives), and make sure its directory comes first in your `PATH`. Right after such an install, bootstrap and `loadout update` put the new Linux copy first for the rest of that run, so the tools installed after it (`npm install -g`, `mise use`) use the Linux one; your shell profile still decides the order in new shells, and the output names the folder to put first. Re-run `loadout check` afterwards.
 
 The other fix, `appendWindowsPath = false` under `[interop]` in `/etc/wsl.conf`, stops WSL from importing the Windows `PATH` at all. It also hides Windows tools you may want, such as `code` and `explorer.exe`, and needs `wsl --shutdown` to take effect.
 

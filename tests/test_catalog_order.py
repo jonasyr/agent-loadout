@@ -23,3 +23,13 @@ def test_real_catalog_orders_cleanly():
     ids = [e["id"] for e in catalog.install_order(catalog.binaries())]
     assert ids.index("uv") < ids.index("serena")
     assert ids.index("mise") < ids.index("node") < ids.index("playwright-cli")
+
+
+def test_mise_reason_names_every_tool_mise_installs():
+    entries = catalog.load()
+    names = {"node": "Node.js", "gh": "gh", "rust-analyzer": "rust-analyzer", "codex": "Codex"}
+    installed = [e["id"] for e in entries if "mise" in e.get("needs", [])]
+    reason = next(e for e in entries if e["id"] == "mise")["reason"]
+    assert set(installed) <= set(names), installed
+    for tool in installed:
+        assert names[tool] in reason, tool

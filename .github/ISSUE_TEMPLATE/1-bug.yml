@@ -38,17 +38,30 @@ body:
   - type: input
     id: versions
     attributes:
-      label: Versions
-      description: The output of `loadout --version` and `claude --version`.
-      placeholder: loadout 0.1.0 (54af5b7), Claude Code 2.x
+      label: loadout version
+      description: The output of `loadout --version`.
+      placeholder: loadout 0.1.0 (54af5b7)
+    validations:
+      required: true
+  - type: dropdown
+    id: agents
+    attributes:
+      label: Agents and editors you use with loadout
+      description: Pick every one that applies. Say in the description which window the problem happened in (for example a VS Code window or a WSL terminal).
+      multiple: true
+      options:
+        - Claude Code CLI
+        - Claude Code in VS Code (extension)
+        - Codex CLI
+        - Codex in VS Code (extension)
     validations:
       required: true
   - type: input
-    id: codex-version
+    id: agent-versions
     attributes:
-      label: Codex version
-      description: Optional, if you use Codex. The output of `codex --version`.
-      placeholder: codex-cli 0.x
+      label: Agent versions
+      description: Optional. For each agent above, `claude --version` or `codex --version`, or the extension's version in VS Code's Extensions view.
+      placeholder: Claude Code 2.x, Codex extension 0.x
   - type: textarea
     id: check
     attributes:

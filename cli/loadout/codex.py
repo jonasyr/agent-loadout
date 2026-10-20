@@ -32,6 +32,13 @@ def set_enabled(on: bool) -> str:
     return targets.set_target("codex", on)
 
 
+NOT_FOUND = "codex not found on PATH"
+WINDOWS_CODEX = "the codex on PATH is the Windows one"
+SHARED_HOME = "CODEX_HOME points into Windows"
+NO_VERSION = "could not read codex --version"
+TOO_OLD = " is too old; loadout needs"
+
+
 def unavailable(allow_shared_home: bool = False) -> str | None:
     """None when a usable codex is on PATH, or, without one, when VS Code's Codex extension on this side runs a usable
     codex (extension mode); else the reason in one line. In WSL, a Windows codex and a CODEX_HOME that points into
@@ -41,26 +48,42 @@ def unavailable(allow_shared_home: bool = False) -> str | None:
     if not cli:
         ext, why = extension_state()  # VS Code's Codex extension alone: loadout sets Codex up for it
         if ext is None:
-            return why or "codex not found on PATH"
+            return why or NOT_FOUND
     found = runner.which("codex") if cli else None
-    if found and wsl.detect() is not None and wsl._on_windows_drive(Path(found), wsl.MOUNT):
+    if found and wsl.detect() is not None and wsl.is_windows_program("codex"):
         # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
-        return (f"the codex on PATH is the Windows one ({found}): run bootstrap with --install to install Codex in "
+        return (f"{WINDOWS_CODEX} ({found}): run bootstrap with --install to install Codex in "
                 "WSL, or set loadout up on Windows (docs/how-to/wsl.md#codex)")
     shared = os.environ.get("CODEX_HOME", "")
     if (not allow_shared_home and shared and wsl.detect() is not None
             and wsl._on_windows_drive(Path(shared), wsl.MOUNT)):
-        return (f"CODEX_HOME points into Windows ({shared}): both sides would read loadout's WSL commands; unset it "
+        return (f"{SHARED_HOME} ({shared}): both sides would read loadout's WSL commands; unset it "
                 "in WSL, or run bootstrap with --codex-side wsl to set it up anyway (docs/how-to/wsl.md#codex)")
     if not cli:
         return None  # extension mode: the extension's codex was checked in extension_state
     res = runner.run(["codex", "--version"], timeout=20)
     m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
     if not m:
-        return "could not read codex --version"
+        return NO_VERSION
     if (int(m.group(1)), int(m.group(2))) < MIN_VERSION:
         return f"codex {m.group(0)} is too old; loadout needs 0.161 or newer (update it: mise upgrade codex)"
     return None
+
+
+def unavailable_fix(problem: str) -> str:
+    """The fix line for the `Codex` check row: one per cause that `unavailable` names."""
+    if problem.startswith(NOT_FOUND):
+        return "install it: loadout bootstrap --install (or turn Codex off: loadout configure set target codex off)"
+    if problem.startswith("VS Code's Codex extension"):
+        return "update VS Code's Codex extension, or install the Codex CLI: loadout bootstrap --install"
+    if problem.startswith(WINDOWS_CODEX):
+        return ("loadout bootstrap --install (installs Codex in WSL), or set loadout up on Windows "
+                "(docs/how-to/wsl.md#codex)")
+    if problem.startswith(SHARED_HOME):
+        return "unset CODEX_HOME in WSL, or: loadout bootstrap --codex-side wsl"
+    if problem.startswith(NO_VERSION) or TOO_OLD in problem:
+        return "mise upgrade codex (or update it the way you installed it), then loadout update"
+    return "install or update codex (mise use -g codex), or: loadout configure set target codex off"
 
 
 EXT_OLD = ("VS Code's Codex extension runs codex {version}; loadout needs 0.161 or newer: update the extension in "
@@ -95,7 +118,8 @@ def extension_state():
 
 
 def program() -> str:
-    """The codex to run read-only commands with: the CLI, else the VS Code extension's own (extension mode)."""
+    """The codex for loadout's own `codex mcp` commands: the CLI, else the VS Code extension's own (extension mode).
+    Besides `mcp list` it runs one write, `mcp remove` (remove_server saves config.toml first; ADR 0033)."""
     if runner.have("codex"):
         return "codex"
     ext, _ = extension_state()
@@ -450,9 +474,10 @@ def _plugin_switches() -> list[tuple]:
             + [(("plugins", pid), "enabled", False, False) for pid in off if pid in listed])
 
 
-def desired_keys() -> list[tuple[tuple, str, object, object]]:
+def desired_keys(switches: bool = True) -> list[tuple[tuple, str, object, object]]:
     """(table path, key, value, force); path () is the top level. force: loadout's value wins even over a changed
-    line, used for project-only plugins because `codex plugin add` switches them back on."""
+    line, used for project-only plugins because `codex plugin add` switches them back on. switches: False leaves out
+    the plugin switches, which need `codex plugin list` (a session start runs no command)."""
     from . import preferences
     from .settings_merge import desired_settings
     state = preferences.detect()
@@ -465,7 +490,7 @@ def desired_keys() -> list[tuple[tuple, str, object, object]]:
     if plugins:
         on = get_dict(desired_settings(), "enabledPlugins")
         keys += [(("plugins", pid), "enabled", on.get(pid) is True, True) for pid in plugins]
-    return keys + _plugin_switches()
+    return keys + (_plugin_switches() if switches else [])
 
 
 def _dotted(path: tuple, key: str) -> str:
@@ -606,6 +631,46 @@ def _without_owned(data: dict, tables, keys, tl) -> dict:
     return _prune(data)
 
 
+def _ownership(sections: list[list], owned_tables: dict[str, str]) -> dict[str, str]:
+    """Per [mcp_servers] table loadout recorded: "ours" (as loadout wrote it), "gone", "subtables" or "changed"
+    (yours from now on). One rule for apply_config, refresh_record and explain."""
+    out = {}
+    for name, text in owned_tables.items():
+        sec = next((s for s in sections if s[0] == ("mcp_servers", name)), None)
+        if sec is None:
+            out[name] = "gone"
+        elif any(s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name) for s in sections):
+            out[name] = "subtables"  # e.g. [mcp_servers.x.tools.y]; removing x alone would leave Codex unable to start
+        else:
+            out[name] = "ours" if _text(sec[1]) == text else "changed"
+    return out
+
+
+def _find_key(sections: list[list], table: tuple, key: str):
+    """(the section of table, the index of key's line in its lines or None); (None, None) without the table.
+    Only a line that starts outside strings and arrays counts."""
+    target = sections[0] if not table else next((s for s in sections if s[0] == table), None)
+    if target is None:
+        return None, None
+    flags = target[2]  # a header section's flags already start with the header's own True
+    found = next((i for i, l in enumerate(target[1]) if flags[i] and re.match(rf"^\s*{re.escape(key)}\s*=", l)), None)
+    return target, found
+
+
+def _released(record: dict, key: str) -> list[str]:
+    value = record.get(key)
+    return [n for n in value if isinstance(n, str)] if isinstance(value, list) else []
+
+
+def _set_list(record: dict, key: str, names) -> None:
+    """Kept in the record only while non-empty, like install_lines."""
+    names = sorted(set(names))
+    if names:
+        record[key] = names
+    else:
+        record.pop(key, None)
+
+
 def apply_config(bk, dry_run: bool = False) -> list[str]:
     path = paths.codex_home() / "config.toml"
     tl = _tomllib()
@@ -619,32 +684,40 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     was_tables, was_keys = set(owned_tables), set(owned_keys)
     sections = _sections(old.splitlines(), tl)
     removed = False  # an owned section that goes gets its own backup copy
-    still_ours = {name for name, text in owned_tables.items()  # a section the user edited is theirs from now on
-                  if any(s[0] == ("mcp_servers", name) and _text(s[1]) == text for s in sections)}
-    tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
+    states = _ownership(sections, owned_tables)
+    still_ours = {name for name, state in states.items() if state == "ours"}  # an edited section is yours from now on
 
     def find(path_):
         return next((s for s in sections if s[0] == path_), None)
 
+    # a table loadout wrote and you changed: yours, said once (here or at a session start), then never again
+    released = {n for n in _released(record, "released") if find(("mcp_servers", n)) is not None}
+    tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
     # tables: drop or keep what loadout wrote, never touch anything else
     for name, text in list(owned_tables.items()):
-        sec = find(("mcp_servers", name))
-        subtables = [s for s in sections if s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name)]
-        if sec is None:
+        state = states[name]
+        if state == "gone":
             owned_tables.pop(name)
-        elif subtables:  # e.g. [mcp_servers.x.tools.y]; removing x alone would leave Codex unable to start
+        elif state == "subtables":
             lines.append(f"mcp {name}: left as is in config.toml (it has sub-tables); loadout no longer manages it")
             owned_tables.pop(name)
-        elif _text(sec[1]) != text:
+            released.add(name)
+        elif state == "changed":
             lines.append(f"mcp {name}: left as is in config.toml (changed by you); loadout no longer manages it")
             owned_tables.pop(name)
+            released.add(name)
         elif tables.get(name) != text:
-            sections.remove(sec)
+            sections.remove(find(("mcp_servers", name)))
             owned_tables.pop(name)
             removed = True
     for name, text in tables.items():
         existing = find(("mcp_servers", name))
         if existing is not None:
+            if name in released:
+                if _text(existing[1]) == text:  # you put loadout's exact text back: loadout's again, quietly
+                    released.discard(name)
+                    owned_tables[name] = text
+                continue  # yours: no warning
             if owned_tables.get(name) != text and not _same_table(existing[1], text, tl):
                 lines.append(f"mcp {name}: left as is, config.toml already has a server of that name")
             continue
@@ -661,21 +734,20 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         if listed is not None:
             present = {_dotted(("plugins", pid), "enabled") for pid in listed}
             install_lines = {k: v for k, v in install_lines.items() if k in present}
+    released_keys = set(_released(record, "released_keys"))  # your own values, said once
     for table, key, value, force in desired_keys():
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
-        target = sections[0] if not table else find(table)
+        target, found = _find_key(sections, table, key)
         plugin = bool(table) and table[0] == "plugins"
         if target is None:
             header = "[" + ".".join(toml_key(p) for p in table) + "]"
             sections.append([table, [header, line], []])
             owned_keys[dotted] = line
             install_lines.pop(dotted, None)
+            released_keys.discard(dotted)
             switched = switched or plugin
             continue
-        flags = [True] + target[2] if target[0] is not None else target[2]
-        found = next((i for i, l in enumerate(target[1])
-                      if flags[i] and re.match(rf"^\s*{re.escape(key)}\s*=", l)), None)
         if found is None:
             insert = len(target[1])
             while insert > (1 if target[0] is not None else 0) and not target[1][insert - 1].strip():
@@ -684,16 +756,23 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             target[2].insert(insert - (1 if target[0] is not None else 0), True)
             owned_keys[dotted] = line
             install_lines.pop(dotted, None)
+            released_keys.discard(dotted)
             switched = switched or plugin
         elif target[1][found].strip() == line:
-            pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
+            if dotted in released_keys:  # you put loadout's value back: loadout's again, quietly
+                released_keys.discard(dotted)
+                owned_keys[dotted] = line
+            # otherwise the line stays whoever wrote it (owned only if loadout wrote it before)
         elif force is True or target[1][found].strip() in (owned_keys.get(dotted), install_lines.get(dotted)):
             target[1][found] = line
             owned_keys[dotted] = line
             install_lines.pop(dotted, None)
+            released_keys.discard(dotted)
             switched = switched or plugin
         else:
-            lines.append(f"{dotted}: left as is in config.toml (your value)")
+            if dotted not in released_keys:
+                lines.append(f"{dotted}: left as is in config.toml (your value)")
+            released_keys.add(dotted)
             owned_keys.pop(dotted, None)
             install_lines.pop(dotted, None)
 
@@ -701,6 +780,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     parts += ["\n".join(s[1]).strip("\n") for s in sections[1:]]
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
     new_record = {**record, "tables": owned_tables, "keys": owned_keys}  # keeps project_plugins
+    _set_list(new_record, "released", released)
+    _set_list(new_record, "released_keys", released_keys)
     if install_lines:
         new_record["install_lines"] = install_lines
     else:
@@ -731,6 +812,185 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     record_path().parent.mkdir(parents=True, exist_ok=True)
     save_json(record_path(), new_record)
     return lines
+
+
+RELEASES = ("(changed by you)", "(it has sub-tables)", "(your value)")
+
+
+def is_release(line: str) -> bool:
+    """apply_config's line for an entry that just became yours (it comes once: the record then keeps it quiet)."""
+    return "left as is in config.toml" in line and any(mark in line for mark in RELEASES)
+
+
+def refresh_record() -> list[str]:
+    """At a session start: record the entries of loadout's in config.toml that you changed as yours, and return one
+    note per entry newly yours (each said once; `loadout check` is quiet about it afterwards). Writes only loadout's
+    record, never config.toml. Codex on only; another loadout run holding the Codex lock: nothing (no wait), that
+    run records it itself. The plugin switches are left to the next run that lists plugins (no command here)."""
+    from . import targets
+    if not targets.codex_enabled():
+        return []
+    lock = _lock(0, "session start")
+    if lock is None:
+        return []
+    try:
+        path = paths.codex_home() / "config.toml"
+        if not path.is_file():
+            return []
+        tl = _tomllib()
+        try:
+            text = _read_exact(path)
+            tl.loads(text)
+        except Exception:  # unreadable or not TOML: apply_config says so; nothing is decided here
+            return []
+        record = read_record()
+        sections = _sections(text.splitlines(), tl)
+        owned_tables, owned_keys = dict(record["tables"]), dict(record["keys"])
+        install_lines = dict(get_dict(record, "install_lines"))
+        released = {n for n in _released(record, "released") if any(s[0] == ("mcp_servers", n) for s in sections)}
+        released_keys = set(_released(record, "released_keys"))
+        notes = []
+        shown = _tilde(path)
+        if released:  # a table you put back to loadout's exact text is loadout's again (no note)
+            data = tl.loads(text)
+            still_ours = {n for n, st in _ownership(sections, owned_tables).items() if st == "ours"}
+            wanted = desired_tables(skip_serena=user_serena(data, still_ours) is not None)[0]  # as apply_config
+            for name in sorted(released):
+                sec = next(s for s in sections if s[0] == ("mcp_servers", name))
+                if wanted.get(name) == _text(sec[1]):
+                    released.discard(name)
+                    owned_tables[name] = wanted[name]
+        for name, state in _ownership(sections, owned_tables).items():
+            if state == "ours":
+                continue
+            owned_tables.pop(name)
+            if state != "gone" and name not in released:
+                released.add(name)
+                how = "you added sub-tables to it" if state == "subtables" else "you changed it"
+                notes.append(f"loadout (Codex): mcp {name}: {how} in {shown}, so it is yours now; loadout no longer "
+                             "manages it or warns about it")
+        for table, key, value, force in desired_keys(switches=False):
+            dotted = _dotted(table, key)
+            target, found = _find_key(sections, table, key)
+            if found is None or force is True:
+                continue
+            current = target[1][found].strip()
+            if current == f"{key} = {toml_value(value)}" and dotted in released_keys:  # loadout's value again
+                released_keys.discard(dotted)
+                owned_keys[dotted] = current
+                continue
+            if current == f"{key} = {toml_value(value)}" or current in (owned_keys.get(dotted), install_lines.get(dotted)):
+                continue  # loadout's value, or a line loadout wrote: the next run updates it
+            owned_keys.pop(dotted, None)
+            install_lines.pop(dotted, None)
+            if dotted not in released_keys:
+                released_keys.add(dotted)
+                notes.append(f"loadout (Codex): {dotted}: your value in {shown} stays yours; loadout no longer "
+                             "manages it or warns about it")
+        new_record = {**record, "tables": owned_tables, "keys": owned_keys}
+        if install_lines != get_dict(record, "install_lines"):
+            new_record["install_lines"] = install_lines
+            if not install_lines:
+                new_record.pop("install_lines")
+        _set_list(new_record, "released", released)
+        _set_list(new_record, "released_keys", released_keys)
+        if new_record != record:
+            record_path().parent.mkdir(parents=True, exist_ok=True)
+            save_json(record_path(), new_record)
+        return notes
+    finally:
+        lock.release()
+
+
+_TABLE_STATES = {"ours": "loadout's value", "changed": "changed by you (yours now)", "gone": "removed",
+                 "subtables": "has sub-tables (yours now)"}
+
+
+def explain_config() -> list[str]:
+    """`loadout explain ~/.codex/config.toml`: loadout's entries there and the state of each, names only (a table
+    can hold a token). Read-only. With Codex off it reads no Codex file and shows the record as stored."""
+    from . import targets
+    path = paths.codex_home() / "config.toml"
+    record = read_record()
+    released, released_keys = _released(record, "released"), _released(record, "released_keys")
+    install_lines = {k: v for k, v in get_dict(record, "install_lines").items() if isinstance(v, str)}
+    if not targets.codex_enabled():
+        out = [f"{_tilde(path)}: Codex is off, so loadout reads no Codex file; entries as recorded at loadout's last "
+               f"Codex run (in {_tilde(record_path())}):"]
+        out += [f"  mcp {n}  loadout's" for n in sorted(record["tables"])]
+        out += [f"  {k}  loadout's" for k in sorted({*record["keys"], *install_lines})]
+        out += [f"  mcp {n}  yours (you changed it)" for n in released]
+        out += [f"  {k}  yours (your value)" for k in released_keys]
+        return out + ["  turn Codex on (loadout configure set target codex on) to compare them with the file"]
+    out = [f"{_tilde(path)}: entries loadout wrote (recorded in {_tilde(record_path())})"]
+    tl = _tomllib()
+    try:
+        text = _read_exact(path) if path.exists() else ""
+        tl.loads(text)
+    except Exception:
+        names = [f"mcp {n}" for n in sorted(record["tables"])] + sorted({*record["keys"], *install_lines})
+        return out + [f"  {n}  cannot compare, the file does not parse" for n in names]
+    sections = _sections(text.splitlines(), tl)
+    for name, state in sorted(_ownership(sections, record["tables"]).items()):
+        out.append(f"  mcp {name}  {_TABLE_STATES[state]}")
+    for dotted, line in sorted({**install_lines, **record["keys"]}.items()):
+        try:
+            *table, key = _key_path(dotted, tl)
+        except Exception:
+            continue
+        target, found = _find_key(sections, tuple(table), key)
+        if found is None:
+            state = "removed"
+        elif target[1][found].strip() == line:
+            state = "loadout's value" if dotted in record["keys"] else "loadout's (its codex plugin add wrote it)"
+        else:
+            state = "changed by you (yours now)"
+        out.append(f"  {dotted}  {state}")
+    out += [f"  mcp {n}  yours (you changed it; loadout no longer manages it)" for n in released
+            if any(s[0] == ("mcp_servers", n) for s in sections)]  # a deleted section is nobody's entry
+
+    def present(dotted):
+        try:
+            *table, key = _key_path(dotted, tl)
+        except Exception:
+            return False
+        return _find_key(sections, tuple(table), key)[1] is not None
+    out += [f"  {k}  yours (your value; loadout no longer manages it)" for k in released_keys if present(k)]
+    return out + ["  everything else in this file is yours; loadout does not change it"]
+
+
+def explain_hooks() -> list[str]:
+    """`loadout explain ~/.codex/hooks.json`: Serena's hook entries loadout added and whether each is still as it
+    wrote it. Read-only; with Codex off it reads no Codex file."""
+    from . import codex_hooks, targets
+    path = codex_hooks.path()
+    owned = [o for o in read_record().get("hooks", []) if isinstance(o, dict)]
+
+    def label(o):
+        try:
+            command = json.loads(o.get("group"))["hooks"][0]["command"]
+        except Exception:
+            command = "a hook"
+        return f"{o.get('event')} {command}"
+    if not targets.codex_enabled():
+        return ([f"{_tilde(path)}: Codex is off, so loadout reads no Codex file; entries as recorded at loadout's "
+                 f"last Codex run (in {_tilde(record_path())}):"]
+                + [f"  {label(o)}  loadout's" for o in owned]
+                + ["  turn Codex on (loadout configure set target codex on) to compare them with the file"])
+    out = [f"{_tilde(path)}: entries loadout wrote (recorded in {_tilde(record_path())})"]
+    try:
+        data = json.loads(path.read_bytes().decode("utf-8")) if path.exists() else {}
+        events = data.get("hooks", {}) if isinstance(data, dict) else {}
+        events = events if isinstance(events, dict) else {}
+    except (OSError, ValueError):
+        return out + [f"  {label(o)}  cannot compare, the file is not valid JSON" for o in owned]
+    for o in owned:
+        groups = events.get(o.get("event"))
+        here = isinstance(groups, list) and any(codex_hooks._canon(g) == o.get("group") for g in groups)
+        out.append(f"  {label(o)}  {'loadout' + chr(39) + 's entry' if here else 'changed or removed by you (yours now)'}")
+    if not owned:
+        out.append("  (none)")
+    return out + ["  everything else in this file is yours; loadout does not change it"]
 
 
 OFFICIAL = "anthropics/claude-plugins-official"
@@ -1298,13 +1558,29 @@ def apply_all(bk, refresh: bool = False, say=None, command: str = "setup", on_wa
     return [line for key in PARTS for line in parts[key]]
 
 
+def _hooks_fix(lines: list[str]) -> str:
+    """The fix per line of codex_hooks.apply(dry_run=True), naming the real files (CODEX_HOME honoured)."""
+    from . import codex_hooks
+    fixes = []
+    for line in lines:
+        fix = (f"add the listed entries to [hooks] in {_tilde(paths.codex_home() / 'config.toml')}"
+               if codex_hooks.INLINE_MISSING in line
+               else f"remove loadout's old serena-hooks entries from {_tilde(codex_hooks.path())} by hand"
+               if codex_hooks.OLD_LEFT in line
+               else f"add the listed entries to {_tilde(codex_hooks.path())} by hand"
+               if codex_hooks.FORMAT_MISSING in line else "loadout bootstrap")
+        if fix not in fixes:
+            fixes.append(fix)
+    return "; ".join(fixes)
+
+
 def checks() -> list:
     from .check import CheckResult
     if not enabled():
         return []
     problem = unavailable()
     if problem:
-        return [CheckResult("Codex", False, problem, "install or update codex (mise use -g codex), or: loadout configure set target codex off", "warn")]
+        return [CheckResult("Codex", False, problem, unavailable_fix(problem), "warn")]
     results = [CheckResult("Codex", True)]
     cli = runner.have("codex")
     if cli:
@@ -1330,9 +1606,8 @@ def checks() -> list:
     results.append(CheckResult("Codex config", not pending, "; ".join(pending), fix, "warn"))
     from . import codex_hooks
     pending_hooks = codex_hooks.apply(object(), dry_run=True)
-    hooks_fix = ("add the listed entries to ~/.codex/hooks.json" if pending_hooks
-                 and all("add these yourself" in line for line in pending_hooks) else "loadout bootstrap")
-    results.append(CheckResult("Codex Serena hooks", not pending_hooks, "; ".join(pending_hooks), hooks_fix, "warn"))
+    results.append(CheckResult("Codex Serena hooks", not pending_hooks, "; ".join(pending_hooks),
+                               _hooks_fix(pending_hooks), "warn"))
     from .settings_merge import desired_settings
     missing = plugin_routes(desired_settings())[1]
     if missing:

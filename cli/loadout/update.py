@@ -72,6 +72,8 @@ def _codex_item(items: list) -> tuple | None:
         name = out.printable(src)
         market = get_dict(record, src).get("name")
         market = market if isinstance(market, str) and market in listed else None
+        if market is None:  # no record of a name: Codex's own list names the marketplace with this source
+            market = next((n for n, info in listed.items() if codex._same_source(info, f"https://github.com/{src}")), None)
         if src in skip_m:
             at = get_dict(record, src).get("at")
             groups.append((f"skip marketplace {name} (unchanged since {_date(at)})", []))
@@ -92,6 +94,8 @@ def _codex_item(items: list) -> tuple | None:
             adds, readds = adds + (not again), readds + again
             groups.append((f"{'re-add' if again else 'add'} plugin {out.printable(pid)}",
                            [["codex", "plugin", "add", out.printable(pid), "--json"]]))
+    if refresh and not any(isinstance(get_dict(record, src).get("name"), str) for src in routes):
+        label += " (no record to compare yet)"
     if adds or readds:
         label += "; plugins: " + ", ".join(p for p in (f"add {adds}" if adds else "",
                                                        f"re-add {readds}" if readds else "") if p)
@@ -157,6 +161,10 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
             continue
         items.append(("tool-update", label, cmds, False, entry["id"], latest, entry, local, how))
     for entry, cmds, optional in bootstrap.missing_tools():
+        if not cmds:  # no install command here (git): say how to do it by hand; an empty item would run nothing
+            notes.append(f"{entry['id']}: missing, no install command for this platform. "
+                         f"{entry.get('manual', '')}".rstrip())
+            continue
         items.append(("tool-install", f"install {entry['id']} (new, recommended)" if optional else f"install {entry['id']}",
                       cmds, optional, entry["id"], (), entry, (), ""))
     first = "Re-apply the loadout setup" + (f": {', '.join(parts)}" if parts else "")
@@ -582,6 +590,16 @@ def _install_tool(item: PlanItem, summary: Summary, failed: set[str]) -> None:
         return
     maintenance._touch_lock()
     ok, lines = bootstrap.install_tool(item.entry or {"id": item.key}, item.commands)
+    if not ok and bootstrap.windows_first(item.key) and bootstrap._linux_copy_first(item.key):
+        # WSL: the Linux copy is installed but the Windows one came first; this run uses the Linux one now
+        folder = bootstrap._linux_folder(item.key)
+        summary.changed.append(f"{out.printable(item.key)}: installed; put {out.printable(folder)} first in PATH for "
+                               "new shells (a line in your shell profile), or set `appendWindowsPath = false` in "
+                               "`/etc/wsl.conf`; the Windows one stays untouched")
+        summary.upgraded.append(item.key)
+        if any(out.PROBLEM.search(line) for line in lines):  # the reinstall itself still failed: said separately
+            summary.failed.append((out.printable(redact(lines[0])), AGAIN + ", or install it by hand"))
+        return
     if ok:
         summary.changed.append(f"{out.printable(item.key)}: installed")
         summary.upgraded.append(item.key)

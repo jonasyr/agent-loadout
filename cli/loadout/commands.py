@@ -1,8 +1,9 @@
 """Registers subcommands implemented in other modules (kept separate to avoid import cycles)."""
-from .__main__ import EXTRA_COMMANDS  # noqa: F401
 from pathlib import Path
 
 from . import backup
+
+EXTRA_COMMANDS: list = []  # register(subparsers) functions; __main__.build_parser runs them (one registry, also under `python -m`)
 
 
 def _register_restore(sub):
@@ -165,7 +166,7 @@ def _register_bootstrap(sub):
     p.add_argument("--no-plugins", action="store_true", help="skip adding marketplaces and installing plugins (offline/CI)")
     p.add_argument("--no-adopt", action="store_true", help="skip reviewing the existing setup")
     p.add_argument("--verbose", action="store_true", help="print every detail of every step")
-    p.add_argument("--agents", help="claude, codex or claude,codex (default: ask; Claude Code without a terminal)")
+    p.add_argument("--agents", help="claude, codex or claude,codex; stored in your personal layer (default: the personal layer's stored choice, else ask; Claude Code without a terminal)")
     p.add_argument("--personal", metavar="new|URL",
                    help="the personal layer without asking: new (a starter) or the git URL to clone")
     p.add_argument("--answers", metavar="FILE",
@@ -286,7 +287,8 @@ def _register_configure(sub):
             print(targets.set_target(a.name, on))  # ValueError (unknown agent, last one off) -> exit 1
             if on and a.name == "claude":
                 from . import runner
-                if not runner.have("claude"):  # Codex only so far: Claude Code needs installing and linking first
+                from .vscode import use_bundled_claude  # VS Code's Claude Code extension ships a claude: that counts
+                if not runner.have("claude") and use_bundled_claude(on=True) is None:  # Codex only so far: install first
                     configure.offer_commit(_ask)
                     print("Claude Code is not installed yet: run `loadout bootstrap --install` to install and set it up")
                     return 0
@@ -390,8 +392,9 @@ EXTRA_COMMANDS.append(_register_kit_path)
 
 
 def _register_explain(sub) -> None:
-    p = sub.add_parser("explain", help="which entries in a repo file loadout wrote, and whether each is unchanged")
-    p.add_argument("file", help="a file in the current repo, e.g. .claude/settings.json")
+    p = sub.add_parser("explain", help="which entries in a repo file (or Codex's config.toml, hooks.json) loadout wrote, and whether each is unchanged")
+    p.add_argument("file", help="a file in the current repo, e.g. .claude/settings.json, or ~/.codex/config.toml "
+                                "or ~/.codex/hooks.json")
 
     def run(a):
         from .explain import explain

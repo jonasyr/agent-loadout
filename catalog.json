@@ -178,7 +178,7 @@
           "mise"
         ]
       },
-      "reason": "Installs Node.js, gh and rust-analyzer in your home folder when they are missing (no sudo).",
+      "reason": "Installs Node.js, gh, rust-analyzer and, with Codex on, the Codex CLI in your home folder when they are missing (no sudo).",
       "version": {
         "cmd": [
           "mise",

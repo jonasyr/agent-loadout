@@ -7,7 +7,7 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 - Tests: `uv run --python 3.12 --with pytest pytest -q`
 - Validate: `claude plugin validate .` and `claude plugin validate plugins/loadout`
 - Skill evals: only via `plugins/loadout/evals/run.sh` (see `docs/how-to/run-evals.md`); never `claude plugin eval` directly
-- CLI help from a checkout: `bin/loadout <sub> --help` ([why not `python -m loadout`](CONTRIBUTING.md#setup))
+- CLI help from a checkout: `bin/loadout <sub> --help`
 
 ## Hard conventions
 
