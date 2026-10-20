@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from . import paths, runner
-from .jsonio import get_dict, get_list, load_json, save_json
+from .jsonio import InvalidJSON, get_dict, get_list, load_json, save_json
 
 MIN_VERSION = (0, 161)
 
@@ -860,15 +860,19 @@ def _same_source(listed: dict | None, url: str) -> bool:
     return mine is not None and _norm_source((listed or {}).get("source")) == mine
 
 
-def _sha_less_plugins(info: dict | None) -> dict[str, tuple[str | None, str | None]]:
+def _sha_less_plugins(info: dict | None) -> dict[str, tuple[str | None, str | None]] | None:
     """{plugin name: (url, ref)} for the plugins of a marketplace with a source of their own and no pinned sha (read
     from its .claude-plugin/marketplace.json). Those can move without the marketplace head moving. url is None for a
     source that cannot be compared (SSH, git@, file or a local path): such a plugin is always refreshed. A plugin
-    in the marketplace's own repo (a path string) or pinned to a sha is not listed: the marketplace head covers it."""
+    in the marketplace's own repo (a path string) or pinned to a sha is not listed: the marketplace head covers it.
+    None when the cached marketplace.json cannot be read (malformed, not UTF-8): nothing of it can be compared."""
     root = info.get("root") if info else None
     if not root:
         return {}
-    data = load_json(Path(root).expanduser() / ".claude-plugin" / "marketplace.json")
+    try:
+        data = load_json(Path(root).expanduser() / ".claude-plugin" / "marketplace.json")
+    except (InvalidJSON, OSError):
+        return None
     found = {}
     for plug in get_list(data if isinstance(data, dict) else {}, "plugins"):
         src = plug.get("source") if isinstance(plug, dict) else None
@@ -906,8 +910,10 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
         pids = [f"{n}@{market}" for n in names]
         if any(pid not in installed for pid in pids):
             continue
-        skip_m.add(src)
         own = _sha_less_plugins(listed[market])
+        if own is None:  # its marketplace.json cannot be read: refreshed as before
+            continue
+        skip_m.add(src)
         recorded = get_dict(entry, "plugins")
         for name, pid in zip(names, pids):
             if name not in own:
@@ -1007,7 +1013,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             installed.add(pid)
             if src in skip_m or refreshed or record_has(src):
                 if own is None:
-                    own = _sha_less_plugins((marketplaces() or {}).get(market))
+                    own = _sha_less_plugins((marketplaces() or {}).get(market)) or {}
                 if name in own and own[name][0] is not None:
                     purl, ref = own[name]
                     _remember(src, market, plugin=(pid, purl, ref, remote_head(purl, ref)))

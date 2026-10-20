@@ -327,3 +327,15 @@ def test_a_planned_plugin_skip_holds_when_the_plugin_list_fails(fake_home, fake_
                         skips=(frozenset({"jonasyr/agent-loadout"}), frozenset({"loadout@agent-loadout"})))
     assert not [c for c in fake_runner.calls if c[:3] == ["codex", "plugin", "add"]]
     assert not [c for c in fake_runner.calls if c[:4] == ["codex", "plugin", "marketplace", "add"]]
+
+
+@pytest.mark.parametrize("raw", [b'{"plugins": [', b'\xff\xfe{"plugins": []}'], ids=["malformed", "not-utf8"])
+def test_an_unreadable_cached_marketplace_json_refreshes_the_route(fake_home, fake_runner, monkeypatch, tmp_path, raw):
+    _setup(fake_home, fake_runner, monkeypatch, tmp_path / "m")
+    (tmp_path / "m" / ".claude-plugin" / "marketplace.json").write_bytes(raw)
+    _record(fake_home, "aaaaaaa1")
+    _heads(fake_runner, URL, "aaaaaaa1")
+    skip_m, skip_p = codex.unchanged_routes({"jonasyr/agent-loadout": ["loadout"]})
+    assert skip_m == set() and skip_p == set()
+    calls = _apply(fake_runner)
+    assert ["codex", "plugin", "marketplace", "upgrade", "agent-loadout"] in calls
