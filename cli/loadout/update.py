@@ -37,14 +37,15 @@ class PlanItem:
     ids: tuple = ()  # the plugin ids the item refreshes (claude-plugins-refresh)
     groups: tuple = ()  # (what, its commands) per marketplace and plugin (codex-plugins); render shows these
     needs: tuple = ()  # the tool ids of the plan's other tool-install items it needs first (tool-install)
-    planned: tuple | None = None  # (marketplaces as (name, origin), plugin ids) it runs (claude-plugin-install)
+    planned: tuple | None = None  # (marketplaces as (name, origin), plugin ids) it runs (claude-plugin-install);
+    # (marketplace sources, plugin ids) the plan showed as skipped (codex-plugins)
 
 
 def _date(ts) -> str:
     return time.strftime("%Y-%m-%d", time.localtime(ts)) if isinstance(ts, (int, float)) and ts else "an earlier run"
 
 
-def _codex_item(items: list) -> None:
+def _codex_item(items: list) -> tuple | None:
     """The Codex marketplaces and plugins to refresh, and those skipped because upstream did not move. Lists what
     runs (ADR 0011): per marketplace "refresh", "add" (new) or "skip", each plugin to add or re-add, and the commands
     in the shape codex._install_routes runs them."""
@@ -96,6 +97,7 @@ def _codex_item(items: list) -> None:
                                                        f"re-add {readds}" if readds else "") if p)
     cmds = [cmd for _, group in groups for cmd in group]
     items.append(("codex-plugins", label, cmds, False, "", (), None, (), "", (), tuple(groups)))
+    return frozenset(skip_m), frozenset(skip_p)  # the run uses these, not a second look upstream
 
 
 def _claude_refresh_todo() -> list[str]:
@@ -125,7 +127,7 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
     notes = [] if notes is None else notes
     items: list[tuple] = []
     parts = []
-    planned = None
+    planned = codex_skips = None
     if claude_on:
         parts.append("Claude Code (rules and settings)")
         _, markets, new_plugins = bootstrap.plugins_plan()
@@ -146,7 +148,7 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
         parts.append(f"Codex ({step.summary or 'rules block and config'})")
         if not runner.have("codex"):
             notes.append(codex.PLUGINS_EXTENSION)
-        _codex_item(items)
+        codex_skips = _codex_item(items)
     for entry, local, latest in maintenance.find_outdated():
         cmds, how = pkgmgr.update_plan(entry)
         label = f"{entry['id']}: {versions.fmt(local)} -> {versions.fmt(latest)}" + (f" (via {how})" if how != "catalog" else "")
@@ -165,6 +167,8 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
     for item in plan:
         if item.kind == "claude-plugin-install":
             item.planned = planned
+        elif item.kind == "codex-plugins":
+            item.planned = codex_skips
     missing = {i.key for i in plan if i.kind == "tool-install"}
     for item in plan:
         if item.kind == "tool-install" and item.entry:
@@ -457,10 +461,12 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem]
     if codex_ok and reapply:
         refresh = "codex-plugins" in kinds or "codex-plugins" not in in_plan  # no item: nothing was left out
         slow = "Codex clones each changed plugin's source; this can take a few minutes" if refresh else None
+        item = next((i for i in chosen if i.kind == "codex-plugins"), None)
+        skips = item.planned if item is not None else None  # exactly what the plan showed as skipped
         with out.step("Codex", slow=slow) as st:  # its plugin item left out: no marketplace or plugin command
             result = apply.codex_step(bk, refresh_plugins=refresh, auto=False, keep=False, skip_unchanged=True,
                                       say=_say(st), on=True, command="update", on_wait=maintenance._touch_lock,
-                                      plugins=refresh)
+                                      plugins=refresh, skips=skips)
         _show(result, summary)
         if not refresh:
             summary.changed.append("Codex plugins: left as they are (their item was left out)")

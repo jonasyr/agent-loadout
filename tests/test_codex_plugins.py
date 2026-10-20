@@ -278,3 +278,30 @@ def test_a_marketplace_listed_from_another_source_is_refreshed(fake_home, fake_r
     calls = _apply(fake_runner)
     refreshed = ["codex", "plugin", "marketplace", "upgrade", "agent-loadout"] in calls
     assert refreshed is not skipped
+
+
+def test_update_runs_the_codex_commands_the_plan_showed_when_ls_remote_flips(fake_home, fake_runner, monkeypatch,
+                                                                            tmp_path, capsys):
+    from loadout import bootstrap, check, maintenance, targets, update
+    _setup(fake_home, fake_runner, monkeypatch, tmp_path / "m")
+    _record(fake_home, "aaaaaaa1")
+    targets.set_agents({"claude": False, "codex": True})
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: None)
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [])
+    monkeypatch.setattr(check, "run_checks", lambda *a, **k: [])
+    shown = []
+    real_build = update.build_plan
+
+    def build(*a, **k):
+        plan = real_build(*a, **k)
+        shown.extend(c for i in plan if i.kind == "codex-plugins" for _, cmds in i.groups for c in cmds)
+        fake_runner.responses[("git", "ls-remote", URL)] = runner.Result(128, "", "fatal: offline")  # flips after
+        return plan
+    monkeypatch.setattr(update, "build_plan", build)
+    _heads(fake_runner, URL, "aaaaaaa1")  # the plan sees the head unchanged: skip
+    update.run(True, lambda q: "", argv=["--yes"])
+    assert shown == []  # the plan skipped the marketplace and its plugin
+    ran = [c for c in fake_runner.calls if c[:2] == ["codex", "plugin"] and c[2:3] in (["add"], ["marketplace"])
+           and "list" not in c]
+    assert ran == shown

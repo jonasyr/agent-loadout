@@ -938,15 +938,20 @@ def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str,
 
 
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
-                    frozen: frozenset = frozenset(), skip_unchanged: bool = False) -> tuple[list[str], set[str]]:
+                    frozen: frozenset = frozenset(), skip_unchanged: bool = False,
+                    skips: tuple | None = None) -> tuple[list[str], set[str]]:
     """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards.
     frozen: marketplaces a refresh leaves as they are (`autoUpdate: false`); missing plugins are still installed.
     skip_unchanged (with refresh): marketplaces and plugins whose upstream head did not move are left alone."""
     lines, installed = [], set(listed or ())
     have = {pid.split("@")[0] for pid in installed}
-    skip_m, skip_p = unchanged_routes(routes, set(installed) if listed is not None else None) \
-        if skip_unchanged and refresh and listed is not None else (set(), set())
+    if skips is not None and refresh:  # the plan's decisions, as shown
+        skip_m, skip_p = set(skips[0]), set(skips[1])
+    else:
+        skip_m, skip_p = unchanged_routes(routes, set(installed) if listed is not None else None) \
+            if skip_unchanged and refresh and listed is not None else (set(), set())
     record = _load_record() if skip_m else {}
+    skip_m = {src for src in skip_m if isinstance(get_dict(record, src).get("name"), str)}  # its name is needed
     total = sum(1 for src in routes if src not in skip_m) + sum(
         1 for src, names in routes.items() for name in names
         if (refresh or name not in have) and not (src in skip_m and any(p.startswith(name + "@") for p in skip_p)))
@@ -1006,11 +1011,14 @@ def record_has(src: str) -> bool:
     return isinstance(_load_record().get(src), dict)
 
 
-def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False, skip_unchanged: bool = False) -> list[str]:
+def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False, skip_unchanged: bool = False,
+                  skips: tuple | None = None) -> list[str]:
     """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs).
     auto: an automatic refresh (the daily sync): marketplaces set to `autoUpdate: false` stay as they are, as in
     Claude Code; an explicit `loadout update` passes False and updates every marketplace.
-    skip_unchanged (with refresh): leave marketplaces and plugins whose upstream head did not move as they are."""
+    skip_unchanged (with refresh): leave marketplaces and plugins whose upstream head did not move as they are.
+    skips: (marketplace sources, plugin ids) a plan already decided to leave (`loadout update`): used as they are,
+    with no second look upstream, so the run does what the plan showed."""
     if not runner.have("codex"):
         return [PLUGINS_EXTENSION]  # extension mode: the extension loads no plugins, and they install through the CLI
     say = say or (lambda line: None)
@@ -1020,7 +1028,7 @@ def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False, skip_
     frozen = frozenset(name for name, cfg in get_dict(desired, "extraKnownMarketplaces").items()
                        if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False)
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
-    return lines + _install_routes(routes, bk, refresh, say, installed_plugins(), frozen, skip_unchanged)[0]
+    return lines + _install_routes(routes, bk, refresh, say, installed_plugins(), frozen, skip_unchanged, skips)[0]
 
 
 def skill_links() -> list[tuple[Path, Path]]:
@@ -1203,14 +1211,14 @@ PARTS = ("instructions", "config", "hooks", "skills", "plugins")
 
 def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unchanged: bool = False,
                 command: str = "setup", on_wait=None, changed: set | None = None,
-                plugins: bool = True) -> dict[str, list[str]]:
+                plugins: bool = True, skips: tuple | None = None) -> dict[str, list[str]]:
     """Each part's lines, under the Codex lock. refresh: re-add every plugin and upgrade the marketplaces; auto: the
     daily sync (marketplaces set to `autoUpdate: false` stay as they are, and it never waits for another run);
     keep: Serena's hooks are never removed. skip_unchanged: on a refresh, leave marketplaces and plugins whose upstream head did not move.
     changed: when given, gets "config" when config.toml's bytes changed and, on a refresh, "plugins_updated" when
     an installed plugin's version changed (neither prints a line). A busy lock: the skip line under "instructions".
     plugins: False leaves the marketplaces and plugins alone (no add, install or refresh; `loadout update` with its
-    Codex plugin item left out)."""
+    Codex plugin item left out). skips: as in apply_plugins."""
     from . import locks
     lock = _lock(0 if auto else locks.foreground_wait(), command, on_wait)
     if lock is None:
@@ -1232,7 +1240,8 @@ def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unc
             parts["plugins"] = []
             return parts
         versions = plugin_versions() if changed is not None and refresh and runner.have("codex") else None
-        parts["plugins"] = apply_plugins(bk, refresh=refresh, say=say, auto=auto, skip_unchanged=skip_unchanged)
+        parts["plugins"] = apply_plugins(bk, refresh=refresh, say=say, auto=auto, skip_unchanged=skip_unchanged,
+                                         **({"skips": skips} if skips is not None else {}))
         if versions is not None:
             after = plugin_versions()
             if any(pid in versions and versions[pid] != v for pid, v in after.items()):
@@ -1251,12 +1260,12 @@ def _bytes(path: Path) -> bytes | None:
 
 def apply_all(bk, refresh: bool = False, say=None, command: str = "setup", on_wait=None, *, auto: bool | None = None,
               keep: bool | None = None, skip_unchanged: bool = False, changed: set | None = None,
-              plugins: bool = True) -> list[str]:
+              plugins: bool = True, skips: tuple | None = None) -> list[str]:
     """refresh=True is the background sync: it never waits for another run, and auto and keep follow it unless
     given. Foreground callers wait for it."""
     parts = apply_parts(bk, refresh=refresh, auto=refresh if auto is None else auto,
                         keep=refresh if keep is None else keep, say=say, skip_unchanged=skip_unchanged,
-                        command=command, on_wait=on_wait, changed=changed, plugins=plugins)
+                        command=command, on_wait=on_wait, changed=changed, plugins=plugins, skips=skips)
     return [line for key in PARTS for line in parts[key]]
 
 
