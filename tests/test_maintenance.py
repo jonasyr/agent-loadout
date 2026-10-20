@@ -202,6 +202,30 @@ def test_update_guard_restores_settings_an_installer_left_unreadable(fake_home, 
     assert "could not be read" in changed and str(guards[0]) in changed
 
 
+def test_update_guard_restores_settings_an_installer_only_reformatted(fake_home, fake_runner, monkeypatch, capsys):
+    s = fake_home / ".claude/settings.json"
+    s.parent.mkdir(parents=True)
+    s.write_text('{"a": 1}\n')
+    entry = {"id": "tool", "update": {"posix": [["tool-installer"]], "windows": [["tool-installer"]]}}
+    monkeypatch.setattr(m, "find_outdated", lambda: [(entry, (1, 0, 0), (2, 0, 0))])
+    merged = []
+
+    def installer(cmd, cwd=None, timeout=300, env=None):
+        if cmd[0] == "tool-installer":
+            merged.append(s.read_bytes())
+            s.write_bytes(b"\xef\xbb\xbf" + json.dumps(json.loads(merged[0]), indent=8).encode().replace(b"\n", b"\r\n"))
+        return runner.Result(0, "", "")
+
+    monkeypatch.setattr(runner, "run", installer)
+    assert m.update(yes=True, ask=lambda q: "") == 0
+    assert merged and s.read_bytes() == merged[0]
+    guards = [d for d in paths.backups_root().iterdir() if (d / "manifest.json").exists()
+              and json.loads((d / "manifest.json").read_text())["description"]
+              == "update: settings.json as modified by an installer"]
+    assert len(guards) == 1
+    assert [p.read_bytes()[:3] for p in (guards[0] / "files").glob("*settings.json")] == [b"\xef\xbb\xbf"]
+
+
 def test_no_auto_pull_env_skips_pull(fake_home, fake_runner, monkeypatch, tmp_path):
     kit = tmp_path / "kit"
     (kit / ".git").mkdir(parents=True)

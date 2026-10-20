@@ -634,9 +634,7 @@ def _guard_settings(path, before: bytes | None, summary: Summary) -> None:
     if after == before:
         return
     old, _ = _parsed(before)
-    new, why = _parsed(after)
-    if old is not None and new is not None and old == new:
-        return  # only the formatting moved
+    new, why = _parsed(after)  # equal values in other bytes (indent, line ends, BOM, key order) are undone too
     guard = Backup(description="update: settings.json as modified by an installer")
     if after is None:
         if before is not None:
@@ -653,7 +651,8 @@ def _guard_settings(path, before: bytes | None, summary: Summary) -> None:
         detail = f"it could not be read: {why}"
     else:
         keys = sorted(k for k in set(old or {}) | set(new) if (old or {}).get(k) != new.get(k)) if old is not None else []
-        detail = "keys: " + ", ".join(out.printable(k) for k in keys) if keys else what
+        detail = ("keys: " + ", ".join(out.printable(k) for k in keys) if keys
+                  else what if what != "changed it" else "only its formatting")
     where = f" The installer's version is in {guard.root}" if not guard.empty else ""
     print(f"an installer modified ~/.claude/settings.json ({out.printable(detail)}); reverting to the kit-merged "
           f"version.{where}")
