@@ -720,16 +720,16 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
         from . import codex, targets
         if name not in codex.desired_tables()[0]:
             return [f"mcp {name}: left in Codex as is (loadout cannot write it from the personal layer)"]
-        record = codex.record_path()  # restore must also give the section back to the user
-        if record.exists():
-            bk.save_copy(record, "codex-config.json before recording a Codex server")
-        else:
-            bk.record_created(record, "codex-config.json")
         from . import locks
         lock = codex._lock(locks.foreground_wait(), "adopt")  # codex-config.json has other writers (session start)
         if lock is None:
             raise OSError(f"mcp {name}: {locks.busy_message(codex.LOCK)}")
         try:
+            record = codex.record_path()  # restore must also give the section back to the user; copied only now,
+            if record.exists():  # under the lock: another run may have changed it while we waited
+                bk.save_copy(record, "codex-config.json before recording a Codex server")
+            else:
+                bk.record_created(record, "codex-config.json")
             out = [codex.remove_server(name, bk)]  # loadout writes its own table from the personal layer next
             if ": failed:" in out[0]:  # adopt counts it as not done; the section stays the user's until removed
                 raise OSError(f"{out[0]}; run `codex mcp remove {name}`, then `loadout bootstrap` (it re-applies "
