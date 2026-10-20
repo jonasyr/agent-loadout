@@ -317,3 +317,13 @@ def test_an_external_source_that_cannot_be_compared_is_re_added(fake_home, fake_
     calls = _apply(fake_runner)
     assert not [c for c in calls if c[:4] == ["codex", "plugin", "marketplace", "upgrade"]]  # the marketplace did not move
     assert ["codex", "plugin", "add", "loadout@agent-loadout", "--json"] in calls
+
+
+def test_a_planned_plugin_skip_holds_when_the_plugin_list_fails(fake_home, fake_runner, monkeypatch, tmp_path):
+    _setup(fake_home, fake_runner, monkeypatch, tmp_path / "m")
+    _record(fake_home, "aaaaaaa1")
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(1, "", "codex: busy")  # the second look fails
+    codex.apply_plugins(backup.Backup(description="t"), refresh=True, skip_unchanged=True,
+                        skips=(frozenset({"jonasyr/agent-loadout"}), frozenset({"loadout@agent-loadout"})))
+    assert not [c for c in fake_runner.calls if c[:3] == ["codex", "plugin", "add"]]
+    assert not [c for c in fake_runner.calls if c[:4] == ["codex", "plugin", "marketplace", "add"]]

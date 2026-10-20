@@ -951,7 +951,8 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
     skip_unchanged (with refresh): marketplaces and plugins whose upstream head did not move are left alone."""
     lines, installed = [], set(listed or ())
     have = {pid.split("@")[0] for pid in installed}
-    if skips is not None and refresh:  # the plan's decisions, as shown
+    planned = skips is not None and refresh
+    if planned:  # the plan's decisions, as shown: authoritative, whatever a second look says
         skip_m, skip_p = set(skips[0]), set(skips[1])
     else:
         skip_m, skip_p = unchanged_routes(routes, set(installed) if listed is not None else None) \
@@ -990,7 +991,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
         own = None
         for name in plugins:
             pid = f"{name}@{market}"
-            if pid in installed and (not refresh or market in frozen or pid in skip_p):
+            if (planned and pid in skip_p) or (pid in installed and (not refresh or market in frozen or pid in skip_p)):
                 continue
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
