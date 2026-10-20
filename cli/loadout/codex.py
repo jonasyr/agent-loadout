@@ -836,6 +836,30 @@ def _src_url(src: str) -> str | None:
     return f"https://github.com/{src}.git" if _REPO.match(src) else None
 
 
+def _norm_source(source) -> str | None:
+    """A git source as host/path for comparing: https:// or a bare owner/repo (GitHub), the host in lower case,
+    without a trailing / or .git. None for anything else."""
+    if not isinstance(source, str) or not source.strip():
+        return None
+    text = source.strip()
+    if _REPO.match(text):
+        text = f"https://github.com/{text}"
+    if not text.lower().startswith("https://"):
+        return None
+    host, _, path = text[len("https://"):].partition("/")
+    path = path.rstrip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    return f"{host.lower()}/{path}" if host and path else None
+
+
+def _same_source(listed: dict | None, url: str) -> bool:
+    """Whether the marketplace Codex lists comes from url (one removed and re-added from another repo under the same
+    name does not)."""
+    mine = _norm_source(url)
+    return mine is not None and _norm_source((listed or {}).get("source")) == mine
+
+
 def _sha_less_plugins(info: dict | None) -> dict[str, tuple[str, str | None]]:
     """{plugin name: (url, ref)} for the plugins of a marketplace whose own source is a git URL without a pinned sha
     (read from its .claude-plugin/marketplace.json). Those can move without the marketplace head moving."""
@@ -870,8 +894,8 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
     for src, names in routes.items():
         entry, url = record.get(src), _src_url(src)
         market = entry.get("name") if isinstance(entry, dict) else None
-        if not url or not isinstance(market, str) or market not in listed:
-            continue
+        if not url or not isinstance(market, str) or market not in listed or not _same_source(listed[market], url):
+            continue  # a marketplace of that name from another source is refreshed as before
         head = remote_head(url, None)
         if head is None or head != entry.get("head"):
             continue

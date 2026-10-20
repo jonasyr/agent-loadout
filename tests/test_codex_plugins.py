@@ -259,3 +259,22 @@ def test_apply_parts_passes_skip_unchanged_on(fake_home, fake_runner, monkeypatc
     monkeypatch.setattr(codex, "apply_plugins", lambda bk, **kw: seen.update(kw) or [])
     codex.apply_parts(backup.Backup(description="t"), refresh=True, auto=False, keep=False, skip_unchanged=True)
     assert seen["skip_unchanged"] is True
+
+
+@pytest.mark.parametrize("source,skipped", [("https://GitHub.com/jonasyr/agent-loadout", True),
+                                            ("https://github.com/jonasyr/agent-loadout.git/", True),
+                                            ("https://github.com/someone/other-repo.git", False),
+                                            (None, False)])
+def test_a_marketplace_listed_from_another_source_is_refreshed(fake_home, fake_runner, monkeypatch, tmp_path, source,
+                                                                skipped):
+    _setup(fake_home, fake_runner, monkeypatch, tmp_path / "m")
+    item = {"name": "agent-loadout", "root": str(tmp_path / "m")}
+    if source is not None:
+        item["marketplaceSource"] = {"sourceType": "git", "source": source}
+    fake_runner.responses[("codex", "plugin", "marketplace", "list")] = runner.Result(
+        0, json.dumps({"marketplaces": [item]}), "")
+    _record(fake_home, "aaaaaaa1")
+    _heads(fake_runner, URL, "aaaaaaa1")
+    calls = _apply(fake_runner)
+    refreshed = ["codex", "plugin", "marketplace", "upgrade", "agent-loadout"] in calls
+    assert refreshed is not skipped
