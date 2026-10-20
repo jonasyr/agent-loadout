@@ -165,8 +165,13 @@ def test_update_guard_backs_up_installer_version_and_names_keys(fake_home, fake_
     assert merged["a"] == 1 and json.loads(s.read_text()) == merged
     keys = set(out.split("keys: ", 1)[1].split(")", 1)[0].split(", "))
     assert {"a", "hooks"} <= keys
-    copies = [p for p in paths.backups_root().rglob("files/*settings.json")]
-    assert copies and json.loads(copies[0].read_text()) == {"a": 2, "hooks": {"X": []}}
+    # the guard's backup by its description: the re-apply may have made an earlier one, and listing order differs
+    guards = [d for d in paths.backups_root().iterdir() if (d / "manifest.json").exists()
+              and json.loads((d / "manifest.json").read_text())["description"]
+              == "update: settings.json as modified by an installer"]
+    assert len(guards) == 1
+    copies = list((guards[0] / "files").glob("*settings.json"))
+    assert len(copies) == 1 and json.loads(copies[0].read_text()) == {"a": 2, "hooks": {"X": []}}
 
 
 def test_no_auto_pull_env_skips_pull(fake_home, fake_runner, monkeypatch, tmp_path):
