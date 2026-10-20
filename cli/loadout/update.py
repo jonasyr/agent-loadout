@@ -72,6 +72,8 @@ def _codex_item(items: list) -> tuple | None:
         name = out.printable(src)
         market = get_dict(record, src).get("name")
         market = market if isinstance(market, str) and market in listed else None
+        if market is None:  # no record of a name: Codex's own list names the marketplace with this source
+            market = next((n for n, info in listed.items() if codex._same_source(info, f"https://github.com/{src}")), None)
         if src in skip_m:
             at = get_dict(record, src).get("at")
             groups.append((f"skip marketplace {name} (unchanged since {_date(at)})", []))
@@ -92,6 +94,8 @@ def _codex_item(items: list) -> tuple | None:
             adds, readds = adds + (not again), readds + again
             groups.append((f"{'re-add' if again else 'add'} plugin {out.printable(pid)}",
                            [["codex", "plugin", "add", out.printable(pid), "--json"]]))
+    if refresh and not any(isinstance(get_dict(record, src).get("name"), str) for src in routes):
+        label += " (no record to compare yet)"
     if adds or readds:
         label += "; plugins: " + ", ".join(p for p in (f"add {adds}" if adds else "",
                                                        f"re-add {readds}" if readds else "") if p)
