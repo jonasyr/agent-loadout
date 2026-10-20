@@ -179,8 +179,10 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
                          "(a Codex user installs them with loadout profile here)")
         if install and targets.codex_enabled() and codex_project._wanted(prof)[1] and not runner.have("codex"):
             from . import codex
-            if codex.extension_state()[0] is not None:  # no usable extension either: plugins() reports the failure
+            if codex.extension_state()[0] is not None:
                 notes.append(codex_project.PLUGINS_EXTENSION_NOTE)
+            else:  # no usable extension either: the plan shows the failures the run will report (runs nothing)
+                failures.extend(codex_project.plugins(prof, dry_run=True))
         elif install and targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: installed in your Codex (outside this repo, "
                          "with their own backup)")

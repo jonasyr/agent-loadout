@@ -401,3 +401,12 @@ def test_profile_with_no_codex_and_no_usable_extension_fails_with_the_reason(rep
     out = capsys.readouterr().out
     assert codex_project.PLUGINS_EXTENSION_NOTE not in out and "installed in your Codex" not in out
     assert "0.100.0" in out
+
+
+def test_profile_plan_with_no_usable_codex_names_the_failures(repo, fake_runner, monkeypatch, capsys):
+    """--dry-run and the plan a person approves show the plugin failures the run will report."""
+    _extension_only(fake_runner, monkeypatch)
+    monkeypatch.setattr(codex, "extension_state", lambda: (None, codex.EXT_OLD.format(version="0.100.0")))
+    assert project.add_profile(repo, "thesis", install=True, dry_run=True) == 0  # a dry run only shows the plan
+    out = capsys.readouterr().out
+    assert "not installed" in out and "0.100.0" in out

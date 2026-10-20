@@ -392,6 +392,7 @@ def _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy: bool):
     return shims
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="simulates a Linux PATH in WSL; Windows paths use backslashes")
 def test_in_wsl_after_install_the_linux_copy_comes_first_for_this_run(fake_home, fake_runner, monkeypatch, in_wsl):
     """The Windows npm must not run the next installs (npm install -g … would land on Windows): this run's PATH puts
     the Linux copy's folder first; new shells still need the profile line, which the note names once."""
@@ -408,6 +409,7 @@ def test_in_wsl_after_install_the_linux_copy_comes_first_for_this_run(fake_home,
     assert not any("re-run with --install" in n for n in node_notes)
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="simulates a Linux PATH in WSL; Windows paths use backslashes")
 def test_in_wsl_without_a_linux_copy_after_install_dependents_wait(fake_home, fake_runner, monkeypatch, in_wsl):
     """An install that left no Linux copy to put first: what needs it is not attempted with the Windows tool."""
     _path_order_which(monkeypatch, fake_runner)
@@ -432,6 +434,7 @@ def test_in_wsl_a_windows_only_git_is_told_to_use_the_package_manager(fake_home,
     assert "loadout bootstrap --install" not in fixes and "loadout update" not in fixes
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="simulates a Linux PATH in WSL; Windows paths use backslashes")
 def test_in_wsl_update_uses_the_new_linux_copy_and_names_the_path_line(fake_home, fake_runner, monkeypatch, in_wsl):
     """loadout update installs node in WSL while the Windows one is first: this run switches to the Linux copy,
     the install counts as done, and What changed says which folder new shells need first."""
@@ -449,6 +452,7 @@ def test_in_wsl_update_uses_the_new_linux_copy_and_names_the_path_line(fake_home
     assert not summary.failed
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="simulates a Linux PATH in WSL; Windows paths use backslashes")
 def test_in_wsl_a_linux_node_with_a_windows_npm_gets_its_folder_first(fake_home, fake_runner, monkeypatch, in_wsl):
     """node is Linux but npm is the Windows one: after installing node the Linux npm must come first too."""
     import os
