@@ -1,10 +1,8 @@
 name: fresh-machine
 on:
   pull_request:
-    paths: ["bootstrap.sh", "bootstrap.ps1", "catalog.json", "settings.base.json", "bin/loadout",
-            "cli/loadout/__main__.py", "cli/loadout/bootstrap.py", "cli/loadout/link.py", "cli/loadout/paths.py",
-            "cli/loadout/catalog.py", "cli/loadout/check.py", "cli/loadout/pkgmgr.py", "cli/loadout/settings_merge.py",
-            "cli/loadout/personal_mcp.py", "cli/loadout/adopt.py", "plugins/loadout/hooks/**",
+    paths: ["bootstrap.sh", "bootstrap.ps1", "catalog.json", "settings.base.json", "preferences.json", "pyproject.toml",
+            "bin/loadout", "cli/loadout/**", "templates/**", "rules/**", "plugins/loadout/hooks/**",
             ".github/workflows/fresh-machine.yml"]
   schedule:
     - cron: "17 4 * * 1"

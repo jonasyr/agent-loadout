@@ -42,9 +42,11 @@ def _required(form, field_id):
 
 def test_bug_form_requires_what_a_report_needs():
     bug = GITHUB / "ISSUE_TEMPLATE" / "1-bug.yml"
-    for field in ("what", "steps", "platform", "versions", "check"):
+    for field in ("what", "steps", "platform", "versions", "agents", "check"):
         assert _required(bug, field), field
     text = _text(bug)
+    block = re.search(r"^    id: versions\n(.*?)(?=^  - type:|\Z)", text, re.M | re.S).group(1)
+    assert "claude --version" not in block and "VS Code" in text
     assert "loadout --version" in text and "loadout check --verbose" in text and "render: shell" in text
 
 
