@@ -391,12 +391,12 @@ def _pull(summary: Summary, start: str | None = None) -> bool:
         out.status("Pull", "skipped (LOADOUT_NO_AUTO_PULL=1)")
         return False
     kit_moved = False
-    pulled_any = False
+    attempted = offline = False
     for label, root in (("kit", paths.kit_root()), ("personal layer", paths.personal_root())):
         if not (root / ".git").exists():
             continue
         res = maintenance.pull(root)
-        pulled_any = pulled_any or not res.offline  # offline: the daily sync tries again soon
+        attempted, offline = True, offline or bool(res.offline)
         if res.paused:
             summary.failed.append(_paused_fix(label, root, res.paused, res.files))
             out.status(label.capitalize(), f"not pulled: {out.printable(res.paused)}", "warn")
@@ -413,7 +413,7 @@ def _pull(summary: Summary, start: str | None = None) -> bool:
                 summary.changed.append("personal layer: pulled new commits")
         else:
             out.status(label.capitalize(), "up to date")
-    if pulled_any:
+    if attempted and not offline:  # one checkout offline: the daily sync tries again soon
         maintenance.touch("last-pull", time.time())
     if not kit_moved and start is not None:
         now = _kit_head()

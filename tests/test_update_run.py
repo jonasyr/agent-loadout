@@ -505,3 +505,17 @@ def test_a_value_the_user_kept_is_not_a_failure(fake_home, fake_runner, monkeypa
     changed = _changed(capsys.readouterr().out)
     assert "left as is" not in changed and "fix:" not in changed
     assert "nothing: everything was already current" in changed
+
+
+@pytest.mark.parametrize("offline", ["personal layer", "kit"])
+def test_an_offline_checkout_leaves_the_daily_pull_due(fake_home, fake_runner, monkeypatch, offline):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    personal = paths.personal_root()
+    (personal / ".git").mkdir(parents=True)
+    root = personal if offline == "personal layer" else paths.kit_root()
+    fake_runner.responses[("git", "-c", "core.quotePath=false", "-C", str(root), "pull")] = runner.Result(
+        128, "", "fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host\n")
+    _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["aaa"], str(personal): ["ppp"]})
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert not (paths.state_dir() / "last-pull").exists()  # the background sync tries again soon
