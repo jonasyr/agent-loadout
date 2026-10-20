@@ -1,4 +1,5 @@
 """The update plan: one numbered list, one question, numbers leave items out (spec decision 7)."""
+import pytest
 import json
 
 from loadout import apply, bootstrap, catalog, codex, maintenance as m, paths, pkgmgr, targets, update, versions
@@ -178,3 +179,19 @@ def test_the_plan_never_shows_a_credential_in_a_url():
     text = "\n".join(update.render(plan))
     assert secret not in text and "example.com/team/market.git" in text
     assert plan[0].commands[0][-1] == url  # what runs is unchanged
+
+
+
+@pytest.mark.parametrize("off", ["claude", "codex"])
+def test_an_agent_that_is_off_gets_no_tool_install_or_update(fake_home, fake_runner, monkeypatch, off):
+    """The agent-off rule: an agent's own CLI (its catalog target) is neither installed nor updated while it is off."""
+    on = {"claude": off != "claude", "codex": off != "codex"}
+    targets.set_agents(on)
+    fake_runner.missing.update({"claude", "codex"})
+    assert off not in [e["id"] for e, _, _ in bootstrap.missing_tools()]
+    fake_runner.missing.clear()  # both installed and outdated
+    monkeypatch.setattr(versions, "local_version", lambda e: (1, 0, 0))
+    monkeypatch.setattr(versions, "latest_version", lambda e: (2, 0, 0))
+    monkeypatch.setattr(pkgmgr, "mise_tool", lambda e: None)
+    outdated = [e["id"] for e, _, _ in m.find_outdated()]
+    assert off not in outdated and (("codex" if off == "claude" else "claude") in outdated)
