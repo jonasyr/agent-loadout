@@ -288,6 +288,7 @@ class Summary:
     steps: list[steps.Step] = field(default_factory=list)
     facts: set[str] = field(default_factory=set)
     upgraded: list[str] = field(default_factory=list)
+    personal_offline: str | None = None  # the personal layer's pull could not reach its remote (redacted reason)
 
 
 def _exec(argv: list[str], windows: bool | None = None) -> NoReturn:
@@ -337,8 +338,10 @@ def run(yes: bool, ask: Callable[[str], str], *, argv: list[str]) -> int:
             _after_restart(summary, os.environ[PULLED])  # runner.run keeps it from every child (runner.PROCESS_ONLY)
         elif _pull(summary, start):
             maintenance._release_lock()  # the new process takes it again (POSIX keeps the pid, Windows gets a new one)
-            # "1": the kit moved; "personal": the personal layer moved too (the new process names both)
-            os.environ[PULLED] = "personal" if "personal layer: pulled new commits" in summary.changed else "1"
+            # "1": the kit moved; "personal": the personal layer moved too (the new process names both);
+            # "offline:<reason>": its pull could not reach the remote (the reason is redacted; children never see it)
+            os.environ[PULLED] = ("personal" if "personal layer: pulled new commits" in summary.changed
+                                  else f"offline:{summary.personal_offline}" if summary.personal_offline else "1")
             out.status("Restart", "continuing in the pulled code")
             return _exec(["update", *argv])
         _apply(yes, ask, summary)
@@ -355,12 +358,19 @@ def _paused_fix(label: str, root, reason: str, files: list[str]) -> tuple[str, s
     return what, f"resolve it in {out.printable(str(root))}, then run loadout update"
 
 
+def _offline_fix(label: str, root, reason: str) -> tuple[str, str]:
+    return (f"{label}: {out.printable(str(root))}: not refreshed ({out.printable(reason)})",
+            "run loadout update again when online")
+
+
 def _after_restart(summary: Summary, marker: str) -> None:
     """The restarted run: what the first process pulled (marker: the PULLED value), and every pull git refused
     (sync-paused.json)."""
     summary.changed.append("kit: pulled new commits (this run continued in them)")
     if marker == "personal":
         summary.changed.append("personal layer: pulled new commits")
+    elif marker.startswith("offline:"):
+        summary.failed.append(_offline_fix("personal layer", paths.personal_root(), marker.split(":", 1)[1]))
     paused = maintenance.paused()
     for label, root in (("kit", paths.kit_root()), ("personal layer", paths.personal_root())):
         entry = paused.get(str(root))
@@ -396,10 +406,10 @@ def _pull(summary: Summary, start: str | None = None) -> bool:
             summary.failed.append(_paused_fix(label, root, res.paused, res.files))
             out.status(label.capitalize(), f"not pulled: {out.printable(res.paused)}", "warn")
         elif res.offline:
-            reason = out.printable(res.offline)
-            summary.failed.append((f"{label}: {out.printable(str(root))}: not refreshed ({reason})",
-                                   "run loadout update again when online"))
-            out.status(label.capitalize(), f"not refreshed ({reason})", "warn")
+            summary.failed.append(_offline_fix(label, root, res.offline))
+            if label != "kit":
+                summary.personal_offline = res.offline
+            out.status(label.capitalize(), f"not refreshed ({out.printable(res.offline)})", "warn")
         elif res.pulled:
             out.status(label.capitalize(), "pulled new commits")
             if label == "kit":

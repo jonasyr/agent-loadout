@@ -447,3 +447,22 @@ def test_a_failed_tool_install_is_redacted(fake_home, fake_runner, monkeypatch, 
     changed = _changed(capsys.readouterr().out)
     line = next(l for l in changed.splitlines() if "newtool" in l)
     assert "ghp_" not in line and "github.com/x/y.git" in line
+
+
+def test_an_offline_personal_pull_survives_the_kit_restart(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    personal = paths.personal_root()
+    (personal / ".git").mkdir(parents=True)
+    fake_runner.responses[("git", "-c", "core.quotePath=false", "-C", str(personal), "pull")] = runner.Result(
+        128, "", "ssh: connect to host github.com: Connection timed out\n")
+    _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["aaa", "bbb", "bbb"], str(personal): ["ppp"]})
+
+    def fake_exec(argv):
+        return update.run(True, lambda q: "", argv=argv[1:])  # the new process
+    monkeypatch.setattr(update, "_exec", fake_exec)
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    changed = _changed(capsys.readouterr().out)
+    line = next(l for l in changed.splitlines() if "not refreshed" in l)
+    assert str(personal) in line and "Connection timed out" in line and "again when online" in line
+    assert "kit: pulled new commits" in changed
