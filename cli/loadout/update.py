@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, NoReturn
 
-from . import apply, bootstrap, check, codex, locks, maintenance, out, paths, pkgmgr, runner, steps, targets, ui, versions
+from . import apply, bootstrap, check, codex, locks, maintenance, out, paths, pkgmgr, runner, steps, targets, ui, versions, wsl
 from .backup import Backup
 from .jsonio import get_dict, load_json, write_atomic_bytes
 from .secrets import redact
@@ -590,6 +590,15 @@ def _install_tool(item: PlanItem, summary: Summary, failed: set[str]) -> None:
         return
     maintenance._touch_lock()
     ok, lines = bootstrap.install_tool(item.entry or {"id": item.key}, item.commands)
+    if not ok and not any(out.PROBLEM.search(line) for line in lines) and wsl.detect() is not None \
+            and wsl.is_windows_program(item.key) and bootstrap._linux_copy_first(item.key):
+        # WSL: the Linux copy is installed but the Windows one came first; this run uses the Linux one now
+        folder = bootstrap._linux_folder(item.key)
+        summary.changed.append(f"{out.printable(item.key)}: installed; put {out.printable(folder)} first in PATH for "
+                               "new shells (a line in your shell profile), or set `appendWindowsPath = false` in "
+                               "`/etc/wsl.conf`; the Windows one stays untouched")
+        summary.upgraded.append(item.key)
+        return
     if ok:
         summary.changed.append(f"{out.printable(item.key)}: installed")
         summary.upgraded.append(item.key)

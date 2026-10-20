@@ -182,6 +182,18 @@ def _linux_folder(name: str) -> str:
     return "~/.local/bin"
 
 
+def _linux_copy_first(name: str) -> bool:
+    """WSL, right after an install: put the folder that holds the new Linux copy first in this run's PATH, so the
+    next installs (npm install -g, mise use) run the Linux tool, not the Windows one; new shells still need the
+    profile line. Returns whether the Linux copy is now the one found."""
+    for d in paths.tool_dirs():
+        if (d / name).is_file():
+            parts = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p and p != str(d)]
+            os.environ["PATH"] = os.pathsep.join([str(d), *parts])
+            break
+    return not missing_binary(name)
+
+
 def _windows_first_note(name: str, installed: bool = False) -> str:
     """A WSL line for a tool whose Windows copy is still found first. Bootstrap does not change the PATH order."""
     found = runner.which(name)
@@ -285,8 +297,16 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 installed.append(name)
             if missing_binary(name) and wsl.detect() is not None and wsl.is_windows_program(name):
                 note(_windows_first_note(name, installed=True), problem=True)
-                if not problems:
-                    continue  # the Linux copy is installed: the note says what is left; dependents are not blocked
+                if not problems and _linux_copy_first(name):
+                    if installed is not None and not entry.get("helper"):
+                        installed.append(name)
+                    continue  # this run uses the Linux copy now; new shells need the PATH line the note names
+                if not problems:  # no Linux copy to put first: what needs it must not run the Windows tool
+                    failed.add(name)
+                    if not entry.get("helper"):
+                        note(f"missing {name}: the install left no Linux {name} to use; what needs it waits")
+                        missing.append(name)
+                    continue
         if missing_binary(name):
             failed.add(name)
             if not entry.get("helper"):

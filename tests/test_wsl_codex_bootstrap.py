@@ -1,4 +1,6 @@
 """Bootstrap in WSL never sets up a Codex home the active Codex does not read (spec PR B)."""
+from pathlib import Path
+
 import pytest
 
 from loadout import bootstrap, catalog, codex, paths, wsl
@@ -356,17 +358,59 @@ def test_in_wsl_problems_cover_a_windows_only_catalog_tool(fake_home, fake_runne
     assert "loadout bootstrap --install" in fixes and "loadout update" in fixes and "first in PATH" in fixes
 
 
-def test_in_wsl_windows_first_after_install_is_one_note_and_blocks_nothing(fake_home, fake_runner, in_wsl):
-    fake_runner.paths["node"] = in_wsl + "/node"
-    fake_runner.paths["npm"] = in_wsl + "/npm"
+def _path_order_which(monkeypatch, fake_runner):
+    """which and have follow the real PATH order over files that exist (fake_runner.paths stays for other names)."""
+    import os
+    from loadout import runner
+
+    def which(name):
+        for d in os.environ.get("PATH", "").split(os.pathsep):
+            if d and (Path(d) / name).is_file():
+                return str(Path(d) / name)
+        return fake_runner.paths.get(name)
+    monkeypatch.setattr(runner, "which", which)
+    monkeypatch.setattr(runner, "have", lambda name: which(name) is not None)
+
+
+def _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy: bool):
+    """The Windows node and npm come first on PATH; mise's shims (with or without the new Linux copy) come after."""
+    import os
+    win = Path(in_wsl)
+    win.mkdir(parents=True, exist_ok=True)
+    for tool in ("node", "npm"):
+        (win / tool).write_text("x")
+    shims = fake_home / ".local" / "share" / "mise" / "shims"
+    shims.mkdir(parents=True)
+    if linux_copy:
+        for tool in ("node", "npm"):
+            (shims / tool).write_text("x")
+            (shims / tool).chmod(0o755)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(win), str(shims), os.environ.get("PATH", "")]))
+    return shims
+
+
+def test_in_wsl_after_install_the_linux_copy_comes_first_for_this_run(fake_home, fake_runner, monkeypatch, in_wsl):
+    """The Windows npm must not run the next installs (npm install -g … would land on Windows): this run's PATH puts
+    the Linux copy's folder first; new shells still need the profile line, which the note names once."""
+    import os
+    _path_order_which(monkeypatch, fake_runner)
+    shims = _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy=True)
     notes: list[str] = []
     missing = bootstrap.check_prereqs(True, lambda q: "", notes=notes)
-    text = "\n".join(notes)
-    assert "re-run with --install" not in text
-    assert "node" not in missing
-    assert sum("node still resolves to the Windows program" in n for n in notes) == 1
-    assert "missing (required) node" not in text
-    assert not any("because node failed" in n for n in notes)
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(shims)
+    assert "node" not in missing and not any("because node failed" in n for n in notes)
+    assert sum("first in PATH" in n and "node" in n for n in notes) == 1
+    assert "re-run with --install" not in "\n".join(notes)
+
+
+def test_in_wsl_without_a_linux_copy_after_install_dependents_wait(fake_home, fake_runner, monkeypatch, in_wsl):
+    """An install that left no Linux copy to put first: what needs it is not attempted with the Windows tool."""
+    _path_order_which(monkeypatch, fake_runner)
+    _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy=False)
+    notes: list[str] = []
+    missing = bootstrap.check_prereqs(True, lambda q: "", notes=notes)
+    assert "node" in missing
+    assert not any(c and c[0] == "npm" for c in fake_runner.calls), "npm install -g ran with the Windows npm"
 
 
 def test_in_wsl_linux_folder_of_a_mise_tool_is_mises_shims_before_the_install(fake_home, fake_runner, in_wsl):
@@ -381,3 +425,20 @@ def test_in_wsl_a_windows_only_git_is_told_to_use_the_package_manager(fake_home,
     fixes = " ".join(f for p, f in found if p.startswith("git "))
     assert "package manager" in fixes and "sudo apt install git" in fixes
     assert "loadout bootstrap --install" not in fixes and "loadout update" not in fixes
+
+
+def test_in_wsl_update_uses_the_new_linux_copy_and_names_the_path_line(fake_home, fake_runner, monkeypatch, in_wsl):
+    """loadout update installs node in WSL while the Windows one is first: this run switches to the Linux copy,
+    the install counts as done, and What changed says which folder new shells need first."""
+    import os
+    from loadout import update
+    _path_order_which(monkeypatch, fake_runner)
+    shims = _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy=True)
+    entry = next(e for e in catalog.binaries() if e["id"] == "node")
+    item = update.PlanItem(2, "tool-install", "install node", [["mise", "use", "-g", "node@lts"]], key="node",
+                           entry=entry)
+    summary = update.Summary()
+    update._install_tool(item, summary, set())
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(shims)
+    assert any(c.startswith("node: installed") and "first in PATH" in c for c in summary.changed)
+    assert not summary.failed
