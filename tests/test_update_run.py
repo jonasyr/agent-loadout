@@ -466,3 +466,16 @@ def test_an_offline_personal_pull_survives_the_kit_restart(fake_home, fake_runne
     line = next(l for l in changed.splitlines() if "not refreshed" in l)
     assert str(personal) in line and "Connection timed out" in line and "again when online" in line
     assert "kit: pulled new commits" in changed
+
+
+def test_a_failed_prerequisite_leaves_its_dependents_unattempted(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    mise, ra = {"id": "mise", "helper": True}, {"id": "rust-analyzer", "needs": ["mise"]}
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [(mise, [["mise-installer"]], False),
+                                                                     (ra, [["mise", "use", "-g", "rust-analyzer"]], False)])
+    fake_runner.missing.update({"mise", "rust-analyzer"})
+    fake_runner.responses[("mise-installer",)] = runner.Result(1, "", "download failed")
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert ["mise", "use", "-g", "rust-analyzer"] not in fake_runner.calls
+    changed = _changed(capsys.readouterr().out)
+    assert "rust-analyzer: not attempted: mise failed" in changed

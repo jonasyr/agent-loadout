@@ -541,13 +541,23 @@ def _update_tool(item: PlanItem, summary: Summary) -> None:
         summary.upgraded.append(tid)
 
 
-def _install_tool(item: PlanItem, summary: Summary) -> None:
+def _install_tool(item: PlanItem, summary: Summary, failed: set[str]) -> None:
+    """failed: the tool ids whose install failed in this run; a tool that needs one of them is not attempted (its
+    commands would run without it), and it counts as failed for the tools after it."""
+    blocked = [d for d in item.needs if d in failed]
+    if blocked:
+        failed.add(item.key)
+        summary.failed.append((f"{out.printable(item.key)}: not attempted: "
+                               + ", ".join(out.printable(d) for d in blocked) + " failed",
+                               AGAIN + " once " + ", ".join(out.printable(d) for d in blocked) + " is installed"))
+        return
     maintenance._touch_lock()
     ok, lines = bootstrap.install_tool(item.entry or {"id": item.key}, item.commands)
     if ok:
         summary.changed.append(f"{out.printable(item.key)}: installed")
         summary.upgraded.append(item.key)
     else:
+        failed.add(item.key)
         summary.failed.append((out.printable(redact(lines[0]) if lines else f"{item.key}: not installed"),
                                AGAIN + ", or install it by hand"))
 
@@ -574,13 +584,14 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
     settings_path = paths.claude_home() / "settings.json"
     before = _read_bytes(settings_path) if claude_on else None  # Codex only: Claude Code's file is not read at all
     ran = False
+    install_failed: set[str] = set()
     for item in chosen:
         if item.kind == "tool-update":
             ran = True
             _update_tool(item, summary)
         elif item.kind == "tool-install":
             ran = True
-            _install_tool(item, summary)
+            _install_tool(item, summary, install_failed)
     if claude_on:  # Codex only: Claude Code's settings and servers are not loadout's to fix
         _guard_settings(settings_path, before, summary)
         if ran:  # installers re-register what the loadout plugin already provides
