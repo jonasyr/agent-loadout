@@ -287,7 +287,8 @@ def _register_configure(sub):
             print(targets.set_target(a.name, on))  # ValueError (unknown agent, last one off) -> exit 1
             if on and a.name == "claude":
                 from . import runner
-                if not runner.have("claude"):  # Codex only so far: Claude Code needs installing and linking first
+                from .vscode import use_bundled_claude  # VS Code's Claude Code extension ships a claude: that counts
+                if not runner.have("claude") and use_bundled_claude(on=True) is None:  # Codex only so far: install first
                     configure.offer_commit(_ask)
                     print("Claude Code is not installed yet: run `loadout bootstrap --install` to install and set it up")
                     return 0
