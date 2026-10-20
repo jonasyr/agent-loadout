@@ -21,6 +21,7 @@ OMITTED = {
     "serena-hooks": "Codex gets Serena's documented hooks in ~/.codex/hooks.json (ADR 0028), never from the plugin",
 }
 CODEX_ARGS = {"--client=claude-code": "--client=codex", "rtk hook claude": "rtk hook codex",
+              "--agent claude": "--agent codex",
               "mcp__plugin_loadout_serena__": "mcp__serena__", "Write|Edit|MultiEdit": "Edit|Write"}
 
 
@@ -128,3 +129,8 @@ def test_codex_gets_no_serena_from_the_plugin():
     servers = json.loads((PLUGIN / manifest["mcpServers"]).read_text(encoding="utf-8"))["mcpServers"]
     assert "serena" not in servers and "codebase-memory-mcp" in servers
     assert "serena-hooks" not in (PLUGIN / "hooks" / "codex.json").read_text(encoding="utf-8")
+
+
+def test_codex_session_start_passes_its_agent():
+    commands = [c for e, _, c in _commands(PLUGIN / "hooks" / "codex.json") if e == "SessionStart"]
+    assert any("hook-session-start --agent codex" in c for c in commands)

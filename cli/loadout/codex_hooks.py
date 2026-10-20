@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from . import paths, runner
-from .jsonio import save_json, write_atomic
+from .jsonio import dumps_like, json_style, save_json, write_atomic
 
 # (event, matcher or None, serena-hooks subcommand, timeout or None), exactly as Serena documents them
 SERENA_HOOKS = (("PreToolUse", "Bash", "remind", 5), ("PreToolUse", "^mcp__serena__", "plan-guard", 5),
@@ -100,7 +100,7 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     would also shift the positions Codex keys its approvals on)."""
     from . import codex
     p = path()
-    try:  # bytes, so line endings count: a CRLF file is "another format" and never rewritten
+    try:  # bytes, so line endings count
         old = p.read_bytes().decode("utf-8") if p.exists() else ""
         data = json.loads(old) if old else {}
     except (OSError, ValueError) as exc:
@@ -150,12 +150,10 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     for ev in [ev for ev in created if events.get(ev) == []]:  # only event keys loadout itself added
         del events[ev]
     created = {ev for ev in created if ev in events}
-    nl = "\r\n" if "\r\n" in old else "\n"  # keep the file's line endings (Python's json writes CRLF on Windows)
-
-    def canonical(value) -> str:
-        return json.dumps(value, indent=2, ensure_ascii=False).replace("\n", nl) + nl
-
-    new = canonical(data)
+    style = json_style(old) if old else None  # the file's own format (indent, line endings, ASCII escapes)
+    if old and style is not None and dumps_like(style, json.loads(old)) != old:
+        style = None  # not byte-exact: never rewrite
+    new = dumps_like(style, data) if style else json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     new_record = {**record, "hooks": kept, "hook_events": sorted(created)}
     for key in ("hooks", "hook_events"):
         if not new_record[key]:
@@ -164,10 +162,10 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
         if new_record != record and not dry_run:
             save_json(codex.record_path(), new_record)
         return []
-    if old and canonical(json.loads(old)) != old:
+    if old and style is None:
         snippet = "; ".join(f"{e}: {json.dumps(_group(m, s, t))}" for e, m, s, t in missing)
         snippet += " (the table in docs/reference/hooks.md, section \"Serena's hooks in Codex\")"
-        return [f"{p}: Serena hooks missing, add these yourself (loadout does not rewrite a file in another format): "
+        return [f"{p}: Serena hooks missing, add these yourself (loadout cannot reproduce that file's format): "
                 f"{snippet}" if missing else f"{p}: loadout's old Serena hooks are still in it; remove them yourself"]
     if dry_run:
         return [f"{p}: Serena hooks pending"]

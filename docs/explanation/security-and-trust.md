@@ -29,7 +29,7 @@ Both agents run loadout's code only through the plugin's hooks. Codex runs plugi
   - **npm tools**: an unpinned `npm install -g @playwright/cli@latest` and similar global packages.
 - **The one-liner** (`curl … | bash`, or the PowerShell `irm` form) runs `bootstrap.sh` or `bootstrap.ps1` from this repo's `main` branch, so you trust this repo. It clones the kit into `./agent-loadout`. An existing clone is used as it is: its GitHub origin is checked, its contents are not, and it is not pulled.
 - **With Codex on and the Codex CLI installed** ([Use loadout with Codex](../how-to/codex.md)), bootstrap and the daily sync run `codex plugin marketplace add` for the GitHub marketplaces of the plugins you enabled for Claude Code (so you trust those repos in Codex too) and `codex plugin add` for the plugins.
-- **`loadout update`** shows each update command and asks first (`--yes` skips the question).
+- **`loadout update`** pulls the kit and your personal layer (not with `LOADOUT_NO_AUTO_PULL=1`), then shows one plan with each tool's update command and asks once (`--yes` skips the question; without a terminal and without `--yes` it changes nothing). What it may change: [`loadout update`](../reference/cli.md#loadout-update).
 - **`loadout profile` and `loadout init` with a profile** run the profile's plugin installs and `commands` in the repo unless you pass `--no-install`. Both show the plan, `commands` included, and ask first; without a terminal they run only with `--yes`. `commands` run after the file changes, and `loadout restore` cannot undo them.
 
 ## What loadout touches

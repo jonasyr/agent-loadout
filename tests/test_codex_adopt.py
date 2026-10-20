@@ -52,6 +52,13 @@ def test_servers_loadout_wrote_are_not_items(codex_on):
     assert not [i for i in inventory.collect(with_versions=False) if i.location == codex.CONFIG_LOCATION]
 
 
+def test_a_users_own_serena_is_not_an_own_tool(codex_on):
+    _config('[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--project-from-cwd", "--context=codex"]\n\n'
+            '[mcp_servers.my-serena]\ncommand = "uvx"\n'
+            'args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server"]\n')
+    assert [i for i in inventory.collect(with_versions=False) if i.location == codex.CONFIG_LOCATION] == []
+
+
 def test_codex_only_skills_are_items(codex_on):
     (paths.agents_skills() / "solo").mkdir(parents=True)
     (paths.agents_skills() / "shared").mkdir()

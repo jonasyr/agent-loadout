@@ -3,15 +3,16 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, link, paths, pkgmgr, runner, versions
+from . import catalog, link, locks, paths, pkgmgr, runner, versions
 from .backup import Backup
 from .jsonio import load_json, save_json
+from .out import printable
 from .secrets import redact
 
 DAY = 86400.0
@@ -42,29 +43,57 @@ def touch(name: str, now: float) -> None:
 
 
 def _spawn_background() -> None:
-    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
-              "cwd": str(paths.home())}  # never the project folder: Windows searches it for programs
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    else:
-        kwargs["start_new_session"] = True
-    subprocess.Popen([sys.executable, str(paths.kit_root() / "bin" / "loadout"), "maintenance"], **kwargs)
+    # never the project folder as cwd: Windows searches it for programs
+    runner.spawn_detached([sys.executable, str(paths.kit_root() / "bin" / "loadout"), "maintenance"], str(paths.home()))
 
 
 def notify(text: str) -> None:
-    """Queue a message for the next session start; several messages are all kept."""
+    """Queue a message for the next session start; several messages are all kept. Redacted first: a Codex line can
+    carry a failed clone's stderr."""
+    text = redact(text)
     path = _stamp(NOTICE)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as fh:
         fh.write(text.rstrip() + "\n")
 
 
-def session_start(now: float) -> str | None:
+def _session_steps(agent: str, source: str | None) -> str | None:
+    """The agent's open "Now do this" lines for a session start, and which of them this start settles: a Claude Code
+    step only at a fresh start (source "startup": resume, clear and compact keep the old plugins loaded); in Codex
+    "restart" at any start and the hooks step once /hooks has approved them. What this start settles is cleared
+    without being shown: the session already loaded the new plugins and servers. None when there is nothing to say."""
+    from . import steps, targets
+    on = targets.claude_enabled() if agent == "claude" else targets.codex_enabled()
+    if agent not in steps.NAMES or not on:
+        return None
+    steps.settle(targets.claude_enabled(), targets.codex_enabled())  # hooks approved, rows passing, servers gone
+    items = steps.pending(agent)
+    if not items:
+        return None
+    done: set[str] = set()
+    if agent == "claude" and source == "startup":  # a bootstrap step stays until its rows pass (settle)
+        done = {s.id for s in items if s.id != "claude/bootstrap"}
+    elif agent == "codex":
+        done = {"codex/restart"}
+    steps.clear(agent, done)
+    lines = steps.block([s for s in items if s.id not in done], agent == "claude", agent == "codex")
+    return "\n".join(lines) if lines else None
+
+
+def session_start(now: float, agent: str | None = None, source: str | None = None) -> str | None:
+    """The systemMessage for a session start. agent: which agent starts (an older plugin copy passes none: only the
+    notice, as before); source: Claude Code's "startup", "resume", "clear" or "compact" from the hook's stdin."""
     out = None
     notice = _stamp(NOTICE)
-    if notice.exists():
-        out = json.dumps({"systemMessage": notice.read_text(encoding="utf-8").strip()})
+    text = notice.read_text(encoding="utf-8").strip() if notice.exists() else None
+    if text is not None:
         notice.unlink()
+    try:
+        extra = _session_steps(agent, source) if agent else None
+    except Exception:  # a hook never breaks a session
+        extra = None
+    if text is not None or extra:
+        out = json.dumps({"systemMessage": "\n\n".join(p for p in (text, extra) if p)})
     pull_due = os.environ.get("LOADOUT_NO_AUTO_PULL") != "1" and is_due("last-pull", DAY, now)
     if pull_due or is_due("last-update-check", WEEK, now):
         try:
@@ -79,21 +108,113 @@ def session_start(now: float) -> str | None:
     return out
 
 
-def pull_if_clean(root: Path) -> bool:
-    """True only when a pull brought new commits (so settings/MCP need re-applying)."""
+@dataclass
+class PullResult:
+    pulled: bool = False  # new commits arrived (settings, MCP and links need re-applying)
+    paused: str | None = None  # why git refused; None when the pull ran, or was skipped for want of an upstream
+    files: list[str] = field(default_factory=list)  # the files git named in a refusal
+    offline: str | None = None  # a network failure (redacted reason): nothing pulled, nothing recorded or said
+    skipped: str | None = None  # nothing to follow ("detached HEAD", "no upstream branch"): nothing recorded or said
+
+
+def _paused_path() -> Path:
+    return paths.state_dir() / "sync-paused.json"
+
+
+def paused() -> dict[str, dict]:
+    """The checkouts whose daily pull git refused: {root: {"reason", "files", "at"}}; empty when none."""
+    try:
+        data = load_json(_paused_path())
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, dict) and isinstance(v.get("reason"), str)}
+
+
+def _record_paused(root: Path, entry: dict | None) -> bool:
+    """Store (or, with None, drop) the refusal for root. True when it differs from what was recorded."""
+    data = paused()
+    old = data.get(str(root))
+    if entry is None:
+        if old is None:
+            return False
+        del data[str(root)]
+    else:
+        data[str(root)] = entry
+    if data:
+        save_json(_paused_path(), data)
+    else:
+        _paused_path().unlink(missing_ok=True)
+    return entry is not None and (old is None or (old.get("reason"), old.get("files")) != (entry["reason"], entry["files"]))
+
+
+NETWORK = ("unable to access", "could not resolve", "connection timed out", "failed to connect", "timed out after")
+
+
+def _refusal(code: int, stderr: str) -> tuple[str, list[str]] | None:
+    """A failed `git pull --ff-only`: (reason, files git named), or None for a network failure, which is no
+    refusal (nothing to fix in the checkout). Text is redacted (a remote URL can carry a token), not escaped:
+    printing escapes it."""
+    low = stderr.lower()
+    if code == 124 or any(n in low for n in NETWORK):
+        return None
+    lines = stderr.splitlines()
+    for i, line in enumerate(lines):
+        if "would be overwritten by merge:" in line:
+            files = []
+            for item in lines[i + 1:]:
+                if not item.startswith("\t"):
+                    break
+                files.append(redact(item[1:]))
+            what = "untracked files" if "untracked working tree files" in line else "local changes"
+            return f"{what} the pull would overwrite", files
+    if "Not possible to fast-forward" in stderr or "diverg" in low:
+        return "your branch and its upstream have diverged", []
+    first = next((l.strip() for l in lines if l.strip()), "")
+    return redact(first) or "git pull failed", []
+
+
+def pull(root: Path) -> PullResult:
+    """Fast-forward the checkout and let git refuse on its own: it never overwrites a local change, so a dirty
+    tree is no reason to skip (untracked files and unrelated edits do not block a fast-forward). A refusal is
+    recorded with the files git named and queued once as a notice."""
     if not (root / ".git").exists() and not root.is_dir():
-        return False
-    status = runner.run(["git", "-C", str(root), "status", "--porcelain"], timeout=30)
-    if not status.ok or status.stdout.strip():
-        return False
+        return PullResult()
+    git = ["git", "-c", "core.quotePath=false", "-C", str(root)]
+    if not runner.run(["git", "-C", str(root), "symbolic-ref", "-q", "HEAD"], timeout=30).ok:
+        _record_paused(root, None)
+        return PullResult(skipped="detached HEAD")  # nothing to follow
+    if not runner.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "@{u}"], timeout=30).ok:
+        _record_paused(root, None)
+        return PullResult(skipped="no upstream branch")  # nothing to pull
     head = ["git", "-C", str(root), "rev-parse", "HEAD"]
     before = runner.run(head, timeout=30).stdout.strip()
-    # a background process has no one to answer a credential prompt (or a GCM login window)
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
-    if not runner.run(["git", "-C", str(root), "pull", "--ff-only", "-q"], timeout=120, env=env).ok:
-        return False
+    # a background process has no one to answer a credential prompt (or a GCM login window); C locale for parsing
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never", "LC_ALL": "C"}
+    res = runner.run([*git, "pull", "--ff-only", "-q"], timeout=120, env=env)
+    if not res.ok:
+        found = _refusal(res.returncode, res.stderr or "")
+        if found is None:  # offline or unreachable: nothing is recorded or said; `loadout update` lists it
+            text = res.stderr or res.stdout or ""
+            first = next((l.strip() for l in text.splitlines() if l.strip()), "")
+            return PullResult(offline=redact(first)[:300] or "the remote could not be reached")
+        reason, files = found
+        if _record_paused(root, {"reason": reason, "files": files, "at": time.time()}):
+            if files:
+                notify(f"loadout: the daily sync of {root} paused: {printable(reason)}: {', '.join(printable(f) for f in files)}; "
+                       "commit or stash them, then run loadout update")
+            else:
+                notify(f"loadout: the daily sync of {root} paused: {printable(reason)}; resolve it, then run loadout update")
+        return PullResult(False, reason, files)
+    _record_paused(root, None)
     after = runner.run(head, timeout=30).stdout.strip()
-    return not (before and before == after)
+    return PullResult(not (before and before == after))
+
+
+def pull_if_clean(root: Path) -> bool:
+    """True only when a pull brought new commits (kept for callers that want the bare answer)."""
+    return pull(root).pulled
 
 
 def find_outdated() -> list[tuple[dict, tuple, tuple]]:
@@ -128,10 +249,33 @@ def _refused() -> dict:
     return {k: v for k, v in data.items() if isinstance(v, str)}
 
 
+def _declined_path() -> Path:
+    return paths.state_dir() / "declined-updates.json"
+
+
+def _declined() -> dict:
+    try:
+        data = load_json(_declined_path())
+    except Exception:
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+
+
+def decline(tool_id: str, version: tuple) -> None:
+    """The person left this update out: no weekly notice until a version newer than `version` appears."""
+    data = _declined()
+    data[tool_id] = versions.fmt(version)
+    save_json(_declined_path(), data)
+
+
 def _remember_refused(tool: str, latest: tuple | None) -> None:
     data = _refused()
     if latest is None:
         data.pop(tool, None)
+        declined = _declined()  # the update installed it (or mise did): the left-out note is spent
+        if tool in declined:
+            declined.pop(tool)
+            save_json(_declined_path(), declined)
     else:
         data[tool] = versions.fmt(latest)
     save_json(_refused_path(), data)
@@ -139,9 +283,11 @@ def _remember_refused(tool: str, latest: tuple | None) -> None:
 
 def worth_notifying(outdated: list) -> list:
     """Drop updates a package manager already refused (e.g. mise minimum_release_age) until a newer one appears."""
-    refused = _refused()
+    refused, declined = _refused(), _declined()
 
     def held(e, b):
+        if e["id"] in declined and (versions.parse_version(declined[e["id"]]) or ()) >= b:
+            return True  # left out by the person, mise tools too
         if e["id"] not in refused or pkgmgr.mise_tool(e):  # mise tools: mise already filtered them
             return False
         return (versions.parse_version(refused[e["id"]]) or ()) >= b
@@ -153,61 +299,27 @@ LOCK = "maintenance.lock"
 STALE_LOCK = 3600.0
 
 
-def _acquire_lock() -> bool:
+_held: locks.Lock | None = None
+
+
+def _acquire_lock(command: str = "maintain", wait: float | None = 0) -> bool:
     """One maintenance/update run at a time; a lock older than an hour is from a crashed run."""
-    lock = _stamp(LOCK)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(3):
-        try:
-            fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            try:
-                if time.time() - lock.stat().st_mtime < STALE_LOCK:
-                    return False
-                # rename first: only one taker gets the file; re-check it is really the stale one
-                aside = lock.with_name(f"{LOCK}.stale-{os.getpid()}-{time.time_ns()}")
-                os.rename(lock, aside)
-                fresh = time.time() - aside.stat().st_mtime < STALE_LOCK
-                if fresh:  # another run took over in between: give its lock back
-                    try:
-                        os.link(aside, lock)
-                    except OSError:
-                        pass
-                aside.unlink()
-                if fresh:
-                    return False
-            except OSError:
-                return False
-            continue
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(str(os.getpid()))
-        return True
-    return False
-
-
-def _own_lock() -> bool:
-    try:
-        return _stamp(LOCK).read_text(encoding="utf-8").strip() == str(os.getpid())
-    except OSError:
-        return False
+    global _held
+    _held = locks.acquire(LOCK, command, wait, stale=STALE_LOCK)
+    return _held is not None
 
 
 def _touch_lock() -> None:
     """Long runs refresh the lock, so nobody takes it over as stale while we still work."""
-    if _own_lock():
-        try:
-            os.utime(_stamp(LOCK), None)
-        except OSError:
-            pass
+    if _held:
+        _held.touch()
 
 
 def _release_lock() -> None:
-    """Only our own lock: if it was taken over as stale meanwhile, the new owner keeps it."""
-    if _own_lock():
-        try:
-            _stamp(LOCK).unlink()
-        except OSError:
-            pass
+    global _held
+    if _held:
+        _held.release()
+    _held = None
 
 
 def maintain(now: float) -> None:
@@ -226,7 +338,7 @@ def _maintain(now: float) -> None:
         pass  # opt-out: no daily kit/personal sync (see README, Security & trust)
     elif is_due("last-pull", DAY, now):
         touch("last-pull", now)
-        pulled = [pull_if_clean(root) for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
+        pulled = [pull(root).pulled for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
         if any(pulled):
             from . import targets
             from .jsonio import InvalidJSON
@@ -255,7 +367,7 @@ def _maintain(now: float) -> None:
                 from . import codex
                 if codex.enabled() and codex.unavailable() is None:
                     bk = Backup(description="maintenance: Codex refreshed after a pull")
-                    for line in codex.apply_all(bk, refresh=True):
+                    for line in codex.apply_all(bk, refresh=True, command="maintain"):
                         if codex_notice(line):
                             notify(f"loadout (Codex): {line}")
                     if not bk.empty:
@@ -327,142 +439,7 @@ def undo_reregistered(bk: Backup) -> tuple[list[str], list[str]]:
     return removed, reported
 
 
-def update(yes: bool, ask: Callable[[str], str]) -> int:
-    if not _acquire_lock():
-        print("loadout maintenance is running in the background; try `loadout update` again in a minute")
-        return 1
-    try:
-        return _update(yes, ask)
-    finally:
-        _release_lock()
-
-
-def _update_plugins(claude_on: bool, codex_on: bool, yes: bool, ask: Callable[[str], str]) -> None:
-    """Refresh the plugins the kit enables, in each agent that is on, after a yes, and say what changed."""
-    from . import codex, out, targets
-    from .jsonio import get_dict
-    from .settings_merge import desired_settings
-    todo = []
-    if claude_on:
-        installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
-        todo = [pid for pid, on in get_dict(desired_settings(), "enabledPlugins").items()
-                if on and isinstance(installed.get(pid), list)
-                and any(isinstance(e, dict) and e.get("scope") == "user" for e in installed[pid])]
-    if codex_on and (reason := codex.unavailable()) is not None:
-        print(f"Codex: {reason}; its plugins are left as they are")
-        codex_on = False
-    elif codex_on and not runner.have("codex"):  # extension mode: no plugins to refresh
-        print(codex.PLUGINS_EXTENSION)
-        codex_on = False
-    if not todo and not codex_on:
-        return
-    where = " and ".join(([f"{len(todo)} in Claude Code"] if todo else []) + (["the Codex plugins"] if codex_on else []))
-    print(f"plugins: refresh {where}")
-    if not yes and ask("  refresh them? [y/N] ").strip().lower() != "y":
-        print("  left as they are (run `loadout update --yes` to refresh them)")
-        return
-    changed = False
-    for pid in todo:
-        print(f"  plugin {pid}…", flush=True)
-        _touch_lock()
-        res = runner.run(["claude", "plugin", "update", pid, "--scope", "user"], timeout=300)
-        if not res.ok:
-            print(f"plugin {pid}: failed: {redact((res.stderr or res.stdout).strip()[:300])}")
-        elif "already at the latest version" not in res.stdout.lower() + res.stderr.lower():
-            print(f"plugin {pid}: updated")
-            changed = True
-    if codex_on:
-        lock = codex._lock()
-        if lock is None:
-            print("Codex: another loadout run is setting it up right now; run this again when it has finished")
-        else:
-            bk = Backup(description="update: Codex plugins")
-            try:
-                before = codex.plugin_versions()
-                codex_lines = codex.apply_plugins(bk, refresh=True, say=out.progress)
-                out.end_progress()
-                for line in codex_lines:
-                    print(redact(line))
-                    changed = changed or line.endswith(": installed")
-                after = codex.plugin_versions()
-            finally:
-                try:
-                    lock.unlink()
-                except OSError:
-                    pass
-            for pid in sorted(after):
-                if pid in before and before[pid] != after[pid]:
-                    print(f"plugin {pid}: updated")
-                    changed = True
-            if not bk.empty:
-                print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
-    if changed:
-        print(targets.restart_hint())
-
-
-def _update(yes: bool, ask: Callable[[str], str]) -> int:
-    from . import targets
-    if targets.claude_enabled():  # Codex only: no Claude Code marketplaces to refresh
-        runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)
-    claude_on = targets.claude_enabled()
-    _update_plugins(claude_on, targets.codex_enabled(), yes, ask)
-    settings_path = paths.claude_home() / "settings.json"
-    before = load_json(settings_path) if claude_on else {}  # Codex only: Claude Code's file is not read at all
-    outdated = find_outdated()
-    ran = False
-    if not outdated:
-        print("all tools up to date")
-    for entry, local, latest in outdated:
-        _touch_lock()
-        cmds, how = pkgmgr.update_plan(entry)
-        print(f"{entry['id']}: {versions.fmt(local)} -> {versions.fmt(latest)}" + (f" (via {how})" if how != "catalog" else ""))
-        if not cmds:
-            print(f"  no update command for this platform. {entry.get('manual', '')}")
-            continue
-        for cmd in cmds:
-            print("  command: " + " ".join(cmd))
-        if not yes and ask("  run it? [y/N] ").strip().lower() != "y":
-            continue
-        ran = True
-        all_ok = True
-        for cmd in cmds:
-            res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
-            all_ok = all_ok and res.ok
-            print("  ok" if res.ok else f"  failed: {res.stderr.strip()[:300]}")
-        if how == "mise":  # mise decides what is outdated (minimum_release_age): no bookkeeping of our own
-            _remember_refused(entry["id"], None)
-            continue
-        now = versions.local_version(entry)
-        if now is not None and now >= latest:
-            _remember_refused(entry["id"], None)
-        elif not all_ok or now is None:
-            pass  # a failure is not a refusal: keep notifying
-        elif now == local:
-            _remember_refused(entry["id"], latest)
-            print(f"  still {versions.fmt(now)}: the update ran but the package manager installed nothing newer; "
-                  f"no new notice until a version newer than {versions.fmt(latest)} appears")
-        else:
-            _remember_refused(entry["id"], None)
-            print(f"  updated to {versions.fmt(now)}; {versions.fmt(latest)} was not installed (held back by the package manager?)")
-    if not claude_on:  # Codex only: Claude Code's settings and servers are not loadout's to fix
-        return 0
-    after = load_json(settings_path)
-    if after != before:
-        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
-        bk = Backup(description="update: settings.json as modified by an installer")
-        bk.save_copy(settings_path, "settings.json as modified by an installer")
-        print(f"an installer modified ~/.claude/settings.json (keys: {', '.join(changed)}); reverting to the "
-              f"kit-merged version. The installer's version is in {bk.root}")
-        save_json(settings_path, before)
-    if ran:  # installers re-register what the loadout plugin already provides
-        bk = Backup(description="update: duplicates re-registered by installers")
-        removed, reported = undo_reregistered(bk)
-        if removed:
-            print("\nundid duplicates that an installer re-registered (the loadout plugin provides them):")
-            for line in removed:
-                print(f"  {redact(line)}")
-        for line in reported:
-            print(f"note: {redact(line)}")
-        if not bk.empty:
-            print(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
-    return 0
+def update(yes: bool, ask: Callable[[str], str], argv: list[str] | None = None) -> int:
+    """`loadout update` (cli/loadout/update.py): lock, pull, restart into the pulled code, plan, apply, report."""
+    from . import update as update_run
+    return update_run.run(yes, ask, argv=list(argv) if argv is not None else (["--yes"] if yes else []))

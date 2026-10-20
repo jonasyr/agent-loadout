@@ -24,6 +24,10 @@ def test_every_hook_uses_plugin_root_and_has_timeout():
                 assert h.get("timeout")
 
 
+def test_claude_session_start_passes_its_agent():
+    assert any("loadout hook-session-start --agent claude" in c for c in _commands())
+
+
 @pytest.mark.parametrize("args", [
     ["serena-hooks", "activate", "--client=claude-code"],
     ["rtk", "hook", "claude"],

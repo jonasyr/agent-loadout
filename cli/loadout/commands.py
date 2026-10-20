@@ -67,6 +67,8 @@ def _register_check(sub):
             out.VERBOSE = True
         text, code = (check.format_results if out.VERBOSE else check.format_summary)(check.run_checks())
         print(text)
+        from . import steps, targets
+        steps.print_pending(targets.claude_enabled(), targets.codex_enabled())
         return code
 
     p.set_defaults(func=run_check)
@@ -88,17 +90,35 @@ def _register_check(sub):
 EXTRA_COMMANDS.append(_register_check)
 
 
+def _hook_source(agent) -> str | None:
+    """Claude Code's `source` (startup, resume, clear, compact) from the hook's stdin JSON; None when stdin is a
+    terminal, empty, not JSON or has none (then the steps stay)."""
+    import json
+    import sys
+    if agent != "claude":
+        return None
+    try:
+        if sys.stdin is None or sys.stdin.isatty():
+            return None
+        data = json.loads(sys.stdin.read() or "null")
+    except Exception:
+        return None
+    source = data.get("source") if isinstance(data, dict) else None
+    return source if isinstance(source, str) else None
+
+
 def _register_maintenance(sub):
     import time
 
-    from . import maintenance
+    from . import maintenance, out
     from .__main__ import _ask
 
     p = sub.add_parser("hook-session-start")  # internal: no help=, so it stays out of --help
+    p.add_argument("--agent", choices=("claude", "codex"), default=None)  # an older plugin copy passes none
 
     def hook(a):
         try:
-            out = maintenance.session_start(time.time())
+            out = maintenance.session_start(time.time(), a.agent, _hook_source(a.agent))
         except Exception:
             return 0  # a hook must never break a session
         if out:
@@ -118,9 +138,18 @@ def _register_maintenance(sub):
 
     p.set_defaults(func=maint)
 
-    p = sub.add_parser("update", help="update outdated tool binaries")
-    p.add_argument("--yes", action="store_true", help="run every update command without asking (each is still printed)")
-    p.set_defaults(func=lambda a: maintenance.update(a.yes, _ask))
+    p = sub.add_parser("update", help="bring this machine current: pull, re-apply the setup, refresh plugins, "
+                                      "update tools")
+    p.add_argument("--yes", action="store_true", help="apply the whole plan without asking (it is still printed)")
+    p.add_argument("--verbose", action="store_true", help="full detail: every command and line")
+
+    def update_cmd(a):
+        if a.verbose:
+            out.VERBOSE = True
+        flags = (["--yes"] if a.yes else []) + (["--verbose"] if a.verbose else [])
+        return maintenance.update(a.yes, _ask, argv=flags)
+
+    p.set_defaults(func=update_cmd)
 
 
 EXTRA_COMMANDS.append(_register_maintenance)

@@ -127,7 +127,7 @@ def _codex_items() -> list[Item]:
     claude = get_dict(load_json(paths.claude_json()), "mcpServers") if targets.claude_enabled() else {}
     skip = codex._plugin_servers() | set(claude)
     for name, table in codex.user_servers().items():
-        if name in skip:
+        if name in skip or codex.is_serena(table):  # Serena is the kit's tool, however it was set up
             continue
         try:
             cfg, problem = codex.to_claude(name, table), ""

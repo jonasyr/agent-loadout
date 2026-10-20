@@ -40,7 +40,7 @@ Template:
 | [0012](0012-destructive-actions-dry-run-confirm-backup.md) | Destructive actions: dry run, confirm, backup, restore | Accepted |
 | [0013](0013-playwright-cli-instead-of-browser-mcp.md) | playwright-cli instead of a browser MCP server | Accepted |
 | [0014](0014-execution-advisor-instead-of-default-sdd.md) | Execution advisor instead of subagent-driven development by default | Accepted |
-| [0015](0015-claude-code-installs-synced-plugins.md) | Claude Code, not loadout, installs plugins synced through the personal layer | Accepted |
+| [0015](0015-claude-code-installs-synced-plugins.md) | Claude Code, not loadout, installs plugins synced through the personal layer | Accepted; amended by 0035 |
 | [0016](0016-your-own-tools-ask-and-remember-leave.md) | Your own tools: nothing without an answer; Enter decides later, an explicit leave is remembered | Accepted |
 | [0017](0017-hooks-merge-per-hook-with-tombstones.md) | Hooks merge per hook (event, matcher, command) with tombstones | Accepted |
 | [0018](0018-secret-guard-fails-closed.md) | The secret guard fails closed | Accepted |
@@ -49,7 +49,7 @@ Template:
 | [0021](0021-diagrams-as-code-rendered-to-svg.md) | Diagrams as code, rendered to committed SVGs | Accepted |
 | [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted |
 | [0023](0023-python-3-11-minimum.md) | Python 3.11 minimum | Accepted |
-| [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted; amended by 0033 |
+| [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted; amended by 0033 and 0035 |
 | [0025](0025-state-in-xdg-state-home.md) | loadout's own files live in XDG state, not in `~/.claude` | Accepted |
 | [0026](0026-tool-hints-never-block.md) | Tool hints add context, never block | Accepted |
 | [0027](0027-repo-files-follow-the-agents.md) | Repo files follow the agents that are on | Accepted; decision line superseded by 0030 |
@@ -60,3 +60,4 @@ Template:
 | [0032](0032-vscode-extensions-are-a-surface-of-an-agent.md) | VS Code extensions are a surface of an agent | Accepted; amended by 0034 |
 | [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) | Codex set up for VS Code's Codex extension without its CLI | Accepted |
 | [0034](0034-vscode-extension-binaries-and-vscode-fixes.md) | The extensions' own binaries as runners, and VS Code fixes as asked-for plans | Accepted |
+| [0035](0035-loadout-update-brings-a-machine-current.md) | `loadout update` brings a machine current | Accepted |

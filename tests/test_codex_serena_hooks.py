@@ -52,11 +52,40 @@ def test_only_missing_entries_are_added(hooks):
 
 
 def test_a_file_in_another_format_is_not_rewritten(hooks):
-    users = '{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}}'  # one line
-    hooks.write_text(users)
+    users = json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}}, indent=3)
+    hooks.write_text(users)  # 3-space indent: a layout json_style cannot reproduce
     lines = codex_hooks.apply(backup.Backup(description="t"))
     assert hooks.read_text() == users
     assert any("add these yourself" in l and "serena-hooks remind --client=codex" in l for l in lines)
+
+
+def _users_file(indent, newline="\n"):
+    return {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo h\u00e9"}]}]}}, \
+        (lambda d: (json.dumps(d, indent=indent) + "\n").replace("\n", newline))
+
+
+def test_a_four_space_file_gets_the_hooks_in_its_own_format(hooks):
+    data, dump = _users_file(4)
+    original = dump(data)
+    hooks.write_bytes(original.encode())
+    bk = backup.Backup(description="t")
+    lines = codex_hooks.apply(bk)
+    new = json.loads(hooks.read_text())
+    assert hooks.read_bytes().decode() == dump(new)
+    assert _commands(hooks) == sorted(OFFICIAL + ["echo h\u00e9"])
+    assert new["hooks"]["Stop"] == data["hooks"]["Stop"]
+    assert any("/hooks" in l for l in lines)
+    backup.restore(bk.root)
+    assert hooks.read_bytes().decode() == original
+
+
+def test_a_crlf_four_space_file_keeps_crlf(hooks):
+    data, dump = _users_file(4, "\r\n")
+    hooks.write_bytes(dump(data).encode())
+    codex_hooks.apply(backup.Backup(description="t"))
+    raw = hooks.read_bytes().decode()
+    assert raw == dump(json.loads(raw)) and "\r\n" in raw and "\n" not in raw.replace("\r\n", "")
+    assert len(_commands(hooks)) == 7
 
 
 def test_without_serena_hooks_nothing_is_written_and_ours_go(hooks, monkeypatch):

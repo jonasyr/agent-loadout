@@ -82,7 +82,9 @@ def test_helpers_are_not_offered_as_updates(fake_home, fake_runner, monkeypatch,
     monkeypatch.setattr(versions, "local_version", lambda e: (1, 0))
     monkeypatch.setattr(versions, "latest_version", lambda e: (2, 0))
     assert [e["id"] for e, _, _ in maintenance.find_outdated()] == ["uv"]
-    maintenance._update(False, lambda q: "n")
+    from loadout import bootstrap
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [])
+    maintenance.update(False, lambda q: "n")
     out = capsys.readouterr().out
     assert "uv: 1.0 -> 2.0" in out and "mise:" not in out
 

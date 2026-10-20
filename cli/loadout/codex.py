@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from . import paths, runner
-from .jsonio import get_dict, get_list, load_json, save_json
+from .jsonio import InvalidJSON, get_dict, get_list, load_json, save_json
 
 MIN_VERSION = (0, 161)
 
@@ -791,30 +791,213 @@ def installed_plugins() -> set[str] | None:
     return {p["pluginId"] for p in get_list(data, "installed") if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
 
 
+_NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}  # nobody answers a credential prompt here
+
+
+def marketplaces() -> dict[str, dict] | None:
+    """{marketplace name: {"root": str, "source": str | None}} from `codex plugin marketplace list --json` (read-only).
+    Codex's own output: anything unexpected gives None, and callers refresh as before."""
+    res = runner.run(["codex", "plugin", "marketplace", "list", "--json"], timeout=60)
+    data = _json(res.stdout) if res.ok else None
+    items = data.get("marketplaces") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return None
+    found = {}
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            continue
+        source = item.get("marketplaceSource")
+        source = source.get("source") if isinstance(source, dict) else None
+        found[item["name"]] = {"root": item.get("root") if isinstance(item.get("root"), str) else None,
+                               "source": source if isinstance(source, str) else None}
+    return found
+
+
+def remote_head(url: str, ref: str | None) -> str | None:
+    """The commit a remote's ref (default HEAD) points at, from `git ls-remote`; None when it cannot be read
+    (offline, private, no such ref). url comes from a validated owner/repo or a marketplace's own plugin source."""
+    if not url.startswith("https://") or not (ref is None or isinstance(ref, str)):
+        return None
+    res = runner.run(["git", "ls-remote", url, ref or "HEAD"], timeout=30, env={**os.environ, **_NO_PROMPT})
+    first = res.stdout.split(None, 1)[0] if res.ok and res.stdout.strip() else ""
+    return first if re.fullmatch(r"[0-9a-fA-F]{7,64}", first) else None
+
+
+def _record_file() -> Path:
+    return paths.state_dir() / "codex-marketplaces.json"
+
+
+def _load_record() -> dict:
+    data = load_json(_record_file())
+    return data if isinstance(data, dict) else {}
+
+
+def _src_url(src: str) -> str | None:
+    return f"https://github.com/{src}.git" if _REPO.match(src) else None
+
+
+def _norm_source(source) -> str | None:
+    """A git source as host/path for comparing: https:// or a bare owner/repo (GitHub), the host in lower case,
+    without a trailing / or .git. None for anything else."""
+    if not isinstance(source, str) or not source.strip():
+        return None
+    text = source.strip()
+    if _REPO.match(text):
+        text = f"https://github.com/{text}"
+    if not text.lower().startswith("https://"):
+        return None
+    host, _, path = text[len("https://"):].partition("/")
+    path = path.rstrip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    return f"{host.lower()}/{path}" if host and path else None
+
+
+def _same_source(listed: dict | None, url: str) -> bool:
+    """Whether the marketplace Codex lists comes from url (one removed and re-added from another repo under the same
+    name does not)."""
+    mine = _norm_source(url)
+    return mine is not None and _norm_source((listed or {}).get("source")) == mine
+
+
+def _sha_less_plugins(info: dict | None) -> dict[str, tuple[str | None, str | None]] | None:
+    """{plugin name: (url, ref)} for the plugins of a marketplace with a source of their own and no pinned sha (read
+    from its .claude-plugin/marketplace.json). Those can move without the marketplace head moving. url is None for a
+    source that cannot be compared (SSH, git@, file or a local path): such a plugin is always refreshed. A plugin
+    in the marketplace's own repo (a path string) or pinned to a sha is not listed: the marketplace head covers it.
+    None when the cached marketplace.json cannot be read (malformed, not UTF-8): nothing of it can be compared."""
+    root = info.get("root") if info else None
+    if not root:
+        return {}
+    try:
+        data = load_json(Path(root).expanduser() / ".claude-plugin" / "marketplace.json")
+    except (InvalidJSON, OSError):
+        return None
+    found = {}
+    for plug in get_list(data if isinstance(data, dict) else {}, "plugins"):
+        src = plug.get("source") if isinstance(plug, dict) else None
+        if not isinstance(src, dict) or src.get("sha") or not isinstance(plug.get("name"), str):
+            continue
+        url = src.get("url") or (f"https://github.com/{src['repo']}.git" if isinstance(src.get("repo"), str)
+                                 and _REPO.match(src["repo"]) else None)
+        if isinstance(url, str) and url.startswith("https://"):
+            ref = src.get("ref")
+            found[plug["name"]] = (url, ref if isinstance(ref, str) else None)
+        else:
+            found[plug["name"]] = (None, None)
+    return found
+
+
+def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = None) -> tuple[set[str], set[str]]:
+    """(marketplace sources, plugin ids) that need no add, upgrade or reinstall: the remote head equals the one
+    loadout recorded after its last refresh, Codex lists the marketplace and every wanted plugin is installed. A
+    plugin with its own unpinned git source is skipped only when that source's head is unchanged too. Whatever cannot
+    be compared (no record, ls-remote fails, an unparsable list) is left out, so it is refreshed as before."""
+    record, listed = _load_record(), marketplaces()
+    installed = installed_plugins() if installed is None else installed
+    skip_m: set[str] = set()
+    skip_p: set[str] = set()
+    if listed is None or installed is None:
+        return skip_m, skip_p
+    for src, names in routes.items():
+        entry, url = record.get(src), _src_url(src)
+        market = entry.get("name") if isinstance(entry, dict) else None
+        if not url or not isinstance(market, str) or market not in listed or not _same_source(listed[market], url):
+            continue  # a marketplace of that name from another source is refreshed as before
+        head = remote_head(url, None)
+        if head is None or head != entry.get("head"):
+            continue
+        pids = [f"{n}@{market}" for n in names]
+        if any(pid not in installed for pid in pids):
+            continue
+        own = _sha_less_plugins(listed[market])
+        if own is None:  # its marketplace.json cannot be read: refreshed as before
+            continue
+        skip_m.add(src)
+        recorded = get_dict(entry, "plugins")
+        for name, pid in zip(names, pids):
+            if name not in own:
+                skip_p.add(pid)
+                continue
+            purl, ref = own[name]
+            if purl is None:  # an external source that cannot be compared: refreshed as before
+                continue
+            old = recorded.get(pid)
+            now = remote_head(purl, ref)
+            if now is not None and isinstance(old, dict) and old.get("head") == now and old.get("url") == purl:
+                skip_p.add(pid)
+    return skip_m, skip_p
+
+
+def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str, str, str | None, str | None] | None = None):
+    """Record (after a success) that loadout refreshed marketplace src at head, or plugin (pid, url, ref, head)."""
+    try:
+        import time
+        record = _load_record()
+        entry = record.get(src) if isinstance(record.get(src), dict) else {}
+        entry = {"name": market, "url": _src_url(src), "head": entry.get("head"), "at": entry.get("at", 0),
+                 "plugins": get_dict(entry, "plugins")}
+        if head:
+            entry.update(head=head, at=int(time.time()))
+        if plugin and plugin[3]:
+            entry["plugins"][plugin[0]] = {"url": plugin[1], "ref": plugin[2], "head": plugin[3]}
+        if entry["head"]:
+            record[src] = entry
+            _record_file().parent.mkdir(parents=True, exist_ok=True)
+            save_json(_record_file(), record)
+    except OSError:
+        pass  # the record only saves time; losing it means the next update refreshes everything
+
+
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
-                    frozen: frozenset = frozenset()) -> tuple[list[str], set[str]]:
+                    frozen: frozenset = frozenset(), skip_unchanged: bool = False,
+                    skips: tuple | None = None) -> tuple[list[str], set[str]]:
     """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards.
-    frozen: marketplaces a refresh leaves as they are (`autoUpdate: false`); missing plugins are still installed."""
+    frozen: marketplaces a refresh leaves as they are (`autoUpdate: false`); missing plugins are still installed.
+    skip_unchanged (with refresh): marketplaces and plugins whose upstream head did not move are left alone."""
     lines, installed = [], set(listed or ())
     have = {pid.split("@")[0] for pid in installed}
-    total = len(routes) + sum(1 for names in routes.values() for name in names if refresh or name not in have)
+    planned = skips is not None and refresh
+    if planned:  # the plan's decisions, as shown: authoritative, whatever a second look says
+        skip_m, skip_p = set(skips[0]), set(skips[1])
+    else:
+        skip_m, skip_p = unchanged_routes(routes, set(installed) if listed is not None else None) \
+            if skip_unchanged and refresh and listed is not None else (set(), set())
+    record = _load_record() if skip_m else {}
+    skip_m = {src for src in skip_m if isinstance(get_dict(record, src).get("name"), str)}  # its name is needed
+    total = sum(1 for src in routes if src not in skip_m) + sum(
+        1 for src, names in routes.items() for name in names
+        if (refresh or name not in have) and not (src in skip_m and any(p.startswith(name + "@") for p in skip_p)))
     step = 0
     for src, plugins in routes.items():
-        step += 1
-        say(f"  adding marketplace {src}, a git clone ({step} of {total})…")
-        res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
-        info = _json(res.stdout) if res.ok else None
-        if not isinstance(info, dict) or "marketplaceName" not in info:
-            lines.append(f"marketplace {src}: failed: {_tail(res)}")
-            continue
-        market = info["marketplaceName"]
-        if not info.get("alreadyAdded") and listed is not None:
-            bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
-        elif refresh and market not in frozen:
-            runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=900)
+        head, refreshed = None, False
+        if src in skip_m:
+            market = record[src]["name"]
+        else:
+            step += 1
+            say(f"  adding marketplace {src}, a git clone ({step} of {total})…")
+            url = _src_url(src)
+            head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
+            res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
+            info = _json(res.stdout) if res.ok else None
+            if not isinstance(info, dict) or "marketplaceName" not in info:
+                lines.append(f"marketplace {src}: failed: {_tail(res)}")
+                continue
+            market = info["marketplaceName"]
+            if not info.get("alreadyAdded") and listed is not None:
+                bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
+                refreshed = True
+            elif refresh and market not in frozen:
+                up = runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=900)
+                refreshed = up.ok
+            elif not info.get("alreadyAdded"):
+                refreshed = True
+            if refreshed:
+                _remember(src, market, head)
+        own = None
         for name in plugins:
             pid = f"{name}@{market}"
-            if pid in installed and (not refresh or market in frozen):
+            if (planned and pid in skip_p) or (pid in installed and (not refresh or market in frozen or pid in skip_p)):
                 continue
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
@@ -828,13 +1011,27 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 bk.record_command(f"codex plugin {pid}", ["codex", "plugin", "remove", pid])
                 lines.append(f"plugin {pid}: installed")
             installed.add(pid)
+            if src in skip_m or refreshed or record_has(src):
+                if own is None:
+                    own = _sha_less_plugins((marketplaces() or {}).get(market)) or {}
+                if name in own and own[name][0] is not None:
+                    purl, ref = own[name]
+                    _remember(src, market, plugin=(pid, purl, ref, remote_head(purl, ref)))
     return lines, installed
 
 
-def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False) -> list[str]:
+def record_has(src: str) -> bool:
+    return isinstance(_load_record().get(src), dict)
+
+
+def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False, skip_unchanged: bool = False,
+                  skips: tuple | None = None) -> list[str]:
     """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs).
     auto: an automatic refresh (the daily sync): marketplaces set to `autoUpdate: false` stay as they are, as in
-    Claude Code; an explicit `loadout update` passes False and updates every marketplace."""
+    Claude Code; an explicit `loadout update` passes False and updates every marketplace.
+    skip_unchanged (with refresh): leave marketplaces and plugins whose upstream head did not move as they are.
+    skips: (marketplace sources, plugin ids) a plan already decided to leave (`loadout update`): used as they are,
+    with no second look upstream, so the run does what the plan showed."""
     if not runner.have("codex"):
         return [PLUGINS_EXTENSION]  # extension mode: the extension loads no plugins, and they install through the CLI
     say = say or (lambda line: None)
@@ -844,7 +1041,7 @@ def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False) -> li
     frozen = frozenset(name for name, cfg in get_dict(desired, "extraKnownMarketplaces").items()
                        if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False)
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
-    return lines + _install_routes(routes, bk, refresh, say, installed_plugins(), frozen)[0]
+    return lines + _install_routes(routes, bk, refresh, say, installed_plugins(), frozen, skip_unchanged, skips)[0]
 
 
 def skill_links() -> list[tuple[Path, Path]]:
@@ -998,12 +1195,23 @@ def _codex_serenas() -> set[str]:
     return {n for n, t in get_dict(data, "mcp_servers").items() if isinstance(t, dict) and is_serena(t)}
 
 
+def plugin_mcp_files() -> list[Path]:
+    """Each installed Codex plugin's MCP server file: the one its .codex-plugin/plugin.json names (inside the plugin),
+    else .mcp.json."""
+    files = []
+    for root in (paths.codex_home() / "plugins" / "cache").glob("*/*/*"):
+        try:
+            ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
+        except Exception:  # an unreadable manifest: the default file
+            ref = None
+        files.append(root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json")
+    return files
+
+
 def _plugin_servers() -> set[str]:
     """MCP servers that Codex has from installed plugins, from the file each manifest names (else .mcp.json)."""
     names: set[str] = set()
-    for root in (paths.codex_home() / "plugins" / "cache").glob("*/*/*"):
-        ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
-        mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
+    for mcp in plugin_mcp_files():
         names |= set(get_dict(load_json(mcp), "mcpServers"))
     return names
 
@@ -1015,42 +1223,79 @@ LOCK = "codex.lock"
 STALE_LOCK = 3600.0
 
 
-def _lock():
-    """One Codex setup at a time (bootstrap, configure, the daily sync); a lock older than an hour is from a crash."""
-    import os
-    import time
-    path = paths.state_dir() / LOCK
-    path.parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(2):
-        try:
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            try:
-                if time.time() - path.stat().st_mtime < STALE_LOCK:
-                    return None
-                path.unlink()
-            except OSError:
-                return None
-            continue
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(str(os.getpid()))
-        return path
-    return None
+def _lock(wait: float | None = 0, command: str = "setup", on_wait=None):
+    """One Codex setup at a time (bootstrap, configure, the daily sync, update); a lock older than an hour is from a
+    crash. wait: 0 tries once (background, session start), None waits until free, a number waits that long."""
+    from . import locks
+    return locks.acquire(LOCK, command, wait, stale=STALE_LOCK, on_wait=on_wait)
 
 
-def apply_all(bk, refresh: bool = False, say=None) -> list[str]:
-    lock = _lock()
+PARTS = ("instructions", "config", "hooks", "skills", "plugins")
+
+
+def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unchanged: bool = False,
+                command: str = "setup", on_wait=None, changed: set | None = None,
+                plugins: bool = True, skips: tuple | None = None, only: tuple | None = None) -> dict[str, list[str]]:
+    """Each part's lines, under the Codex lock. refresh: re-add every plugin and upgrade the marketplaces; auto: the
+    daily sync (marketplaces set to `autoUpdate: false` stay as they are, and it never waits for another run);
+    keep: Serena's hooks are never removed. skip_unchanged: on a refresh, leave marketplaces and plugins whose upstream head did not move.
+    changed: when given, gets "config" when config.toml's bytes changed and, on a refresh, "plugins_updated" when
+    an installed plugin's version changed (neither prints a line). A busy lock: the skip line under "instructions".
+    plugins: False leaves the marketplaces and plugins alone (no add, install or refresh; `loadout update` with its
+    Codex plugin item left out). skips: as in apply_plugins. only: the parts to run (e.g. ("plugins",): `loadout
+    update` with item 1 left out but its Codex plugin item kept); the others give no lines and change nothing."""
+    from . import locks
+    lock = _lock(0 if auto else locks.foreground_wait(), command, on_wait)
     if lock is None:
-        return ["skipped: another loadout run is setting up Codex right now; run this again when it has finished"]
+        return {"instructions": [f"skipped: {locks.busy_message(LOCK)}"], **{k: [] for k in PARTS[1:]}}
     try:
         from . import codex_hooks
-        return [apply_instructions(bk), *apply_config(bk), *codex_hooks.apply(bk, keep=refresh), *apply_skills(bk),
-                *apply_plugins(bk, refresh=refresh, say=say, auto=refresh)]
+        config = paths.codex_home() / "config.toml"
+        run = set(PARTS if only is None else only)
+        parts = {k: [] for k in PARTS}
+        if "instructions" in run:
+            parts["instructions"] = [apply_instructions(bk)]
+        if "config" in run:
+            before = _bytes(config)
+            parts["config"] = apply_config(bk)
+            if changed is not None and _bytes(config) != before:
+                changed.add("config")
+        if "hooks" in run:
+            parts["hooks"] = codex_hooks.apply(bk, keep=keep)
+        if "skills" in run:
+            parts["skills"] = apply_skills(bk)
+        plugins = plugins and "plugins" in run
+        if not plugins:
+            parts["plugins"] = []
+            return parts
+        versions = plugin_versions() if changed is not None and refresh and runner.have("codex") else None
+        parts["plugins"] = apply_plugins(bk, refresh=refresh, say=say, auto=auto, skip_unchanged=skip_unchanged,
+                                         **({"skips": skips} if skips is not None else {}))
+        if versions is not None:
+            after = plugin_versions()
+            if any(pid in versions and versions[pid] != v for pid, v in after.items()):
+                changed.add("plugins_updated")
+        return parts
     finally:
-        try:
-            lock.unlink()
-        except OSError:
-            pass
+        lock.release()
+
+
+def _bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def apply_all(bk, refresh: bool = False, say=None, command: str = "setup", on_wait=None, *, auto: bool | None = None,
+              keep: bool | None = None, skip_unchanged: bool = False, changed: set | None = None,
+              plugins: bool = True, skips: tuple | None = None, only: tuple | None = None) -> list[str]:
+    """refresh=True is the background sync: it never waits for another run, and auto and keep follow it unless
+    given. Foreground callers wait for it."""
+    parts = apply_parts(bk, refresh=refresh, auto=refresh if auto is None else auto,
+                        keep=refresh if keep is None else keep, say=say, skip_unchanged=skip_unchanged,
+                        command=command, on_wait=on_wait, changed=changed, plugins=plugins, skips=skips, only=only)
+    return [line for key in PARTS for line in parts[key]]
 
 
 def checks() -> list:
@@ -1073,7 +1318,7 @@ def checks() -> list:
     path = paths.codex_home() / "AGENTS.md"
     current = splice(path.read_text(encoding="utf-8") if path.exists() else "", render_instructions())
     ok = path.exists() and current == path.read_text(encoding="utf-8")
-    results.append(CheckResult("Codex instructions", ok, "" if ok else f"{_tilde(path)} lacks loadout's current block", "loadout bootstrap"))
+    results.append(CheckResult("Codex instructions", ok, "" if ok else f"{_tilde(path)} lacks loadout's current block", "loadout update"))
     if (paths.codex_home() / "AGENTS.override.md").exists():
         results.append(CheckResult("Codex instructions", False, "AGENTS.override.md shadows AGENTS.md, so Codex ignores loadout's block",
                                    "merge it into AGENTS.md or remove it", "warn"))

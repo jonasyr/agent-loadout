@@ -47,6 +47,19 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("PATH", os.environ.get("PATH", ""))  # teardown restores it: nothing leaks a fake tool dir into later tests
     monkeypatch.setenv("LOADOUT_REEXEC", "1")  # bin/loadout never re-execs the test process through a real uv
+    monkeypatch.setenv("LOADOUT_UPDATE_PULLED", "1")  # `loadout update` neither pulls nor restarts the test process
+    # and even a test that deletes that marker cannot restart into the real launcher: update._exec fails the test
+    # unless the test faked os.execv (POSIX) or subprocess.Popen (Windows) itself
+    import subprocess
+    from loadout import update
+    real_exec, real_execv, real_popen = update._exec, os.execv, subprocess.Popen
+
+    def guarded_exec(argv, windows=None):
+        on_windows = os.name == "nt" if windows is None else windows
+        if (subprocess.Popen is real_popen) if on_windows else (os.execv is real_execv):
+            pytest.fail(f"a test tried to restart into the real loadout ({argv}); fake update._exec")
+        return real_exec(argv, windows=windows)
+    monkeypatch.setattr(update, "_exec", guarded_exec)
 
 
 @pytest.fixture

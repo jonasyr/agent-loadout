@@ -138,7 +138,7 @@ The skill reads the project and fills in the documentation. To add a profile lat
 
 After setup you do not have to run anything to stay current.
 
-A session hook pulls the kit and your personal layer once a day, and a weekly check tells you when tool binaries have updates (`loadout update` applies them after asking). Claude Code updates its plugins itself; for Codex, loadout refreshes them after a pull that brought new commits, when the Codex CLI is installed. How this works: [The daily sync](../reference/state-and-sync.md#the-daily-sync). What runs without asking, and how to opt out, is in [Security and trust](../explanation/security-and-trust.md).
+A session hook pulls the kit and your personal layer once a day, and a weekly check tells you when tool binaries have updates. `loadout update` is the one command that brings a machine current: it pulls, shows one plan, and after one yes re-applies the setup, installs what is new and updates the tools; it ends with what to do next ([`loadout update`](../reference/cli.md#loadout-update)). Claude Code updates its plugins itself; for Codex, loadout refreshes them after a pull that brought new commits, when the Codex CLI is installed. How this works: [The daily sync](../reference/state-and-sync.md#the-daily-sync). What runs without asking, and how to opt out, is in [Security and trust](../explanation/security-and-trust.md).
 
 ## Next
 

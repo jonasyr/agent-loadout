@@ -4,3 +4,4 @@ Details: docs/explanation/architecture.md, docs/reference/state-and-sync.md, doc
 Gotcha: `cli/loadout/usage.py` imports the hook's parser from `plugins/loadout/hooks/tool_hint.py`, so a change there changes the hint and the metric (ADR 0026).
 To change CLI behaviour touch `cli/loadout/<module>` (map in docs/reference/modules.md) and update the matching docs/reference page.
 Serena in Codex: `cli/loadout/codex_hooks.py` owns Serena's hooks in `~/.codex/hooks.json`; a user's own Serena server means loadout adds none: docs/reference/hooks.md#serenas-hooks-in-codex, ADR 0028.
+loadout update: `cli/loadout/update.py` (plan, restart, apply, report) over `apply.py` steps shared with bootstrap, `steps.py` ("Now do this", `open-steps.json`), `locks.py`; decision ADR 0035, docs/reference/cli.md#loadout-update.

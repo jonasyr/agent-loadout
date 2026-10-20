@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, catalog, check, link, out, paths, runner, secrets, settings_merge, ui, wsl
+from . import adopt, apply, catalog, check, out, paths, runner, secrets, settings_merge, ui, wsl
 from .backup import Backup
 from .jsonio import get_dict, load_json
 from .secrets import redact
@@ -181,13 +181,61 @@ def _claude_bundled_line(path: Path) -> str:
     return CLAUDE_BUNDLED.format(path=out.printable(str(path)))
 
 
+def missing_tools(skip: set[str] = frozenset(), recommended: set[str] = frozenset()
+                  ) -> list[tuple[dict, list[list[str]], bool]]:
+    """The wanted binaries that are missing, in install order, with their install commands; nothing runs.
+    A helper is listed only when a missing, wanted binary needs it. optional: a recommended tool (or one named in
+    recommended), which a person may leave out; a helper is optional when only optional tools need it."""
+    prepend_tool_dirs()
+    entries = [e for e in catalog.install_order(catalog.binaries()) if e["id"] not in skip]
+
+    def optional(e: dict) -> bool:
+        return not e.get("required") or e["id"] in recommended
+    wanting = [e for e in entries if not e.get("helper") and _wanted(e) and missing_binary(e["id"])]
+    needed = {d for e in wanting for d in e.get("needs", [])}
+    found = []
+    for entry in entries:
+        name = entry["id"]
+        wanted = name in needed if entry.get("helper") else _wanted(entry)
+        if not wanted or not missing_binary(name):
+            continue
+        opt = (all(optional(e) for e in wanting if name in e.get("needs", [])) if entry.get("helper")
+               else optional(entry))
+        found.append((entry, catalog.platform_cmds(entry, "install"), opt))
+    return found
+
+
+def install_tool(entry: dict, cmds: list[list[str]], on_problem=None) -> tuple[bool, list[str]]:
+    """Runs a tool's install commands (progress lines print at once: an install can take minutes).
+    Returns whether the tool is there afterwards and the problem lines; on_problem, when given, also gets each
+    problem line as it happens (between the commands)."""
+    from . import pkgmgr
+    name, lines = entry["id"], []
+    for cmd in cmds:
+        if out.VERBOSE:
+            print(redact("installing: " + " ".join(cmd)))
+        elif cmd is cmds[0]:
+            print(f"  installing {name}…")
+        res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
+        if not res.ok:
+            found = [f"failed to install {name}: {_tail(res)}", _open_local_bin_hint()]
+            for line in filter(None, found):
+                lines.append(line)
+                if on_problem is not None:
+                    on_problem(line)
+    npm = npm_global_dir() if any(cmd[0] == "npm" for cmd in cmds) else None
+    prepend_tool_dirs([npm] if npm else None)
+    if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
+        runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals
+        prepend_tool_dirs()
+    return not missing_binary(name), lines
+
+
 def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes: list | None = None,
                   skip: frozenset = frozenset(), recommended: frozenset = frozenset()) -> list[str]:
     """notes: collects the missing and failed lines for the caller to print under its status line (else printed now).
     skip: binaries not wanted this run (codex when, in WSL, the user's Codex is the Windows one).
     Progress lines ("installing …") always print at once: an install can take minutes."""
-    from . import pkgmgr
-
     def note(line: str, problem: bool = False) -> None:
         if notes is not None:
             notes.append(line)
@@ -197,18 +245,11 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             print(line)
     if install:
         _ensure_local_bin()
-    prepend_tool_dirs()
-    entries = [e for e in catalog.install_order(catalog.binaries()) if e["id"] not in skip]
-    # helpers are wanted only when a missing, wanted binary needs them
-    needed = {d for e in entries if not e.get("helper") and _wanted(e) and missing_binary(e["id"])
-              for d in e.get("needs", [])}
     missing, failed = [], set()
-    for entry in entries:
+    for entry, cmds, _optional in missing_tools(skip, recommended):
         name = entry["id"]
-        wanted = name in needed if entry.get("helper") else _wanted(entry)
-        if not wanted or not missing_binary(name):
+        if not missing_binary(name):  # an earlier install brought it
             continue
-        cmds = catalog.platform_cmds(entry, "install")
         blocked = [d for d in entry.get("needs", []) if d in failed]
         if install and cmds and blocked:
             failed.add(name)
@@ -217,22 +258,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 missing.append(name)
             continue
         if install and cmds:
-            for cmd in cmds:
-                if out.VERBOSE:
-                    print("installing: " + " ".join(cmd))
-                elif cmd is cmds[0]:
-                    print(f"  installing {name}…")
-                res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
-                if not res.ok:
-                    note(f"failed to install {name}: {_tail(res)}", problem=True)
-                    hint = _open_local_bin_hint()
-                    if hint:
-                        note(hint, problem=True)
-            npm = npm_global_dir() if any(cmd[0] == "npm" for cmd in cmds) else None
-            prepend_tool_dirs([npm] if npm else None)
-            if name in ("playwright-cli", "pyright", "typescript-language-server") and runner.have("mise"):
-                runner.run(["mise", "reshim"], cwd=pkgmgr.run_cwd(["mise"]), timeout=120)  # shims for npm globals
-                prepend_tool_dirs()
+            install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
             if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
         if missing_binary(name):
@@ -299,9 +325,9 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
     return f"created starter personal layer at {root} (to sync it across machines, make it a private git repo: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)})", True
 
 
-def setup_plugins(say=None) -> list[str]:
-    """say: called with a progress line before each slow step (marketplace clones, plugin installs)."""
-    say = say or (lambda line: None)
+def plugins_plan() -> tuple[list[str], list[tuple[str, str]], list[str]]:
+    """What setup_plugins would do, without changing anything (it only lists the marketplaces): the skip lines, the
+    kit marketplaces to add as (name, origin), and the enabled plugins not installed yet."""
     out = []
     desired = settings_merge.desired_settings()
     listed = runner.run(["claude", "plugin", "marketplace", "list"], timeout=60).stdout
@@ -317,6 +343,15 @@ def setup_plugins(say=None) -> list[str]:
         markets.append((name, origin))
     installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
     plugins = [pid for pid, on in get_dict(desired, "enabledPlugins").items() if on and pid not in installed]
+    return out, markets, plugins
+
+
+def setup_plugins(say=None, planned: tuple | None = None) -> list[str]:
+    """say: called with a progress line before each slow step (marketplace clones, plugin installs).
+    planned: (marketplaces as (name, origin), plugin ids) to run exactly, as a plan showed them (ADR 0011);
+    None plans now (plugins_plan)."""
+    say = say or (lambda line: None)
+    out, markets, plugins = plugins_plan() if planned is None else ([], list(planned[0]), list(planned[1]))
     total, step = len(markets) + len(plugins), 0
     for name, origin in markets:
         step += 1
@@ -893,12 +928,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         out.problem(line)
     claude_on = chosen["claude"]
     _step("Links")
-    link_lines = (link.link_all(bk, retry_symlinks=True) if claude_on else []) + link.link_bin(bk)
-    if any(line.endswith("(symlinks unavailable)") for line in link_lines):
-        # one visible line for what changes in practice; the per-file lines stay with --verbose
-        link_lines.append("warning: symlinks unavailable, so rules, skills and hooks are copies, refreshed by bootstrap "
-                          "and the daily sync; edit them in the kit or your personal layer (Windows: turn on Developer "
-                          "Mode for links)")
+    link_lines = apply.link_step(bk, claude_on, retry_symlinks=True).lines
     # after a failed clone nothing may write into the personal layer: a partial folder would stop the next run
     # from asking for the URL again (the wizard and adopt both write there)
     if not personal_ok:
@@ -910,38 +940,24 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         wizard(ask, first_run=False, setup=False, interactive=interactive, preferences_asked=starter)  # settings, MCP servers and plugins are applied below
     if claude_on:
         _step("Settings")
-        settings_path = paths.claude_home() / "settings.json"
-        if settings_path.exists() and settings_merge.would_change():
-            bk.save_copy(settings_path, "settings.json before loadout merge")
-        settings_merge.backup_snapshot(bk)
-        before, after = settings_merge.apply_settings()
-        from .personal_mcp import apply_mcp
-        merged = "settings updated" if before != after else "settings already up to date"
-        _report("Rules and settings", "linked, " + ("settings merged" if before != after else "settings up to date"),
-                link_lines + [merged] + apply_mcp())
+        settings = apply.settings_step(bk, on=True)
+        _report("Rules and settings", "linked, " + settings.summary, link_lines + settings.lines)
     else:
         _report("Launcher", "linked", link_lines)
     if plugins and claude_on:
         _step("Marketplaces and plugins")
-        lines = setup_plugins(say=out.progress)
+        result = apply.claude_plugins_step(say=out.progress, on=True)
         out.end_progress()
-        if any(line.endswith(": added") for line in lines):
-            settings_merge.apply_settings()  # the CLI rewrites marketplace entries and drops autoUpdate
-        total = sum(1 for on in get_dict(settings_merge.desired_settings(), "enabledPlugins").values() if on)
-        failed = sum(1 for line in lines if PROBLEM.search(line))
-        _report("Plugins", f"{total} kit plugins ready" if not failed else f"{failed} failed (below)", lines)
+        _report(result.name, result.summary, result.lines)
     if chosen["codex"]:
         _step("Codex")
         problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())
         if problem:
             out.status("Codex", problem, "warn")
         else:
-            lines = codex.apply_all(bk, say=out.progress)
+            result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True)
             out.end_progress()
-            failed = sum(1 for line in lines if PROBLEM.search(line))
-            done = ("rules, plugins, MCP servers and skills set up" if runner.have("codex")
-                    else "rules, MCP servers and skills set up for VS Code's Codex extension")
-            _report("Codex", done if not failed else f"{failed} problem(s) (below)", lines)
+            _report(result.name, result.summary, result.lines)
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
         _step("Adopt existing setup")
@@ -975,6 +991,12 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             print(text)
     here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
     todo = still_to_do(os_key(), codex_here=here["codex"])
+    from . import steps
+    try:  # the steps visible without a run's facts (hooks, plugin copy), as `loadout update` leaves them: shown at that agent's next session until done
+        steps.save(steps.derive(set(), [], here["claude"], here["codex"]))
+        steps.settle(here["claude"], chosen["codex"], results)  # Codex on but set up on the Windows side keeps its steps
+    except Exception:
+        pass
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
         print(f"\n{adopt.UNDO_LINE}")
     if path_changed and out.VERBOSE:
@@ -983,6 +1005,10 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
         for line in todo:
             print(f"  - {line}")
+    try:  # steps an earlier run left open (the hooks one is in "Still to do" above)
+        steps.print_pending(here["claude"], chosen["codex"], skip={"codex/hooks"}, show_codex=here["codex"])
+    except Exception:
+        pass
     extension = here["codex"] and not runner.have("codex") and codex.extension_state()[0] is not None
     claude_ext = here["claude"] and claude_bundled is not None and not runner.have("claude")
     run = " or ".join(f"`{a}`" for a in ("claude", "codex")
