@@ -414,3 +414,22 @@ def test_no_test_can_restart_into_the_real_loadout(windows):
     """conftest guards the restart: a test that forgets to fake it fails instead of running the real launcher."""
     with pytest.raises(pytest.fail.Exception, match="restart"):
         update._exec(["update"], windows=windows)
+
+
+def test_an_offline_pull_is_listed_as_not_refreshed(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    personal = paths.personal_root()
+    (personal / ".git").mkdir(parents=True)
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"  # built, so the repo scan finds no literal token
+    fake_runner.responses[("git", "-c", "core.quotePath=false", "-C", str(personal), "pull")] = runner.Result(
+        128, "", f"fatal: unable to access 'https://jonas:{token}@github.com/x/y.git/': Could not resolve host\n")
+    _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["aaa"], str(personal): ["ppp"]})
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    text = capsys.readouterr().out
+    assert "ghp_" not in text and "Personal layer: up to date" not in text
+    changed = _changed(text)
+    line = next(l for l in changed.splitlines() if "not refreshed" in l)
+    assert str(personal) in line and "Could not resolve host" in line and "again when online" in line
+    assert maintenance.paused() == {}  # still no pause and no notice (the daily sync stays quiet)
+    assert not (paths.state_dir() / "pending-notice").exists()

@@ -356,11 +356,16 @@ def _pull(summary: Summary, start: str | None = None) -> bool:
     for label, root in (("kit", paths.kit_root()), ("personal layer", paths.personal_root())):
         if not (root / ".git").exists():
             continue
-        pulled_any = True
         res = maintenance.pull(root)
+        pulled_any = pulled_any or not res.offline  # offline: the daily sync tries again soon
         if res.paused:
             summary.failed.append(_paused_fix(label, root, res.paused, res.files))
             out.status(label.capitalize(), f"not pulled: {out.printable(res.paused)}", "warn")
+        elif res.offline:
+            reason = out.printable(res.offline)
+            summary.failed.append((f"{label}: {out.printable(str(root))}: not refreshed ({reason})",
+                                   "run loadout update again when online"))
+            out.status(label.capitalize(), f"not refreshed ({reason})", "warn")
         elif res.pulled:
             out.status(label.capitalize(), "pulled new commits")
             if label == "kit":

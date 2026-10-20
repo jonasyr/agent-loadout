@@ -119,6 +119,7 @@ class PullResult:
     pulled: bool = False  # new commits arrived (settings, MCP and links need re-applying)
     paused: str | None = None  # why git refused; None when the pull ran, or was skipped for want of an upstream
     files: list[str] = field(default_factory=list)  # the files git named in a refusal
+    offline: str | None = None  # a network failure (redacted reason): nothing pulled, nothing recorded or said
 
 
 def _paused_path() -> Path:
@@ -199,8 +200,10 @@ def pull(root: Path) -> PullResult:
     res = runner.run([*git, "pull", "--ff-only", "-q"], timeout=120, env=env)
     if not res.ok:
         found = _refusal(res.returncode, res.stderr or "")
-        if found is None:
-            return PullResult()  # offline or unreachable: as before, nothing is recorded or said
+        if found is None:  # offline or unreachable: nothing is recorded or said; `loadout update` lists it
+            text = res.stderr or res.stdout or ""
+            first = next((l.strip() for l in text.splitlines() if l.strip()), "")
+            return PullResult(offline=redact(first)[:300] or "the remote could not be reached")
         reason, files = found
         if _record_paused(root, {"reason": reason, "files": files, "at": time.time()}):
             if files:
