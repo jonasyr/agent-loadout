@@ -652,7 +652,7 @@ def _find_key(sections: list[list], table: tuple, key: str):
     target = sections[0] if not table else next((s for s in sections if s[0] == table), None)
     if target is None:
         return None, None
-    flags = [True] + target[2] if target[0] is not None else target[2]
+    flags = target[2]  # a header section's flags already start with the header's own True
     found = next((i for i, l in enumerate(target[1]) if flags[i] and re.match(rf"^\s*{re.escape(key)}\s*=", l)), None)
     return target, found
 
