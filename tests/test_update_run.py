@@ -433,3 +433,17 @@ def test_an_offline_pull_is_listed_as_not_refreshed(fake_home, fake_runner, monk
     assert str(personal) in line and "Could not resolve host" in line and "again when online" in line
     assert maintenance.paused() == {}  # still no pause and no notice (the daily sync stays quiet)
     assert not (paths.state_dir() / "pending-notice").exists()
+
+
+def test_a_failed_tool_install_is_redacted(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"  # built, so the repo scan finds no literal token
+    entry = {"id": "newtool"}
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [(entry, [["newtool-installer"]], False)])
+    fake_runner.missing.add("newtool")  # still missing after its installer failed
+    fake_runner.responses[("newtool-installer",)] = runner.Result(
+        1, "", f"fatal: could not read https://jonas:{token}@github.com/x/y.git\n")
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    changed = _changed(capsys.readouterr().out)
+    line = next(l for l in changed.splitlines() if "newtool" in l)
+    assert "ghp_" not in line and "github.com/x/y.git" in line

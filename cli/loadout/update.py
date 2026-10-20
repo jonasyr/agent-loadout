@@ -542,7 +542,7 @@ def _install_tool(item: PlanItem, summary: Summary) -> None:
         summary.changed.append(f"{out.printable(item.key)}: installed")
         summary.upgraded.append(item.key)
     else:
-        summary.failed.append((out.printable(lines[0] if lines else f"{item.key}: not installed"),
+        summary.failed.append((out.printable(redact(lines[0]) if lines else f"{item.key}: not installed"),
                                AGAIN + ", or install it by hand"))
 
 
