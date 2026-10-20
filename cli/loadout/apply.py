@@ -180,7 +180,10 @@ def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say
         facts.add("codex_config_changed")
     if "plugins_updated" in changed:
         facts.add("codex_plugins_updated")
-    return _finish(StepResult("Codex", _codex_summary(lines), lines, facts), "codex")
+    summary = _codex_summary(lines)
+    if only is not None and set(only) == {"plugins"} and not any(out.PROBLEM.search(line) for line in lines):
+        summary = "plugins refreshed; rules, config, hooks and skills left as they are (item 1 was left out)"
+    return _finish(StepResult("Codex", summary, lines, facts), "codex")
 
 
 def _codex_dry(refresh_plugins: bool, auto: bool, keep: bool) -> StepResult:
