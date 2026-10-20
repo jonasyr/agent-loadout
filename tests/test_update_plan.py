@@ -140,3 +140,28 @@ def test_the_codex_item_shows_what_runs_per_marketplace_and_plugin(fake_home, fa
     assert "re-add plugin q2@b-m" in lines and not any("q1@b-m" in l for l in lines)
     assert "add or refresh marketplace o/c" in lines and "add plugin r1@<o/c's marketplace>" in lines
     assert "command: codex plugin marketplace upgrade <o/c's marketplace> (only when Codex had it)" in lines
+
+
+def test_an_optional_tool_brings_its_missing_prerequisite(fake_home, fake_runner, monkeypatch):
+    mise = {"id": "mise", "helper": True}
+    ra = {"id": "rust-analyzer", "needs": ["mise"]}
+    plan = _plan(monkeypatch, fake_home, fake_runner,
+                 missing=[(mise, [["curl", "mise.run"]], True), (ra, [["mise", "use", "-g", "rust-analyzer"]], True)])
+    by_key = {i.key: i for i in plan}
+    n_mise, n_ra = by_key["mise"].n, by_key["rust-analyzer"].n
+    assert by_key["rust-analyzer"].needs == ("mise",)
+    text = "\n".join(update.render(plan))
+    assert f"needs mise (item {n_mise})" in text
+    tools = lambda chosen: [i.key for i in chosen if i.kind == "tool-install"]  # noqa: E731
+    assert tools(update.choose(plan, str(n_ra))) == ["mise", "rust-analyzer"]
+    assert tools(update.choose(plan, "")) == []
+
+
+def test_leaving_out_a_prerequisite_leaves_out_what_needs_it():
+    plan = [update.PlanItem(1, "reapply", "a", []),
+            update.PlanItem(2, "tool-install", "install mise", [], key="mise"),
+            update.PlanItem(3, "tool-install", "install x", [], key="x", needs=("mise",)),
+            update.PlanItem(4, "tool-install", "install y", [], optional=True, key="y", needs=("mise",))]
+    assert [i.n for i in update.choose(plan, "2")] == [1]
+    assert [i.n for i in update.choose(plan, "2 4")] == [1]
+    assert [i.n for i in update.choose(plan, "4")] == [1, 2, 3, 4]

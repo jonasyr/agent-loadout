@@ -37,6 +37,7 @@ class PlanItem:
     how: str = ""  # who updates it: mise, brew or the catalog command (tool-update)
     ids: tuple = ()  # the plugin ids the item refreshes (claude-plugins-refresh)
     groups: tuple = ()  # (what, its commands) per marketplace and plugin (codex-plugins); render shows these
+    needs: tuple = ()  # the tool ids of the plan's other tool-install items it needs first (tool-install)
 
 
 def _date(ts) -> str:
@@ -155,13 +156,24 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
     for kind, label, cmds, optional, key, latest, entry, local, how, *rest in items:
         plan.append(PlanItem(len(plan) + 1, kind, label, cmds, optional, key, latest, entry, local, how,
                              rest[0] if rest else (), rest[1] if len(rest) > 1 else ()))
+    missing = {i.key for i in plan if i.kind == "tool-install"}
+    for item in plan:
+        if item.kind == "tool-install" and item.entry:
+            item.needs = tuple(d for d in item.entry.get("needs", []) if d in missing and d != item.key)
     return plan
+
+
+def _needs_text(item: PlanItem, plan: list[PlanItem]) -> str:
+    nums = {i.key: i.n for i in plan if i.kind == "tool-install"}
+    return ", ".join(f"needs {out.printable(d)} (item {nums[d]})" for d in item.needs if d in nums)
 
 
 def render(plan: list[PlanItem]) -> list[str]:
     lines = []
     for item in plan:
-        lines.append(f"{item.n}. {item.label}" + ("  [optional: type its number to install it]" if item.optional else ""))
+        needs = _needs_text(item, plan)
+        lines.append(f"{item.n}. {item.label}" + (f"; {needs}, installed with it" if needs else "")
+                     + ("  [optional: type its number to install it]" if item.optional else ""))
         if item.groups:
             for what, cmds in item.groups:
                 lines.append("     " + what)
@@ -177,7 +189,7 @@ def choose(plan: list[PlanItem], answer: str) -> list[PlanItem] | None:
     else, or a number not in the plan: None (ask again)."""
     words = answer.replace(",", " ").lower().split()
     if not words:
-        return [i for i in plan if not i.optional]
+        return _with_needs(plan, {i.n for i in plan if not i.optional}, set())
     nums = None
     if words[0] in ("y", "yes", "n", "no"):
         if words[0] in ("n", "no") and len(words) == 1:
@@ -186,14 +198,36 @@ def choose(plan: list[PlanItem], answer: str) -> list[PlanItem] | None:
             return None
         words = words[1:]
         if not words:
-            return [i for i in plan if not i.optional]
+            return _with_needs(plan, {i.n for i in plan if not i.optional}, set())
     try:
         nums = {int(w) for w in words}
     except ValueError:
         return None
     if not nums <= {i.n for i in plan}:
         return None
-    return [i for i in plan if (i.optional and i.n in nums) or (not i.optional and i.n not in nums)]
+    return _with_needs(plan, {i.n for i in plan if (i.optional and i.n in nums) or (not i.optional and i.n not in nums)},
+                       {i.n for i in plan if not i.optional and i.n in nums})
+
+
+def _with_needs(plan: list[PlanItem], picked: set[int], left_out: set[int]) -> list[PlanItem]:
+    """A chosen tool brings the missing tools it needs (an optional rust-analyzer brings mise); a tool whose
+    prerequisite was left out by its number is left out too (it would run without it)."""
+    by_key = {i.key: i for i in plan if i.kind == "tool-install"}
+    changed = True
+    while changed:
+        changed = False
+        for item in plan:
+            if item.n not in picked:
+                continue
+            for dep in (by_key[d] for d in item.needs if d in by_key):
+                if dep.n in left_out:
+                    picked.discard(item.n)
+                    changed = True
+                    break
+                if dep.n not in picked:
+                    picked.add(dep.n)
+                    changed = True
+    return [i for i in plan if i.n in picked]
 
 
 def confirm(plan: list[PlanItem], yes: bool, ask: Callable[[str], str], interactive: bool | None = None,
