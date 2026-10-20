@@ -356,3 +356,35 @@ def test_profile_plugins_name_the_backup_folder(repo, fake_runner, monkeypatch):
     lines = codex_project.plugins(THESIS, dry_run=False)
     assert not seen[0].empty
     assert any(str(seen[0].root) in line for line in lines)
+
+
+def _extension_only(fake_runner, monkeypatch):
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {"enabledPlugins": {}})
+    monkeypatch.setattr(profiles, "load_profile", lambda name: THESIS)
+    monkeypatch.setattr(targets, "claude_enabled", lambda: False)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    fake_runner.missing.add("codex")
+
+
+def test_extension_mode_sets_no_plugins_and_says_so(repo, fake_runner, monkeypatch):
+    _extension_only(fake_runner, monkeypatch)
+    for dry in (False, True):
+        assert codex_project.plugins(THESIS, dry_run=dry) == [codex_project.PLUGINS_EXTENSION_NOTE]
+    assert not any(c[:2] == ["codex", "plugin"] for c in fake_runner.calls)
+
+
+def test_profile_in_extension_mode_prints_the_note_and_exits_0(repo, fake_runner, monkeypatch, capsys):
+    _extension_only(fake_runner, monkeypatch)
+    assert project.add_profile(repo, "thesis", install=True) == 0
+    out = capsys.readouterr().out
+    assert "VS Code's Codex extension loads no plugins; the profile's Codex plugins are not set" in out
+    assert "run loadout profile again" not in out and "installed in your Codex" not in out
+    cfg = repo / ".codex" / "config.toml"
+    assert not cfg.exists() or "deepeval" not in cfg.read_text()
+
+
+def test_profile_plan_in_extension_mode_has_the_note(repo, fake_runner, monkeypatch, capsys):
+    _extension_only(fake_runner, monkeypatch)
+    assert project.add_profile(repo, "thesis", install=True, dry_run=True) == 0
+    out = capsys.readouterr().out
+    assert codex_project.PLUGINS_EXTENSION_NOTE in out and "installed in your Codex" not in out

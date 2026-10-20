@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import codex, paths, profiles
+from . import codex, paths, profiles, runner
 from .jsonio import get_dict, get_list
 
 TRUST_NOTE = ("Codex reads the repo's .codex/config.toml only in a trusted project: start `codex` here once and "
@@ -134,6 +134,9 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
     return lines
 
 
+PLUGINS_EXTENSION_NOTE = "VS Code's Codex extension loads no plugins; the profile's Codex plugins are not set"
+
+
 def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     """Install the profile's plugins in Codex; one that is not on everywhere stays switched off outside its projects."""
     from . import backup
@@ -141,6 +144,8 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     _, wanted, _ = _wanted(prof)
     if not wanted:
         return []
+    if not runner.have("codex"):  # extension mode: the extension loads no plugins, so none is installed or switched
+        return [PLUGINS_EXTENSION_NOTE]
     desired = desired_settings()
     markets = {**get_dict(desired, "extraKnownMarketplaces"), **get_dict(prof.settings, "extraKnownMarketplaces")}
     routes, missing = codex.plugin_routes({"enabledPlugins": {p: True for p in wanted}, "extraKnownMarketplaces": markets})
@@ -197,6 +202,8 @@ def _trusted(project: Path) -> bool:
 def failed_plugins(prof: profiles.Profile, lines: list[str]) -> frozenset:
     """The profile's plugins that a line reports as not installed."""
     bad = (": failed", "not installed", "no Codex route")
+    if PLUGINS_EXTENSION_NOTE in lines:
+        return frozenset(_wanted(prof)[1])
     return frozenset(pid for pid in _wanted(prof)[1]
                      if any(l.startswith((f"plugin {pid}:", f"plugin {pid.split('@')[0]}@?:")) and any(b in l for b in bad)  # @?: all failed
                             for l in lines))
