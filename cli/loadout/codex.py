@@ -50,7 +50,7 @@ def unavailable(allow_shared_home: bool = False) -> str | None:
         if ext is None:
             return why or NOT_FOUND
     found = runner.which("codex") if cli else None
-    if found and wsl.detect() is not None and wsl._on_windows_drive(Path(found), wsl.MOUNT):
+    if found and wsl.detect() is not None and wsl.is_windows_program("codex"):
         # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
         return (f"{WINDOWS_CODEX} ({found}): run bootstrap with --install to install Codex in "
                 "WSL, or set loadout up on Windows (docs/how-to/wsl.md#codex)")

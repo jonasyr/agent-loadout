@@ -53,6 +53,27 @@ def _on_windows_drive(path: Path, mount: str) -> bool:
     return len(first) == 1 and first.isalpha()
 
 
+def is_windows_program(name: str, mount: str | None = None) -> bool:
+    """The one definition of "a Windows binary seen from WSL": `name` resolves to a program under /mnt/<drive>/.
+    Callers add the WSL check (detect) themselves."""
+    found = runner.which(name)
+    return bool(found) and _on_windows_drive(Path(found), mount or MOUNT)
+
+
+WINDOWS_PROGRAM_FIX = ("`loadout bootstrap --install` installs a Linux copy (or `loadout update` offers it); its folder "
+                       "must come first in PATH, or set `appendWindowsPath = false` in `/etc/wsl.conf`")
+
+
+def _checked_tools() -> list[str]:
+    """The tools a Windows copy matters for: the catalog's wanted binaries (what bootstrap and update install),
+    the Linux tools WSL needs, and claude and codex only with their agent on."""
+    from . import bootstrap, catalog
+    tools = [e["id"] for e in catalog.binaries() if not e.get("helper") and bootstrap._wanted(e)]
+    tools = [t for t in tools if t not in ("claude", "codex")]
+    return list(dict.fromkeys((["claude"] if _claude_on() else []) + list(LINUX_TOOLS) + tools
+                              + (["codex"] if _codex_on() else [])))
+
+
 def _codex_on() -> bool:
     from . import targets
     try:
@@ -300,12 +321,9 @@ def problems(version: int, cwd: Path | None, mount: str | None = None) -> list[t
     if cwd is not None and _on_windows_drive(cwd, mount) and _real(cwd) not in {_real(p) for _, p in roots}:
         out.append((f"the current folder ({Path(cwd).as_posix()}) is on the Windows filesystem (slow, search can be incomplete)",
                     "move it into the Linux home, e.g. `~/code/...`"))
-    for tool in (("claude",) if claude else ()) + LINUX_TOOLS + (("codex",) if _codex_on() else ()):
-        found = runner.which(tool)
-        if found and _on_windows_drive(Path(found), mount):
-            out.append((f"{tool} resolves to the Windows program {found}",
-                        "install it inside WSL and put its directory first in PATH, "
-                        "or set `appendWindowsPath = false` in `/etc/wsl.conf`"))
+    for tool in _checked_tools():
+        if is_windows_program(tool, mount):
+            out.append((f"{tool} resolves to the Windows program {runner.which(tool)}", WINDOWS_PROGRAM_FIX))
     if version == 2 and claude:
         missing = [pkg for binary, pkg in SANDBOX if not runner.have(binary)]
         if missing:

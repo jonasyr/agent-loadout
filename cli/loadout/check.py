@@ -413,7 +413,7 @@ def _codex_cli_here() -> bool:
     if wsl.detect() is None:
         return runner.have("codex")
     found = runner.which("codex")
-    return bool(found) and not wsl._on_windows_drive(Path(found), wsl.MOUNT)
+    return bool(found) and not wsl.is_windows_program("codex")
 
 
 def _surface_rows(ext, windows_only: bool = False, vscode_row: bool = False) -> list[CheckResult]:

@@ -1,7 +1,7 @@
 """Bootstrap in WSL never sets up a Codex home the active Codex does not read (spec PR B)."""
 import pytest
 
-from loadout import bootstrap, codex, wsl
+from loadout import bootstrap, catalog, codex, paths, wsl
 
 
 def _win_shim(monkeypatch, tmp_path):
@@ -277,40 +277,80 @@ def test_codex_set_up_on_the_windows_side_keeps_its_open_steps(fake_home, fake_r
     assert [s.id for s in steps.pending("codex")] == ["codex/hooks"]  # Codex is on, only not set up from here
 
 
-@pytest.mark.parametrize("name", ["claude", "uv", "npm", "git", "node", "playwright-cli"])
-def test_in_wsl_a_windows_tool_on_path_counts_as_missing(fake_home, fake_runner, monkeypatch, tmp_path, name):
+@pytest.fixture
+def in_wsl(monkeypatch, tmp_path):
+    """WSL 2 on Linux (also on the Windows CI runner) with a fake /mnt; returns the Windows npm folder."""
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
-    fake_runner.paths[name] = _win_shim(monkeypatch, tmp_path).rsplit("/", 1)[0] + "/" + name
+    monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    return _win_shim(monkeypatch, tmp_path).rsplit("/", 1)[0]
+
+
+@pytest.mark.parametrize("name", ["claude", "uv", "npm", "git", "node", "playwright-cli"])
+def test_in_wsl_a_windows_tool_on_path_counts_as_missing(fake_home, fake_runner, in_wsl, name):
+    fake_runner.paths[name] = in_wsl + "/" + name
     assert bootstrap.missing_binary(name) is True
+    assert wsl.is_windows_program(name) is True
     fake_runner.paths[name] = "/home/u/.local/bin/" + name
     assert bootstrap.missing_binary(name) is False
 
 
-def test_in_wsl_node_is_missing_when_its_npm_is_the_windows_one(fake_home, fake_runner, monkeypatch, tmp_path):
-    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+def test_in_wsl_node_is_missing_when_its_npm_is_the_windows_one(fake_home, fake_runner, in_wsl):
     fake_runner.paths["node"] = "/home/u/.local/bin/node"
-    fake_runner.paths["npm"] = _win_shim(monkeypatch, tmp_path).rsplit("/", 1)[0] + "/npm"
+    fake_runner.paths["npm"] = in_wsl + "/npm"
     assert bootstrap.missing_binary("node") is True
 
 
-def test_outside_wsl_a_windows_looking_claude_is_there(fake_home, fake_runner):
+def test_outside_wsl_a_windows_looking_claude_is_there(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: None)
     fake_runner.paths["claude"] = "/mnt/c/Users/u/AppData/Roaming/npm/claude"
     assert bootstrap.missing_binary("claude") is False
 
 
-def test_in_wsl_the_report_lists_a_windows_claude_and_runs_nothing(fake_home, fake_runner, monkeypatch, tmp_path):
-    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
-    fake_runner.paths["claude"] = _win_shim(monkeypatch, tmp_path).rsplit("/", 1)[0] + "/claude"
+def _install_cmds(name):
+    entry = next(e for e in catalog.binaries() if e["id"] == name)
+    return catalog.platform_cmds(entry, "install")
+
+
+def test_in_wsl_the_report_lists_a_windows_claude_and_runs_nothing(fake_home, fake_runner, in_wsl):
+    fake_runner.paths["claude"] = in_wsl + "/claude"
     assert "claude" in [e["id"] for e, _c, _o in bootstrap.missing_tools()]
     notes: list[str] = []
     bootstrap.check_prereqs(False, lambda q: "", notes=notes)
     assert any("claude" in n and "--install" in n for n in notes)
-    assert not any("install" in " ".join(c) or c[0] in ("curl", "mise") for c in fake_runner.calls)
+    assert not any(c in fake_runner.calls for c in _install_cmds("claude"))
+    assert not any(c[0] in ("curl", "mise") for c in fake_runner.calls)
 
 
-def test_in_wsl_install_runs_the_linux_install_for_a_windows_claude(fake_home, fake_runner, monkeypatch, tmp_path):
-    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
-    fake_runner.paths["claude"] = _win_shim(monkeypatch, tmp_path).rsplit("/", 1)[0] + "/claude"
+def test_in_wsl_install_runs_the_linux_install_for_a_windows_claude(fake_home, fake_runner, in_wsl):
+    fake_runner.paths["claude"] = in_wsl + "/claude"
     bootstrap.check_prereqs(True, lambda q: "")
-    assert any("install.sh" in " ".join(c) for c in fake_runner.calls)
+    assert all(c in fake_runner.calls for c in _install_cmds("claude")) and _install_cmds("claude")
     assert not any(wsl.MOUNT in " ".join(c) for c in fake_runner.calls)
+
+
+def test_in_wsl_a_windows_claude_that_stays_first_names_the_folder_to_put_first(fake_home, fake_runner, in_wsl):
+    fake_runner.paths["claude"] = in_wsl + "/claude"
+    notes: list[str] = []
+    bootstrap.check_prereqs(False, lambda q: "", notes=notes)
+    assert any("claude" in n and ".local/bin" in n and "PATH" in n for n in notes)
+    notes.clear()
+    bootstrap.check_prereqs(True, lambda q: "", notes=notes)  # fake PATH order is not changed by the install
+    line = next(n for n in notes if "still" in n)
+    assert ".local/bin" in line and "first in PATH" in line and "appendWindowsPath" in line
+    assert "fixed" not in line
+
+
+def test_in_wsl_a_windows_git_says_to_use_the_package_manager(fake_home, fake_runner, in_wsl):
+    fake_runner.paths["git"] = in_wsl + "/git"
+    notes: list[str] = []
+    bootstrap.check_prereqs(True, lambda q: "", notes=notes)
+    assert any("missing" in n and "git" in n and "inside WSL with your package manager (sudo apt install git)" in n
+               for n in notes)
+
+
+def test_in_wsl_problems_cover_a_windows_only_catalog_tool(fake_home, fake_runner, in_wsl):
+    fake_runner.paths["playwright-cli"] = in_wsl + "/playwright-cli"
+    found = wsl.problems(2, None)
+    assert any("playwright-cli" in p and "Windows program" in p for p, _f in found)
+    fixes = " ".join(f for p, f in found if "playwright-cli" in p)
+    assert "loadout bootstrap --install" in fixes and "loadout update" in fixes and "first in PATH" in fixes

@@ -160,12 +160,6 @@ def _tail(res: runner.Result, limit: int = 400) -> str:
     return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
 
 
-def _windows_program(name: str) -> bool:
-    """In WSL: the name resolves to a program on a Windows drive (/mnt/<drive>/...)."""
-    found = runner.which(name)
-    return bool(found) and wsl._on_windows_drive(Path(found), wsl.MOUNT)
-
-
 def missing_binary(name: str) -> bool:
     """Not on PATH, or (in WSL) one that resolves to a Windows program under /mnt/<drive>/ (node also when its npm
     does): --install then installs the Linux copy in the home; the Windows one stays untouched."""
@@ -173,7 +167,25 @@ def missing_binary(name: str) -> bool:
         return True
     if wsl.detect() is None:
         return False
-    return any(_windows_program(n) for n in (("node", "npm") if name == "node" else (name,)))
+    return any(wsl.is_windows_program(n) for n in (("node", "npm") if name == "node" else (name,)))
+
+
+def _linux_folder(name: str) -> str:
+    """Where the Linux copy of a tool lands: the tool folder that holds it, else ~/.local/bin."""
+    for d in paths.tool_dirs():
+        if (d / name).exists():
+            return str(d)
+    return "~/.local/bin"
+
+
+def _windows_first_note(name: str, installed: bool = False) -> str:
+    """A WSL line for a tool whose Windows copy is still found first. Bootstrap does not change the PATH order."""
+    found = runner.which(name)
+    folder = _linux_folder(name)
+    still = "still " if installed else ""
+    return (f"{name} {still}resolves to the Windows program {found}; the Windows one stays untouched. Put {folder} "
+            f"first in PATH (a line in your shell profile: export PATH=\"{folder}:$PATH\"), or set "
+            "`appendWindowsPath = false` in `/etc/wsl.conf`; bootstrap does not change the order")
 
 
 RECOMMENDED_WHY = {"codex": "recommended next to VS Code's Codex extension, for /hooks and plugins",
@@ -267,10 +279,17 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
             if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
+            if missing_binary(name) and wsl.detect() is not None and wsl.is_windows_program(name):
+                note(_windows_first_note(name, installed=True), problem=True)
         if missing_binary(name):
             failed.add(name)
             if not entry.get("helper"):
                 hint = "re-run with --install" if cmds else entry.get("manual", "")
+                if wsl.detect() is not None and wsl.is_windows_program(name):
+                    if cmds:
+                        hint = f"{hint}; {_windows_first_note(name)}"
+                    elif name == "git":
+                        hint = "install git inside WSL with your package manager (sudo apt install git)"
                 why = RECOMMENDED_WHY.get(name, "") if name in recommended else ""
                 tag = f"({why}) " if why else "(required) " if entry.get("required") else ""
                 note(f"missing {tag}{name}: {hint}")
