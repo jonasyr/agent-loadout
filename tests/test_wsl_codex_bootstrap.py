@@ -381,11 +381,14 @@ def _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy: bool):
         (win / tool).write_text("x")
     shims = fake_home / ".local" / "share" / "mise" / "shims"
     shims.mkdir(parents=True)
+    local_bin = fake_home / ".local" / "bin"  # node needs mise: a Linux mise, so node is not blocked by it
+    local_bin.mkdir(parents=True, exist_ok=True)
+    (local_bin / "mise").write_text("x")
     if linux_copy:
         for tool in ("node", "npm"):
             (shims / tool).write_text("x")
             (shims / tool).chmod(0o755)
-    monkeypatch.setenv("PATH", os.pathsep.join([str(win), str(shims), os.environ.get("PATH", "")]))
+    monkeypatch.setenv("PATH", os.pathsep.join([str(local_bin), str(win), str(shims)]))  # none of the real PATH
     return shims
 
 
@@ -397,10 +400,12 @@ def test_in_wsl_after_install_the_linux_copy_comes_first_for_this_run(fake_home,
     shims = _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy=True)
     notes: list[str] = []
     missing = bootstrap.check_prereqs(True, lambda q: "", notes=notes)
-    assert os.environ["PATH"].split(os.pathsep)[0] == str(shims)
+    order = os.environ["PATH"].split(os.pathsep)
+    assert order.index(str(shims)) < order.index(in_wsl), "the Linux copy must come before the Windows one"
     assert "node" not in missing and not any("because node failed" in n for n in notes)
-    assert sum("first in PATH" in n and "node" in n for n in notes) == 1
-    assert "re-run with --install" not in "\n".join(notes)
+    node_notes = [n for n in notes if "node" in n]
+    assert sum("first in PATH" in n for n in node_notes) == 1
+    assert not any("re-run with --install" in n for n in node_notes)
 
 
 def test_in_wsl_without_a_linux_copy_after_install_dependents_wait(fake_home, fake_runner, monkeypatch, in_wsl):
@@ -442,3 +447,20 @@ def test_in_wsl_update_uses_the_new_linux_copy_and_names_the_path_line(fake_home
     assert os.environ["PATH"].split(os.pathsep)[0] == str(shims)
     assert any(c.startswith("node: installed") and "first in PATH" in c for c in summary.changed)
     assert not summary.failed
+
+
+def test_in_wsl_a_linux_node_with_a_windows_npm_gets_its_folder_first(fake_home, fake_runner, monkeypatch, in_wsl):
+    """node is Linux but npm is the Windows one: after installing node the Linux npm must come first too."""
+    import os
+    _path_order_which(monkeypatch, fake_runner)
+    shims = _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy=True)
+    linux_node = fake_home / "usr-bin"
+    linux_node.mkdir()
+    (linux_node / "node").write_text("x")
+    (Path(in_wsl) / "node").unlink()  # only the Windows npm is left on the Windows side
+    monkeypatch.setenv("PATH", os.pathsep.join([str(fake_home / ".local" / "bin"), str(linux_node), in_wsl, str(shims)]))
+    notes: list[str] = []
+    missing = bootstrap.check_prereqs(True, lambda q: "", notes=notes)
+    order = os.environ["PATH"].split(os.pathsep)
+    assert order.index(str(shims)) < order.index(in_wsl), "the Linux npm must come before the Windows one"
+    assert "node" not in missing and not any("because node failed" in n for n in notes)

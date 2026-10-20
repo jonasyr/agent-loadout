@@ -182,6 +182,12 @@ def _linux_folder(name: str) -> str:
     return "~/.local/bin"
 
 
+def windows_first(name: str) -> bool:
+    """WSL: the tool (for node: node or its npm) resolves to the Windows program."""
+    return wsl.detect() is not None and any(wsl.is_windows_program(n)
+                                            for n in (("node", "npm") if name == "node" else (name,)))
+
+
 def _linux_copy_first(name: str) -> bool:
     """WSL, right after an install: put the folder that holds the new Linux copy first in this run's PATH, so the
     next installs (npm install -g, mise use) run the Linux tool, not the Windows one; new shells still need the
@@ -295,7 +301,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             _, problems = install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
             if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
-            if missing_binary(name) and wsl.detect() is not None and wsl.is_windows_program(name):
+            if missing_binary(name) and windows_first(name):
                 note(_windows_first_note(name, installed=True), problem=True)
                 if not problems and _linux_copy_first(name):
                     if installed is not None and not entry.get("helper"):
