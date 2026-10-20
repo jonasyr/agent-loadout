@@ -144,8 +144,11 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     _, wanted, _ = _wanted(prof)
     if not wanted:
         return []
-    if not runner.have("codex"):  # extension mode: the extension loads no plugins, so none is installed or switched
-        return [PLUGINS_EXTENSION_NOTE]
+    if not runner.have("codex"):
+        if codex.extension_state()[0] is not None:  # extension mode: it loads no plugins, so none is installed or switched
+            return [PLUGINS_EXTENSION_NOTE]
+        why = codex.unavailable() or codex.NOT_FOUND  # neither a CLI nor a usable extension: a failure, not a note
+        return [f"plugin {pid}: not installed ({why})" for pid in wanted]
     desired = desired_settings()
     markets = {**get_dict(desired, "extraKnownMarketplaces"), **get_dict(prof.settings, "extraKnownMarketplaces")}
     routes, missing = codex.plugin_routes({"enabledPlugins": {p: True for p in wanted}, "extraKnownMarketplaces": markets})

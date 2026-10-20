@@ -364,6 +364,7 @@ def _extension_only(fake_runner, monkeypatch):
     monkeypatch.setattr(targets, "claude_enabled", lambda: False)
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
     fake_runner.missing.add("codex")
+    monkeypatch.setattr(codex, "extension_state", lambda: (object(), None))  # a usable extension
 
 
 def test_extension_mode_sets_no_plugins_and_says_so(repo, fake_runner, monkeypatch):
@@ -388,3 +389,15 @@ def test_profile_plan_in_extension_mode_has_the_note(repo, fake_runner, monkeypa
     assert project.add_profile(repo, "thesis", install=True, dry_run=True) == 0
     out = capsys.readouterr().out
     assert codex_project.PLUGINS_EXTENSION_NOTE in out and "installed in your Codex" not in out
+
+
+def test_profile_with_no_codex_and_no_usable_extension_fails_with_the_reason(repo, fake_runner, monkeypatch, capsys):
+    _extension_only(fake_runner, monkeypatch)
+    monkeypatch.setattr(codex, "extension_state", lambda: (None, codex.EXT_OLD.format(version="0.100.0")))
+    lines = codex_project.plugins(THESIS, dry_run=False)
+    assert codex_project.PLUGINS_EXTENSION_NOTE not in lines
+    assert lines and all("0.100.0" in l and "not installed" in l for l in lines)
+    assert project.add_profile(repo, "thesis", install=True) == 1
+    out = capsys.readouterr().out
+    assert codex_project.PLUGINS_EXTENSION_NOTE not in out and "installed in your Codex" not in out
+    assert "0.100.0" in out
