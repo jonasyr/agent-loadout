@@ -191,3 +191,28 @@ def test_the_add_yourself_line_names_matchers_and_timeouts(hooks):
     hooks.write_text('{\n   "hooks": {}\n}\n')  # 3-space indent: loadout cannot reproduce it
     (line,) = codex_hooks.apply(backup.Backup(description="t"))
     assert '"matcher": "Bash"' in line and '"timeout": 5' in line and "hooks.md" in line
+
+
+def _hooks_check(monkeypatch):
+    for name, value in (("enabled", lambda: True), ("unavailable", lambda: None), ("hooks_status", lambda: "trusted"),
+                        ("logins_needed", lambda: []), ("drift", lambda: []),
+                        ("installed_plugins", lambda: {"loadout@agent-loadout"}),
+                        ("apply_config", lambda bk, dry_run=False: [])):
+        monkeypatch.setattr(codex, name, value)
+    (r,) = [r for r in codex.checks() if r.name == "Codex Serena hooks"]
+    return r
+
+
+def test_the_fix_for_inline_hooks_names_config_toml_not_hooks_json(hooks, monkeypatch):
+    (paths.codex_home() / "config.toml").write_text('[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "echo hi"\n')
+    r = _hooks_check(monkeypatch)
+    assert not r.ok and "config.toml" in r.fix and "hooks.json" not in r.fix, r.fix
+
+
+def test_the_hooks_fix_names_the_real_codex_home(hooks, monkeypatch, tmp_path):
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(other))
+    (other / "config.toml").write_text('[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "echo hi"\n')
+    r = _hooks_check(monkeypatch)
+    assert str(other / "config.toml") in r.fix and "~/.codex" not in r.fix, r.fix

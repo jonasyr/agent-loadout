@@ -32,6 +32,13 @@ def set_enabled(on: bool) -> str:
     return targets.set_target("codex", on)
 
 
+NOT_FOUND = "codex not found on PATH"
+WINDOWS_CODEX = "the codex on PATH is the Windows one"
+SHARED_HOME = "CODEX_HOME points into Windows"
+NO_VERSION = "could not read codex --version"
+TOO_OLD = " is too old; loadout needs"
+
+
 def unavailable(allow_shared_home: bool = False) -> str | None:
     """None when a usable codex is on PATH, or, without one, when VS Code's Codex extension on this side runs a usable
     codex (extension mode); else the reason in one line. In WSL, a Windows codex and a CODEX_HOME that points into
@@ -41,26 +48,42 @@ def unavailable(allow_shared_home: bool = False) -> str | None:
     if not cli:
         ext, why = extension_state()  # VS Code's Codex extension alone: loadout sets Codex up for it
         if ext is None:
-            return why or "codex not found on PATH"
+            return why or NOT_FOUND
     found = runner.which("codex") if cli else None
     if found and wsl.detect() is not None and wsl._on_windows_drive(Path(found), wsl.MOUNT):
         # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
-        return (f"the codex on PATH is the Windows one ({found}): run bootstrap with --install to install Codex in "
+        return (f"{WINDOWS_CODEX} ({found}): run bootstrap with --install to install Codex in "
                 "WSL, or set loadout up on Windows (docs/how-to/wsl.md#codex)")
     shared = os.environ.get("CODEX_HOME", "")
     if (not allow_shared_home and shared and wsl.detect() is not None
             and wsl._on_windows_drive(Path(shared), wsl.MOUNT)):
-        return (f"CODEX_HOME points into Windows ({shared}): both sides would read loadout's WSL commands; unset it "
+        return (f"{SHARED_HOME} ({shared}): both sides would read loadout's WSL commands; unset it "
                 "in WSL, or run bootstrap with --codex-side wsl to set it up anyway (docs/how-to/wsl.md#codex)")
     if not cli:
         return None  # extension mode: the extension's codex was checked in extension_state
     res = runner.run(["codex", "--version"], timeout=20)
     m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
     if not m:
-        return "could not read codex --version"
+        return NO_VERSION
     if (int(m.group(1)), int(m.group(2))) < MIN_VERSION:
         return f"codex {m.group(0)} is too old; loadout needs 0.161 or newer (update it: mise upgrade codex)"
     return None
+
+
+def unavailable_fix(problem: str) -> str:
+    """The fix line for the `Codex` check row: one per cause that `unavailable` names."""
+    if problem.startswith(NOT_FOUND):
+        return "install it: loadout bootstrap --install (or turn Codex off: loadout configure set target codex off)"
+    if problem.startswith("VS Code's Codex extension"):
+        return "update VS Code's Codex extension, or install the Codex CLI: loadout bootstrap --install"
+    if problem.startswith(WINDOWS_CODEX):
+        return ("loadout bootstrap --install (installs Codex in WSL), or set loadout up on Windows "
+                "(docs/how-to/wsl.md#codex)")
+    if problem.startswith(SHARED_HOME):
+        return "unset CODEX_HOME in WSL, or: loadout bootstrap --codex-side wsl"
+    if problem.startswith(NO_VERSION) or TOO_OLD in problem:
+        return "mise upgrade codex (or update it the way you installed it), then loadout update"
+    return "install or update codex (mise use -g codex), or: loadout configure set target codex off"
 
 
 EXT_OLD = ("VS Code's Codex extension runs codex {version}; loadout needs 0.161 or newer: update the extension in "
@@ -95,7 +118,8 @@ def extension_state():
 
 
 def program() -> str:
-    """The codex to run read-only commands with: the CLI, else the VS Code extension's own (extension mode)."""
+    """The codex for loadout's own `codex mcp` commands: the CLI, else the VS Code extension's own (extension mode).
+    Besides `mcp list` it runs one write, `mcp remove` (remove_server saves config.toml first; ADR 0033)."""
     if runner.have("codex"):
         return "codex"
     ext, _ = extension_state()
@@ -1298,13 +1322,29 @@ def apply_all(bk, refresh: bool = False, say=None, command: str = "setup", on_wa
     return [line for key in PARTS for line in parts[key]]
 
 
+def _hooks_fix(lines: list[str]) -> str:
+    """The fix per line of codex_hooks.apply(dry_run=True), naming the real files (CODEX_HOME honoured)."""
+    from . import codex_hooks
+    fixes = []
+    for line in lines:
+        fix = (f"add the listed entries to [hooks] in {_tilde(paths.codex_home() / 'config.toml')}"
+               if codex_hooks.INLINE_MISSING in line
+               else f"remove loadout's old serena-hooks entries from {_tilde(codex_hooks.path())} by hand"
+               if codex_hooks.OLD_LEFT in line
+               else f"add the listed entries to {_tilde(codex_hooks.path())} by hand"
+               if codex_hooks.FORMAT_MISSING in line else "loadout bootstrap")
+        if fix not in fixes:
+            fixes.append(fix)
+    return "; ".join(fixes)
+
+
 def checks() -> list:
     from .check import CheckResult
     if not enabled():
         return []
     problem = unavailable()
     if problem:
-        return [CheckResult("Codex", False, problem, "install or update codex (mise use -g codex), or: loadout configure set target codex off", "warn")]
+        return [CheckResult("Codex", False, problem, unavailable_fix(problem), "warn")]
     results = [CheckResult("Codex", True)]
     cli = runner.have("codex")
     if cli:
@@ -1330,9 +1370,8 @@ def checks() -> list:
     results.append(CheckResult("Codex config", not pending, "; ".join(pending), fix, "warn"))
     from . import codex_hooks
     pending_hooks = codex_hooks.apply(object(), dry_run=True)
-    hooks_fix = ("add the listed entries to ~/.codex/hooks.json" if pending_hooks
-                 and all("add these yourself" in line for line in pending_hooks) else "loadout bootstrap")
-    results.append(CheckResult("Codex Serena hooks", not pending_hooks, "; ".join(pending_hooks), hooks_fix, "warn"))
+    results.append(CheckResult("Codex Serena hooks", not pending_hooks, "; ".join(pending_hooks),
+                               _hooks_fix(pending_hooks), "warn"))
     from .settings_merge import desired_settings
     missing = plugin_routes(desired_settings())[1]
     if missing:

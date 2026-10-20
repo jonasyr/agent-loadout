@@ -74,3 +74,23 @@ def test_check_still_fails_without_cli_and_extension(fake_home, fake_runner, mon
     fake_runner.missing.add("codex")
     (row,) = [r for r in check._binaries() if r.name == "binary codex"]
     assert row.severity == "error"
+
+
+@pytest.mark.parametrize("problem, wanted, unwanted", [
+    ("codex not found on PATH", "loadout bootstrap --install", "mise use -g codex"),
+    (codex.EXT_OLD.format(version="0.145.0"), "update VS Code's Codex extension", "mise use -g codex"),
+    (codex.EXT_NOVERSION, "update VS Code's Codex extension", "mise use -g codex"),
+    ("the codex on PATH is the Windows one (/mnt/c/x/codex.exe): run bootstrap with --install to install Codex in WSL, "
+     "or set loadout up on Windows (docs/how-to/wsl.md#codex)", "installs Codex in WSL", "mise"),
+    ("CODEX_HOME points into Windows (/mnt/c/h): both sides would read loadout's WSL commands; unset it in WSL, or "
+     "run bootstrap with --codex-side wsl to set it up anyway (docs/how-to/wsl.md#codex)", "unset CODEX_HOME", "mise"),
+    ("codex 0.100.0 is too old; loadout needs 0.161 or newer (update it: mise upgrade codex)", "mise upgrade codex",
+     "mise use -g codex"),
+    ("could not read codex --version", "mise upgrade codex", "mise use -g codex"),
+    ("something new", "loadout configure set target codex off", "VS Code"),
+])
+def test_each_cause_of_the_codex_row_gets_its_own_fix(fake_home, fake_runner, monkeypatch, problem, wanted, unwanted):
+    monkeypatch.setattr(codex, "enabled", lambda: True)
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: problem)
+    (r,) = [r for r in codex.checks() if r.name == "Codex"]
+    assert not r.ok and r.detail == problem and wanted in r.fix and unwanted not in r.fix, r.fix

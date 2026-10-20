@@ -95,6 +95,11 @@ def _record() -> dict:
     return codex.read_record()
 
 
+INLINE_MISSING = "add these yourself to its [hooks]"  # markers of apply's lines; codex._hooks_fix keys the fix on them
+FORMAT_MISSING = "add these yourself (loadout cannot reproduce"
+OLD_LEFT = "loadout's old Serena hooks are still in it"
+
+
 def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     """keep: never remove loadout's entries (the background sync, whose PATH can lack Serena's folder; a removal
     would also shift the positions Codex keys its approvals on)."""
@@ -138,7 +143,7 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     missing = [(e, m, s, t) for e, m, s, t in wanted if not _present(both, e, s)]
     if missing and inline and not p.exists():  # the user keeps hooks in config.toml: a hooks.json beside it is mixed
         snippet = "; ".join(f"{e}: {json.dumps(_group(m, s, t))}" for e, m, s, t in missing)
-        return [f"{paths.codex_home() / 'config.toml'}: Serena hooks missing, add these yourself to its [hooks] "
+        return [f"{paths.codex_home() / 'config.toml'}: Serena hooks missing, {INLINE_MISSING} "
                 f"(loadout creates no hooks.json next to inline hooks): {snippet}"]
     for e, m, s, t in missing:
         group = _group(m, s, t)
@@ -165,8 +170,8 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     if old and style is None:
         snippet = "; ".join(f"{e}: {json.dumps(_group(m, s, t))}" for e, m, s, t in missing)
         snippet += " (the table in docs/reference/hooks.md, section \"Serena's hooks in Codex\")"
-        return [f"{p}: Serena hooks missing, add these yourself (loadout cannot reproduce that file's format): "
-                f"{snippet}" if missing else f"{p}: loadout's old Serena hooks are still in it; remove them yourself"]
+        return [f"{p}: Serena hooks missing, {FORMAT_MISSING} that file's format): "
+                f"{snippet}" if missing else f"{p}: {OLD_LEFT}; remove them yourself"]
     if dry_run:
         return [f"{p}: Serena hooks pending"]
     if p.exists():  # every rewrite, so `loadout restore` of this run puts the file back as it was
