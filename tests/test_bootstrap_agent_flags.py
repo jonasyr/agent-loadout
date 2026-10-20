@@ -118,3 +118,10 @@ def test_personal_new_in_any_case_is_a_starter(fake_home, fake_runner):
 def test_without_a_terminal_the_answers_are_named_as_applied(fake_home, fake_runner, tmp_path, capsys):
     _run(answers=_answers(tmp_path, {"preferences": {"answer_language": "german"}}))
     assert "your answers and the defaults applied" in capsys.readouterr().out
+
+
+def test_the_agents_help_names_the_stored_choice():
+    from loadout.__main__ import build_parser
+    boot = build_parser()._subparsers._group_actions[0].choices["bootstrap"]
+    (action,) = [a for a in boot._actions if a.dest == "agents"]
+    assert "personal layer" in action.help and "stored" in action.help

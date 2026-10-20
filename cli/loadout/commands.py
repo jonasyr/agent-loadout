@@ -166,7 +166,7 @@ def _register_bootstrap(sub):
     p.add_argument("--no-plugins", action="store_true", help="skip adding marketplaces and installing plugins (offline/CI)")
     p.add_argument("--no-adopt", action="store_true", help="skip reviewing the existing setup")
     p.add_argument("--verbose", action="store_true", help="print every detail of every step")
-    p.add_argument("--agents", help="claude, codex or claude,codex (default: ask; Claude Code without a terminal)")
+    p.add_argument("--agents", help="claude, codex or claude,codex; stored in your personal layer (default: the personal layer's stored choice, else ask; Claude Code without a terminal)")
     p.add_argument("--personal", metavar="new|URL",
                    help="the personal layer without asking: new (a starter) or the git URL to clone")
     p.add_argument("--answers", metavar="FILE",
