@@ -539,3 +539,18 @@ def test_a_checkout_with_nothing_to_follow_is_listed_as_not_refreshed(fake_home,
     assert str(personal) in line and reason in line and "upstream" in line
     assert "everything was already current" not in changed
     assert maintenance.paused() == {} and not (paths.state_dir() / "pending-notice").exists()  # the daily sync stays quiet
+
+
+def test_a_personal_layer_with_nothing_to_follow_survives_the_kit_restart(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    personal = paths.personal_root()
+    (personal / ".git").mkdir(parents=True)
+    fake_runner.responses[("git", "-C", str(personal), "symbolic-ref")] = runner.Result(1, "", "")
+    _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["aaa", "bbb", "bbb"], str(personal): ["ppp"]})
+    monkeypatch.setattr(update, "_exec", lambda argv: update.run(True, lambda q: "", argv=argv[1:]))
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    changed = _changed(capsys.readouterr().out)
+    line = next(l for l in changed.splitlines() if "not refreshed" in l)
+    assert str(personal) in line and "detached HEAD" in line and "upstream" in line
+    assert "kit: pulled new commits" in changed
