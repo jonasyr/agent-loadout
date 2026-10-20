@@ -686,13 +686,13 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     removed = False  # an owned section that goes gets its own backup copy
     states = _ownership(sections, owned_tables)
     still_ours = {name for name, state in states.items() if state == "ours"}  # an edited section is yours from now on
-    tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
 
     def find(path_):
         return next((s for s in sections if s[0] == path_), None)
 
     # a table loadout wrote and you changed: yours, said once (here or at a session start), then never again
     released = {n for n in _released(record, "released") if find(("mcp_servers", n)) is not None}
+    tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
     # tables: drop or keep what loadout wrote, never touch anything else
     for name, text in list(owned_tables.items()):
         state = states[name]
@@ -714,6 +714,9 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         existing = find(("mcp_servers", name))
         if existing is not None:
             if name in released:
+                if _text(existing[1]) == text:  # you put loadout's exact text back: loadout's again, quietly
+                    released.discard(name)
+                    owned_tables[name] = text
                 continue  # yours: no warning
             if owned_tables.get(name) != text and not _same_table(existing[1], text, tl):
                 lines.append(f"mcp {name}: left as is, config.toml already has a server of that name")
@@ -756,7 +759,10 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             released_keys.discard(dotted)
             switched = switched or plugin
         elif target[1][found].strip() == line:
-            pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
+            if dotted in released_keys:  # you put loadout's value back: loadout's again, quietly
+                released_keys.discard(dotted)
+                owned_keys[dotted] = line
+            # otherwise the line stays whoever wrote it (owned only if loadout wrote it before)
         elif force is True or target[1][found].strip() in (owned_keys.get(dotted), install_lines.get(dotted)):
             target[1][found] = line
             owned_keys[dotted] = line
@@ -845,6 +851,15 @@ def refresh_record() -> list[str]:
         released_keys = set(_released(record, "released_keys"))
         notes = []
         shown = _tilde(path)
+        if released:  # a table you put back to loadout's exact text is loadout's again (no note)
+            data = tl.loads(text)
+            still_ours = {n for n, st in _ownership(sections, owned_tables).items() if st == "ours"}
+            wanted = desired_tables(skip_serena=user_serena(data, still_ours) is not None)[0]  # as apply_config
+            for name in sorted(released):
+                sec = next(s for s in sections if s[0] == ("mcp_servers", name))
+                if wanted.get(name) == _text(sec[1]):
+                    released.discard(name)
+                    owned_tables[name] = wanted[name]
         for name, state in _ownership(sections, owned_tables).items():
             if state == "ours":
                 continue
@@ -860,6 +875,10 @@ def refresh_record() -> list[str]:
             if found is None or force is True:
                 continue
             current = target[1][found].strip()
+            if current == f"{key} = {toml_value(value)}" and dotted in released_keys:  # loadout's value again
+                released_keys.discard(dotted)
+                owned_keys[dotted] = current
+                continue
             if current == f"{key} = {toml_value(value)}" or current in (owned_keys.get(dotted), install_lines.get(dotted)):
                 continue  # loadout's value, or a line loadout wrote: the next run updates it
             owned_keys.pop(dotted, None)
@@ -927,8 +946,16 @@ def explain_config() -> list[str]:
         else:
             state = "changed by you (yours now)"
         out.append(f"  {dotted}  {state}")
-    out += [f"  mcp {n}  yours (you changed it; loadout no longer manages it)" for n in released]
-    out += [f"  {k}  yours (your value; loadout no longer manages it)" for k in released_keys]
+    out += [f"  mcp {n}  yours (you changed it; loadout no longer manages it)" for n in released
+            if any(s[0] == ("mcp_servers", n) for s in sections)]  # a deleted section is nobody's entry
+
+    def present(dotted):
+        try:
+            *table, key = _key_path(dotted, tl)
+        except Exception:
+            return False
+        return _find_key(sections, tuple(table), key)[1] is not None
+    out += [f"  {k}  yours (your value; loadout no longer manages it)" for k in released_keys if present(k)]
     return out + ["  everything else in this file is yours; loadout does not change it"]
 
 

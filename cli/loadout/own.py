@@ -725,10 +725,18 @@ def _global_mcp(v: Verdict, bk) -> Recorded:
             bk.save_copy(record, "codex-config.json before recording a Codex server")
         else:
             bk.record_created(record, "codex-config.json")
-        out = [codex.remove_server(name, bk)]  # loadout writes its own table from the personal layer next
-        if ": failed:" in out[0]:  # adopt counts it as not done; the section stays the user's until removed
-            raise OSError(f"{out[0]}; run `codex mcp remove {name}`, then `loadout bootstrap` (it re-applies the setup)")
-        out += codex.apply_config(bk)
+        from . import locks
+        lock = codex._lock(locks.foreground_wait(), "adopt")  # codex-config.json has other writers (session start)
+        if lock is None:
+            raise OSError(f"mcp {name}: {locks.busy_message(codex.LOCK)}")
+        try:
+            out = [codex.remove_server(name, bk)]  # loadout writes its own table from the personal layer next
+            if ": failed:" in out[0]:  # adopt counts it as not done; the section stays the user's until removed
+                raise OSError(f"{out[0]}; run `codex mcp remove {name}`, then `loadout bootstrap` (it re-applies "
+                              "the setup)")
+            out += codex.apply_config(bk)
+        finally:
+            lock.release()
         if targets.claude_enabled():
             out += personal_mcp.apply_mcp()
         return out

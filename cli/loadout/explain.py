@@ -87,11 +87,19 @@ def _gitignore(path: Path) -> int:
 
 
 def _codex_file(path: Path) -> str | None:
-    """"config" or "hooks" when path is Codex's own config.toml or hooks.json (CODEX_HOME honoured), else None."""
-    from . import paths
-    home = paths.codex_home()
-    same = lambda a, b: os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))  # noqa: E731
-    return "config" if same(path, home / "config.toml") else "hooks" if same(path, home / "hooks.json") else None
+    """"config" or "hooks" when path is Codex's own config.toml or hooks.json, else None. ~/.codex/FILE means the
+    real Codex file also with CODEX_HOME set. Links are followed only with Codex on (with it off, nothing in a
+    Codex folder is touched)."""
+    from . import paths, targets
+    files = {"config.toml": "config", "hooks.json": "hooks"}
+    plain = lambda p: os.path.normcase(os.path.abspath(p))  # noqa: E731
+    for name, which in files.items():
+        if plain(path) in (plain(paths.codex_home() / name), plain(paths.home() / ".codex" / name)):
+            return which
+    if not targets.codex_enabled():
+        return None
+    real = lambda p: os.path.normcase(os.path.realpath(p))  # noqa: E731
+    return next((which for name, which in files.items() if real(path) == real(paths.codex_home() / name)), None)
 
 
 def explain(target: str, cwd: Path | None = None) -> int:

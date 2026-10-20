@@ -152,37 +152,44 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
     if dry_run:
         return lines + [f"would install plugin {name} for Codex (from {src})" for src, names in routes.items() for name in names]
-    listed = codex.installed_plugins()
-    if listed is None:  # without the list, loadout cannot tell your plugins from new ones: install nothing
-        return lines + [f"plugin {name}@?: not installed (could not list Codex plugins; run loadout profile again)"
-                        for names in routes.values() for name in names]
-    bk = backup.Backup(description=f"loadout profile {prof.name} (Codex)")
-    out, installed = codex._install_routes(routes, bk, False, lambda line: None, listed)
-    lines += out
-    for pid in wanted:  # name each plugin of a failed marketplace by its full id, so only that route is skipped
-        src = next(iter(codex.plugin_routes({"enabledPlugins": {pid: True}, "extraKnownMarketplaces": markets})[0]), None)
-        if src is not None and f"marketplace {src}: failed:" in "\n".join(out):
-            lines.append(f"plugin {pid}: not installed (its marketplace failed)")
-    on = get_dict(desired, "enabledPlugins")
-    for pid in wanted:
-        if on.get(pid) is True or pid in codex.project_plugins():
-            continue
-        if pid in (listed or ()):  # installed by the user: their switch stays as it is
-            lines.append(f"plugin {pid}: already installed in Codex, left on everywhere")
-        elif pid in installed:
-            cfg = paths.codex_home() / "config.toml"
-            if cfg.exists():  # the switch below goes into it; restore must take it out again
-                bk.save_copy(cfg, f"Codex config.toml before switching {pid} off outside its projects")
-            record = codex.record_path()
-            if record.exists():
-                bk.save_copy(record, "codex-config.json before recording a project plugin")
-            else:
-                bk.record_created(record, "codex-config.json")
-            codex.add_project_plugin(pid)
-    lines += codex.apply_config(bk)
-    if not bk.empty:
-        lines.append(f"backup: {bk.root} (undo: loadout restore {bk.root})")
-    return lines
+    from . import locks
+    lock = codex._lock(locks.foreground_wait(), "profile")  # codex-config.json has other writers (session start)
+    if lock is None:
+        return lines + [f"plugins: skipped: {locks.busy_message(codex.LOCK)}"]
+    try:
+        listed = codex.installed_plugins()
+        if listed is None:  # without the list, loadout cannot tell your plugins from new ones: install nothing
+            return lines + [f"plugin {name}@?: not installed (could not list Codex plugins; run loadout profile again)"
+                            for names in routes.values() for name in names]
+        bk = backup.Backup(description=f"loadout profile {prof.name} (Codex)")
+        out, installed = codex._install_routes(routes, bk, False, lambda line: None, listed)
+        lines += out
+        for pid in wanted:  # name each plugin of a failed marketplace by its full id, so only that route is skipped
+            src = next(iter(codex.plugin_routes({"enabledPlugins": {pid: True}, "extraKnownMarketplaces": markets})[0]), None)
+            if src is not None and f"marketplace {src}: failed:" in "\n".join(out):
+                lines.append(f"plugin {pid}: not installed (its marketplace failed)")
+        on = get_dict(desired, "enabledPlugins")
+        for pid in wanted:
+            if on.get(pid) is True or pid in codex.project_plugins():
+                continue
+            if pid in (listed or ()):  # installed by the user: their switch stays as it is
+                lines.append(f"plugin {pid}: already installed in Codex, left on everywhere")
+            elif pid in installed:
+                cfg = paths.codex_home() / "config.toml"
+                if cfg.exists():  # the switch below goes into it; restore must take it out again
+                    bk.save_copy(cfg, f"Codex config.toml before switching {pid} off outside its projects")
+                record = codex.record_path()
+                if record.exists():
+                    bk.save_copy(record, "codex-config.json before recording a project plugin")
+                else:
+                    bk.record_created(record, "codex-config.json")
+                codex.add_project_plugin(pid)
+        lines += codex.apply_config(bk)
+        if not bk.empty:
+            lines.append(f"backup: {bk.root} (undo: loadout restore {bk.root})")
+        return lines
+    finally:
+        lock.release()
 
 
 def _trusted(project: Path) -> bool:
