@@ -429,10 +429,11 @@ def _show(result: apply.StepResult, summary: Summary) -> None:
     for fact in sorted(result.facts):
         if fact == "skipped:codex":
             summary.failed.append(("Codex: not run (another loadout run held its lock)", AGAIN))
-        elif fact.startswith("failed:"):
+        elif fact.startswith("failed:"):  # each failed or refused item, as the step printed it (redacted there)
             step = fact.split(":", 1)[1]
-            summary.failed.append((f"{STEP_NAMES.get(step, step)}: some items failed (listed above)",
-                                   f"{AGAIN}; details with loadout update --verbose"))
+            for line in apply.refused(result.lines) or ["some items failed (listed above)"]:
+                summary.failed.append((f"{STEP_NAMES.get(step, step)}: {out.printable(redact(line))}",
+                                       f"do what the line says, then {AGAIN}; details with loadout update --verbose"))
         elif fact in FACT_LINES:
             summary.changed.append(FACT_LINES[fact])
 

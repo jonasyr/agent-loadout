@@ -7,7 +7,8 @@ per-item lines (callers print them their own way) and the facts, what the step c
 - codex_step: codex_block_written, codex_config_changed, serena_hooks_added, codex_hooks_removed,
   codex_skills_linked, codex_plugins_installed, codex_plugins_updated
 - any step: failed:<step> (links, settings, claude_plugins, codex) when one of its lines has a failure in the
-  forms loadout prints (": failed", "failed to ")
+  forms loadout prints (": failed", "failed to ") or a change it refused ("skipped <file>: …", "left as is",
+  "by hand", "cannot", …; apply.refused lists them)
 - codex_step: skipped:codex when it did not run (another loadout run held the Codex lock): nothing changed, but
   nothing was checked either
 
@@ -26,6 +27,15 @@ from .backup import Backup
 
 
 _FAILED = re.compile(r": failed\b|\bfailed to ")
+# a change the step refused to make (unbalanced markers, a file that does not parse, an entry the user owns): a
+# problem line in the forms loadout prints. "skipped: " (with the colon) is the busy Codex lock: skipped:codex.
+_REFUSED = re.compile(r"^skipped (?!:)|\bleft as is\b|\bby hand\b|\bcannot\b|\bcould not\b|\bnot changed\b"
+                      r"|\bnot effective\b|\bdo not run\b|^warning:")
+
+
+def refused(lines: list[str]) -> list[str]:
+    """The lines of a step that name a failure or a refused change (what update lists one by one)."""
+    return [line for line in lines if _FAILED.search(line) or _REFUSED.search(line)]
 
 
 @dataclass
@@ -42,7 +52,7 @@ def _finish(result: StepResult, step: str) -> StepResult:
     then read the facts and the level from the lines."""
     from .secrets import redact
     result.lines = [redact(line) for line in result.lines]
-    if any(_FAILED.search(line) for line in result.lines):
+    if refused(result.lines):
         result.facts.add(f"failed:{step}")
     if any(out.PROBLEM.search(line) for line in result.lines):
         result.level = "warn"

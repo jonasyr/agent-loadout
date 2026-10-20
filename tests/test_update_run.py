@@ -479,3 +479,15 @@ def test_a_failed_prerequisite_leaves_its_dependents_unattempted(fake_home, fake
     assert ["mise", "use", "-g", "rust-analyzer"] not in fake_runner.calls
     changed = _changed(capsys.readouterr().out)
     assert "rust-analyzer: not attempted: mise failed" in changed
+
+
+def test_a_refused_codex_change_is_listed_not_called_current(fake_home, fake_runner, monkeypatch, capsys):
+    _world(monkeypatch, claude=False, codex_on=True)
+    path = paths.codex_home() / "AGENTS.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(f"# mine\n{codex.START}\nold\n{codex.START}\n", encoding="utf-8")  # unbalanced markers
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    changed = _changed(capsys.readouterr().out)
+    assert "everything was already current" not in changed
+    line = next(l for l in changed.splitlines() if "AGENTS.md" in l)
+    assert "markers are unbalanced" in line and "fix:" in line
