@@ -346,10 +346,12 @@ def plugins_plan() -> tuple[list[str], list[tuple[str, str]], list[str]]:
     return out, markets, plugins
 
 
-def setup_plugins(say=None) -> list[str]:
-    """say: called with a progress line before each slow step (marketplace clones, plugin installs)."""
+def setup_plugins(say=None, planned: tuple | None = None) -> list[str]:
+    """say: called with a progress line before each slow step (marketplace clones, plugin installs).
+    planned: (marketplaces as (name, origin), plugin ids) to run exactly, as a plan showed them (ADR 0011);
+    None plans now (plugins_plan)."""
     say = say or (lambda line: None)
-    out, markets, plugins = plugins_plan()
+    out, markets, plugins = plugins_plan() if planned is None else ([], list(planned[0]), list(planned[1]))
     total, step = len(markets) + len(plugins), 0
     for name, origin in markets:
         step += 1

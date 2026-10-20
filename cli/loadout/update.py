@@ -38,6 +38,7 @@ class PlanItem:
     ids: tuple = ()  # the plugin ids the item refreshes (claude-plugins-refresh)
     groups: tuple = ()  # (what, its commands) per marketplace and plugin (codex-plugins); render shows these
     needs: tuple = ()  # the tool ids of the plan's other tool-install items it needs first (tool-install)
+    planned: tuple | None = None  # (marketplaces as (name, origin), plugin ids) it runs (claude-plugin-install)
 
 
 def _date(ts) -> str:
@@ -125,14 +126,20 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
     notes = [] if notes is None else notes
     items: list[tuple] = []
     parts = []
+    planned = None
     if claude_on:
-        step = apply.claude_plugins_step(dry=True, on=True)
-        parts.append(f"Claude Code ({step.summary or 'rules and settings'})")
-        _, _, new_plugins = bootstrap.plugins_plan()
-        if new_plugins:
-            cmds = [["claude", "plugin", "install", out.printable(p), "--scope", "user"] for p in new_plugins]
-            items.append(("claude-plugin-install", f"Claude Code: install {len(new_plugins)} new kit plugin(s): "
-                          + ", ".join(out.printable(p) for p in new_plugins), cmds, False, "", (), None, (), ""))
+        parts.append("Claude Code (rules and settings)")
+        _, markets, new_plugins = bootstrap.plugins_plan()
+        if markets or new_plugins:  # every command it runs, marketplaces first (ADR 0011)
+            planned = (tuple(markets), tuple(new_plugins))
+            cmds = [*(["claude", "plugin", "marketplace", "add", out.printable(origin)] for _, origin in markets),
+                    *(["claude", "plugin", "install", out.printable(p), "--scope", "user"] for p in new_plugins)]
+            what = [f"add {len(markets)} kit marketplace(s): " + ", ".join(out.printable(n) for n, _ in markets)
+                    if markets else "",
+                    f"install {len(new_plugins)} new kit plugin(s): " + ", ".join(out.printable(p) for p in new_plugins)
+                    if new_plugins else ""]
+            items.append(("claude-plugin-install", "Claude Code: " + "; ".join(w for w in what if w), cmds, False,
+                          "", (), None, (), ""))
         _claude_refresh_item(items)
     if codex_on:
         step = apply.codex_step(object(), refresh_plugins=True, auto=False, keep=False, skip_unchanged=True,
@@ -156,6 +163,9 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
     for kind, label, cmds, optional, key, latest, entry, local, how, *rest in items:
         plan.append(PlanItem(len(plan) + 1, kind, label, cmds, optional, key, latest, entry, local, how,
                              rest[0] if rest else (), rest[1] if len(rest) > 1 else ()))
+    for item in plan:
+        if item.kind == "claude-plugin-install":
+            item.planned = planned
     missing = {i.key for i in plan if i.kind == "tool-install"}
     for item in plan:
         if item.kind == "tool-install" and item.entry:
@@ -446,18 +456,22 @@ def _say(st: out.Step):
     return lambda line: st.item(line.strip())
 
 
-def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, kinds: set[str], in_plan: set[str], summary: Summary) -> None:
+def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem], in_plan: set[str],
+             summary: Summary) -> None:
     """Bootstrap's apply steps for each agent that is on, in its order: links, settings, Claude Code's kit
-    marketplaces and new plugins, Codex. Item 1 (the re-apply) covers all of them except two items of their own: new
-    Claude Code plugins (run when that item is kept) and the Codex plugin refresh (only together with item 1)."""
+    marketplaces and new plugins, Codex. Item 1 (the re-apply) covers all of them except two items of their own:
+    Claude Code's new kit marketplaces and plugins (exactly the commands that item showed, when it is kept) and the
+    Codex plugin refresh (only together with item 1)."""
+    kinds = {i.kind for i in chosen}
     reapply = "reapply" in kinds
     if reapply:
         _show(apply.link_step(bk, claude_on), summary)
         if claude_on:
             _show(apply.settings_step(bk, on=True), summary)
-    if claude_on and ("claude-plugin-install" in kinds or (reapply and "claude-plugin-install" not in in_plan)):
+    install = next((i for i in chosen if i.kind == "claude-plugin-install" and i.planned), None)
+    if claude_on and install is not None:
         with out.step("Claude Code plugins") as st:
-            result = apply.claude_plugins_step(say=_say(st), on=True)
+            result = apply.claude_plugins_step(say=_say(st), on=True, planned=install.planned)
         _show(result, summary)
     if codex_ok and reapply:
         refresh = "codex-plugins" in kinds or "codex-plugins" not in in_plan  # no item: nothing was left out
@@ -571,7 +585,7 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
         return summary
     kinds, in_plan = {i.kind for i in chosen}, {i.kind for i in plan}
     bk = Backup(description="update: re-apply the setup")
-    _reapply(bk, claude_on, codex_ok, kinds, in_plan, summary)
+    _reapply(bk, claude_on, codex_ok, chosen, in_plan, summary)
     for item in chosen:
         if claude_on and item.kind == "claude-plugins-refresh":
             _refresh_claude_plugins(item, summary)

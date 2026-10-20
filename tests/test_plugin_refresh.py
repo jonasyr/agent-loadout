@@ -156,3 +156,20 @@ def test_a_failed_marketplace_refresh_is_listed_and_plugins_are_not_called_curre
     line = next(l for l in changed.splitlines() if "marketplaces: not refreshed" in l)
     assert "Could not resolve host" in line and "fix:" in line
     assert "cached catalog" in out
+
+
+def test_the_plugin_install_item_runs_exactly_the_commands_it_shows(fake_home, fake_runner, monkeypatch, capsys):
+    _setup(fake_home, monkeypatch)
+    monkeypatch.setattr(bootstrap, "plugins_plan", lambda: ([], [("kit", "owner/kit")], ["p@kit"]))
+    plan = update.build_plan(True, False)
+    item = next(i for i in plan if i.kind == "claude-plugin-install")
+    shown = item.commands
+    assert ["claude", "plugin", "marketplace", "add", "owner/kit"] in shown
+    assert "command: claude plugin marketplace add owner/kit" in "\n".join(update.render(plan))
+    refresh = next(i.n for i in plan if i.kind == "claude-plugins-refresh")
+    fake_runner.calls.clear()
+    from loadout import ui
+    monkeypatch.setattr(ui, "is_interactive", lambda: True)
+    update.run(False, lambda q: f"1 {refresh}", argv=[])  # leave out the re-apply and the refresh
+    ran = [c for c in fake_runner.calls if c[:3] == ["claude", "plugin", "install"] or c[:4] == ["claude", "plugin", "marketplace", "add"]]
+    assert ran == shown

@@ -287,7 +287,7 @@ def test_the_claude_refresh_runs_exactly_the_plugins_the_plan_showed(fake_home, 
     installed.parent.mkdir(parents=True, exist_ok=True)
     installed.write_text(json.dumps({"plugins": {"a@m": [{"scope": "user"}]}}))
 
-    def install_b(say=None, dry=False, on=None):  # the plugin step installs b@m after the plan was shown
+    def install_b(say=None, dry=False, on=None, planned=None):  # the plugin step installs b@m after the plan was shown
         if not dry:
             installed.write_text(json.dumps({"plugins": {"a@m": [{"scope": "user"}], "b@m": [{"scope": "user"}]}}))
         return apply.StepResult("Plugins", "")

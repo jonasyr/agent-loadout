@@ -91,10 +91,11 @@ def _plugins_summary(lines: list[str]) -> str:
     return f"{total} kit plugins ready" if not failed else f"{failed} failed (below)"
 
 
-def claude_plugins_step(say=None, dry: bool = False, on: bool | None = None) -> StepResult:
+def claude_plugins_step(say=None, dry: bool = False, on: bool | None = None, planned: tuple | None = None) -> StepResult:
     """Claude Code's kit marketplaces and plugins (bootstrap.setup_plugins), then the settings again when a
     marketplace was added (the CLI rewrites marketplace entries and drops autoUpdate).
-    dry: only the marketplaces to add and the plugins to install, as lines; nothing is added or installed."""
+    dry: only the marketplaces to add and the plugins to install, as lines; nothing is added or installed.
+    planned: run exactly these (marketplaces, plugins), as `loadout update`'s plan showed them."""
     if not (targets.claude_enabled() if on is None else on):
         return StepResult("Plugins", "")
     from . import bootstrap, settings_merge
@@ -106,7 +107,7 @@ def claude_plugins_step(say=None, dry: bool = False, on: bool | None = None) -> 
         facts = ({"claude_marketplace_added"} if markets else set()) | ({"claude_plugins_installed"} if plugins else set())
         summary = f"{len(markets)} marketplace(s) to add, {len(plugins)} plugin(s) to install"
         return _finish(StepResult("Plugins", summary, lines, facts), "claude_plugins")
-    lines = bootstrap.setup_plugins(say=say)
+    lines = bootstrap.setup_plugins(say=say) if planned is None else bootstrap.setup_plugins(say=say, planned=planned)
     if any(line.endswith(": added") for line in lines):
         settings_merge.apply_settings()
     facts = set()
