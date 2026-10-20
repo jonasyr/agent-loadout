@@ -81,7 +81,7 @@ def test_the_pull_env_forces_english_and_no_prompts(fake_home, fake_runner, tmp_
 def test_no_upstream_is_skipped_not_paused(fake_home, fake_runner, tmp_path):
     fake_runner.responses[("git", "-C", str(tmp_path), "rev-parse", "--abbrev-ref", "@{u}")] = runner.Result(128, "", "no upstream")
     res = m.pull(tmp_path)
-    assert res == m.PullResult(False, None, []) and m.paused() == {}
+    assert res == m.PullResult(False, None, [], skipped="no upstream branch") and m.paused() == {}
     assert not any("pull" in c for c in fake_runner.calls)
 
 

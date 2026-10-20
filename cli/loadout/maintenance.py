@@ -114,6 +114,7 @@ class PullResult:
     paused: str | None = None  # why git refused; None when the pull ran, or was skipped for want of an upstream
     files: list[str] = field(default_factory=list)  # the files git named in a refusal
     offline: str | None = None  # a network failure (redacted reason): nothing pulled, nothing recorded or said
+    skipped: str | None = None  # nothing to follow ("detached HEAD", "no upstream branch"): nothing recorded or said
 
 
 def _paused_path() -> Path:
@@ -183,10 +184,10 @@ def pull(root: Path) -> PullResult:
     git = ["git", "-c", "core.quotePath=false", "-C", str(root)]
     if not runner.run(["git", "-C", str(root), "symbolic-ref", "-q", "HEAD"], timeout=30).ok:
         _record_paused(root, None)
-        return PullResult()  # detached HEAD: nothing to follow
+        return PullResult(skipped="detached HEAD")  # nothing to follow
     if not runner.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "@{u}"], timeout=30).ok:
         _record_paused(root, None)
-        return PullResult()  # no upstream: nothing to pull
+        return PullResult(skipped="no upstream branch")  # nothing to pull
     head = ["git", "-C", str(root), "rev-parse", "HEAD"]
     before = runner.run(head, timeout=30).stdout.strip()
     # a background process has no one to answer a credential prompt (or a GCM login window); C locale for parsing

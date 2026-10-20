@@ -400,6 +400,11 @@ def _pull(summary: Summary, start: str | None = None) -> bool:
         if res.paused:
             summary.failed.append(_paused_fix(label, root, res.paused, res.files))
             out.status(label.capitalize(), f"not pulled: {out.printable(res.paused)}", "warn")
+        elif res.skipped:
+            summary.failed.append((f"{label}: {out.printable(str(root))}: not refreshed ({res.skipped})",
+                                   "check out a branch that has an upstream (git branch -u origin/<branch>), "
+                                   "or ignore this if it is on purpose"))
+            out.status(label.capitalize(), f"not refreshed ({res.skipped})", "warn")
         elif res.offline:
             summary.failed.append(_offline_fix(label, root, res.offline))
             if label != "kit":

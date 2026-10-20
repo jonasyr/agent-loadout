@@ -519,3 +519,23 @@ def test_an_offline_checkout_leaves_the_daily_pull_due(fake_home, fake_runner, m
     _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["aaa"], str(personal): ["ppp"]})
     assert update.run(True, lambda q: "", argv=["--yes"]) == 0
     assert not (paths.state_dir() / "last-pull").exists()  # the background sync tries again soon
+
+
+@pytest.mark.parametrize("key,reason", [(("symbolic-ref",), "detached HEAD"),
+                                        (("rev-parse", "--abbrev-ref"), "no upstream branch")])
+def test_a_checkout_with_nothing_to_follow_is_listed_as_not_refreshed(fake_home, fake_runner, monkeypatch, capsys,
+                                                                      key, reason):
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    personal = paths.personal_root()
+    (personal / ".git").mkdir(parents=True)
+    fake_runner.responses[("git", "-C", str(personal), *key)] = runner.Result(1, "", "")
+    _heads(fake_runner, monkeypatch, {str(paths.kit_root()): ["aaa"], str(personal): ["ppp"]})
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    text = capsys.readouterr().out
+    assert not [l for l in text.splitlines() if "Personal layer" in l and "up to date" in l]
+    changed = _changed(text)
+    line = next(l for l in changed.splitlines() if "not refreshed" in l)
+    assert str(personal) in line and reason in line and "upstream" in line
+    assert "everything was already current" not in changed
+    assert maintenance.paused() == {} and not (paths.state_dir() / "pending-notice").exists()  # the daily sync stays quiet
