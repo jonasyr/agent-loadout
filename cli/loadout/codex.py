@@ -474,9 +474,10 @@ def _plugin_switches() -> list[tuple]:
             + [(("plugins", pid), "enabled", False, False) for pid in off if pid in listed])
 
 
-def desired_keys() -> list[tuple[tuple, str, object, object]]:
+def desired_keys(switches: bool = True) -> list[tuple[tuple, str, object, object]]:
     """(table path, key, value, force); path () is the top level. force: loadout's value wins even over a changed
-    line, used for project-only plugins because `codex plugin add` switches them back on."""
+    line, used for project-only plugins because `codex plugin add` switches them back on. switches: False leaves out
+    the plugin switches, which need `codex plugin list` (a session start runs no command)."""
     from . import preferences
     from .settings_merge import desired_settings
     state = preferences.detect()
@@ -489,7 +490,7 @@ def desired_keys() -> list[tuple[tuple, str, object, object]]:
     if plugins:
         on = get_dict(desired_settings(), "enabledPlugins")
         keys += [(("plugins", pid), "enabled", on.get(pid) is True, True) for pid in plugins]
-    return keys + _plugin_switches()
+    return keys + (_plugin_switches() if switches else [])
 
 
 def _dotted(path: tuple, key: str) -> str:
@@ -630,6 +631,46 @@ def _without_owned(data: dict, tables, keys, tl) -> dict:
     return _prune(data)
 
 
+def _ownership(sections: list[list], owned_tables: dict[str, str]) -> dict[str, str]:
+    """Per [mcp_servers] table loadout recorded: "ours" (as loadout wrote it), "gone", "subtables" or "changed"
+    (yours from now on). One rule for apply_config, refresh_record and explain."""
+    out = {}
+    for name, text in owned_tables.items():
+        sec = next((s for s in sections if s[0] == ("mcp_servers", name)), None)
+        if sec is None:
+            out[name] = "gone"
+        elif any(s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name) for s in sections):
+            out[name] = "subtables"  # e.g. [mcp_servers.x.tools.y]; removing x alone would leave Codex unable to start
+        else:
+            out[name] = "ours" if _text(sec[1]) == text else "changed"
+    return out
+
+
+def _find_key(sections: list[list], table: tuple, key: str):
+    """(the section of table, the index of key's line in its lines or None); (None, None) without the table.
+    Only a line that starts outside strings and arrays counts."""
+    target = sections[0] if not table else next((s for s in sections if s[0] == table), None)
+    if target is None:
+        return None, None
+    flags = [True] + target[2] if target[0] is not None else target[2]
+    found = next((i for i, l in enumerate(target[1]) if flags[i] and re.match(rf"^\s*{re.escape(key)}\s*=", l)), None)
+    return target, found
+
+
+def _released(record: dict, key: str) -> list[str]:
+    value = record.get(key)
+    return [n for n in value if isinstance(n, str)] if isinstance(value, list) else []
+
+
+def _set_list(record: dict, key: str, names) -> None:
+    """Kept in the record only while non-empty, like install_lines."""
+    names = sorted(set(names))
+    if names:
+        record[key] = names
+    else:
+        record.pop(key, None)
+
+
 def apply_config(bk, dry_run: bool = False) -> list[str]:
     path = paths.codex_home() / "config.toml"
     tl = _tomllib()
@@ -643,32 +684,37 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     was_tables, was_keys = set(owned_tables), set(owned_keys)
     sections = _sections(old.splitlines(), tl)
     removed = False  # an owned section that goes gets its own backup copy
-    still_ours = {name for name, text in owned_tables.items()  # a section the user edited is theirs from now on
-                  if any(s[0] == ("mcp_servers", name) and _text(s[1]) == text for s in sections)}
+    states = _ownership(sections, owned_tables)
+    still_ours = {name for name, state in states.items() if state == "ours"}  # an edited section is yours from now on
     tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
 
     def find(path_):
         return next((s for s in sections if s[0] == path_), None)
 
+    # a table loadout wrote and you changed: yours, said once (here or at a session start), then never again
+    released = {n for n in _released(record, "released") if find(("mcp_servers", n)) is not None}
     # tables: drop or keep what loadout wrote, never touch anything else
     for name, text in list(owned_tables.items()):
-        sec = find(("mcp_servers", name))
-        subtables = [s for s in sections if s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name)]
-        if sec is None:
+        state = states[name]
+        if state == "gone":
             owned_tables.pop(name)
-        elif subtables:  # e.g. [mcp_servers.x.tools.y]; removing x alone would leave Codex unable to start
+        elif state == "subtables":
             lines.append(f"mcp {name}: left as is in config.toml (it has sub-tables); loadout no longer manages it")
             owned_tables.pop(name)
-        elif _text(sec[1]) != text:
+            released.add(name)
+        elif state == "changed":
             lines.append(f"mcp {name}: left as is in config.toml (changed by you); loadout no longer manages it")
             owned_tables.pop(name)
+            released.add(name)
         elif tables.get(name) != text:
-            sections.remove(sec)
+            sections.remove(find(("mcp_servers", name)))
             owned_tables.pop(name)
             removed = True
     for name, text in tables.items():
         existing = find(("mcp_servers", name))
         if existing is not None:
+            if name in released:
+                continue  # yours: no warning
             if owned_tables.get(name) != text and not _same_table(existing[1], text, tl):
                 lines.append(f"mcp {name}: left as is, config.toml already has a server of that name")
             continue
@@ -685,21 +731,20 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         if listed is not None:
             present = {_dotted(("plugins", pid), "enabled") for pid in listed}
             install_lines = {k: v for k, v in install_lines.items() if k in present}
+    released_keys = set(_released(record, "released_keys"))  # your own values, said once
     for table, key, value, force in desired_keys():
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
-        target = sections[0] if not table else find(table)
+        target, found = _find_key(sections, table, key)
         plugin = bool(table) and table[0] == "plugins"
         if target is None:
             header = "[" + ".".join(toml_key(p) for p in table) + "]"
             sections.append([table, [header, line], []])
             owned_keys[dotted] = line
             install_lines.pop(dotted, None)
+            released_keys.discard(dotted)
             switched = switched or plugin
             continue
-        flags = [True] + target[2] if target[0] is not None else target[2]
-        found = next((i for i, l in enumerate(target[1])
-                      if flags[i] and re.match(rf"^\s*{re.escape(key)}\s*=", l)), None)
         if found is None:
             insert = len(target[1])
             while insert > (1 if target[0] is not None else 0) and not target[1][insert - 1].strip():
@@ -708,6 +753,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             target[2].insert(insert - (1 if target[0] is not None else 0), True)
             owned_keys[dotted] = line
             install_lines.pop(dotted, None)
+            released_keys.discard(dotted)
             switched = switched or plugin
         elif target[1][found].strip() == line:
             pass  # the same value: the line stays whoever wrote it (owned only if loadout wrote it before)
@@ -715,9 +761,12 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             target[1][found] = line
             owned_keys[dotted] = line
             install_lines.pop(dotted, None)
+            released_keys.discard(dotted)
             switched = switched or plugin
         else:
-            lines.append(f"{dotted}: left as is in config.toml (your value)")
+            if dotted not in released_keys:
+                lines.append(f"{dotted}: left as is in config.toml (your value)")
+            released_keys.add(dotted)
             owned_keys.pop(dotted, None)
             install_lines.pop(dotted, None)
 
@@ -725,6 +774,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     parts += ["\n".join(s[1]).strip("\n") for s in sections[1:]]
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
     new_record = {**record, "tables": owned_tables, "keys": owned_keys}  # keeps project_plugins
+    _set_list(new_record, "released", released)
+    _set_list(new_record, "released_keys", released_keys)
     if install_lines:
         new_record["install_lines"] = install_lines
     else:
@@ -755,6 +806,81 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     record_path().parent.mkdir(parents=True, exist_ok=True)
     save_json(record_path(), new_record)
     return lines
+
+
+RELEASES = ("(changed by you)", "(it has sub-tables)", "(your value)")
+
+
+def is_release(line: str) -> bool:
+    """apply_config's line for an entry that just became yours (it comes once: the record then keeps it quiet)."""
+    return "left as is in config.toml" in line and any(mark in line for mark in RELEASES)
+
+
+def refresh_record() -> list[str]:
+    """At a session start: record the entries of loadout's in config.toml that you changed as yours, and return one
+    note per entry newly yours (each said once; `loadout check` is quiet about it afterwards). Writes only loadout's
+    record, never config.toml. Codex on only; another loadout run holding the Codex lock: nothing (no wait), that
+    run records it itself. The plugin switches are left to the next run that lists plugins (no command here)."""
+    from . import targets
+    if not targets.codex_enabled():
+        return []
+    lock = _lock(0, "session start")
+    if lock is None:
+        return []
+    try:
+        path = paths.codex_home() / "config.toml"
+        if not path.is_file():
+            return []
+        tl = _tomllib()
+        try:
+            text = _read_exact(path)
+            tl.loads(text)
+        except Exception:  # unreadable or not TOML: apply_config says so; nothing is decided here
+            return []
+        record = read_record()
+        sections = _sections(text.splitlines(), tl)
+        owned_tables, owned_keys = dict(record["tables"]), dict(record["keys"])
+        install_lines = dict(get_dict(record, "install_lines"))
+        released = {n for n in _released(record, "released") if any(s[0] == ("mcp_servers", n) for s in sections)}
+        released_keys = set(_released(record, "released_keys"))
+        notes = []
+        shown = _tilde(path)
+        for name, state in _ownership(sections, owned_tables).items():
+            if state == "ours":
+                continue
+            owned_tables.pop(name)
+            if state != "gone" and name not in released:
+                released.add(name)
+                how = "you added sub-tables to it" if state == "subtables" else "you changed it"
+                notes.append(f"loadout (Codex): mcp {name}: {how} in {shown}, so it is yours now; loadout no longer "
+                             "manages it or warns about it")
+        for table, key, value, force in desired_keys(switches=False):
+            dotted = _dotted(table, key)
+            target, found = _find_key(sections, table, key)
+            if found is None or force is True:
+                continue
+            current = target[1][found].strip()
+            if current == f"{key} = {toml_value(value)}" or current in (owned_keys.get(dotted), install_lines.get(dotted)):
+                continue  # loadout's value, or a line loadout wrote: the next run updates it
+            owned_keys.pop(dotted, None)
+            install_lines.pop(dotted, None)
+            if dotted not in released_keys:
+                released_keys.add(dotted)
+                notes.append(f"loadout (Codex): {dotted}: your value in {shown} stays yours; loadout no longer "
+                             "manages it or warns about it")
+        new_record = {**record, "tables": owned_tables, "keys": owned_keys}
+        if install_lines != get_dict(record, "install_lines"):
+            new_record["install_lines"] = install_lines
+            if not install_lines:
+                new_record.pop("install_lines")
+        _set_list(new_record, "released", released)
+        _set_list(new_record, "released_keys", released_keys)
+        if new_record != record:
+            record_path().parent.mkdir(parents=True, exist_ok=True)
+            save_json(record_path(), new_record)
+        return notes
+    finally:
+        lock.release()
 
 
 OFFICIAL = "anthropics/claude-plugins-official"

@@ -84,6 +84,12 @@ def session_start(now: float, agent: str | None = None, source: str | None = Non
     """The systemMessage for a session start. agent: which agent starts (an older plugin copy passes none: only the
     notice, as before); source: Claude Code's "startup", "resume", "clear" or "compact" from the hook's stdin."""
     out = None
+    try:  # an entry of loadout's you changed in Codex's config.toml: yours now, said once, in this same session
+        from . import codex
+        for note in codex.refresh_record():
+            notify(note)
+    except Exception:  # never break a session start
+        pass
     notice = _stamp(NOTICE)
     text = notice.read_text(encoding="utf-8").strip() if notice.exists() else None
     if text is not None:
@@ -368,7 +374,7 @@ def _maintain(now: float) -> None:
                 if codex.enabled() and codex.unavailable() is None:
                     bk = Backup(description="maintenance: Codex refreshed after a pull")
                     for line in codex.apply_all(bk, refresh=True, command="maintain"):
-                        if codex_notice(line):
+                        if codex_notice(line) or codex.is_release(line):  # a release is said once, then quiet
                             notify(f"loadout (Codex): {line}")
                     if not bk.empty:
                         notify(f"loadout (Codex): refreshed; replaced or edited files are in {bk.root} "
