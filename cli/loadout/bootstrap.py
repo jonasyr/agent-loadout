@@ -902,7 +902,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         targets.set_agents(chosen)
     # in WSL the Codex side is settled first: a Windows-side choice installs no Linux Codex (ADR 0029)
     gate = codex_gate(codex_side, ask, interactive and not yes, bk, vscode=vscode_wsl) if codex_gate_needed(chosen) else None
-    if vscode_wsl and not codex_gate_needed(chosen):
+    if vscode_wsl and wsl.detect() is not None and not codex_gate_needed(chosen):  # outside WSL the CLI already said so
         out.status("VS Code", "--vscode-wsl: Codex is not set up in WSL in this run; nothing changed", "warn")
     _step("Prerequisites")
     installed: list[str] = []

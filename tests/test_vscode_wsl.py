@@ -75,3 +75,17 @@ def test_the_flag_outside_wsl_says_it_changed_nothing(fake_home, monkeypatch, ca
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: None)
     cli.main(["bootstrap", "--vscode-wsl"])
     assert "--vscode-wsl" in capsys.readouterr().out
+
+
+def test_the_flag_outside_wsl_gets_no_second_warning_from_bootstrap(fake_home, fake_runner, monkeypatch):
+    """The CLI says "applies to loadout in WSL only"; bootstrap must not add "Codex is not set up in WSL"."""
+    from loadout import codex, out
+    seen = []
+    monkeypatch.setattr(out, "status", lambda label, text, *a, **k: seen.append(text))
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: None)
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: None)
+    monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
+    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, vscode_wsl=True,
+                        agents="claude,codex")
+    assert not any("not set up in WSL in this run" in t for t in seen), seen
