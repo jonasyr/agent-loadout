@@ -55,10 +55,17 @@ def paint(text: str, kind: str) -> str:
 _shown = 0  # width of the progress line on screen, 0 when none
 
 
+def _safe(text: str) -> str:
+    """Progress text from any caller, safe to show: redacted (a clone URL can carry a token) and escaped."""
+    from .secrets import redact  # lazily: secrets must stay importable without out
+    return printable(redact(text))
+
+
 def progress(line: str) -> None:
     """A slow step's progress. On a terminal it replaces the previous progress line in place (the next status,
     detail or problem line clears it); off a terminal (logs, CI) and with --verbose it is a normal line."""
     global _shown
+    line = _safe(line)
     if VERBOSE or not _tty():
         print(line, flush=True)
         return
@@ -90,7 +97,7 @@ def waiting(command: str, started: float, elapsed: float) -> None:
     if VERBOSE or not _tty():
         if _waiting_key != (command, started):
             _waiting_key = (command, started)
-            print(line, flush=True)
+            print(_safe(line), flush=True)  # the command comes from the lock file
         return
     _waiting_key = (command, started)
     progress(f"{line} {int(elapsed)}s")
@@ -129,7 +136,7 @@ class Step:
 
     def item(self, text: str) -> None:
         with self._lock:
-            self._current, self._n = text, self._n + 1
+            self._current, self._n = _safe(text), self._n + 1
             if self._live:
                 progress(self._line(True))
             else:

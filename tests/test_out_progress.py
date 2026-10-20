@@ -70,3 +70,15 @@ def test_an_exception_inside_the_step_clears_the_line_and_stops_the_thread(calm,
         assert threading.active_count() == before
         assert out._shown == 0
         assert capsys.readouterr().out.endswith("\r")
+
+
+@pytest.mark.parametrize("tty", [True, False])
+def test_progress_text_is_redacted_and_escaped(calm, monkeypatch, capsys, tty):
+    monkeypatch.setattr(out, "_tty", lambda: tty)
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"  # built, so the repo scan finds no literal token
+    with out.step("Plugins", total=1) as st:
+        st.item(f"  adding marketplace https://jonas:{token}@github.com/o/r.git\x1b[31m, a git clone (1 of 1)…")
+    out.progress(f"clone https://x:{token}@github.com/o/r\n1. fake")
+    text = capsys.readouterr().out
+    assert "ghp_" not in text and "\x1b[31m" not in text and "github.com/o/r" in text
+    assert "\n1. fake" not in text
