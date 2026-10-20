@@ -461,8 +461,8 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem]
              summary: Summary) -> None:
     """Bootstrap's apply steps for each agent that is on, in its order: links, settings, Claude Code's kit
     marketplaces and new plugins, Codex. Item 1 (the re-apply) covers all of them except two items of their own:
-    Claude Code's new kit marketplaces and plugins (exactly the commands that item showed, when it is kept) and the
-    Codex plugin refresh (only together with item 1)."""
+    Claude Code's new kit marketplaces and plugins and the Codex plugin refresh: each runs exactly the commands its
+    item showed, when that item is kept, also without item 1."""
     kinds = {i.kind for i in chosen}
     reapply = "reapply" in kinds
     if reapply:
@@ -486,8 +486,13 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem]
         _show(result, summary)
         if not refresh:
             summary.changed.append("Codex plugins: left as they are (their item was left out)")
-    elif codex_ok and "codex-plugins" in kinds:
-        summary.changed.append("Codex plugins: left as they are (they refresh together with item 1, the re-apply)")
+    elif codex_ok and "codex-plugins" in kinds:  # item 1 left out: only the plugin item's commands, as shown
+        item = next(i for i in chosen if i.kind == "codex-plugins")
+        with out.step("Codex plugins", slow="Codex clones each changed plugin's source; this can take a few minutes") as st:
+            result = apply.codex_step(bk, refresh_plugins=True, auto=False, keep=True, skip_unchanged=True,
+                                      say=_say(st), on=True, command="update", on_wait=maintenance._touch_lock,
+                                      skips=item.planned, only=("plugins",))
+        _show(result, summary)
 
 
 def _refresh_claude_plugins(item: PlanItem, summary: Summary) -> None:

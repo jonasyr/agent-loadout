@@ -1235,14 +1235,15 @@ PARTS = ("instructions", "config", "hooks", "skills", "plugins")
 
 def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unchanged: bool = False,
                 command: str = "setup", on_wait=None, changed: set | None = None,
-                plugins: bool = True, skips: tuple | None = None) -> dict[str, list[str]]:
+                plugins: bool = True, skips: tuple | None = None, only: tuple | None = None) -> dict[str, list[str]]:
     """Each part's lines, under the Codex lock. refresh: re-add every plugin and upgrade the marketplaces; auto: the
     daily sync (marketplaces set to `autoUpdate: false` stay as they are, and it never waits for another run);
     keep: Serena's hooks are never removed. skip_unchanged: on a refresh, leave marketplaces and plugins whose upstream head did not move.
     changed: when given, gets "config" when config.toml's bytes changed and, on a refresh, "plugins_updated" when
     an installed plugin's version changed (neither prints a line). A busy lock: the skip line under "instructions".
     plugins: False leaves the marketplaces and plugins alone (no add, install or refresh; `loadout update` with its
-    Codex plugin item left out). skips: as in apply_plugins."""
+    Codex plugin item left out). skips: as in apply_plugins. only: the parts to run (e.g. ("plugins",): `loadout
+    update` with item 1 left out but its Codex plugin item kept); the others give no lines and change nothing."""
     from . import locks
     lock = _lock(0 if auto else locks.foreground_wait(), command, on_wait)
     if lock is None:
@@ -1250,16 +1251,20 @@ def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unc
     try:
         from . import codex_hooks
         config = paths.codex_home() / "config.toml"
-        parts = {"instructions": [apply_instructions(bk)]}
-        if changed is None:
-            parts["config"] = apply_config(bk)
-        else:
+        run = set(PARTS if only is None else only)
+        parts = {k: [] for k in PARTS}
+        if "instructions" in run:
+            parts["instructions"] = [apply_instructions(bk)]
+        if "config" in run:
             before = _bytes(config)
             parts["config"] = apply_config(bk)
-            if _bytes(config) != before:
+            if changed is not None and _bytes(config) != before:
                 changed.add("config")
-        parts["hooks"] = codex_hooks.apply(bk, keep=keep)
-        parts["skills"] = apply_skills(bk)
+        if "hooks" in run:
+            parts["hooks"] = codex_hooks.apply(bk, keep=keep)
+        if "skills" in run:
+            parts["skills"] = apply_skills(bk)
+        plugins = plugins and "plugins" in run
         if not plugins:
             parts["plugins"] = []
             return parts
@@ -1284,12 +1289,12 @@ def _bytes(path: Path) -> bytes | None:
 
 def apply_all(bk, refresh: bool = False, say=None, command: str = "setup", on_wait=None, *, auto: bool | None = None,
               keep: bool | None = None, skip_unchanged: bool = False, changed: set | None = None,
-              plugins: bool = True, skips: tuple | None = None) -> list[str]:
+              plugins: bool = True, skips: tuple | None = None, only: tuple | None = None) -> list[str]:
     """refresh=True is the background sync: it never waits for another run, and auto and keep follow it unless
     given. Foreground callers wait for it."""
     parts = apply_parts(bk, refresh=refresh, auto=refresh if auto is None else auto,
                         keep=refresh if keep is None else keep, say=say, skip_unchanged=skip_unchanged,
-                        command=command, on_wait=on_wait, changed=changed, plugins=plugins, skips=skips)
+                        command=command, on_wait=on_wait, changed=changed, plugins=plugins, skips=skips, only=only)
     return [line for key in PARTS for line in parts[key]]
 
 

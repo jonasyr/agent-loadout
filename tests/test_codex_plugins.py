@@ -339,3 +339,30 @@ def test_an_unreadable_cached_marketplace_json_refreshes_the_route(fake_home, fa
     assert skip_m == set() and skip_p == set()
     calls = _apply(fake_runner)
     assert ["codex", "plugin", "marketplace", "upgrade", "agent-loadout"] in calls
+
+
+def test_the_codex_plugin_item_runs_alone_without_item_1(fake_home, fake_runner, monkeypatch, tmp_path, capsys):
+    from loadout import bootstrap, check, maintenance, paths, targets, ui, update
+    _setup(fake_home, fake_runner, monkeypatch, tmp_path / "m")
+    _record(fake_home, "aaaaaaa1")
+    _heads(fake_runner, URL, "bbbbbbb2")  # upstream moved: the plan refreshes it
+    targets.set_agents({"claude": False, "codex": True})
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: None)
+    monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [])
+    monkeypatch.setattr(check, "run_checks", lambda *a, **k: [])
+    monkeypatch.setattr(ui, "is_interactive", lambda: True)
+    shown = []
+    real_build = update.build_plan
+
+    def build(*a, **k):
+        plan = real_build(*a, **k)
+        shown.extend(c for i in plan if i.kind == "codex-plugins" for _, cmds in i.groups for c in cmds)
+        return plan
+    monkeypatch.setattr(update, "build_plan", build)
+    update.run(False, lambda q: "1", argv=[])  # leave out item 1 only
+    assert shown
+    ran = [c for c in fake_runner.calls if c[:2] == ["codex", "plugin"] and c[2:3] in (["add"], ["marketplace"])
+           and "list" not in c]
+    assert ran == shown
+    assert not (paths.codex_home() / "AGENTS.md").exists() and not (paths.codex_home() / "config.toml").exists()
