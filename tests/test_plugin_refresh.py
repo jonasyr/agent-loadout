@@ -138,3 +138,21 @@ def test_an_unusable_codex_gets_no_plugin_commands(fake_home, fake_runner, monke
     _run(True)
     assert seen == []
     assert "codex is not installed" in capsys.readouterr().out
+
+
+def test_a_failed_marketplace_refresh_is_listed_and_plugins_are_not_called_current(fake_home, fake_runner, monkeypatch,
+                                                                                   capsys):
+    _setup(fake_home, monkeypatch)
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"  # built, so the repo scan finds no literal token
+    fake_runner.responses[("claude", "plugin", "marketplace", "update")] = runner.Result(
+        1, "", f"fatal: unable to access 'https://jonas:{token}@github.com/x/y.git/': Could not resolve host\n")
+    fake_runner.responses[("claude", "plugin", "update")] = runner.Result(0, "already at the latest version", "")
+    _run(True)
+    assert len(_updates(fake_runner)) == 2  # still tried, against the cached catalog
+    out = capsys.readouterr().out
+    assert "ghp_" not in out
+    assert "already up to date" not in out
+    changed = out.split("What changed", 1)[1]
+    line = next(l for l in changed.splitlines() if "marketplaces: not refreshed" in l)
+    assert "Could not resolve host" in line and "fix:" in line
+    assert "cached catalog" in out

@@ -424,7 +424,13 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, kinds: set[str], in_pl
 def _refresh_claude_plugins(item: PlanItem, summary: Summary) -> None:
     """Exactly the plugins the plan showed (a plugin installed by this run is already current)."""
     todo = list(item.ids)
-    runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)  # the marketplaces first
+    market = runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)  # the marketplaces first
+    stale = not market.ok  # offline or signed out: the plugin updates below can only use the cached catalog
+    if stale:
+        reason = out.printable(redact((market.stderr or market.stdout).strip()[:300])) or "no output"
+        summary.failed.append((f"Claude Code marketplaces: not refreshed: {reason}; the plugins were checked "
+                               "against the cached catalog only", f"{AGAIN} when online (or signed in to claude)"))
+        out.status("Marketplaces", "not refreshed; updating plugins from the cached catalog", "warn")
     updated = failed = 0
     with out.step("Claude Code plugins", total=len(todo)) as st:
         for pid in todo:
@@ -439,7 +445,8 @@ def _refresh_claude_plugins(item: PlanItem, summary: Summary) -> None:
                 updated += 1
                 summary.changed.append(f"plugin {out.printable(pid)}: updated in Claude Code")
                 summary.facts.add("claude_plugins_updated")
-    text = f"{updated} updated" if updated else "already up to date"
+    text = (f"{updated} updated" if updated else "already up to date") if not stale else \
+        f"{updated} updated from the cached catalog (newer versions may exist)"
     out.status("Plugin refresh", text + (f", {failed} failed (below)" if failed else ""), "warn" if failed else "ok")
 
 
