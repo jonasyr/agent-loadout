@@ -304,7 +304,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 installed.append(name)
             if missing_binary(name) and windows_first(name):
                 note(_windows_first_note(name, installed=True), problem=True)
-                if not problems and _linux_copy_first(name):
+                if _linux_copy_first(name):  # also after a failed reinstall: an existing Linux copy may do
                     if installed is not None and not entry.get("helper"):
                         installed.append(name)
                     continue  # this run uses the Linux copy now; new shells need the PATH line the note names

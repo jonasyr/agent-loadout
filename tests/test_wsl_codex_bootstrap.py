@@ -482,3 +482,38 @@ def test_in_wsl_an_old_node_without_npm_does_not_stop_the_search(fake_home, fake
     assert bootstrap._linux_copy_first("node") is True
     order = os.environ["PATH"].split(os.pathsep)
     assert order.index(str(shims)) < order.index(in_wsl)
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="simulates a Linux PATH in WSL; Windows paths use backslashes")
+def test_in_wsl_a_failed_reinstall_still_puts_an_existing_linux_copy_first(fake_home, fake_runner, monkeypatch, in_wsl):
+    """The Linux node is complete in a later folder, the Windows one is first, and the reinstall fails: reordering
+    PATH makes the Linux copy usable, so node is not missing and its dependents run; the failure is still reported."""
+    import os
+    from loadout import runner
+    _path_order_which(monkeypatch, fake_runner)
+    shims = _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy=True)
+    fake_runner.responses[("mise", "use")] = runner.Result(1, "", "boom")
+    notes: list[str] = []
+    missing = bootstrap.check_prereqs(True, lambda q: "", notes=notes)
+    order = os.environ["PATH"].split(os.pathsep)
+    assert order.index(str(shims)) < order.index(in_wsl)
+    assert "node" not in missing and not any("because node failed" in n for n in notes)
+    assert any("failed to install node" in n for n in notes)
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="simulates a Linux PATH in WSL; Windows paths use backslashes")
+def test_in_wsl_update_with_a_failed_reinstall_still_uses_the_linux_copy(fake_home, fake_runner, monkeypatch, in_wsl):
+    import os
+    from loadout import runner, update
+    _path_order_which(monkeypatch, fake_runner)
+    shims = _windows_node_first(monkeypatch, fake_home, in_wsl, linux_copy=True)
+    fake_runner.responses[("mise", "use")] = runner.Result(1, "", "boom")
+    entry = next(e for e in catalog.binaries() if e["id"] == "node")
+    item = update.PlanItem(2, "tool-install", "install node", [["mise", "use", "-g", "node@lts"]], key="node",
+                           entry=entry)
+    summary, failed = update.Summary(), set()
+    update._install_tool(item, summary, failed)
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(shims)
+    assert "node" not in failed
+    assert any("failed to install node" in f[0] for f in summary.failed)  # the reinstall failure stays reported
+    assert any(c.startswith("node:") and "first in PATH" in c for c in summary.changed)

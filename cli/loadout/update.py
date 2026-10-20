@@ -590,14 +590,15 @@ def _install_tool(item: PlanItem, summary: Summary, failed: set[str]) -> None:
         return
     maintenance._touch_lock()
     ok, lines = bootstrap.install_tool(item.entry or {"id": item.key}, item.commands)
-    if not ok and not any(out.PROBLEM.search(line) for line in lines) and bootstrap.windows_first(item.key) \
-            and bootstrap._linux_copy_first(item.key):
+    if not ok and bootstrap.windows_first(item.key) and bootstrap._linux_copy_first(item.key):
         # WSL: the Linux copy is installed but the Windows one came first; this run uses the Linux one now
         folder = bootstrap._linux_folder(item.key)
         summary.changed.append(f"{out.printable(item.key)}: installed; put {out.printable(folder)} first in PATH for "
                                "new shells (a line in your shell profile), or set `appendWindowsPath = false` in "
                                "`/etc/wsl.conf`; the Windows one stays untouched")
         summary.upgraded.append(item.key)
+        if any(out.PROBLEM.search(line) for line in lines):  # the reinstall itself still failed: said separately
+            summary.failed.append((out.printable(redact(lines[0])), AGAIN + ", or install it by hand"))
         return
     if ok:
         summary.changed.append(f"{out.printable(item.key)}: installed")
