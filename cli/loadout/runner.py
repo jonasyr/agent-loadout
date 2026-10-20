@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
+from typing import NoReturn
 
 # cmd.exe interprets these even inside quotes when a .cmd/.bat shim receives them ("BatBadBut")
 CMD_METACHARS = set('&|<>^%!"')
@@ -170,6 +172,49 @@ def write_manual_commands(directory, title: str, cmds: list[list[str]], undo: li
     if os.name != "nt":
         os.chmod(path, 0o600)
     return str(path)
+
+
+def continue_in(cmd: list[str], windows: bool | None = None, on_error=None) -> NoReturn:
+    """Continue this run in another process (cmd: an argument list, cmd[0] the program): POSIX replaces the process;
+    Windows has no real exec (os.execv returns at once and splits arguments), so it waits for the child and exits
+    with its code. Ctrl+C reaches both there: the parent keeps waiting until the child has ended (its finally
+    releases the locks). on_error gets an OSError of a launch that cannot start (it must not return); without one
+    the error is raised. The environment is passed on whole: the new process needs loadout's process-only markers."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    def failed(exc: OSError) -> NoReturn:
+        if on_error is None:
+            raise exc
+        on_error(exc)
+        raise exc  # on_error returned: do not continue as if the launch had worked
+    if os.name == "nt" if windows is None else windows:
+        try:
+            child = subprocess.Popen(cmd)
+        except OSError as exc:
+            failed(exc)
+        while True:
+            try:
+                code = child.wait()
+                break
+            except KeyboardInterrupt:  # the child prints the interrupt message and cleans up; wait for it
+                continue
+        sys.exit(code)
+    try:
+        os.execv(cmd[0], cmd)
+    except OSError as exc:
+        failed(exc)
+
+
+def spawn_detached(cmd: list[str], cwd: str) -> None:
+    """Start cmd (an argument list) in the background, detached from this session, with no input or output."""
+    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "cwd": cwd,
+              "env": {k: v for k, v in os.environ.items() if k not in PROCESS_ONLY}}
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen(cmd, **kwargs)
 
 
 PROCESS_ONLY = ("LOADOUT_UPDATE_PULLED",)  # loadout's own markers: never passed on to claude, codex or an installer

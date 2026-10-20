@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -44,13 +43,8 @@ def touch(name: str, now: float) -> None:
 
 
 def _spawn_background() -> None:
-    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
-              "cwd": str(paths.home())}  # never the project folder: Windows searches it for programs
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    else:
-        kwargs["start_new_session"] = True
-    subprocess.Popen([sys.executable, str(paths.kit_root() / "bin" / "loadout"), "maintenance"], **kwargs)
+    # never the project folder as cwd: Windows searches it for programs
+    runner.spawn_detached([sys.executable, str(paths.kit_root() / "bin" / "loadout"), "maintenance"], str(paths.home()))
 
 
 def notify(text: str) -> None:

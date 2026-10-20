@@ -53,7 +53,7 @@ def test_windows_lookup_skips_the_current_folder(monkeypatch):
 
 def test_maintenance_starts_from_home(monkeypatch, fake_home):
     seen = {}
-    monkeypatch.setattr(maintenance.subprocess, "Popen", lambda cmd, **kw: seen.update(kw))
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda cmd, **kw: seen.update(kw))
     maintenance._spawn_background()
     assert seen["cwd"] == str(fake_home)
 

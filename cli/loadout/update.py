@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -302,30 +301,10 @@ class Summary:
 
 
 def _exec(argv: list[str], windows: bool | None = None) -> NoReturn:
-    """Continue in the pulled code: the same Python runs the kit's launcher again (as bin/loadout's continue_under).
-    POSIX replaces the process; Windows has no real exec (os.execv returns at once and splits arguments), so it waits
-    for the child and exits with its code. Ctrl+C reaches both there: the parent keeps waiting until the child has
-    ended (its finally releases the locks; Windows has no dead-holder probe, a killed child would block for an hour)."""
-    exe = sys.executable
-    cmd = [exe, str(paths.kit_root() / "bin" / "loadout"), *argv]
-    sys.stdout.flush()
-    sys.stderr.flush()
-    if os.name == "nt" if windows is None else windows:
-        try:
-            child = subprocess.Popen(cmd)
-        except OSError as exc:
-            _no_restart(exc)
-        while True:
-            try:
-                code = child.wait()
-                break
-            except KeyboardInterrupt:  # the child prints the interrupt message and cleans up; wait for it
-                continue
-        sys.exit(code)
-    try:
-        os.execv(exe, cmd)
-    except OSError as exc:  # the launcher is missing or broken in the pulled commit
-        _no_restart(exc)
+    """Continue in the pulled code: the same Python runs the kit's launcher again (as bin/loadout's continue_under),
+    through runner.continue_in (POSIX exec; Windows waits for the child, also through Ctrl+C)."""
+    runner.continue_in([sys.executable, str(paths.kit_root() / "bin" / "loadout"), *argv], windows=windows,
+                       on_error=_no_restart)
 
 
 def _no_restart(exc: OSError) -> NoReturn:

@@ -55,3 +55,46 @@ def test_shell_scripts_have_lf_and_exec_bit():
     for rel in ("bin/loadout", "plugins/loadout/hooks/run.sh", "plugins/loadout/hooks/subagent-context.sh", "bootstrap.sh"):
         assert b"\r" not in (root / rel).read_bytes(), rel
         assert modes[rel] == "100755", rel
+
+
+def test_only_the_runner_starts_processes():
+    """AGENTS.md: external commands run only through runner; the update restart and the background sync too."""
+    import re
+    found = []
+    for path in sorted((paths.kit_root() / "cli" / "loadout").glob("*.py")):
+        if path.name == "runner.py":
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"\b(subprocess\.(Popen|run|call|check_call|check_output)|os\.exec\w*|os\.spawn\w*|os\.system)\(", line):
+                found.append(f"{path.name}:{n}")
+    assert found == []
+
+
+def test_continue_in_waits_for_the_windows_child_through_ctrl_c(monkeypatch):
+    import pytest
+    waits = iter([KeyboardInterrupt, 3])
+
+    class Child:
+        def wait(self):
+            nxt = next(waits)
+            if nxt is KeyboardInterrupt:
+                raise KeyboardInterrupt
+            return nxt
+    seen = []
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda cmd, **kw: seen.append(cmd) or Child())
+    with pytest.raises(SystemExit) as exc:
+        runner.continue_in(["/py", "/kit/bin/loadout", "update"], windows=True, on_error=lambda e: None)
+    assert exc.value.code == 3 and seen == [["/py", "/kit/bin/loadout", "update"]]
+
+
+def test_continue_in_reports_a_launch_that_cannot_start(monkeypatch):
+    import pytest
+
+    def boom(exe, cmd):
+        raise OSError("no such file")
+    monkeypatch.setattr(runner.os, "execv", boom)
+    errors = []
+    with pytest.raises(SystemExit):
+        runner.continue_in(["/py", "/kit/bin/loadout", "update"], windows=False,
+                           on_error=lambda e: errors.append(str(e)) or (_ for _ in ()).throw(SystemExit(1)))
+    assert errors == ["no such file"]
