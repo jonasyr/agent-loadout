@@ -178,6 +178,8 @@ def _needs_text(item: PlanItem, plan: list[PlanItem]) -> str:
 
 
 def render(plan: list[PlanItem]) -> list[str]:
+    """The plan as printed: every line masked with redact (a marketplace URL can carry a token); the items keep
+    the real commands, which are what runs."""
     lines = []
     for item in plan:
         needs = _needs_text(item, plan)
@@ -189,7 +191,7 @@ def render(plan: list[PlanItem]) -> list[str]:
                 lines += ["       command: " + " ".join(cmd) for cmd in cmds]
         else:
             lines += ["     command: " + " ".join(cmd) for cmd in item.commands]
-    return lines
+    return [redact(line) for line in lines]
 
 
 def choose(plan: list[PlanItem], answer: str) -> list[PlanItem] | None:
@@ -502,7 +504,7 @@ def _update_tool(item: PlanItem, summary: Summary) -> None:
     with out.step(f"Updating {out.printable(tid)}"):
         for cmd in item.commands:
             if out.VERBOSE:
-                print("  command: " + " ".join(cmd))
+                print(redact("  command: " + " ".join(cmd)))
             res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
             all_ok = all_ok and res.ok
             text = redact((res.stderr or res.stdout).strip()[:300])

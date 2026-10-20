@@ -165,3 +165,16 @@ def test_leaving_out_a_prerequisite_leaves_out_what_needs_it():
     assert [i.n for i in update.choose(plan, "2")] == [1]
     assert [i.n for i in update.choose(plan, "2 4")] == [1]
     assert [i.n for i in update.choose(plan, "4")] == [1, 2, 3, 4]
+
+
+def test_the_plan_never_shows_a_credential_in_a_url():
+    """A personal marketplace may come from https://user:token@host/...: the plan masks it; the command runs as is."""
+    secret = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"  # built at runtime (test_repo_static flags literals)
+    url = f"https://jonas:{secret}@example.com/team/market.git"
+    plan = [update.PlanItem(1, "claude-plugin-install", f"marketplace from {url}",
+                            [["claude", "plugin", "marketplace", "add", url]],
+                            groups=[(f"add {url}", [["claude", "plugin", "marketplace", "add", url]])]),
+            update.PlanItem(2, "tool-install", "x", [["sh", "-c", f"git clone {url}"]])]
+    text = "\n".join(update.render(plan))
+    assert secret not in text and "example.com/team/market.git" in text
+    assert plan[0].commands[0][-1] == url  # what runs is unchanged

@@ -213,7 +213,7 @@ def install_tool(entry: dict, cmds: list[list[str]], on_problem=None) -> tuple[b
     name, lines = entry["id"], []
     for cmd in cmds:
         if out.VERBOSE:
-            print("installing: " + " ".join(cmd))
+            print(redact("installing: " + " ".join(cmd)))
         elif cmd is cmds[0]:
             print(f"  installing {name}…")
         res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
