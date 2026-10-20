@@ -171,10 +171,14 @@ def missing_binary(name: str) -> bool:
 
 
 def _linux_folder(name: str) -> str:
-    """Where the Linux copy of a tool lands: the tool folder that holds it, else ~/.local/bin."""
+    """Where the Linux copy of a tool lands: the tool folder that holds it, else (before an install) mise's shims
+    folder for a tool mise installs, else ~/.local/bin."""
     for d in paths.tool_dirs():
         if (d / name).exists():
             return str(d)
+    entry = next((e for e in catalog.binaries() if e["id"] == name), None)
+    if entry and any(cmd and cmd[0] == "mise" for cmd in catalog.platform_cmds(entry, "install")):
+        return "~/.local/share/mise/shims"
     return "~/.local/bin"
 
 
@@ -276,11 +280,13 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 missing.append(name)
             continue
         if install and cmds:
-            install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
+            _, problems = install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
             if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
             if missing_binary(name) and wsl.detect() is not None and wsl.is_windows_program(name):
                 note(_windows_first_note(name, installed=True), problem=True)
+                if not problems:
+                    continue  # the Linux copy is installed: the note says what is left; dependents are not blocked
         if missing_binary(name):
             failed.add(name)
             if not entry.get("helper"):

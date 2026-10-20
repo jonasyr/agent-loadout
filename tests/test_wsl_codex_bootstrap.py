@@ -354,3 +354,21 @@ def test_in_wsl_problems_cover_a_windows_only_catalog_tool(fake_home, fake_runne
     assert any("playwright-cli" in p and "Windows program" in p for p, _f in found)
     fixes = " ".join(f for p, f in found if "playwright-cli" in p)
     assert "loadout bootstrap --install" in fixes and "loadout update" in fixes and "first in PATH" in fixes
+
+
+def test_in_wsl_windows_first_after_install_is_one_note_and_blocks_nothing(fake_home, fake_runner, in_wsl):
+    fake_runner.paths["node"] = in_wsl + "/node"
+    fake_runner.paths["npm"] = in_wsl + "/npm"
+    notes: list[str] = []
+    missing = bootstrap.check_prereqs(True, lambda q: "", notes=notes)
+    text = "\n".join(notes)
+    assert "re-run with --install" not in text
+    assert "node" not in missing
+    assert sum("node still resolves to the Windows program" in n for n in notes) == 1
+    assert "missing (required) node" not in text
+    assert not any("because node failed" in n for n in notes)
+
+
+def test_in_wsl_linux_folder_of_a_mise_tool_is_mises_shims_before_the_install(fake_home, fake_runner, in_wsl):
+    assert bootstrap._linux_folder("node") == "~/.local/share/mise/shims"
+    assert bootstrap._linux_folder("claude") == "~/.local/bin"
