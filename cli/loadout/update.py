@@ -161,6 +161,10 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
             continue
         items.append(("tool-update", label, cmds, False, entry["id"], latest, entry, local, how))
     for entry, cmds, optional in bootstrap.missing_tools():
+        if not cmds:  # no install command here (git): say how to do it by hand; an empty item would run nothing
+            notes.append(f"{entry['id']}: missing, no install command for this platform. "
+                         f"{entry.get('manual', '')}".rstrip())
+            continue
         items.append(("tool-install", f"install {entry['id']} (new, recommended)" if optional else f"install {entry['id']}",
                       cmds, optional, entry["id"], (), entry, (), ""))
     first = "Re-apply the loadout setup" + (f": {', '.join(parts)}" if parts else "")

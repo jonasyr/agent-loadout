@@ -62,6 +62,19 @@ def is_windows_program(name: str, mount: str | None = None) -> bool:
 
 WINDOWS_PROGRAM_FIX = ("`loadout bootstrap --install` installs a Linux copy (or `loadout update` offers it); its folder "
                        "must come first in PATH, or set `appendWindowsPath = false` in `/etc/wsl.conf`")
+# a tool with no install command in the catalog (git): only the distribution's package manager installs it
+WINDOWS_PROGRAM_FIX_MANUAL = ("install it inside WSL with your package manager (Debian/Ubuntu: `sudo apt install {tool}`); "
+                              "its folder must come first in PATH, or set `appendWindowsPath = false` in `/etc/wsl.conf`")
+
+
+def _windows_program_fix(tool: str) -> str:
+    """The fix for a tool that resolves to its Windows program: loadout's own install when the catalog has one for
+    this platform, else the package manager."""
+    from . import catalog
+    entry = next((e for e in catalog.binaries() if e["id"] == tool), None)
+    if entry is not None and catalog.platform_cmds(entry, "install"):
+        return WINDOWS_PROGRAM_FIX
+    return WINDOWS_PROGRAM_FIX_MANUAL.format(tool=tool)
 
 
 def _checked_tools() -> list[str]:
@@ -323,7 +336,7 @@ def problems(version: int, cwd: Path | None, mount: str | None = None) -> list[t
                     "move it into the Linux home, e.g. `~/code/...`"))
     for tool in _checked_tools():
         if is_windows_program(tool, mount):
-            out.append((f"{tool} resolves to the Windows program {runner.which(tool)}", WINDOWS_PROGRAM_FIX))
+            out.append((f"{tool} resolves to the Windows program {runner.which(tool)}", _windows_program_fix(tool)))
     if version == 2 and claude:
         missing = [pkg for binary, pkg in SANDBOX if not runner.have(binary)]
         if missing:

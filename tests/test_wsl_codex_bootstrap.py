@@ -372,3 +372,12 @@ def test_in_wsl_windows_first_after_install_is_one_note_and_blocks_nothing(fake_
 def test_in_wsl_linux_folder_of_a_mise_tool_is_mises_shims_before_the_install(fake_home, fake_runner, in_wsl):
     assert bootstrap._linux_folder("node") == "~/.local/share/mise/shims"
     assert bootstrap._linux_folder("claude") == "~/.local/bin"
+
+
+def test_in_wsl_a_windows_only_git_is_told_to_use_the_package_manager(fake_home, fake_runner, in_wsl):
+    """git has no install command: check must not send the person to --install or update, which cannot help."""
+    fake_runner.paths["git"] = in_wsl + "/git"
+    found = wsl.problems(2, None)
+    fixes = " ".join(f for p, f in found if p.startswith("git "))
+    assert "package manager" in fixes and "sudo apt install git" in fixes
+    assert "loadout bootstrap --install" not in fixes and "loadout update" not in fixes

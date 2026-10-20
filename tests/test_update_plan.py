@@ -215,3 +215,13 @@ def test_a_first_update_names_codex_marketplaces_from_codex_list(fake_home, fake
     assert "codex plugin marketplace upgrade claude-plugins-official" in text
     assert "plugins: re-add 1" in text and "no record to compare yet" in text
     assert "<" not in text
+
+
+def test_a_missing_tool_with_no_install_command_is_a_note_not_an_item(fake_home, fake_runner, monkeypatch):
+    """git has no install command in the catalog: the plan says how to install it by hand instead of an empty item."""
+    _plan_world(monkeypatch, missing=[(_entry("git"), [], False)])
+    notes: list[str] = []
+    plan = update.build_plan(True, False, notes=notes)
+    assert not any(i.kind == "tool-install" and i.key == "git" for i in plan)
+    assert any(n.startswith("git: missing, no install command for this platform") and "package manager" in n
+               for n in notes)
