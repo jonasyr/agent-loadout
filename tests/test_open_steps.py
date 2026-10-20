@@ -266,3 +266,14 @@ def test_a_server_name_cannot_forge_a_step_line(fake_home, fake_runner, monkeypa
     saved = steps.Step("claude/mcp:x", "claude", f"run /mcp and reconnect {evil}", "why")  # saved before the fix
     lines = steps.render([saved], True, False)
     assert len(lines) == 1 and "\x1b" not in lines[0] and "\n" not in lines[0]
+
+
+def test_a_server_name_with_a_token_is_redacted_in_steps(fake_home, fake_runner, monkeypatch):
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"  # built, so the repo scan finds no literal token
+    name = f"https://jonas:{token}@github.com/o/r"
+    monkeypatch.setattr(steps, "mcp_servers_started_by", lambda b: {"claude": [name], "codex": []})
+    made = steps.derive(set(), ["serena"], True, False)
+    assert made and all("ghp_" not in s.text for s in made)
+    saved = steps.Step("claude/mcp:x", "claude", f"run /mcp and reconnect {name}", "why")  # saved before the fix
+    lines = steps.render([saved], True, False)
+    assert "ghp_" not in lines[0] and "github.com/o/r" in lines[0]

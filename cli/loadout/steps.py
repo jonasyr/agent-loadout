@@ -9,7 +9,14 @@ from dataclasses import dataclass
 
 from . import paths
 from .jsonio import get_dict, load_json, save_json
-from .out import printable
+from .out import printable as _printable
+
+
+def printable(text: str) -> str:
+    """Step text from files (an MCP server's name), safe to save and show: redacted (a name can hold a token-bearing
+    URL), then escaped."""
+    from .secrets import redact
+    return _printable(redact(text))
 
 NAMES = {"claude": "Claude Code", "codex": "Codex"}
 HOOKS_TEXT = "start codex and approve the changed hooks in /hooks"
@@ -23,6 +30,11 @@ class Step:
     agent: str  # claude or codex
     text: str  # what to do, imperative
     reason: str  # why, for the person reading the file
+
+
+def _redact(text: str) -> str:
+    from .secrets import redact
+    return redact(text)
 
 
 def _path():
@@ -169,7 +181,7 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
         found = mcp_servers_started_by(binary)
         if claude_on:
             for name in found["claude"]:
-                out.append(Step(f"claude/mcp:{name}", "claude", f"run /mcp and reconnect {printable(name)} (it was upgraded)",
+                out.append(Step(f"claude/mcp:{_redact(name)}", "claude", f"run /mcp and reconnect {printable(name)} (it was upgraded)",
                                 f"{binary} was upgraded and starts this MCP server"))
         restart = restart or bool(codex_on and cli and found["codex"])
     if restart:
@@ -265,7 +277,7 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
             elif not drop and e["id"] == "codex/restart":
                 drop = not runner.have("codex")
             elif not drop and e["id"].startswith("claude/mcp:"):
-                drop = e["id"][len("claude/mcp:"):] not in names.get("claude", set())
+                drop = e["id"][len("claude/mcp:"):] not in {_redact(n) for n in names.get("claude", set())}
             if not drop:
                 keep.setdefault(agent, []).append(e)
     if keep != data:
