@@ -1,5 +1,5 @@
 """`loadout explain FILE`: the entries loadout wrote in a repo file, from which profile, and whether each still has
-loadout's value (read-only; spec Part 0, ADR 0031)."""
+loadout's value; also Codex's own ~/.codex/config.toml and hooks.json (read-only; spec Part 0, ADR 0031)."""
 from __future__ import annotations
 
 import json
@@ -86,9 +86,26 @@ def _gitignore(path: Path) -> int:
     return 0
 
 
+def _codex_file(path: Path) -> str | None:
+    """"config" or "hooks" when path is Codex's own config.toml or hooks.json (CODEX_HOME honoured), else None."""
+    from . import paths
+    home = paths.codex_home()
+    same = lambda a, b: os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))  # noqa: E731
+    return "config" if same(path, home / "config.toml") else "hooks" if same(path, home / "hooks.json") else None
+
+
 def explain(target: str, cwd: Path | None = None) -> int:
     from .new_skill import repo_root
+    if target == "~" or target.startswith(("~/", "~\\")):  # quoted, so the shell left it
+        from . import paths
+        target = str(paths.home() / target[2:])
     path = Path(os.path.abspath(Path(cwd or Path.cwd()) / target))
+    which = _codex_file(path)
+    if which is not None:  # Codex's user files: loadout's record of them is codex-config.json
+        from . import codex
+        for line in (codex.explain_config() if which == "config" else codex.explain_hooks()):
+            _say(redact(line))
+        return 0
     root = repo_root(path.parent)
     if root is None:
         _say(f"{target}: not inside a git repo; loadout records entries only in repos")

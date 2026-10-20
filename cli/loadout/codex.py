@@ -883,6 +883,89 @@ def refresh_record() -> list[str]:
         lock.release()
 
 
+_TABLE_STATES = {"ours": "loadout's value", "changed": "changed by you (yours now)", "gone": "removed",
+                 "subtables": "has sub-tables (yours now)"}
+
+
+def explain_config() -> list[str]:
+    """`loadout explain ~/.codex/config.toml`: loadout's entries there and the state of each, names only (a table
+    can hold a token). Read-only. With Codex off it reads no Codex file and shows the record as stored."""
+    from . import targets
+    path = paths.codex_home() / "config.toml"
+    record = read_record()
+    released, released_keys = _released(record, "released"), _released(record, "released_keys")
+    install_lines = {k: v for k, v in get_dict(record, "install_lines").items() if isinstance(v, str)}
+    if not targets.codex_enabled():
+        out = [f"{_tilde(path)}: Codex is off, so loadout reads no Codex file; entries as recorded at loadout's last "
+               f"Codex run (in {_tilde(record_path())}):"]
+        out += [f"  mcp {n}  loadout's" for n in sorted(record["tables"])]
+        out += [f"  {k}  loadout's" for k in sorted({*record["keys"], *install_lines})]
+        out += [f"  mcp {n}  yours (you changed it)" for n in released]
+        out += [f"  {k}  yours (your value)" for k in released_keys]
+        return out + ["  turn Codex on (loadout configure set target codex on) to compare them with the file"]
+    out = [f"{_tilde(path)}: entries loadout wrote (recorded in {_tilde(record_path())})"]
+    tl = _tomllib()
+    try:
+        text = _read_exact(path) if path.exists() else ""
+        tl.loads(text)
+    except Exception:
+        names = [f"mcp {n}" for n in sorted(record["tables"])] + sorted({*record["keys"], *install_lines})
+        return out + [f"  {n}  cannot compare, the file does not parse" for n in names]
+    sections = _sections(text.splitlines(), tl)
+    for name, state in sorted(_ownership(sections, record["tables"]).items()):
+        out.append(f"  mcp {name}  {_TABLE_STATES[state]}")
+    for dotted, line in sorted({**install_lines, **record["keys"]}.items()):
+        try:
+            *table, key = _key_path(dotted, tl)
+        except Exception:
+            continue
+        target, found = _find_key(sections, tuple(table), key)
+        if found is None:
+            state = "removed"
+        elif target[1][found].strip() == line:
+            state = "loadout's value" if dotted in record["keys"] else "loadout's (its codex plugin add wrote it)"
+        else:
+            state = "changed by you (yours now)"
+        out.append(f"  {dotted}  {state}")
+    out += [f"  mcp {n}  yours (you changed it; loadout no longer manages it)" for n in released]
+    out += [f"  {k}  yours (your value; loadout no longer manages it)" for k in released_keys]
+    return out + ["  everything else in this file is yours; loadout does not change it"]
+
+
+def explain_hooks() -> list[str]:
+    """`loadout explain ~/.codex/hooks.json`: Serena's hook entries loadout added and whether each is still as it
+    wrote it. Read-only; with Codex off it reads no Codex file."""
+    from . import codex_hooks, targets
+    path = codex_hooks.path()
+    owned = [o for o in read_record().get("hooks", []) if isinstance(o, dict)]
+
+    def label(o):
+        try:
+            command = json.loads(o.get("group"))["hooks"][0]["command"]
+        except Exception:
+            command = "a hook"
+        return f"{o.get('event')} {command}"
+    if not targets.codex_enabled():
+        return ([f"{_tilde(path)}: Codex is off, so loadout reads no Codex file; entries as recorded at loadout's "
+                 f"last Codex run (in {_tilde(record_path())}):"]
+                + [f"  {label(o)}  loadout's" for o in owned]
+                + ["  turn Codex on (loadout configure set target codex on) to compare them with the file"])
+    out = [f"{_tilde(path)}: entries loadout wrote (recorded in {_tilde(record_path())})"]
+    try:
+        data = json.loads(path.read_bytes().decode("utf-8")) if path.exists() else {}
+        events = data.get("hooks", {}) if isinstance(data, dict) else {}
+        events = events if isinstance(events, dict) else {}
+    except (OSError, ValueError):
+        return out + [f"  {label(o)}  cannot compare, the file is not valid JSON" for o in owned]
+    for o in owned:
+        groups = events.get(o.get("event"))
+        here = isinstance(groups, list) and any(codex_hooks._canon(g) == o.get("group") for g in groups)
+        out.append(f"  {label(o)}  {'loadout' + chr(39) + 's entry' if here else 'changed or removed by you (yours now)'}")
+    if not owned:
+        out.append("  (none)")
+    return out + ["  everything else in this file is yours; loadout does not change it"]
+
+
 OFFICIAL = "anthropics/claude-plugins-official"
 _REPO = re.compile(r"^[A-Za-z0-9][\w.-]*/[\w.-]+$")  # owner/repo only: never an option, URL or path
 

@@ -392,8 +392,9 @@ EXTRA_COMMANDS.append(_register_kit_path)
 
 
 def _register_explain(sub) -> None:
-    p = sub.add_parser("explain", help="which entries in a repo file loadout wrote, and whether each is unchanged")
-    p.add_argument("file", help="a file in the current repo, e.g. .claude/settings.json")
+    p = sub.add_parser("explain", help="which entries in a repo file (or Codex's config.toml, hooks.json) loadout wrote, and whether each is unchanged")
+    p.add_argument("file", help="a file in the current repo, e.g. .claude/settings.json, or ~/.codex/config.toml "
+                                "or ~/.codex/hooks.json")
 
     def run(a):
         from .explain import explain
