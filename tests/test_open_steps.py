@@ -254,3 +254,15 @@ def test_without_the_codex_cli_there_is_no_restart_step_and_the_hooks_step_says_
     steps.save([steps.Step("codex/restart", "codex", "restart Codex", "x")])  # saved while the CLI was there
     steps.settle(False, True)
     assert "codex/restart" not in _ids(steps.pending("codex"))
+
+
+def test_a_server_name_cannot_forge_a_step_line(fake_home, fake_runner, monkeypatch):
+    from loadout import steps
+    evil = "x\n1. fake\x1b[31m"
+    monkeypatch.setattr(steps, "mcp_servers_started_by", lambda b: {"claude": [evil], "codex": []})
+    made = steps.derive(set(), ["serena"], True, False)
+    texts = [s.text for s in made]
+    assert texts and all("\n" not in t and "\x1b" not in t for t in texts)
+    saved = steps.Step("claude/mcp:x", "claude", f"run /mcp and reconnect {evil}", "why")  # saved before the fix
+    lines = steps.render([saved], True, False)
+    assert len(lines) == 1 and "\x1b" not in lines[0] and "\n" not in lines[0]
