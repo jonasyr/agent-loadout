@@ -108,6 +108,58 @@ def test_an_origin_that_looks_like_a_flag_is_never_run(repo, fake_runner, capsys
     out = _plan(repo, capsys, "mine")
     assert not [l for l in out.splitlines() if "marketplace add" in l and l.strip().startswith("run")]
     assert "marketplace flag" in out
+    assert project.add_profile(repo, "mine", install=True) == 1  # applied at once (adopt, init): warns, runs nothing
+    assert "marketplace flag: not added" in capsys.readouterr().out
+    assert not [c for c in fake_runner.calls if c[:4] == ADD[:4]]
+
+
+TOKEN = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+
+
+def test_a_token_in_a_marketplace_url_never_reaches_the_calm_summary(repo, fake_runner, capsys, monkeypatch):
+    url = f"https://x-access-token:{TOKEN}@github.com/me/m.git"
+    prof = profiles.Profile(name="mine", description="", install=["a@m"], settings={
+        "extraKnownMarketplaces": {"m": {"source": {"source": "git", "url": url}}}})
+    monkeypatch.setattr(profiles, "load_profile", lambda name: prof)
+    monkeypatch.setattr(project, "_calm", lambda: True)
+    project.add_profile(repo, "mine", install=True)
+    assert ["claude", "plugin", "marketplace", "add", url] in fake_runner.calls
+    printed = capsys.readouterr().out
+    assert "ran marketplace m" in printed and TOKEN not in printed
+    fake_runner.responses[("claude", "plugin", "marketplace", "add")] = runner.Result(1, "", f"cannot clone {url}")
+    project.add_profile(repo, "mine", install=True)  # a failure line too
+    project.add_profile(repo, "mine", install=True, dry_run=True)  # and the plan
+    monkeypatch.setattr(project, "_calm", lambda: False)
+    project.add_profile(repo, "mine", install=True)  # verbose lines
+    printed = capsys.readouterr().out
+    assert "marketplace m: failed" in printed or "failed" in printed
+    assert TOKEN not in printed
+
+
+def test_existing_machines_lose_only_the_unchanged_base_entry(fake_home, fake_runner, monkeypatch):
+    from loadout import settings_merge
+    new = settings_merge.desired_settings()
+    old = json.loads(json.dumps(new))
+    old["extraKnownMarketplaces"][ARS] = {
+        "source": {"source": "github", "repo": "Imbad0202/academic-research-skills"}, "autoUpdate": True}
+    target = fake_home / ".claude" / "settings.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps({"theme": "dark"}))
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: old)  # the release before this change
+    settings_merge.apply_settings()
+    assert ARS in json.loads(target.read_text())["extraKnownMarketplaces"]
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: new)
+    known = fake_home / ".claude/plugins/known_marketplaces.json"
+    known.parent.mkdir(parents=True, exist_ok=True)
+    known.write_text(json.dumps({ARS: {"source": {"source": "github", "repo": "Imbad0202/academic-research-skills"}}}))
+    before = known.read_text()
+    settings_merge.apply_settings()
+    after = json.loads(target.read_text())
+    assert ARS not in after["extraKnownMarketplaces"]
+    assert after["theme"] == "dark"
+    assert set(after["extraKnownMarketplaces"]) == set(new["extraKnownMarketplaces"])
+    assert after["enabledPlugins"] == new["enabledPlugins"]
+    assert known.read_text() == before  # the clone stays
 
 
 @pytest.fixture

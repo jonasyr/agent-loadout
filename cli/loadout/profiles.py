@@ -83,11 +83,11 @@ def kit_marketplaces() -> dict[str, dict]:
     return out
 
 
-def marketplace_adds(profile: Profile) -> tuple[list[list[str]], list[str]]:
-    """The `claude plugin marketplace add` commands a profile needs before its installs: one for each marketplace
+def marketplace_adds(profile: Profile) -> tuple[list[tuple[str, list[str]]], list[str]]:
+    """(name, `claude plugin marketplace add` command) for each marketplace a profile needs before its installs: one for each marketplace
     its settings declare that a plugin in its `install` comes from and Claude Code has not added (ADR 0037). When
     Claude Code's list fails, each is added anyway: the install needs it. Also the lines for a source that names
-    no usable repo or url."""
+    no usable repo or url. Output names the marketplace by its name only: an origin URL can carry a token."""
     declared = get_dict(profile.settings, "extraKnownMarketplaces")
     used = []
     for pid in profile.install:
@@ -107,7 +107,7 @@ def marketplace_adds(profile: Profile) -> tuple[list[list[str]], list[str]]:
         if not isinstance(origin, str) or not origin.strip() or origin.startswith("-"):
             bad.append(f"marketplace {name}: not added, profile {profile.name} names no usable repo or url for it")
             continue
-        cmds.append(["claude", "plugin", "marketplace", "add", origin])
+        cmds.append((name, ["claude", "plugin", "marketplace", "add", origin]))
     return cmds, bad
 
 
