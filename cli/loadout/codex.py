@@ -696,6 +696,14 @@ def _set_list(record: dict, key: str, names) -> None:
         record.pop(key, None)
 
 
+def _release_approval(owned_keys: dict, added: set[str]) -> None:
+    """serena is no longer loadout's: its approval line and the header loadout added become yours (left in the file,
+    out of the record), so neither "ask" nor "approve" touches them again."""
+    table, key = SERENA_APPROVAL
+    owned_keys.pop(_dotted(table, key), None)
+    added.discard(_dotted(table[:-1], table[-1]))
+
+
 def _drop_approval(sections: list[list], owned_keys: dict, added: set[str]) -> bool:
     """Serena's approval is no longer wanted ("ask each time", or serena is not loadout's): remove only the
     approval_mode line loadout wrote, and the [mcp_servers.serena.tools.serena_repl] header when loadout added it and
@@ -751,8 +759,9 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     desired = desired_keys()
     approve = any((t, k) == SERENA_APPROVAL for t, k, _v, _f in desired)
     added = set(_released(record, "added_headers"))  # tables loadout created for its own key (serena's approval)
-    # before the tables: "ask each time", or a serena table loadout drops (it keeps no approval of loadout's own)
-    if not approve or ("serena" not in tables and states.get("serena") == "ours"):
+    # before the tables, only while serena is still loadout's: "ask each time", or a serena table loadout drops (it
+    # keeps no approval of loadout's own). A serena that is yours is never touched, nor the approval under it
+    if states.get("serena") == "ours" and (not approve or "serena" not in tables):
         removed = _drop_approval(sections, owned_keys, added) or removed
     # tables: drop or keep what loadout wrote, never touch anything else
     for name, text in list(owned_tables.items()):
@@ -796,10 +805,13 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         owned_tables[name] = text
 
     serena_ours = "serena" in owned_tables and "serena" in tables  # the approval goes only into loadout's serena
-    if approve and not serena_ours:  # serena became yours this run: so does loadout's approval line, kept as is
-        owned_keys.pop(_dotted(*SERENA_APPROVAL), None)
-        added.discard(_dotted(SERENA_APPROVAL[0][:-1], SERENA_APPROVAL[0][-1]))
-    own_serena = approve and user_serena(before, set(owned_tables)) is not None
+    if not serena_ours:  # serena is yours (or gone): so is loadout's approval line and its header, kept as they are
+        _release_approval(owned_keys, added)
+    elif not approve:  # e.g. serena was gone and is written again: loadout's old line under it goes
+        removed = _drop_approval(sections, owned_keys, added) or removed
+    # the note only for a Serena that was always yours: not one loadout wrote and you changed (released)
+    own_serena = (approve and _dotted(*SERENA_APPROVAL) not in was_keys
+                  and user_serena(before, set(owned_tables) | released) is not None)
     said = set(_released(record, "said"))
     if own_serena and "serena_approval" not in said:  # your own Serena is never changed: said once
         lines.append(SERENA_APPROVAL_NOTE)
@@ -960,6 +972,9 @@ def refresh_record() -> list[str]:
                 how = "you added sub-tables to it" if state == "subtables" else "you changed it"
                 notes.append(f"loadout (Codex): mcp {name}: {how} in {shown}, so it is yours now; loadout no longer "
                              "manages it or warns about it")
+        added = set(_released(record, "added_headers"))
+        if "serena" not in owned_tables:  # serena is yours now: so is loadout's approval line under it
+            _release_approval(owned_keys, added)
         for table, key, value, force in desired_keys(switches=False):
             if (table, key) == SERENA_APPROVAL and "serena" not in owned_tables:  # not loadout's serena: not its key
                 continue
@@ -987,6 +1002,7 @@ def refresh_record() -> list[str]:
                 new_record.pop("install_lines")
         _set_list(new_record, "released", released)
         _set_list(new_record, "released_keys", released_keys)
+        _set_list(new_record, "added_headers", added)
         if new_record != record:
             record_path().parent.mkdir(parents=True, exist_ok=True)
             save_json(record_path(), new_record)

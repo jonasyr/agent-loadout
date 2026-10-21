@@ -148,3 +148,54 @@ def test_serena_you_changed_keeps_the_approval_line_as_yours(fake_home):
     assert any("changed by you" in l for l in lines), lines
     assert _text() == mine, "your table and the approval under it stay as they are"
     assert DOTTED not in codex.read_record()["keys"]
+
+
+SETUP_SHAPE = '[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--context=codex"]\n'
+
+
+def _replace_serena_with_own():
+    """loadout's serena table replaced by the shape `serena setup codex` writes; the approval under it stays."""
+    text = _text()
+    parent = codex.read_record()["tables"]["serena"]
+    mine = text.replace(parent, SETUP_SHAPE, 1)
+    assert mine != text
+    _cfg().write_text(mine, encoding="utf-8")
+    return mine
+
+
+def test_ask_never_touches_the_approval_once_serena_is_yours_in_the_same_run(fake_home):
+    _answer("approve")
+    _apply()
+    mine = _replace_serena_with_own()
+    _answer("ask")
+    _apply()
+    assert _text() == mine, "your own Serena and the approval under it stay"
+    record = codex.read_record()
+    assert DOTTED not in record["keys"] and "added_headers" not in record
+    _answer("approve")
+    _apply()
+    _answer("ask")
+    _apply()
+    assert _text() == mine
+
+
+def test_ask_never_touches_the_approval_once_refresh_released_serena(fake_home, monkeypatch):
+    from loadout import targets
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": True})
+    _answer("approve")
+    _apply()
+    mine = _replace_serena_with_own()
+    codex.refresh_record()
+    record = codex.read_record()
+    assert DOTTED not in record["keys"] and "added_headers" not in record
+    _answer("ask")
+    _apply()
+    assert _text() == mine
+
+
+def test_no_note_when_loadouts_serena_was_just_released(fake_home):
+    _answer("approve")
+    _apply()
+    _replace_serena_with_own()
+    lines = _apply()
+    assert not any(NOTE in l for l in lines), lines

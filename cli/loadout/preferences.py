@@ -369,8 +369,9 @@ def _loadout_state(pref: dict, data: dict) -> State:
     return State(raw=found, source="personal loadout.json")
 
 
-def _write_loadout(changes: dict[str, str], bk: Backup) -> bool:
-    """changes: dotted key -> option value. Every other key in loadout.json stays as it is."""
+def _merged_loadout(changes: dict[str, str]) -> tuple[dict, dict]:
+    """(loadout.json now, with changes merged). ValueError naming the file when the file or a container on a key's
+    path is not an object: _apply calls this before anything is written."""
     path = _loadout_path()
     data = _loadout_data()
     new = copy.deepcopy(data)
@@ -383,6 +384,13 @@ def _write_loadout(changes: dict[str, str], bk: Backup) -> bool:
                 raise ValueError(f"{path}: {part} is not an object; fix it by hand, nothing was written")
             node = node[part]
         node[_key(dotted)[-1]] = value
+    return data, new
+
+
+def _write_loadout(changes: dict[str, str], bk: Backup) -> bool:
+    """changes: dotted key -> option value. Every other key in loadout.json stays as it is."""
+    path = _loadout_path()
+    data, new = _merged_loadout(changes)
     if new == data:
         return False
     if path.exists():
@@ -664,7 +672,7 @@ def _apply(prefs: list[dict], states: dict[str, State], answers: dict[str, tuple
         if "loadout" in pref["target"]:
             loadout_changes[pref["target"]["loadout"]] = value
     if loadout_changes:
-        _loadout_data()  # refuse before anything is written
+        _merged_loadout(loadout_changes)  # refuse before anything is written (a broken file or a nested non-object)
     if me_changes:
         _block_range(_read_me()[1], strict=True)  # refuse before anything is written
         out += _write_me(prefs, states, me_changes, bk, ask, interactive)

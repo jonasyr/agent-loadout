@@ -139,3 +139,16 @@ def test_bootstrap_starter_with_codex_on_asks(fake_home, fake_runner, codex_on):
     ask, asked = _asker(["", "Max", "Student", "Python", "", "n"])
     bootstrap.ensure_personal(ask, interactive=True)
     assert any(q.startswith(PID) for q in asked)
+
+
+@pytest.mark.parametrize("nested", ['{"codex": "x"}', '{"codex": []}'])
+def test_nested_non_object_is_refused_before_anything_is_written(fake_home, codex_on, nested):
+    _file().parent.mkdir(parents=True)
+    _file().write_text(nested, encoding="utf-8")
+    assert not preferences.detect()[PID].is_set
+    given = {PID: ("approve", ""), "answer_style": ("detailed", ""), "effort_level": ("high", "")}
+    with pytest.raises(ValueError, match="loadout.json"):
+        preferences.ask_all(lambda q: "", fill_defaults=False, interactive=False, given=given)
+    assert not (paths.personal_root() / "rules" / "me.md").exists()
+    assert not (paths.personal_root() / "settings.json").exists()
+    assert _file().read_text(encoding="utf-8") == nested
