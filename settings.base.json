@@ -8,6 +8,13 @@
       },
       "autoUpdate": true
     },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      },
+      "autoUpdate": true
+    },
     "impeccable": {
       "source": {
         "source": "github",

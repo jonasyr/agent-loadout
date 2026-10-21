@@ -65,15 +65,22 @@ def _settings() -> list[CheckResult]:
 def _plugins() -> list[CheckResult]:
     try:
         wanted = [p for p, on in get_dict(settings_merge.desired_settings(), "enabledPlugins").items() if on]
-        installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
+        plugins_dir = paths.claude_home() / "plugins"
+        installed = load_json(plugins_dir / "installed_plugins.json").get("plugins", {})
         if not isinstance(installed, dict):
             raise InvalidJSON("installed_plugins.json: 'plugins' is not an object")
+        known = load_json(plugins_dir / "known_marketplaces.json")
     except InvalidJSON as exc:
         return [CheckResult("plugins installed", False, str(exc), "fix the JSON syntax", "warn")]
     missing = [p for p in wanted if p not in installed]
-    # Claude Code installs enabled plugins from known marketplaces at its next start
-    return [CheckResult("plugins installed", not missing, ", ".join(missing),
-                        "they install automatically at the next Claude Code start (or run loadout bootstrap)", "warn")]
+    no_market = sorted({m for p in missing if "@" in p and (m := p.rpartition("@")[2]) not in known})
+    detail = ", ".join(missing)
+    if no_market:
+        detail += f"; marketplace not added: {', '.join(no_market)}"
+        fix = "run loadout update (adds the marketplace, then installs them)"
+    else:
+        fix = "run loadout update (or loadout bootstrap)"
+    return [CheckResult("plugins installed", not missing, detail, fix, "warn")]
 
 
 PLUGIN_ID = "loadout@agent-loadout"
