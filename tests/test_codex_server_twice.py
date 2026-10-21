@@ -1,5 +1,6 @@
 """loadout check names a Codex MCP server the user defined in config.toml that the loadout plugin also provides."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -10,7 +11,9 @@ REAL_DRIFT = codex.drift
 USER_TABLE = ('[mcp_servers.codebase-memory-mcp]\ncommand = "codebase-memory-mcp"\n\n'
               '[mcp_servers.codebase-memory-mcp.tools.search_graph]\napproval_mode = "approve"\n')
 DETAIL = "defined in config.toml and by the loadout plugin; Codex starts one of them"
-FIX = ("remove your [mcp_servers.codebase-memory-mcp] from ~/.codex/config.toml (the plugin provides it), "
+# _tilde keeps the platform's separators, like every other Codex path loadout prints (~\.codex\config.toml on Windows)
+CONFIG = str(Path("~", ".codex", "config.toml"))
+FIX = (f"remove your [mcp_servers.codebase-memory-mcp] from {CONFIG} (the plugin provides it), "
        "or turn the loadout plugin off in Codex")
 
 

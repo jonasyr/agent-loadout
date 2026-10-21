@@ -1,10 +1,14 @@
 """`loadout check` names codebase-memory-mcp's daemon conflict from the log the failing session wrote (read only)."""
 import json
+import os
 import time
 
 import pytest
 
 from loadout import check
+
+# the check reads the log on POSIX only (spec fix 8); a test that expects a row cannot pass on Windows
+posix_only = pytest.mark.skipif(os.name == "nt", reason="the daemon conflict check is POSIX only (spec fix 8)")
 
 NAME = "codebase-memory-mcp daemon"
 CACHE_DETAIL = ("a codebase-memory-mcp session with a different cache folder could not start "
@@ -38,17 +42,20 @@ def _write(d, *records, name="daemon-conflicts.ndjson"):
     (d / name).write_text("".join((r if isinstance(r, str) else json.dumps(r)) + "\n" for r in records))
 
 
+@posix_only
 def test_recent_cache_conflict_is_named(cache):
     _write(cache, _cache_record())
     [r] = check._cbm_conflict()
     assert (r.name, r.ok, r.severity, r.detail, r.fix) == (NAME, False, "warn", CACHE_DETAIL, CACHE_FIX)
 
 
+@posix_only
 def test_registered_in_run_checks(cache):
     _write(cache, _cache_record())
     assert NAME in {r.name for r in check.run_checks()}
 
 
+@posix_only
 def test_version_conflict_names_both_versions(cache):
     _write(cache, _version_record())
     [r] = check._cbm_conflict()
@@ -61,6 +68,7 @@ def test_old_record_is_ignored(cache):
     assert check._cbm_conflict() == []
 
 
+@posix_only
 def test_malformed_lines_are_skipped(cache):
     _write(cache, "not json", "[1, 2]", '{"timestamp_unix_s": "soon"}', '{"timestamp_unix_s": true}',
            json.dumps(_cache_record(requested_version=None)), _cache_record())
@@ -83,6 +91,7 @@ def test_only_the_last_64_kib_are_read(cache):
     assert check._cbm_conflict() == []
 
 
+@posix_only
 def test_recent_record_in_tail_of_large_file_is_found(cache):
     filler = json.dumps(_cache_record(age_s=48 * 3600))
     _write(cache, *([filler] * (70 * 1024 // len(filler) + 10)), _cache_record())
@@ -90,6 +99,7 @@ def test_recent_record_in_tail_of_large_file_is_found(cache):
     assert r.detail == CACHE_DETAIL
 
 
+@posix_only
 def test_rotated_log_is_read(cache):
     _write(cache, _cache_record(), name="daemon-conflicts.ndjson.1")
     [r] = check._cbm_conflict()
@@ -111,6 +121,7 @@ def test_windows_gives_nothing(cache, monkeypatch):
     assert check._cbm_conflict() == []
 
 
+@posix_only
 def test_cbm_cache_dir_of_checks_environment_is_read(fake_home, fake_runner, monkeypatch, tmp_path):
     own = tmp_path / "cbm"
     (own / "logs").mkdir(parents=True)
@@ -122,6 +133,7 @@ def test_cbm_cache_dir_of_checks_environment_is_read(fake_home, fake_runner, mon
     assert r.fix == CACHE_FIX
 
 
+@posix_only
 def test_default_folder_is_read_next_to_cbm_cache_dir(cache, monkeypatch, tmp_path):
     monkeypatch.setenv("CBM_CACHE_DIR", str(tmp_path / "empty"))
     _write(cache, _cache_record())
@@ -135,6 +147,7 @@ def test_check_never_runs_the_binary(cache, fake_runner):
     assert not any("codebase-memory-mcp" in " ".join(map(str, c)) for c in fake_runner.calls)
 
 
+@posix_only
 def test_record_starting_exactly_at_the_tail_is_read(cache):
     head = json.dumps(_cache_record(age_s=48 * 3600)) + "\n"
     rec = json.dumps(_cache_record())
@@ -145,18 +158,21 @@ def test_record_starting_exactly_at_the_tail_is_read(cache):
     assert r.detail == CACHE_DETAIL
 
 
+@posix_only
 def test_huge_integer_timestamp_is_skipped(cache):
     _write(cache, '{"timestamp_unix_s": 1' + "0" * 400 + "}", _cache_record())
     [r] = check._cbm_conflict()
     assert r.detail == CACHE_DETAIL
 
 
+@posix_only
 def test_non_finite_timestamp_is_skipped(cache):
     _write(cache, '{"timestamp_unix_s": NaN}', '{"timestamp_unix_s": Infinity}', _cache_record())
     [r] = check._cbm_conflict()
     assert r.detail == CACHE_DETAIL
 
 
+@posix_only
 def test_deeply_nested_line_is_skipped(cache):
     _write(cache, "[" * 30000 + "]" * 30000, _cache_record())
     [r] = check._cbm_conflict()
