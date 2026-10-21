@@ -556,8 +556,15 @@ def _header_path(line: str, tl) -> tuple | None:
     return ("[[",) + tuple(path) if isinstance(data, list) else tuple(path)
 
 
+def is_tool_section(path, name: str) -> bool:
+    """[mcp_servers.NAME.tools.TOOL]: what Codex's "Always allow" writes under a server's table. Your text inside a
+    table loadout keeps managing: never compared, never rewritten (ADR 0036)."""
+    return isinstance(path, tuple) and path[:3] == ("mcp_servers", name, "tools") and len(path) > 3
+
+
 def _sections(lines: list[str], tl) -> list[list]:
-    """[[path or None, [lines], [top flags]]]: the top level first, then one entry per header."""
+    """[[path or None, [lines], [top flags]]]: the top level first, then one entry per header. The comment and blank
+    lines directly above a [mcp_servers.X.tools.Y] header belong to that sub-table, not to the table before it."""
     out = [[None, [], []]]
     for line, top in zip(lines, _top_lines(lines)):
         if top and line.lstrip().startswith("["):
@@ -565,6 +572,14 @@ def _sections(lines: list[str], tl) -> list[list]:
         else:
             out[-1][1].append(line)
             out[-1][2].append(top)
+    for prev, sec in zip(out, out[1:]):
+        if not (isinstance(sec[0], tuple) and len(sec[0]) > 3 and is_tool_section(sec[0], sec[0][1])):
+            continue
+        n, start = len(prev[1]), 0 if prev[0] is None else 1  # a header line never moves
+        while n > start and prev[2][n - 1] and (not prev[1][n - 1].strip() or prev[1][n - 1].lstrip().startswith("#")):
+            n -= 1
+        sec[1][:0], sec[2][:0] = prev[1][n:], prev[2][n:]
+        del prev[1][n:], prev[2][n:]
     return out
 
 
@@ -617,7 +632,9 @@ def _without_owned(data: dict, tables, keys, tl) -> dict:
     servers = data.get("mcp_servers")
     if isinstance(servers, dict):
         for name in tables:
-            servers.pop(name, None)
+            table = servers.pop(name, None)
+            if isinstance(table, dict) and "tools" in table:  # your tool approvals: the guard proves they survive
+                servers[name] = {"tools": table["tools"]}
     for dotted in keys:
         try:
             *parents, last = _key_path(dotted, tl)
@@ -633,14 +650,16 @@ def _without_owned(data: dict, tables, keys, tl) -> dict:
 
 def _ownership(sections: list[list], owned_tables: dict[str, str]) -> dict[str, str]:
     """Per [mcp_servers] table loadout recorded: "ours" (as loadout wrote it), "gone", "subtables" or "changed"
-    (yours from now on). One rule for apply_config, refresh_record and explain."""
+    (yours from now on). One rule for apply_config, refresh_record and explain. Tool approvals
+    ([mcp_servers.x.tools.y], is_tool_section) are yours inside a table that stays loadout's: they count for nothing."""
     out = {}
     for name, text in owned_tables.items():
         sec = next((s for s in sections if s[0] == ("mcp_servers", name)), None)
         if sec is None:
             out[name] = "gone"
-        elif any(s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name) for s in sections):
-            out[name] = "subtables"  # e.g. [mcp_servers.x.tools.y]; removing x alone would leave Codex unable to start
+        elif any(s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name) and not is_tool_section(s[0], name)
+                 for s in sections):
+            out[name] = "subtables"  # e.g. [mcp_servers.x.env]; removing x alone would leave Codex unable to start
         else:
             out[name] = "ours" if _text(sec[1]) == text else "changed"
     return out
@@ -671,6 +690,15 @@ def _set_list(record: dict, key: str, names) -> None:
         record.pop(key, None)
 
 
+def _wanted_tables(data: dict, sections: list[list], still_ours: set[str], released: set[str]):
+    """desired_tables for this file. A released table whose text is loadout's exact text again (for example one
+    released before ADR 0036 only for its tool approvals) is no Serena of yours: loadout takes it back."""
+    full = desired_tables()[0]
+    back = {n for n in released if n in full and any(s[0] == ("mcp_servers", n) and _text(s[1]) == full[n]
+                                                      for s in sections)}
+    return desired_tables(skip_serena=user_serena(data, still_ours | back) is not None)
+
+
 def apply_config(bk, dry_run: bool = False) -> list[str]:
     path = paths.codex_home() / "config.toml"
     tl = _tomllib()
@@ -692,7 +720,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
 
     # a table loadout wrote and you changed: yours, said once (here or at a session start), then never again
     released = {n for n in _released(record, "released") if find(("mcp_servers", n)) is not None}
-    tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
+    kept = set(_released(record, "kept"))  # loadout's tables it no longer wants, kept for your tool approvals
+    tables, lines = _wanted_tables(before, sections, still_ours, released)
     # tables: drop or keep what loadout wrote, never touch anything else
     for name, text in list(owned_tables.items()):
         state = states[name]
@@ -706,7 +735,17 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             lines.append(f"mcp {name}: left as is in config.toml (changed by you); loadout no longer manages it")
             owned_tables.pop(name)
             released.add(name)
-        elif tables.get(name) != text:
+        elif name in tables and tables[name] != text:  # replaced in place: the tools.* sections after it stay put
+            sec = find(("mcp_servers", name))
+            sec[1][:] = tables[name].rstrip("\n").splitlines()
+            sec[2][:] = [True] * len(sec[1])
+            owned_tables[name] = tables[name]
+            removed = True  # the old text goes: restore must be able to bring it back
+        elif name not in tables and any(is_tool_section(s[0], name) for s in sections):
+            if name not in kept:  # without its table, your approvals would stop Codex from starting
+                lines.append(f"mcp {name}: {KEPT}: your tool approvals ([mcp_servers.{name}.tools.*]) need it")
+            kept.add(name)
+        elif name not in tables:
             sections.remove(find(("mcp_servers", name)))
             owned_tables.pop(name)
             removed = True
@@ -781,6 +820,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
     new_record = {**record, "tables": owned_tables, "keys": owned_keys}  # keeps project_plugins
     _set_list(new_record, "released", released)
+    _set_list(new_record, "kept", {n for n in kept if n in owned_tables and n not in tables})
     _set_list(new_record, "released_keys", released_keys)
     if install_lines:
         new_record["install_lines"] = install_lines
@@ -804,7 +844,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     elif path.exists() and switched:
         bk.save_copy(path, "Codex config.toml before switching plugins on or off")
     elif path.exists() and removed:  # a section goes: restore must be able to bring it back
-        bk.save_copy(path, "Codex config.toml before loadout removed one of its sections")
+        bk.save_copy(path, "Codex config.toml before loadout replaced or removed one of its sections")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")
     from .jsonio import write_atomic
@@ -815,11 +855,14 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
 
 
 RELEASES = ("(changed by you)", "(it has sub-tables)", "(your value)")
+KEPT = "kept in config.toml"
 
 
 def is_release(line: str) -> bool:
-    """apply_config's line for an entry that just became yours (it comes once: the record then keeps it quiet)."""
-    return "left as is in config.toml" in line and any(mark in line for mark in RELEASES)
+    """apply_config's line for an entry that just became yours, or a table kept for your tool approvals (each comes
+    once: the record then keeps it quiet)."""
+    return (("left as is in config.toml" in line and any(mark in line for mark in RELEASES))
+            or (line.startswith("mcp ") and f": {KEPT}: your tool approvals" in line))
 
 
 def refresh_record() -> list[str]:
@@ -854,7 +897,7 @@ def refresh_record() -> list[str]:
         if released:  # a table you put back to loadout's exact text is loadout's again (no note)
             data = tl.loads(text)
             still_ours = {n for n, st in _ownership(sections, owned_tables).items() if st == "ours"}
-            wanted = desired_tables(skip_serena=user_serena(data, still_ours) is not None)[0]  # as apply_config
+            wanted = _wanted_tables(data, sections, still_ours, released)[0]  # as apply_config
             for name in sorted(released):
                 sec = next(s for s in sections if s[0] == ("mcp_servers", name))
                 if wanted.get(name) == _text(sec[1]):
@@ -903,7 +946,8 @@ def refresh_record() -> list[str]:
 
 
 _TABLE_STATES = {"ours": "loadout's value", "changed": "changed by you (yours now)", "gone": "removed",
-                 "subtables": "has sub-tables (yours now)"}
+                 "subtables": "has sub-tables (yours now)",
+                 "kept": "loadout's, kept for your tool approvals (tools.* sub-tables)"}
 
 
 def explain_config() -> list[str]:
@@ -917,7 +961,9 @@ def explain_config() -> list[str]:
     if not targets.codex_enabled():
         out = [f"{_tilde(path)}: Codex is off, so loadout reads no Codex file; entries as recorded at loadout's last "
                f"Codex run (in {_tilde(record_path())}):"]
-        out += [f"  mcp {n}  loadout's" for n in sorted(record["tables"])]
+        kept = set(_released(record, "kept"))
+        out += [f"  mcp {n}  loadout's" + (" (kept for your tool approvals)" if n in kept else "")
+                for n in sorted(record["tables"])]
         out += [f"  {k}  loadout's" for k in sorted({*record["keys"], *install_lines})]
         out += [f"  mcp {n}  yours (you changed it)" for n in released]
         out += [f"  {k}  yours (your value)" for k in released_keys]
@@ -931,8 +977,9 @@ def explain_config() -> list[str]:
         names = [f"mcp {n}" for n in sorted(record["tables"])] + sorted({*record["keys"], *install_lines})
         return out + [f"  {n}  cannot compare, the file does not parse" for n in names]
     sections = _sections(text.splitlines(), tl)
+    kept = set(_released(record, "kept"))
     for name, state in sorted(_ownership(sections, record["tables"]).items()):
-        out.append(f"  mcp {name}  {_TABLE_STATES[state]}")
+        out.append(f"  mcp {name}  {_TABLE_STATES['kept' if state == 'ours' and name in kept else state]}")
     for dotted, line in sorted({**install_lines, **record["keys"]}.items()):
         try:
             *table, key = _key_path(dotted, tl)

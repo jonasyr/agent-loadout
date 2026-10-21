@@ -47,7 +47,7 @@ Template:
 | [0019](0019-upstream-installers-without-agent-configuration.md) | Upstream installers run without agent configuration | Accepted |
 | [0020](0020-bootstrap-installs-the-toolchain-in-user-space.md) | Bootstrap installs the toolchain in user space | Accepted; Python minimum superseded by 0023 |
 | [0021](0021-diagrams-as-code-rendered-to-svg.md) | Diagrams as code, rendered to committed SVGs | Accepted |
-| [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted |
+| [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted; amended by 0036 |
 | [0023](0023-python-3-11-minimum.md) | Python 3.11 minimum | Accepted |
 | [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted; amended by 0033 and 0035 |
 | [0025](0025-state-in-xdg-state-home.md) | loadout's own files live in XDG state, not in `~/.claude` | Accepted |
@@ -61,3 +61,4 @@ Template:
 | [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) | Codex set up for VS Code's Codex extension without its CLI | Accepted |
 | [0034](0034-vscode-extension-binaries-and-vscode-fixes.md) | The extensions' own binaries as runners, and VS Code fixes as asked-for plans | Accepted |
 | [0035](0035-loadout-update-brings-a-machine-current.md) | `loadout update` brings a machine current | Accepted |
+| [0036](0036-codex-tool-approvals-and-serena-approval.md) | Codex tool approvals stay yours, and Codex asks once about Serena's | Accepted |
