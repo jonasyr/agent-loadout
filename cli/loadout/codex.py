@@ -474,6 +474,10 @@ def _plugin_switches() -> list[tuple]:
             + [(("plugins", pid), "enabled", False, False) for pid in off if pid in listed])
 
 
+SERENA_APPROVAL = (("mcp_servers", "serena", "tools", "serena_repl"), "approval_mode")
+SERENA_APPROVAL_NOTE = ('Serena is your own server in config.toml; to approve its tools, choose "Always allow" in Codex')
+
+
 def desired_keys(switches: bool = True) -> list[tuple[tuple, str, object, object]]:
     """(table path, key, value, force); path () is the top level. force: loadout's value wins even over a changed
     line, used for project-only plugins because `codex plugin add` switches them back on. switches: False leaves out
@@ -486,6 +490,8 @@ def desired_keys(switches: bool = True) -> list[tuple[tuple, str, object, object
         return state[pid].value or preferences.by_id(pid)["default"]
     keys = [((), "model_reasoning_effort", answer("effort_level"), False),
             (("tui",), "notifications", answer("agent_push_notifications") == "yes", False)]
+    if answer("codex_serena_approval") == "approve":  # only while loadout owns serena: apply_config, refresh_record
+        keys.append((*SERENA_APPROVAL, "approve", False))
     plugins = project_plugins()
     if plugins:
         on = get_dict(desired_settings(), "enabledPlugins")
@@ -690,6 +696,26 @@ def _set_list(record: dict, key: str, names) -> None:
         record.pop(key, None)
 
 
+def _drop_approval(sections: list[list], owned_keys: dict, added: set[str]) -> bool:
+    """Serena's approval is no longer wanted ("ask each time", or serena is not loadout's): remove only the
+    approval_mode line loadout wrote, and the [mcp_servers.serena.tools.serena_repl] header when loadout added it and
+    the section holds nothing else. A line you changed, or wrote yourself, stays. True when a line goes."""
+    table, key = SERENA_APPROVAL
+    dotted, head = _dotted(table, key), _dotted(table[:-1], table[-1])
+    line = owned_keys.pop(dotted, None)
+    target, found = _find_key(sections, table, key) if line is not None else (None, None)
+    if found is None or target[1][found].strip() != line:  # gone, or changed by you: yours, not loadout's
+        added.discard(head)
+        return False
+    del target[1][found]
+    if len(target[2]) > found:
+        del target[2][found]
+    if head in added and len([l for l in target[1] if l.strip()]) == 1:  # only the header loadout added is left
+        sections.remove(target)
+    added.discard(head)
+    return True
+
+
 def _wanted_tables(data: dict, sections: list[list], still_ours: set[str], released: set[str]):
     """desired_tables for this file. A released table whose text is loadout's exact text again (for example one
     released before ADR 0036 only for its tool approvals) is no Serena of yours: loadout takes it back."""
@@ -722,6 +748,12 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     released = {n for n in _released(record, "released") if find(("mcp_servers", n)) is not None}
     kept = set(_released(record, "kept"))  # loadout's tables it no longer wants, kept for your tool approvals
     tables, lines = _wanted_tables(before, sections, still_ours, released)
+    desired = desired_keys()
+    approve = any((t, k) == SERENA_APPROVAL for t, k, _v, _f in desired)
+    added = set(_released(record, "added_headers"))  # tables loadout created for its own key (serena's approval)
+    # before the tables: "ask each time", or a serena table loadout drops (it keeps no approval of loadout's own)
+    if not approve or ("serena" not in tables and states.get("serena") == "ours"):
+        removed = _drop_approval(sections, owned_keys, added) or removed
     # tables: drop or keep what loadout wrote, never touch anything else
     for name, text in list(owned_tables.items()):
         state = states[name]
@@ -763,6 +795,16 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         sections.append([("mcp_servers", name), text.rstrip("\n").splitlines(), []])
         owned_tables[name] = text
 
+    serena_ours = "serena" in owned_tables and "serena" in tables  # the approval goes only into loadout's serena
+    if approve and not serena_ours:  # serena became yours this run: so does loadout's approval line, kept as is
+        owned_keys.pop(_dotted(*SERENA_APPROVAL), None)
+        added.discard(_dotted(SERENA_APPROVAL[0][:-1], SERENA_APPROVAL[0][-1]))
+    own_serena = approve and user_serena(before, set(owned_tables)) is not None
+    said = set(_released(record, "said"))
+    if own_serena and "serena_approval" not in said:  # your own Serena is never changed: said once
+        lines.append(SERENA_APPROVAL_NOTE)
+    said = {"serena_approval"} if own_serena else set()
+
     # keys: one line each, in their table, only on lines that start outside strings and arrays
     # force: True (loadout's value wins) or False (a changed line is yours). A plugin's `enabled = true` that
     # loadout's own `codex plugin add` wrote (install_lines) counts as loadout's; any other line is yours
@@ -774,7 +816,9 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             present = {_dotted(("plugins", pid), "enabled") for pid in listed}
             install_lines = {k: v for k, v in install_lines.items() if k in present}
     released_keys = set(_released(record, "released_keys"))  # your own values, said once
-    for table, key, value, force in desired_keys():
+    for table, key, value, force in desired:
+        if (table, key) == SERENA_APPROVAL and not serena_ours:
+            continue
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
         target, found = _find_key(sections, table, key)
@@ -782,6 +826,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         if target is None:
             header = "[" + ".".join(toml_key(p) for p in table) + "]"
             sections.append([table, [header, line], []])
+            if (table, key) == SERENA_APPROVAL:  # its header goes again with loadout's line ("ask each time")
+                added.add(_dotted(table[:-1], table[-1]))
             owned_keys[dotted] = line
             install_lines.pop(dotted, None)
             released_keys.discard(dotted)
@@ -822,6 +868,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     _set_list(new_record, "released", released)
     _set_list(new_record, "kept", {n for n in kept if n in owned_tables and n not in tables})
     _set_list(new_record, "released_keys", released_keys)
+    _set_list(new_record, "added_headers", added)
+    _set_list(new_record, "said", said)
     if install_lines:
         new_record["install_lines"] = install_lines
     else:
@@ -913,6 +961,8 @@ def refresh_record() -> list[str]:
                 notes.append(f"loadout (Codex): mcp {name}: {how} in {shown}, so it is yours now; loadout no longer "
                              "manages it or warns about it")
         for table, key, value, force in desired_keys(switches=False):
+            if (table, key) == SERENA_APPROVAL and "serena" not in owned_tables:  # not loadout's serena: not its key
+                continue
             dotted = _dotted(table, key)
             target, found = _find_key(sections, table, key)
             if found is None or force is True:

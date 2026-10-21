@@ -45,6 +45,7 @@ We will treat `[mcp_servers.<name>.tools.*]` sub-tables as the person's text ins
 - A new preference asks once when Codex is on (in `loadout bootstrap` and `loadout configure prefs`), with the trade-off stated (`serena_repl` runs code in Serena's process): "ask each time" (the default) or "approve automatically".
 - "Approve automatically" writes `approval_mode = "approve"` in `[mcp_servers.serena.tools.serena_repl]` when loadout owns the `serena` table, and records that line. "Ask each time" writes nothing, and on a switch back removes only the line loadout wrote (and the header, if loadout added it and nothing else is in it); an `approval_mode` the person wrote stays.
 - A Serena table of the person's own (named `serena` since Serena 2.1's `serena setup codex`) is never changed; the answer is then a note, said once, that points to "Always allow" in Codex.
+- When loadout's `serena` table becomes the person's (they changed it) while the answer is "approve automatically", loadout's `approval_mode` line under it becomes theirs too and stays as it is. When loadout drops a `serena` table it owns, its own line goes first, so the table is not kept for loadout's own approval.
 - A personal layer cloned onto a new machine, or Codex turned on later, is not asked: the default applies and `loadout configure prefs` changes it.
 - The choice is stored in a new personal-layer file, `loadout.json` (data only loadout reads; a preference target for Codex-only choices), so it syncs with the personal layer.
 
@@ -66,4 +67,4 @@ We will treat `[mcp_servers.<name>.tools.*]` sub-tables as the person's text ins
 ## In the code
 
 - `cli/loadout/codex.py`: `is_tool_section`, `_sections` (the comment above a `tools.*` header), `_ownership`, `_wanted_tables`, `apply_config` (in-place replacement, `kept`), `_without_owned` (the guard keeps `tools`), `is_release`, `refresh_record`, `explain_config`
-- Fix 5: `preferences.json`, `cli/loadout/preferences.py`, `cli/loadout/codex.py` (`desired_keys`)
+- Fix 5: `preferences.json` (`codex_serena_approval`, `agents`, target `loadout`), `cli/loadout/preferences.py` (`available`, `_write_loadout`), `cli/loadout/paths.py` (`personal_loadout_json`), `cli/loadout/codex.py` (`desired_keys`, `_drop_approval`, `apply_config`, `refresh_record`; the record lists `added_headers` and `said`)
