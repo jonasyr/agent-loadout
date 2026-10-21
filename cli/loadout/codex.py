@@ -973,8 +973,8 @@ def refresh_record() -> list[str]:
                 notes.append(f"loadout (Codex): mcp {name}: {how} in {shown}, so it is yours now; loadout no longer "
                              "manages it or warns about it")
         added = set(_released(record, "added_headers"))
-        if "serena" not in owned_tables:  # serena is yours now: so is loadout's approval line under it
-            _release_approval(owned_keys, added)
+        if "serena" in released:  # serena is yours now (changed, sub-tables): so is loadout's approval line under it;
+            _release_approval(owned_keys, added)  # a deleted table is no release: the next run writes it again
         for table, key, value, force in desired_keys(switches=False):
             if (table, key) == SERENA_APPROVAL and "serena" not in owned_tables:  # not loadout's serena: not its key
                 continue

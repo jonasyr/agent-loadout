@@ -199,3 +199,30 @@ def test_no_note_when_loadouts_serena_was_just_released(fake_home):
     _replace_serena_with_own()
     lines = _apply()
     assert not any(NOTE in l for l in lines), lines
+
+
+def test_a_deleted_serena_table_keeps_loadouts_approval_whether_or_not_refresh_ran(fake_home, monkeypatch):
+    from loadout import targets
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": True})
+    results = []
+    for refresh in (False, True):
+        _cfg().unlink(missing_ok=True)
+        codex.record_path().unlink(missing_ok=True)
+        _answer("ask")
+        _apply()
+        plain = _text()
+        _answer("approve")
+        _apply()
+        parent = codex.read_record()["tables"]["serena"]
+        _cfg().write_text(_text().replace(parent, "", 1), encoding="utf-8")  # only the [mcp_servers.serena] block
+        if refresh:
+            codex.refresh_record()
+            assert DOTTED in codex.read_record()["keys"], "a gone table is no release: the line stays loadout's"
+        _apply()
+        assert "serena" in codex.read_record()["tables"]
+        _answer("ask")
+        _apply()
+        assert 'approval_mode = "approve"' not in _text()
+        assert DOTTED not in codex.read_record()["keys"]
+        results.append(tomllib.loads(_text()) == tomllib.loads(plain))
+    assert results == [True, True]
