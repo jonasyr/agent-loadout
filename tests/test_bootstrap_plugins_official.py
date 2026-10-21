@@ -117,3 +117,41 @@ def test_both_lists_failing_is_none(fake_home, fake_runner):
     assert bootstrap.listed_marketplaces() is None
     assert fake_runner.calls.count(list(LIST)) == 1 and fake_runner.calls.count(list(LIST) + ["--json"]) == 1
 
+
+ARS_ID = "academic-research-skills@academic-research-skills"
+
+
+def _enable_personal(plugin_id):
+    paths.personal_root().mkdir(parents=True, exist_ok=True)
+    (paths.personal_root() / "settings.json").write_text(json.dumps({"enabledPlugins": {plugin_id: True}}))
+
+
+def test_a_personal_plugin_whose_marketplace_only_a_profile_declares_plans_that_marketplace(fake_home, fake_runner):
+    _listed(fake_runner, [])
+    _enable_personal(ARS_ID)
+    markets, plugins = _markets()
+    assert ("academic-research-skills", "Imbad0202/academic-research-skills") in markets
+    assert ARS_ID in plugins
+    from loadout import settings_merge
+    assert "academic-research-skills" not in settings_merge.desired_settings().get("extraKnownMarketplaces", {})
+
+
+def test_a_profile_marketplace_already_added_is_not_planned(fake_home, fake_runner):
+    _listed(fake_runner, ["academic-research-skills"])
+    _enable_personal(ARS_ID)
+    markets, _ = _markets()
+    assert "academic-research-skills" not in [n for n, _ in markets]
+
+
+def test_plugins_row_for_a_marketplace_no_one_declares_says_to_declare_it(fake_home, fake_runner):
+    known = fake_home / ".claude/plugins/known_marketplaces.json"
+    known.parent.mkdir(parents=True, exist_ok=True)
+    known.write_text(json.dumps({n: {} for n in ("agent-loadout", "claude-plugins-official", "impeccable")}))
+    _enable_personal("x@nowhere")
+    r = _row()
+    assert "marketplace not added: nowhere" in r.detail
+    assert "extraKnownMarketplaces" in r.fix and "nowhere" in r.fix
+    _enable_personal(ARS_ID)
+    r = _row()
+    assert "academic-research-skills" in r.detail
+    assert r.fix == "run loadout update (adds the marketplace, then installs them)"

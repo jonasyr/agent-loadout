@@ -66,7 +66,8 @@ def _settings() -> list[CheckResult]:
 
 def _plugins() -> list[CheckResult]:
     try:
-        wanted = [p for p, on in get_dict(settings_merge.desired_settings(), "enabledPlugins").items() if on]
+        desired = settings_merge.desired_settings()
+        wanted = [p for p, on in get_dict(desired, "enabledPlugins").items() if on]
         plugins_dir = paths.claude_home() / "plugins"
         installed = load_json(plugins_dir / "installed_plugins.json").get("plugins", {})
         if not isinstance(installed, dict):
@@ -79,7 +80,14 @@ def _plugins() -> list[CheckResult]:
     detail = ", ".join(missing)
     if no_market:
         detail += f"; marketplace not added: {', '.join(no_market)}"
-        fix = "run loadout update (adds the marketplace, then installs them)"
+        from . import profiles
+        addable = set(get_dict(desired, "extraKnownMarketplaces")) | set(profiles.kit_marketplaces())
+        unknown = [m for m in no_market if m not in addable]
+        if unknown:
+            fix = (f"declare {', '.join(unknown)} in your personal settings.json (extraKnownMarketplaces), "
+                   "then run loadout update")
+        else:
+            fix = "run loadout update (adds the marketplace, then installs them)"
     else:
         fix = "run loadout update (or loadout bootstrap)"
     return [CheckResult("plugins installed", not missing, detail, fix, "warn")]

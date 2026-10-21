@@ -421,14 +421,20 @@ def listed_marketplaces() -> set[str] | None:
 def plugins_plan() -> tuple[list[str], list[tuple[str, str]], list[str]]:
     """What setup_plugins would do, without changing anything (it only lists the marketplaces): the skip lines, the
     kit marketplaces to add as (name, origin), and the enabled plugins not installed yet. A declared marketplace is
-    added only when it is loadout's own or an enabled plugin comes from it."""
+    added only when it is loadout's own or an enabled plugin comes from it. An enabled plugin's marketplace that the
+    merged settings do not declare but a kit profile does (`thesis`'s, ADR 0037) is added from the profile's
+    declaration; settings.json does not get it."""
+    from . import profiles
     out = []
     desired = settings_merge.desired_settings()
     listed = listed_marketplaces() or set()
     enabled = [pid for pid, on in get_dict(desired, "enabledPlugins").items() if on]
     used = {pid.rpartition("@")[2] for pid in enabled if "@" in pid}
+    declared = get_dict(desired, "extraKnownMarketplaces")
+    kit = profiles.kit_marketplaces()
+    from_kit = {name: kit[name] for name in sorted(used) if name not in declared and name in kit}
     markets = []
-    for name, cfg in get_dict(desired, "extraKnownMarketplaces").items():
+    for name, cfg in {**declared, **from_kit}.items():
         if name in listed or (name != "agent-loadout" and name not in used):
             continue
         src = get_dict(cfg, "source")
