@@ -304,8 +304,8 @@ STEP_NAMES = {"links": "links", "settings": "rules and settings", "claude_plugin
 @dataclass
 class Summary:
     """What one update run did. changed: one plain line each (backups with their undo); failed: (what, fix);
-    steps: the person's open steps ("Now do this"; steps.derive). facts: the apply steps' facts plus claude_plugins_updated;
-    upgraded: the tool ids updated or installed in this run (for the MCP-server steps)."""
+    steps: the person's open steps ("Now do this"; steps.derive). facts: the apply steps' facts plus claude_plugins_updated
+    (and claude_loadout_plugin when loadout's own plugin was among them); upgraded: the tool ids updated or installed in this run (for the MCP-server steps)."""
     changed: list[str] = field(default_factory=list)
     failed: list[tuple[str, str]] = field(default_factory=list)
     steps: list[steps.Step] = field(default_factory=list)
@@ -527,6 +527,8 @@ def _refresh_claude_plugins(item: PlanItem, summary: Summary) -> None:
                 updated += 1
                 summary.changed.append(f"plugin {out.printable(pid)}: updated in Claude Code")
                 summary.facts.add("claude_plugins_updated")
+                if pid == check.PLUGIN_ID:
+                    summary.facts.add(steps.LOADOUT_FACT)
     text = (f"{updated} updated" if updated else "already up to date") if not stale else \
         f"{updated} updated from the cached catalog (newer versions may exist)"
     out.status("Plugin refresh", text + (f", {failed} failed (below)" if failed else ""), "warn" if failed else "ok")

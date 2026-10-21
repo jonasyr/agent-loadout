@@ -23,7 +23,7 @@ The last column says how `plugins/loadout/hooks/codex.json` differs: `same` mean
 | `PostToolUse` | `Write\|Edit\|MultiEdit` | `--soft --python hooks/advisor.py record` | 5 s | Remembers a finished implementation plan. | matcher `Edit\|Write`; in Codex it reads `apply_patch` headers (see below) |
 | `PostToolUse` | `mcp__plugin_loadout_serena__.*\|mcp__plugin_loadout_codebase-memory-mcp__.*` | `hooks/tool_hint.sh` | 5 s | Resets the search count when Serena or the graph was used. | matcher `mcp__serena__.*\|mcp__codebase-memory-mcp__.*` |
 | `Stop` | all | `--soft --python hooks/advisor.py stop` | 5 s | Asks once for `/loadout:execution-advisor` after a plan. | same |
-| `Stop` | all | `--soft --python hooks/reload_check.py` | 5 s | Same check at the end of a turn, for sessions that run long. | — |
+| `Stop` | all | `--soft --python hooks/reload_check.py` | 5 s | Same check at the end of a turn, for sessions that run long. At either event, when the running plugin folder is the current install, it also removes the open `/reload-plugins` step that loadout saved for its own plugin ([when steps clear](state-and-sync.md#at-each-session-start)). | — |
 | `SubagentStart` | `*` | `hooks/subagent-context.sh` | 5 s | Gives a subagent the tool routing, triggers first (code structure, symbols, library docs also while planning). | same |
 | `PostToolUse` | `Edit\|Write` | `--soft --python hooks/typecheck.py` | 90 s | Codex only. Runs `pyright`, `tsc --noEmit` or `cargo check` on the changed files and reports the errors, because Codex has no LSP plugins. Each check is capped at 20 s; after that it reports itself as skipped. Silent when clean. | Codex only. Serena's diagnostics tool also reports type errors when asked. |
 

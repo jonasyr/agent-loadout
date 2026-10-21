@@ -6,6 +6,11 @@ The running plugin is this file's plugin folder. Claude Code records the current
 ~/.claude/plugins/installed_plugins.json. When the running copy sits in the plugin cache and no
 install entry points at it any more, the session still runs the old skills and hooks until
 /reload-plugins. A dev checkout (claude --plugin-dir) is outside the cache and never notified.
+
+When the running copy is the current install, a saved "/reload-plugins" step (open-steps.json in
+loadout's state folder) that loadout marked loadout_plugin (its own plugin was the one updated) is
+done: this session runs the new copy. A step without the mark stays (another plugin changed; this
+hook cannot see whether it was reloaded) until the next session start clears it.
 """
 from __future__ import annotations
 
@@ -28,14 +33,24 @@ def _resolve(p: str | Path) -> Path:
     return Path(p).expanduser().resolve()
 
 
-def outdated(root: Path, home: Path) -> bool:
+def _install_paths(root: Path, home: Path) -> list[Path] | None:
+    """The install paths Claude Code records for loadout, or None when the running copy is outside the cache."""
     cache = _resolve(home / ".claude" / "plugins" / "cache")
     if cache not in root.parents:
-        return False
+        return None
     data = json.loads((home / ".claude" / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))
     entries = data["plugins"][PLUGIN]
-    paths = [_resolve(e["installPath"]) for e in entries if isinstance(e, dict) and isinstance(e.get("installPath"), str)]
+    return [_resolve(e["installPath"]) for e in entries if isinstance(e, dict) and isinstance(e.get("installPath"), str)]
+
+
+def outdated(root: Path, home: Path) -> bool:
+    paths = _install_paths(root, home)
     return bool(paths) and root not in paths
+
+
+def current(root: Path, home: Path) -> bool:
+    paths = _install_paths(root, home)
+    return bool(paths) and root in paths
 
 
 def state_dir(home: Path) -> Path:
@@ -45,7 +60,43 @@ def state_dir(home: Path) -> Path:
     return root / "loadout"
 
 
+def clear_reload_step(home: Path) -> None:
+    """Remove the saved claude/reload-plugins step marked loadout_plugin; every other step stays as it was."""
+    path = state_dir(home) / "open-steps.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    entries = data.get("claude") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return
+    keep = [e for e in entries if not (isinstance(e, dict) and e.get("id") == "claude/reload-plugins"
+                                       and e.get("loadout_plugin") is True)]
+    if len(keep) == len(entries):
+        return
+    if keep:
+        data["claude"] = keep
+    else:
+        del data["claude"]
+    mode = os.stat(path).st_mode & 0o7777
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        if os.name != "nt":
+            os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
 def main() -> int:
+    try:
+        home = _home()
+        if current(_resolve(Path(__file__)).parent.parent, home):
+            clear_reload_step(home)
+    except Exception:  # a hook must never break a session
+        pass
     try:
         payload = json.loads(sys.stdin.read())
         session = payload.get("session_id") if isinstance(payload, dict) else None

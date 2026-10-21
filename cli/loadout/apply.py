@@ -3,7 +3,7 @@ per-item lines (callers print them their own way) and the facts, what the step c
 
 - link_step: rules_linked
 - settings_step: settings_changed, mcp_changed
-- claude_plugins_step: claude_plugins_installed, claude_marketplace_added
+- claude_plugins_step: claude_plugins_installed, claude_marketplace_added, claude_loadout_plugin (loadout's own plugin)
 - codex_step: codex_block_written, codex_config_changed, serena_hooks_added, codex_hooks_removed,
   codex_skills_linked, codex_plugins_installed, codex_plugins_updated
 - any step: failed:<step> (links, settings, claude_plugins, codex) when one of its lines has a failure in the
@@ -109,7 +109,7 @@ def claude_plugins_step(say=None, dry: bool = False, on: bool | None = None, pla
     planned: run exactly these (marketplaces, plugins), as `loadout update`'s plan showed them."""
     if not (targets.claude_enabled() if on is None else on):
         return StepResult("Plugins", "")
-    from . import bootstrap, settings_merge
+    from . import bootstrap, check, settings_merge, steps
     if dry:
         lines, markets, plugins = bootstrap.plugins_plan()
         lines = [*lines, *(f"marketplace {out.printable(name)}: to add ({out.printable(origin)})"
@@ -124,6 +124,8 @@ def claude_plugins_step(say=None, dry: bool = False, on: bool | None = None, pla
     facts = set()
     if any(line.startswith("plugin ") and line.endswith(": installed") for line in lines):
         facts.add("claude_plugins_installed")
+    if f"plugin {check.PLUGIN_ID}: installed" in lines:
+        facts.add(steps.LOADOUT_FACT)  # its Stop hook can then clear the /reload-plugins step
     if any(line.startswith("marketplace ") and line.endswith(": added") for line in lines):
         facts.add("claude_marketplace_added")
     return _finish(StepResult("Plugins", _plugins_summary(lines), lines, facts), "claude_plugins")
