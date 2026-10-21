@@ -22,7 +22,7 @@ With Codex on, the plugins enabled here are installed in Codex too, from the sam
 
 ## Marketplaces
 
-`settings.base.json` registers four marketplaces, each with `"autoUpdate": true`: `agent-loadout` (this repo), `impeccable`, `academic-research-skills` (used by the `thesis` profile) and `life-sciences`. The `life-sciences` marketplace carries the Wiley Scholar Gateway plugin, which is known but not enabled: use the claude.ai connector or enable the plugin, not both. Recommended: the claude.ai connector; enable the plugin (`wiley-scholar-gateway@life-sciences`) only without a claude.ai login, as the `thesis` profile's notes say. Claude Code updates their plugins. How to turn that off: [Security and trust](../explanation/security-and-trust.md#opting-out).
+`settings.base.json` registers four marketplaces, each with `"autoUpdate": true`: `agent-loadout` (this repo), `claude-plugins-official`, `impeccable` and `life-sciences`. `loadout bootstrap` and `loadout update` add a declared marketplace only when it is loadout's own or an enabled plugin comes from it, so `life-sciences` is not cloned until you enable one of its plugins. The `thesis` profile declares `academic-research-skills` in the repo's `.claude/settings.json` and adds it when Claude Code lacks it, before installing its plugin; a machine that already has the clone keeps it ([ADR 0037](../adr/0037-marketplaces-only-when-a-plugin-uses-them.md)). The `life-sciences` marketplace carries the Wiley Scholar Gateway plugin, which is known but not enabled: use the claude.ai connector or enable the plugin, not both. Recommended: the claude.ai connector; enable the plugin (`wiley-scholar-gateway@life-sciences`) only without a claude.ai login, as the `thesis` profile's notes say. Claude Code updates their plugins. How to turn that off: [Security and trust](../explanation/security-and-trust.md#opting-out).
 
 ## Settings
 
@@ -72,7 +72,7 @@ Applied to one repo with `loadout profile NAME` or `loadout init`, which suggest
 
 | Profile | For | Adds |
 |---|---|---|
-| `thesis` | Academic writing and ML/RAG research | Plugins `academic-research-skills`, `deepeval`, `huggingface-skills` |
+| `thesis` | Academic writing and ML/RAG research | Plugins `academic-research-skills` (and its marketplace), `deepeval`, `huggingface-skills` |
 | `web` | Web UI work | Playwright skills (`playwright-cli install --skills`), the Chrome DevTools MCP server (off until you enable it in `/mcp`) |
 | `db` | Database access | The DBHub MCP server, reading `${DATABASE_URL}` |
 | `sonar` | SonarQube static analysis | Plugin `sonarqube` |

@@ -10,10 +10,20 @@
       "academic-research-skills@academic-research-skills": true,
       "deepeval@claude-plugins-official": true,
       "huggingface-skills@claude-plugins-official": true
+    },
+    "extraKnownMarketplaces": {
+      "academic-research-skills": {
+        "source": {
+          "source": "github",
+          "repo": "Imbad0202/academic-research-skills"
+        },
+        "autoUpdate": true
+      }
     }
   },
   "why": {
-    "settings.enabledPlugins": "turns on the academic research, DeepEval and Hugging Face plugins for this repo"
+    "settings.enabledPlugins": "turns on the academic research, DeepEval and Hugging Face plugins for this repo",
+    "settings.extraKnownMarketplaces": "declares the academic research plugin's marketplace, so Claude Code offers it to everyone who clones this repo"
   },
   "notes": "Prefer the targeted ARS modes (/ars-lit-review, /ars-citation-check, /ars-reviewer); a full /ars-full pipeline run uses a lot of plan usage (or API credits, if you pay per token). Literature search: the claude.ai Wiley Scholar Gateway connector, or the deep-research skill. Without a claude.ai login, enable the wiley-scholar-gateway@life-sciences plugin instead (not both)."
 }

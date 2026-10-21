@@ -62,3 +62,4 @@ Template:
 | [0034](0034-vscode-extension-binaries-and-vscode-fixes.md) | The extensions' own binaries as runners, and VS Code fixes as asked-for plans | Accepted |
 | [0035](0035-loadout-update-brings-a-machine-current.md) | `loadout update` brings a machine current | Accepted |
 | [0036](0036-codex-tool-approvals-and-serena-approval.md) | Codex tool approvals stay yours, and Codex asks once about Serena's | Accepted |
+| [0037](0037-marketplaces-only-when-a-plugin-uses-them.md) | Marketplaces only when a plugin uses them | Accepted |

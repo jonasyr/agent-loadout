@@ -158,7 +158,8 @@ def classify(items: list[Item]) -> list[Verdict]:
 
     kit = load_json(paths.kit_root() / "settings.base.json")
     kit_plugins = {p for p, on in get_dict(kit, "enabledPlugins").items() if on}
-    kit_markets = set(get_dict(kit, "extraKnownMarketplaces")) | {"claude-plugins-official"}
+    from . import profiles
+    kit_markets = set(profiles.kit_marketplaces()) | {"claude-plugins-official"}  # a profile's too (ADR 0037)
     index = own.personal_index()
     left = own.decisions()
     out = []

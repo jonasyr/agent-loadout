@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import paths
-from .jsonio import load_json
+from .jsonio import get_dict, load_json
 from .secrets import redact
 
 
@@ -71,6 +71,44 @@ def load_profile(name: str) -> Profile:
         if path.exists():
             return read_profile(path, name)
     raise ValueError(f"unknown profile '{name}' (available: {', '.join(list_profiles())})")
+
+
+def kit_marketplaces() -> dict[str, dict]:
+    """Every marketplace the kit declares: settings.base.json's `extraKnownMarketplaces` and those of the kit's
+    profiles (ADR 0037). The base wins on a name both declare."""
+    out: dict[str, dict] = {}
+    for path in sorted((paths.kit_root() / "profiles").glob("*.json")):
+        out.update(get_dict(get_dict(load_json(path), "settings"), "extraKnownMarketplaces"))
+    out.update(get_dict(load_json(paths.kit_root() / "settings.base.json"), "extraKnownMarketplaces"))
+    return out
+
+
+def marketplace_adds(profile: Profile) -> tuple[list[list[str]], list[str]]:
+    """The `claude plugin marketplace add` commands a profile needs before its installs: one for each marketplace
+    its settings declare that a plugin in its `install` comes from and Claude Code has not added (ADR 0037). When
+    Claude Code's list fails, each is added anyway: the install needs it. Also the lines for a source that names
+    no usable repo or url."""
+    declared = get_dict(profile.settings, "extraKnownMarketplaces")
+    used = []
+    for pid in profile.install:
+        market = pid.rpartition("@")[2] if isinstance(pid, str) and PLUGIN_ID.match(pid) else None
+        if market in declared and market not in used:
+            used.append(market)
+    if not used:
+        return [], []
+    from . import bootstrap
+    listed = bootstrap.listed_marketplaces()
+    cmds, bad = [], []
+    for name in used:
+        if listed is not None and name in listed:
+            continue
+        src = get_dict(declared[name], "source")
+        origin = src.get("repo") or src.get("url")
+        if not isinstance(origin, str) or not origin.strip() or origin.startswith("-"):
+            bad.append(f"marketplace {name}: not added, profile {profile.name} names no usable repo or url for it")
+            continue
+        cmds.append(["claude", "plugin", "marketplace", "add", origin])
+    return cmds, bad
 
 
 CLAUDE_FILES = (("settings", Path(".claude/settings.json")), ("mcp", Path(".mcp.json")))  # Claude Code's repo files

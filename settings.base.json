@@ -22,13 +22,6 @@
       },
       "autoUpdate": true
     },
-    "academic-research-skills": {
-      "source": {
-        "source": "github",
-        "repo": "Imbad0202/academic-research-skills"
-      },
-      "autoUpdate": true
-    },
     "life-sciences": {
       "source": {
         "source": "github",
