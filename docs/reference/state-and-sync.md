@@ -13,7 +13,7 @@ loadout's state folder is `$XDG_STATE_HOME/loadout` when `XDG_STATE_HOME` is an 
 
 Every command except `kit-path`, `check` and `usage` creates the state folder at its start, readable only by you (mode `0700`; Windows keeps its default permissions). Those three promise to change nothing, so they neither create it nor run the move below.
 
-Two more files belong to loadout on this machine but sit outside the state folder: the personal layer (`~/.config/loadout/personal`, or `$LOADOUT_PERSONAL`; see [Personal layer](personal-layer.md)) and `~/.config/loadout/secrets.env`. Neither follows `XDG_CONFIG_HOME`. loadout reads `XDG_CONFIG_HOME` only to find VS Code's user settings on Linux (`$XDG_CONFIG_HOME/Code/User`).
+Two more files belong to loadout on this machine but sit outside the state folder: the personal layer (`~/.config/loadout/personal`, or `$LOADOUT_PERSONAL`; see [Personal layer](personal-layer.md)) and `~/.config/loadout/secrets.env`. Answers that only loadout reads, such as the Codex-only preferences, are not state: they live in the personal layer's `loadout.json` and sync with it ([Personal layer](personal-layer.md#files)). Neither follows `XDG_CONFIG_HOME`. loadout reads `XDG_CONFIG_HOME` only to find VS Code's user settings on Linux (`$XDG_CONFIG_HOME/Code/User`).
 
 ## The move out of ~/.claude
 
