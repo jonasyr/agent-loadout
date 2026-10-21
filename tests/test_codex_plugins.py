@@ -369,3 +369,127 @@ def test_the_codex_plugin_item_runs_alone_without_item_1(fake_home, fake_runner,
     text = capsys.readouterr().out
     assert "rules, plugins, MCP servers and skills set up" not in text
     assert "plugins refreshed; rules, config, hooks and skills left as they are (item 1 was left out)" in text
+
+
+# --- a large clone is honest: a longer timeout, a warning, and a row for what Codex lacks
+
+def _timeouts(fake_runner, prefix):
+    return [t for c, t in zip(fake_runner.calls, fake_runner.timeouts) if c[:len(prefix)] == list(prefix)]
+
+
+def test_marketplace_add_and_upgrade_get_1800_seconds(fake_home, fake_runner, monkeypatch):
+    from loadout import settings_merge
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: SETTINGS)
+    _fake(fake_runner, installed=["superpowers@claude-plugins-official"])
+    codex.apply_plugins(backup.Backup(description="t"), refresh=True)
+    assert set(_timeouts(fake_runner, ("codex", "plugin", "marketplace", "add"))) == {1800}
+    assert set(_timeouts(fake_runner, ("codex", "plugin", "marketplace", "upgrade"))) == {1800}
+    assert set(_timeouts(fake_runner, ("codex", "plugin", "add"))) == {600}
+
+
+def test_progress_line_warns_about_large_clones(fake_home, fake_runner, monkeypatch):
+    from loadout import settings_merge
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {
+        "enabledPlugins": {"impeccable@impeccable": True}, "extraKnownMarketplaces": SETTINGS["extraKnownMarketplaces"]})
+    _fake(fake_runner)
+    said = []
+    codex.apply_plugins(backup.Backup(description="t"), say=said.append)
+    assert ("  adding marketplace pbakaus/impeccable, a git clone (1 of 2; large repositories can take several "
+            "minutes)…") in said
+
+
+IMPECCABLE = {"enabledPlugins": {"impeccable@impeccable": True},
+              "extraKnownMarketplaces": {"impeccable": {"source": {"source": "github", "repo": "pbakaus/impeccable"}}}}
+
+
+def _codex_has(fake_runner, markets=(), installed=()):
+    items = [{"name": name, "root": "/nowhere", "marketplaceSource": {"sourceType": "git", "source": src}}
+             for name, src in markets]
+    fake_runner.responses[("codex", "plugin", "marketplace", "list")] = runner.Result(
+        0, json.dumps({"marketplaces": items}), "")
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(
+        0, json.dumps({"installed": [{"pluginId": p} for p in installed], "available": []}), "")
+
+
+def _checks_on(monkeypatch, settings):
+    from loadout import settings_merge
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: settings)
+    monkeypatch.setattr(codex, "enabled", lambda: True)
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: None)
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "trusted")
+    monkeypatch.setattr(codex, "logins_needed", lambda: [])
+    monkeypatch.setattr(codex, "logins_optional", lambda: [])
+    monkeypatch.setattr(codex, "drift", lambda: [])
+
+
+def test_check_names_what_codex_lacks(fake_home, fake_runner, monkeypatch):
+    _checks_on(monkeypatch, IMPECCABLE)
+    _codex_has(fake_runner)
+    (row,) = [r for r in codex.checks() if r.name == "Codex plugins missing"]
+    assert not row.ok and row.severity == "warn"
+    assert "pbakaus/impeccable" in row.detail and "impeccable" in row.detail.replace("pbakaus/impeccable", "")
+    assert row.fix == "loadout update (retries them)"
+    assert codex.missing_routes() == (["pbakaus/impeccable"], ["impeccable (from pbakaus/impeccable)"])
+
+
+def test_same_name_from_another_market_is_still_missing(fake_home, fake_runner, monkeypatch):
+    _checks_on(monkeypatch, {"enabledPlugins": {"superpowers@claude-plugins-official": True}})
+    _codex_has(fake_runner, markets=[("openai-curated-remote", "https://github.com/openai/plugins.git"),
+                                     ("claude-plugins-official", f"https://github.com/{codex.OFFICIAL}.git")],
+               installed=["superpowers@openai-curated-remote"])
+    assert codex.missing_routes() == ([], ["superpowers@claude-plugins-official"])
+    (row,) = [r for r in codex.checks() if r.name == "Codex plugins missing"]
+    assert "superpowers@claude-plugins-official" in row.detail
+
+
+def test_open_steps_names_them_once(fake_home, fake_runner, monkeypatch):
+    _checks_on(monkeypatch, IMPECCABLE)
+    _codex_has(fake_runner)
+    steps = [s for s in codex.open_steps() if "pbakaus/impeccable" in s]
+    assert len(steps) == 1 and "loadout update" in steps[0] and "impeccable (from" in steps[0]
+    assert sum(c[:4] == ["codex", "plugin", "marketplace", "list"] for c in fake_runner.calls) == 1
+    assert sum(c[:3] == ["codex", "plugin", "list"] for c in fake_runner.calls) == 1
+
+
+def test_nothing_missing_no_row_no_step(fake_home, fake_runner, monkeypatch):
+    _checks_on(monkeypatch, IMPECCABLE)
+    _codex_has(fake_runner, markets=[("impeccable", "https://github.com/pbakaus/impeccable.git")],
+               installed=["impeccable@impeccable"])
+    assert codex.missing_routes() == ([], [])
+    assert not [r for r in codex.checks() if r.name == "Codex plugins missing"]
+    assert not [s for s in codex.open_steps() if "loadout update" in s]
+
+
+def test_without_the_cli_or_a_listing_nothing_is_reported(fake_home, fake_runner, monkeypatch):
+    _checks_on(monkeypatch, IMPECCABLE)
+    assert codex.missing_routes() == ([], [])  # the default fake prints no JSON: the listing fails
+    _codex_has(fake_runner)
+    fake_runner.missing.add("codex")
+    assert codex.missing_routes() == ([], [])
+
+
+def test_loadout_plugin_not_reported_twice(fake_home, fake_runner, monkeypatch):
+    _checks_on(monkeypatch, {"enabledPlugins": {"loadout@agent-loadout": True},
+                             "extraKnownMarketplaces": SETTINGS["extraKnownMarketplaces"]})
+    _codex_has(fake_runner)
+    assert codex.missing_routes() == ([], [])
+    rows = {r.name: r for r in codex.checks()}
+    assert not rows["Codex plugin"].ok and "Codex plugins missing" not in rows
+
+
+# --- plain words: the summary names only what was set up (live-tour fixes, spec fix 11)
+
+def test_codex_summary_names_skills_only_when_linked(fake_runner):
+    from loadout import apply
+    assert apply._codex_summary(["instructions written to ~/.codex/AGENTS.md"]) == "rules, plugins and MCP servers set up"
+    assert apply._codex_summary(["linked ~/.codex/skills/x"]) == "rules, plugins, MCP servers and skills set up"
+    assert apply._codex_summary(["copied ~/.codex/skills/x"]) == "rules, plugins, MCP servers and skills set up"
+    assert apply._codex_summary([], plugins=False) == "rules and MCP servers set up"
+    assert apply._codex_summary(["linked x"], plugins=False) == "rules, MCP servers and skills set up"
+
+
+def test_codex_summary_extension_mode_names_skills_only_when_linked(fake_runner):
+    from loadout import apply
+    fake_runner.missing.add("codex")
+    assert apply._codex_summary(["linked x"]) == "rules, MCP servers and skills set up for VS Code's Codex extension"
+    assert apply._codex_summary([]) == "rules and MCP servers set up for VS Code's Codex extension"

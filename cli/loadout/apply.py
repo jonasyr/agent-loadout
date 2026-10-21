@@ -3,7 +3,7 @@ per-item lines (callers print them their own way) and the facts, what the step c
 
 - link_step: rules_linked
 - settings_step: settings_changed, mcp_changed
-- claude_plugins_step: claude_plugins_installed, claude_marketplace_added
+- claude_plugins_step: claude_plugins_installed, claude_marketplace_added, claude_loadout_plugin (loadout's own plugin)
 - codex_step: codex_block_written, codex_config_changed, serena_hooks_added, codex_hooks_removed,
   codex_skills_linked, codex_plugins_installed, codex_plugins_updated
 - any step: failed:<step> (links, settings, claude_plugins, codex) when one of its lines has a failure in the
@@ -109,7 +109,7 @@ def claude_plugins_step(say=None, dry: bool = False, on: bool | None = None, pla
     planned: run exactly these (marketplaces, plugins), as `loadout update`'s plan showed them."""
     if not (targets.claude_enabled() if on is None else on):
         return StepResult("Plugins", "")
-    from . import bootstrap, settings_merge
+    from . import bootstrap, check, settings_merge, steps
     if dry:
         lines, markets, plugins = bootstrap.plugins_plan()
         lines = [*lines, *(f"marketplace {out.printable(name)}: to add ({out.printable(origin)})"
@@ -124,6 +124,8 @@ def claude_plugins_step(say=None, dry: bool = False, on: bool | None = None, pla
     facts = set()
     if any(line.startswith("plugin ") and line.endswith(": installed") for line in lines):
         facts.add("claude_plugins_installed")
+    if f"plugin {check.PLUGIN_ID}: installed" in lines:
+        facts.add(steps.LOADOUT_FACT)  # its Stop hook can then clear the /reload-plugins step
     if any(line.startswith("marketplace ") and line.endswith(": added") for line in lines):
         facts.add("claude_marketplace_added")
     return _finish(StepResult("Plugins", _plugins_summary(lines), lines, facts), "claude_plugins")
@@ -145,12 +147,18 @@ def _codex_facts(lines: list[str]) -> set[str]:
     return facts
 
 
-def _codex_summary(lines: list[str]) -> str:
+def _codex_summary(lines: list[str], plugins: bool = True) -> str:
+    """What the Codex step set up, in plain words: plugins only when it handled them, skills only when it linked
+    or copied some (live-tour fixes, spec fix 11)."""
     from . import runner
     failed = sum(1 for line in lines if out.PROBLEM.search(line))
-    done = ("rules, plugins, MCP servers and skills set up" if runner.have("codex")
-            else "rules, MCP servers and skills set up for VS Code's Codex extension")
-    return done if not failed else f"{failed} problem(s) (below)"
+    if failed:
+        return f"{failed} problem(s) (below)"
+    parts = ["rules"] + (["plugins"] if plugins and runner.have("codex") else []) + ["MCP servers"]
+    if any(line.startswith(("linked ", "copied ")) for line in lines):
+        parts.append("skills")
+    done = ", ".join(parts[:-1]) + " and " + parts[-1] + " set up"
+    return done if runner.have("codex") else done + " for VS Code's Codex extension"
 
 
 def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say=None,
@@ -180,7 +188,7 @@ def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say
         facts.add("codex_config_changed")
     if "plugins_updated" in changed:
         facts.add("codex_plugins_updated")
-    summary = _codex_summary(lines)
+    summary = _codex_summary(lines, plugins=plugins)
     if only is not None and set(only) == {"plugins"} and not any(out.PROBLEM.search(line) for line in lines):
         summary = "plugins refreshed; rules, config, hooks and skills left as they are (item 1 was left out)"
     return _finish(StepResult("Codex", summary, lines, facts), "codex")

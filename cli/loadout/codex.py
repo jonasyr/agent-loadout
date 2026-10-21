@@ -406,6 +406,20 @@ def user_serena(data: dict, owned: set[str]) -> str | None:
     return None
 
 
+SERENA_KEPT = "Serena: your own server in config.toml kept"
+
+
+def own_serena() -> str | None:
+    """The name of the user's own Serena server in config.toml now (one loadout did not write, or wrote and you
+    changed), or None. Read-only; bootstrap names it once (apply_config does not: it runs at every update and sync)."""
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return None
+    return user_serena(data, set(read_record()["tables"]))
+
+
 def desired_tables(skip_serena: bool = False) -> tuple[dict[str, str], list[str]]:
     """Table text per server name, and the lines for servers that cannot be mapped. skip_serena: the user has
     their own Serena (user_serena), so loadout writes none (spec PR A)."""
@@ -474,6 +488,10 @@ def _plugin_switches() -> list[tuple]:
             + [(("plugins", pid), "enabled", False, False) for pid in off if pid in listed])
 
 
+SERENA_APPROVAL = (("mcp_servers", "serena", "tools", "serena_repl"), "approval_mode")
+SERENA_APPROVAL_NOTE = ('Serena is your own server in config.toml; to approve its tools, choose "Always allow" in Codex')
+
+
 def desired_keys(switches: bool = True) -> list[tuple[tuple, str, object, object]]:
     """(table path, key, value, force); path () is the top level. force: loadout's value wins even over a changed
     line, used for project-only plugins because `codex plugin add` switches them back on. switches: False leaves out
@@ -486,6 +504,8 @@ def desired_keys(switches: bool = True) -> list[tuple[tuple, str, object, object
         return state[pid].value or preferences.by_id(pid)["default"]
     keys = [((), "model_reasoning_effort", answer("effort_level"), False),
             (("tui",), "notifications", answer("agent_push_notifications") == "yes", False)]
+    if answer("codex_serena_approval") == "approve":  # only while loadout owns serena: apply_config, refresh_record
+        keys.append((*SERENA_APPROVAL, "approve", False))
     plugins = project_plugins()
     if plugins:
         on = get_dict(desired_settings(), "enabledPlugins")
@@ -556,8 +576,15 @@ def _header_path(line: str, tl) -> tuple | None:
     return ("[[",) + tuple(path) if isinstance(data, list) else tuple(path)
 
 
+def is_tool_section(path, name: str) -> bool:
+    """[mcp_servers.NAME.tools.TOOL]: what Codex's "Always allow" writes under a server's table. Your text inside a
+    table loadout keeps managing: never compared, never rewritten (ADR 0036)."""
+    return isinstance(path, tuple) and path[:3] == ("mcp_servers", name, "tools") and len(path) > 3
+
+
 def _sections(lines: list[str], tl) -> list[list]:
-    """[[path or None, [lines], [top flags]]]: the top level first, then one entry per header."""
+    """[[path or None, [lines], [top flags]]]: the top level first, then one entry per header. The comment and blank
+    lines directly above a [mcp_servers.X.tools.Y] header belong to that sub-table, not to the table before it."""
     out = [[None, [], []]]
     for line, top in zip(lines, _top_lines(lines)):
         if top and line.lstrip().startswith("["):
@@ -565,6 +592,14 @@ def _sections(lines: list[str], tl) -> list[list]:
         else:
             out[-1][1].append(line)
             out[-1][2].append(top)
+    for prev, sec in zip(out, out[1:]):
+        if not (isinstance(sec[0], tuple) and len(sec[0]) > 3 and is_tool_section(sec[0], sec[0][1])):
+            continue
+        n, start = len(prev[1]), 0 if prev[0] is None else 1  # a header line never moves
+        while n > start and prev[2][n - 1] and (not prev[1][n - 1].strip() or prev[1][n - 1].lstrip().startswith("#")):
+            n -= 1
+        sec[1][:0], sec[2][:0] = prev[1][n:], prev[2][n:]
+        del prev[1][n:], prev[2][n:]
     return out
 
 
@@ -617,7 +652,9 @@ def _without_owned(data: dict, tables, keys, tl) -> dict:
     servers = data.get("mcp_servers")
     if isinstance(servers, dict):
         for name in tables:
-            servers.pop(name, None)
+            table = servers.pop(name, None)
+            if isinstance(table, dict) and "tools" in table:  # your tool approvals: the guard proves they survive
+                servers[name] = {"tools": table["tools"]}
     for dotted in keys:
         try:
             *parents, last = _key_path(dotted, tl)
@@ -633,14 +670,16 @@ def _without_owned(data: dict, tables, keys, tl) -> dict:
 
 def _ownership(sections: list[list], owned_tables: dict[str, str]) -> dict[str, str]:
     """Per [mcp_servers] table loadout recorded: "ours" (as loadout wrote it), "gone", "subtables" or "changed"
-    (yours from now on). One rule for apply_config, refresh_record and explain."""
+    (yours from now on). One rule for apply_config, refresh_record and explain. Tool approvals
+    ([mcp_servers.x.tools.y], is_tool_section) are yours inside a table that stays loadout's: they count for nothing."""
     out = {}
     for name, text in owned_tables.items():
         sec = next((s for s in sections if s[0] == ("mcp_servers", name)), None)
         if sec is None:
             out[name] = "gone"
-        elif any(s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name) for s in sections):
-            out[name] = "subtables"  # e.g. [mcp_servers.x.tools.y]; removing x alone would leave Codex unable to start
+        elif any(s[0] and len(s[0]) > 2 and s[0][:2] == ("mcp_servers", name) and not is_tool_section(s[0], name)
+                 for s in sections):
+            out[name] = "subtables"  # e.g. [mcp_servers.x.env]; removing x alone would leave Codex unable to start
         else:
             out[name] = "ours" if _text(sec[1]) == text else "changed"
     return out
@@ -671,6 +710,43 @@ def _set_list(record: dict, key: str, names) -> None:
         record.pop(key, None)
 
 
+def _release_approval(owned_keys: dict, added: set[str]) -> None:
+    """serena is no longer loadout's: its approval line and the header loadout added become yours (left in the file,
+    out of the record), so neither "ask" nor "approve" touches them again."""
+    table, key = SERENA_APPROVAL
+    owned_keys.pop(_dotted(table, key), None)
+    added.discard(_dotted(table[:-1], table[-1]))
+
+
+def _drop_approval(sections: list[list], owned_keys: dict, added: set[str]) -> bool:
+    """Serena's approval is no longer wanted ("ask each time", or serena is not loadout's): remove only the
+    approval_mode line loadout wrote, and the [mcp_servers.serena.tools.serena_repl] header when loadout added it and
+    the section holds nothing else. A line you changed, or wrote yourself, stays. True when a line goes."""
+    table, key = SERENA_APPROVAL
+    dotted, head = _dotted(table, key), _dotted(table[:-1], table[-1])
+    line = owned_keys.pop(dotted, None)
+    target, found = _find_key(sections, table, key) if line is not None else (None, None)
+    if found is None or target[1][found].strip() != line:  # gone, or changed by you: yours, not loadout's
+        added.discard(head)
+        return False
+    del target[1][found]
+    if len(target[2]) > found:
+        del target[2][found]
+    if head in added and len([l for l in target[1] if l.strip()]) == 1:  # only the header loadout added is left
+        sections.remove(target)
+    added.discard(head)
+    return True
+
+
+def _wanted_tables(data: dict, sections: list[list], still_ours: set[str], released: set[str]):
+    """desired_tables for this file. A released table whose text is loadout's exact text again (for example one
+    released before ADR 0036 only for its tool approvals) is no Serena of yours: loadout takes it back."""
+    full = desired_tables()[0]
+    back = {n for n in released if n in full and any(s[0] == ("mcp_servers", n) and _text(s[1]) == full[n]
+                                                      for s in sections)}
+    return desired_tables(skip_serena=user_serena(data, still_ours | back) is not None)
+
+
 def apply_config(bk, dry_run: bool = False) -> list[str]:
     path = paths.codex_home() / "config.toml"
     tl = _tomllib()
@@ -692,7 +768,15 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
 
     # a table loadout wrote and you changed: yours, said once (here or at a session start), then never again
     released = {n for n in _released(record, "released") if find(("mcp_servers", n)) is not None}
-    tables, lines = desired_tables(skip_serena=user_serena(before, still_ours) is not None)
+    kept = set(_released(record, "kept"))  # loadout's tables it no longer wants, kept for your tool approvals
+    tables, lines = _wanted_tables(before, sections, still_ours, released)
+    desired = desired_keys()
+    approve = any((t, k) == SERENA_APPROVAL for t, k, _v, _f in desired)
+    added = set(_released(record, "added_headers"))  # tables loadout created for its own key (serena's approval)
+    # before the tables, only while serena is still loadout's: "ask each time", or a serena table loadout drops (it
+    # keeps no approval of loadout's own). A serena that is yours is never touched, nor the approval under it
+    if states.get("serena") == "ours" and (not approve or "serena" not in tables):
+        removed = _drop_approval(sections, owned_keys, added) or removed
     # tables: drop or keep what loadout wrote, never touch anything else
     for name, text in list(owned_tables.items()):
         state = states[name]
@@ -706,7 +790,17 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             lines.append(f"mcp {name}: left as is in config.toml (changed by you); loadout no longer manages it")
             owned_tables.pop(name)
             released.add(name)
-        elif tables.get(name) != text:
+        elif name in tables and tables[name] != text:  # replaced in place: the tools.* sections after it stay put
+            sec = find(("mcp_servers", name))
+            sec[1][:] = tables[name].rstrip("\n").splitlines()
+            sec[2][:] = [True] * len(sec[1])
+            owned_tables[name] = tables[name]
+            removed = True  # the old text goes: restore must be able to bring it back
+        elif name not in tables and any(is_tool_section(s[0], name) for s in sections):
+            if name not in kept:  # without its table, your approvals would stop Codex from starting
+                lines.append(f"mcp {name}: {KEPT}: your tool approvals ([mcp_servers.{name}.tools.*]) need it")
+            kept.add(name)
+        elif name not in tables:
             sections.remove(find(("mcp_servers", name)))
             owned_tables.pop(name)
             removed = True
@@ -724,6 +818,19 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         sections.append([("mcp_servers", name), text.rstrip("\n").splitlines(), []])
         owned_tables[name] = text
 
+    serena_ours = "serena" in owned_tables and "serena" in tables  # the approval goes only into loadout's serena
+    if not serena_ours:  # serena is yours (or gone): so is loadout's approval line and its header, kept as they are
+        _release_approval(owned_keys, added)
+    elif not approve:  # e.g. serena was gone and is written again: loadout's old line under it goes
+        removed = _drop_approval(sections, owned_keys, added) or removed
+    # the note only for a Serena that was always yours: not one loadout wrote and you changed (released)
+    own_serena = (approve and _dotted(*SERENA_APPROVAL) not in was_keys
+                  and user_serena(before, set(owned_tables) | released) is not None)
+    said = set(_released(record, "said"))
+    if own_serena and "serena_approval" not in said:  # your own Serena is never changed: said once
+        lines.append(SERENA_APPROVAL_NOTE)
+    said = {"serena_approval"} if own_serena else set()
+
     # keys: one line each, in their table, only on lines that start outside strings and arrays
     # force: True (loadout's value wins) or False (a changed line is yours). A plugin's `enabled = true` that
     # loadout's own `codex plugin add` wrote (install_lines) counts as loadout's; any other line is yours
@@ -735,7 +842,9 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
             present = {_dotted(("plugins", pid), "enabled") for pid in listed}
             install_lines = {k: v for k, v in install_lines.items() if k in present}
     released_keys = set(_released(record, "released_keys"))  # your own values, said once
-    for table, key, value, force in desired_keys():
+    for table, key, value, force in desired:
+        if (table, key) == SERENA_APPROVAL and not serena_ours:
+            continue
         dotted = _dotted(table, key)
         line = f"{key} = {toml_value(value)}"
         target, found = _find_key(sections, table, key)
@@ -743,6 +852,8 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
         if target is None:
             header = "[" + ".".join(toml_key(p) for p in table) + "]"
             sections.append([table, [header, line], []])
+            if (table, key) == SERENA_APPROVAL:  # its header goes again with loadout's line ("ask each time")
+                added.add(_dotted(table[:-1], table[-1]))
             owned_keys[dotted] = line
             install_lines.pop(dotted, None)
             released_keys.discard(dotted)
@@ -781,7 +892,10 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     new = "\n\n".join(p for p in parts if p) + "\n" if parts else ""
     new_record = {**record, "tables": owned_tables, "keys": owned_keys}  # keeps project_plugins
     _set_list(new_record, "released", released)
+    _set_list(new_record, "kept", {n for n in kept if n in owned_tables and n not in tables})
     _set_list(new_record, "released_keys", released_keys)
+    _set_list(new_record, "added_headers", added)
+    _set_list(new_record, "said", said)
     if install_lines:
         new_record["install_lines"] = install_lines
     else:
@@ -804,7 +918,7 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
     elif path.exists() and switched:
         bk.save_copy(path, "Codex config.toml before switching plugins on or off")
     elif path.exists() and removed:  # a section goes: restore must be able to bring it back
-        bk.save_copy(path, "Codex config.toml before loadout removed one of its sections")
+        bk.save_copy(path, "Codex config.toml before loadout replaced or removed one of its sections")
     elif not path.exists():
         bk.record_created(path, "created Codex config.toml")
     from .jsonio import write_atomic
@@ -815,11 +929,14 @@ def apply_config(bk, dry_run: bool = False) -> list[str]:
 
 
 RELEASES = ("(changed by you)", "(it has sub-tables)", "(your value)")
+KEPT = "kept in config.toml"
 
 
 def is_release(line: str) -> bool:
-    """apply_config's line for an entry that just became yours (it comes once: the record then keeps it quiet)."""
-    return "left as is in config.toml" in line and any(mark in line for mark in RELEASES)
+    """apply_config's line for an entry that just became yours, or a table kept for your tool approvals (each comes
+    once: the record then keeps it quiet)."""
+    return (("left as is in config.toml" in line and any(mark in line for mark in RELEASES))
+            or (line.startswith("mcp ") and f": {KEPT}: your tool approvals" in line))
 
 
 def refresh_record() -> list[str]:
@@ -854,7 +971,7 @@ def refresh_record() -> list[str]:
         if released:  # a table you put back to loadout's exact text is loadout's again (no note)
             data = tl.loads(text)
             still_ours = {n for n, st in _ownership(sections, owned_tables).items() if st == "ours"}
-            wanted = desired_tables(skip_serena=user_serena(data, still_ours) is not None)[0]  # as apply_config
+            wanted = _wanted_tables(data, sections, still_ours, released)[0]  # as apply_config
             for name in sorted(released):
                 sec = next(s for s in sections if s[0] == ("mcp_servers", name))
                 if wanted.get(name) == _text(sec[1]):
@@ -869,7 +986,12 @@ def refresh_record() -> list[str]:
                 how = "you added sub-tables to it" if state == "subtables" else "you changed it"
                 notes.append(f"loadout (Codex): mcp {name}: {how} in {shown}, so it is yours now; loadout no longer "
                              "manages it or warns about it")
+        added = set(_released(record, "added_headers"))
+        if "serena" in released:  # serena is yours now (changed, sub-tables): so is loadout's approval line under it;
+            _release_approval(owned_keys, added)  # a deleted table is no release: the next run writes it again
         for table, key, value, force in desired_keys(switches=False):
+            if (table, key) == SERENA_APPROVAL and "serena" not in owned_tables:  # not loadout's serena: not its key
+                continue
             dotted = _dotted(table, key)
             target, found = _find_key(sections, table, key)
             if found is None or force is True:
@@ -894,6 +1016,7 @@ def refresh_record() -> list[str]:
                 new_record.pop("install_lines")
         _set_list(new_record, "released", released)
         _set_list(new_record, "released_keys", released_keys)
+        _set_list(new_record, "added_headers", added)
         if new_record != record:
             record_path().parent.mkdir(parents=True, exist_ok=True)
             save_json(record_path(), new_record)
@@ -903,7 +1026,8 @@ def refresh_record() -> list[str]:
 
 
 _TABLE_STATES = {"ours": "loadout's value", "changed": "changed by you (yours now)", "gone": "removed",
-                 "subtables": "has sub-tables (yours now)"}
+                 "subtables": "has sub-tables (yours now)",
+                 "kept": "loadout's, kept for your tool approvals (tools.* sub-tables)"}
 
 
 def explain_config() -> list[str]:
@@ -917,7 +1041,9 @@ def explain_config() -> list[str]:
     if not targets.codex_enabled():
         out = [f"{_tilde(path)}: Codex is off, so loadout reads no Codex file; entries as recorded at loadout's last "
                f"Codex run (in {_tilde(record_path())}):"]
-        out += [f"  mcp {n}  loadout's" for n in sorted(record["tables"])]
+        kept = set(_released(record, "kept"))
+        out += [f"  mcp {n}  loadout's" + (" (kept for your tool approvals)" if n in kept else "")
+                for n in sorted(record["tables"])]
         out += [f"  {k}  loadout's" for k in sorted({*record["keys"], *install_lines})]
         out += [f"  mcp {n}  yours (you changed it)" for n in released]
         out += [f"  {k}  yours (your value)" for k in released_keys]
@@ -931,8 +1057,9 @@ def explain_config() -> list[str]:
         names = [f"mcp {n}" for n in sorted(record["tables"])] + sorted({*record["keys"], *install_lines})
         return out + [f"  {n}  cannot compare, the file does not parse" for n in names]
     sections = _sections(text.splitlines(), tl)
+    kept = set(_released(record, "kept"))
     for name, state in sorted(_ownership(sections, record["tables"]).items()):
-        out.append(f"  mcp {name}  {_TABLE_STATES[state]}")
+        out.append(f"  mcp {name}  {_TABLE_STATES['kept' if state == 'ours' and name in kept else state]}")
     for dotted, line in sorted({**install_lines, **record["keys"]}.items()):
         try:
             *table, key = _key_path(dotted, tl)
@@ -1043,12 +1170,22 @@ def plugin_versions() -> dict[str, str]:
             if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
 
 
-def installed_plugins() -> set[str] | None:
+class Installed(set):
+    """The installed plugin ids, a plain set to every caller, plus `versions`: {plugin id: the version Codex lists,
+    which names its active folder in plugins/cache/<marketplace>/<plugin>/}."""
+    def __init__(self, ids=(), versions: dict[str, str] | None = None):
+        super().__init__(ids)
+        self.versions = dict(versions or {})
+
+
+def installed_plugins() -> Installed | None:
     res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None
     if not isinstance(data, dict):
         return None
-    return {p["pluginId"] for p in get_list(data, "installed") if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
+    items = [p for p in get_list(data, "installed") if isinstance(p, dict) and isinstance(p.get("pluginId"), str)]
+    return Installed((p["pluginId"] for p in items),
+                     {p["pluginId"]: p["version"] for p in items if isinstance(p.get("version"), str)})
 
 
 _NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}  # nobody answers a credential prompt here
@@ -1209,6 +1346,10 @@ def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str,
         pass  # the record only saves time; losing it means the next update refreshes everything
 
 
+CLONE_TIMEOUT = 1800  # a large marketplace (pbakaus/impeccable: 400+ MB) outlasted 900 s on a real machine
+LARGE_CLONE = "large repositories can take several minutes"
+
+
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
                     frozen: frozenset = frozenset(), skip_unchanged: bool = False,
                     skips: tuple | None = None) -> tuple[list[str], set[str]]:
@@ -1235,10 +1376,10 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             market = record[src]["name"]
         else:
             step += 1
-            say(f"  adding marketplace {src}, a git clone ({step} of {total})…")
+            say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
             head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
-            res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
+            res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
             info = _json(res.stdout) if res.ok else None
             if not isinstance(info, dict) or "marketplaceName" not in info:
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
@@ -1248,7 +1389,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:
-                up = runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=900)
+                up = runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
                 refreshed = up.ok
             elif not info.get("alreadyAdded"):
                 refreshed = True
@@ -1278,6 +1419,67 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                     purl, ref = own[name]
                     _remember(src, market, plugin=(pid, purl, ref, remote_head(purl, ref)))
     return lines, installed
+
+
+def missing_routes(installed: set[str] | None = None,
+                   listed: dict[str, dict] | None = None) -> tuple[list[str], list[str]]:
+    """(marketplace sources, plugin entries) loadout wants in Codex but Codex lacks, for `loadout check` and "Still to
+    do". A plugin entry is its full `name@market` id; while its marketplace is missing it is `name (from source)`, since
+    the id is unknown until the marketplace exists. loadout's own plugin is left to the `Codex plugin` row.
+    installed / listed: what installed_plugins() and marketplaces() returned, when the caller already has them.
+    ([], []) without the Codex CLI or when a listing fails."""
+    if not runner.have("codex"):
+        return [], []
+    from .settings_merge import desired_settings
+    desired = desired_settings()
+    routes = plugin_routes(desired)[0]
+    own = get_dict(get_dict(get_dict(desired, "extraKnownMarketplaces"), "agent-loadout"), "source").get("repo")
+    claude_names: dict[str, str] = {}  # source -> the Claude Code marketplace name, a fallback for a source-less listing
+    for pid, on in get_dict(desired, "enabledPlugins").items():
+        if on is True and isinstance(pid, str) and "@" in pid:
+            market = pid.rsplit("@", 1)[1]
+            src = OFFICIAL if market == "claude-plugins-official" else get_dict(
+                get_dict(get_dict(desired, "extraKnownMarketplaces"), market), "source").get("repo")
+            if isinstance(src, str):
+                claude_names.setdefault(src, market)
+    if not routes:
+        return [], []
+    installed = installed_plugins() if installed is None else installed
+    listed = marketplaces() if listed is None else listed
+    if installed is None or listed is None:
+        return [], []
+    record = _load_record()
+    lacks_m: list[str] = []
+    lacks_p: list[str] = []
+    for src, names in routes.items():
+        names = [n for n in names if not (n == "loadout" and src == own)]
+        if not names:
+            continue
+        url = _src_url(src) or ""
+        market = next((name for name, info in listed.items() if _same_source(info, url)), None)
+        if market is None:  # Codex lists no source for it: the name loadout recorded, or Claude Code's
+            for name in (get_dict(record, src).get("name"), claude_names.get(src)):
+                if isinstance(name, str) and name in listed and get_dict(listed, name).get("source") is None:
+                    market = name
+                    break
+        if market is None:
+            lacks_m.append(src)
+            lacks_p.extend(f"{n} (from {src})" for n in names)
+            continue
+        lacks_p.extend(pid for pid in (f"{n}@{market}" for n in names) if pid not in installed)
+    return lacks_m, lacks_p
+
+
+MISSING_FIX = "loadout update (retries them)"
+
+
+def _missing_text(lacks: tuple[list[str], list[str]]) -> str:
+    parts = []
+    if lacks[0]:
+        parts.append("marketplaces " + ", ".join(lacks[0]))
+    if lacks[1]:
+        parts.append("plugins " + ", ".join(lacks[1]))
+    return "Codex lacks " + "; ".join(parts)
 
 
 def record_has(src: str) -> bool:
@@ -1469,11 +1671,54 @@ def plugin_mcp_files() -> list[Path]:
 
 
 def _plugin_servers() -> set[str]:
-    """MCP servers that Codex has from installed plugins, from the file each manifest names (else .mcp.json)."""
+    """MCP servers that Codex has from installed plugins, from the file each manifest names (else .mcp.json).
+    A broken server file counts for nothing, so check, drift and the inventory never stop on it."""
     names: set[str] = set()
     for mcp in plugin_mcp_files():
-        names |= set(get_dict(load_json(mcp), "mcpServers"))
+        try:
+            names |= {n for n in get_dict(load_json(mcp), "mcpServers") if isinstance(n, str)}
+        except Exception:
+            continue
     return names
+
+
+LOADOUT_PLUGIN = "loadout@agent-loadout"
+
+
+def _loadout_plugin_servers(version: str | None) -> set[str]:
+    """Names of the MCP servers loadout's own Codex plugin provides, from the manifest of its active copy only
+    (plugins/cache/agent-loadout/loadout/<version>, the version `codex plugin list` names): an older copy Codex keeps
+    in its cache is not what it loads. No usable version, a broken manifest or server file: nothing."""
+    base = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
+    if not isinstance(version, str) or version in ("", ".", "..") or "/" in version or "\\" in version:
+        return set()
+    root = base / version
+    if not root.is_dir() or not paths.inside(root, base):
+        return set()
+    try:
+        ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
+    except Exception:
+        ref = None
+    mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
+    try:
+        return {n for n in get_dict(load_json(mcp), "mcpServers") if isinstance(n, str)}
+    except Exception:
+        return set()
+
+
+def servers_twice(installed: set[str] | None) -> list[str]:
+    """The user's own config.toml servers that loadout's Codex plugin (installed, not switched off) also provides."""
+    if installed is None or LOADOUT_PLUGIN not in installed:
+        return []
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return []
+    if get_dict(get_dict(data, "plugins"), LOADOUT_PLUGIN).get("enabled") is False:
+        return []
+    version = getattr(installed, "versions", {}).get(LOADOUT_PLUGIN)  # from the list checks() already fetched
+    return sorted(set(user_servers()) & _loadout_plugin_servers(version))
 
 
 HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex`, then run /hooks"
@@ -1588,6 +1833,15 @@ def checks() -> list:
         ok = installed is not None and "loadout@agent-loadout" in installed
         results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
                                    "loadout bootstrap"))
+        lacks = missing_routes(installed) if installed is not None else ([], [])
+        if lacks[0] or lacks[1]:
+            results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
+        config = _tilde(paths.codex_home() / "config.toml")
+        results += [CheckResult(f"Codex MCP {name}", False,
+                                "defined in config.toml and by the loadout plugin; Codex starts one of them",
+                                f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
+                                "or turn the loadout plugin off in Codex", "warn")
+                    for name in servers_twice(installed)]
     else:  # extension mode: plugins need the CLI, and the extension loads none
         results.append(CheckResult("Codex plugin", False, PLUGINS_EXTENSION.split(": ", 1)[1],
                                    "loadout bootstrap --install (the Codex CLI)", "warn"))
@@ -1734,5 +1988,8 @@ def open_steps() -> list[str]:
     if not cli:
         return (steps + [f"log in to {name} once: {LOGIN_EXTENSION}" for name in logins_needed()]
                 + [f"optional: log in to {name} for higher limits: {LOGIN_EXTENSION}" for name in logins_optional()])
+    lacks = missing_routes()
+    if lacks[0] or lacks[1]:
+        steps.append(f"{_missing_text(lacks)}: run {MISSING_FIX}")
     return (steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
             + [f"optional: log in to {name} in Codex for higher limits: codex mcp login {name}" for name in logins_optional()])

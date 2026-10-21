@@ -28,6 +28,20 @@ def _install(profile: profiles.Profile, project: Path, dry_run: bool, info=print
     if claude and not targets.claude_enabled():
         for plugin_id in profile.install:
             info(f"plugin {plugin_id}: {CLAUDE_OFF}")
+    adds, bad = profiles.marketplace_adds(profile) if claude and targets.claude_enabled() else ([], [])
+    for line in bad:
+        warn(line)
+        ok = False
+    for name, cmd in adds:  # the marketplace the installs need (ADR 0037); Claude Code's own, restore cannot undo it
+        info(secrets.redact(("would run: " if dry_run else "running: ") + " ".join(cmd)))
+        if not dry_run:
+            res = runner.run(cmd, cwd=str(project))
+            if not res.ok:
+                ok = False
+                warn(secrets.redact(f"marketplace {name}: failed: {res.stderr.strip()}" if calm
+                                    else f"  failed: {res.stderr.strip()}"))
+            elif ran is not None:
+                ran.append(f"marketplace {name}")  # the name: the origin can carry a token
     for plugin_id in (profile.install if claude and targets.claude_enabled() else []):  # Codex: codex_project.plugins
         if not (isinstance(plugin_id, str) and profiles.PLUGIN_ID.match(plugin_id)):
             warn(f"plugin {plugin_id!r}: not a name@marketplace id, skipped")
@@ -145,6 +159,11 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
                 w.link(other / c.path.name, os.path.join("..", "..", *rel.split("/"), c.path.name),
                        f"skill {c.path.name} for {agent}")
     if install:
+        if on["claude"] and targets.claude_enabled():  # a marketplace the installs need comes first (ADR 0037)
+            adds, bad = profiles.marketplace_adds(prof)
+            failures += bad
+            for _, cmd in adds:
+                w.run(cmd, profiles.reason(prof, "settings.extraKnownMarketplaces"))
         for pid in prof.install:
             if not (isinstance(pid, str) and profiles.PLUGIN_ID.match(pid)):
                 failures.append(f"plugin {pid!r}: not a name@marketplace id, skipped")

@@ -22,6 +22,7 @@ NAMES = {"claude": "Claude Code", "codex": "Codex"}
 HOOKS_TEXT = "start codex and approve the changed hooks in /hooks"
 BOOTSTRAP_ROWS = {"MCP servers on PATH", "secrets.env", "VS Code PATH"}  # rows only `loadout bootstrap` fixes
 CLAUDE_FACTS = {"claude_plugins_installed", "claude_plugins_updated", "claude_marketplace_added"}
+LOADOUT_FACT = "claude_loadout_plugin"  # loadout's own Claude Code plugin was installed or updated in this run
 
 
 @dataclass
@@ -30,6 +31,7 @@ class Step:
     agent: str  # claude or codex
     text: str  # what to do, imperative
     reason: str  # why, for the person reading the file
+    loadout_plugin: bool = False  # claude/reload-plugins: loadout's own plugin changed, so its Stop hook can clear it
 
 
 def _redact(text: str) -> str:
@@ -64,15 +66,20 @@ def save(new: list[Step]) -> None:
         for e in entries:
             if e["id"] == step.id:
                 e.update(text=step.text, reason=step.reason)
+                e.pop("loadout_plugin", None)  # the latest run decides: another plugin changed too, keep the step
+                if step.loadout_plugin:
+                    e["loadout_plugin"] = True
                 break
         else:
-            entries.append({"id": step.id, "text": step.text, "reason": step.reason, "since": time.time()})
+            entries.append({"id": step.id, "text": step.text, "reason": step.reason, "since": time.time(),
+                            **({"loadout_plugin": True} if step.loadout_plugin else {})})
     _path().parent.mkdir(parents=True, exist_ok=True)
     save_json(_path(), data)
 
 
 def pending(agent: str) -> list[Step]:
-    return [Step(e["id"], agent, e["text"], str(e.get("reason", ""))) for e in _load().get(agent, [])]
+    return [Step(e["id"], agent, e["text"], str(e.get("reason", "")), e.get("loadout_plugin") is True)
+            for e in _load().get(agent, [])]
 
 
 def clear(agent: str, ids: set[str]) -> None:
@@ -169,13 +176,16 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
     """The steps a run leaves, for the agents that are on. facts: the apply steps' facts and the plugin refresh's;
     upgraded: the tool ids a run updated or installed; results: the health check's rows (bootstrap-only needs).
     Without the Codex CLI (VS Code's Codex extension only) no plugin hook runs, so no "restart Codex" step could ever
-    clear: there is none, and the hooks step says how to approve them without the CLI (codex.HOOKS_NO_CLI)."""
+    clear: there is none, and the hooks step says how to approve them without the CLI (codex.HOOKS_NO_CLI).
+    The hooks step already makes you restart Codex, so with it there is no "restart Codex" step; no id twice (the
+    first wins). The reload step is marked loadout_plugin when loadout's own plugin changed (LOADOUT_FACT): loadout's
+    Stop hook (reload_check.py) clears it once the session runs the new copy; another plugin's reload no hook sees."""
     from . import codex, runner
     out: list[Step] = []
     cli = runner.have("codex")
     if claude_on and (facts & CLAUDE_FACTS or _plugin_copy_differs()):
         out.append(Step("claude/reload-plugins", "claude", "run /reload-plugins (or restart Claude Code)",
-                        "Claude Code plugins were installed or updated"))
+                        "Claude Code plugins were installed or updated", loadout_plugin=LOADOUT_FACT in facts))
     restart = False
     for binary in dict.fromkeys(upgraded):
         found = mcp_servers_started_by(binary)
@@ -205,7 +215,10 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
         for agent, on in (("claude", claude_on), ("codex", codex_on)):
             if on:
                 out.append(Step(f"{agent}/bootstrap", agent, "run loadout bootstrap", f"{', '.join(r.name for r in needs)}: {needs[0].fix}"))
-    return out
+    if any(s.id == "codex/hooks" for s in out):
+        out = [s for s in out if s.id != "codex/restart"]
+    seen: set[str] = set()
+    return [s for s in out if not (s.id in seen or seen.add(s.id))]
 
 
 # --- dropping steps that no longer hold ----------------------------------------------------------------------------
@@ -253,7 +266,7 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
     """Drop saved steps that no longer hold: every step of an agent that is off; the /hooks step once the hooks are
     approved; a bootstrap step once the rows that produced it pass (checked with local files only, never the
     network); an /mcp step whose server is gone; "restart Codex" without the Codex CLI (no session hook would clear
-    it). Others stay until their agent's session start clears them."""
+    it) or next to a /hooks step that stays (that one already says restart). Others stay until their agent's session start clears them."""
     from . import codex, runner
     data = _load()
     if not data:
@@ -280,6 +293,8 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
                 drop = e["id"][len("claude/mcp:"):] not in {_redact(n) for n in names.get("claude", set())}
             if not drop:
                 keep.setdefault(agent, []).append(e)
+    if any(e["id"] == "codex/hooks" for e in keep.get("codex", [])):  # only a hooks step that stays says restart
+        keep["codex"] = [e for e in keep["codex"] if e["id"] != "codex/restart"]
     if keep != data:
         save_json(_path(), keep)
 

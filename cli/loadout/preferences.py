@@ -1,7 +1,8 @@
 """Structured working preferences (preferences.json at the kit root).
 
-Answers live in the personal layer only: lines in a managed block of rules/me.md, or keys in
-settings.json (a preference may have both). Existing answers are detected (managed block, free
+Answers live in the personal layer only: lines in a managed block of rules/me.md, keys in
+settings.json (a preference may have both), or keys in loadout.json (data only loadout reads, such as a
+Codex-only choice). A preference for some agents only ("agents") is skipped while all of them are off. Existing answers are detected (managed block, free
 text in me.md, personal settings, kit defaults, then the user's own ~/.claude/settings.json via
 adopt), so a re-run changes nothing the user already decided.
 
@@ -19,7 +20,7 @@ from typing import Callable
 
 from . import paths, runner, ui
 from .backup import Backup
-from .jsonio import load_json, save_json, write_atomic
+from .jsonio import InvalidJSON, load_json, save_json, write_atomic
 from .settings_merge import MISSING, get_path
 
 START = "<!-- loadout:preferences:start -->"
@@ -78,6 +79,38 @@ def _settings_path() -> Path:
 
 def _claude_settings_path() -> Path:
     return paths.claude_home() / "settings.json"
+
+
+def _loadout_path() -> Path:
+    return paths.personal_loadout_json()
+
+
+def _read_loadout() -> dict:
+    """loadout.json, or {} when it is missing or not valid JSON: reading never fails (a session start reads it);
+    a write refuses instead (_loadout_data)."""
+    try:
+        return load_json(_loadout_path())
+    except InvalidJSON:
+        return {}
+
+
+def _loadout_data() -> dict:
+    """loadout.json for a write: ValueError, naming the file, when it is not a JSON object (nothing is written)."""
+    path = _loadout_path()
+    try:
+        return load_json(path)
+    except InvalidJSON as exc:
+        raise ValueError(f"{path} is not valid JSON ({exc}); fix or remove it by hand, nothing was written") from None
+
+
+def available(pref: dict) -> bool:
+    """A preference for some agents only ("agents": ["codex"]) counts while one of them is on."""
+    agents = pref.get("agents")
+    if not agents:
+        return True
+    from . import targets
+    on = {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
+    return any(on.get(a, False) for a in agents)
 
 
 def _kit_settings() -> dict:
@@ -327,6 +360,48 @@ def _write_settings(changes: dict[str, object], bk: Backup) -> bool:
     return True
 
 
+def _loadout_state(pref: dict, data: dict) -> State:
+    found = get_path(data, _key(pref["target"]["loadout"]))
+    if found is MISSING:
+        return State()
+    if any(found == o["value"] for o in pref["options"]):
+        return State(value=found, source="personal loadout.json")
+    return State(raw=found, source="personal loadout.json")
+
+
+def _merged_loadout(changes: dict[str, str]) -> tuple[dict, dict]:
+    """(loadout.json now, with changes merged). ValueError naming the file when the file or a container on a key's
+    path is not an object: _apply calls this before anything is written."""
+    path = _loadout_path()
+    data = _loadout_data()
+    new = copy.deepcopy(data)
+    for dotted, value in changes.items():
+        node = new
+        for part in _key(dotted)[:-1]:
+            if node.get(part) is None:
+                node[part] = {}
+            if not isinstance(node[part], dict):
+                raise ValueError(f"{path}: {part} is not an object; fix it by hand, nothing was written")
+            node = node[part]
+        node[_key(dotted)[-1]] = value
+    return data, new
+
+
+def _write_loadout(changes: dict[str, str], bk: Backup) -> bool:
+    """changes: dotted key -> option value. Every other key in loadout.json stays as it is."""
+    path = _loadout_path()
+    data, new = _merged_loadout(changes)
+    if new == data:
+        return False
+    if path.exists():
+        bk.save_copy(path, "personal loadout.json before preferences")
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        bk.record_created(path, "created personal loadout.json")
+    save_json(path, new)
+    return True
+
+
 def _removes_key(pref: dict, value: str) -> bool:
     target = pref["target"]
     return "setting" in target and target.get("values", {}).get(value, MISSING) is None
@@ -398,9 +473,12 @@ def detect() -> dict[str, State]:
     me = _me_states(prefs, lines)
     sources = [("personal settings", load_json(_settings_path())), ("kit default", _kit_settings()),
                ("existing settings", _own_settings())]
+    loadout_data = _read_loadout()
     states = {}
     for p in prefs:
         st = me.get(p["id"], State())
+        if "loadout" in p["target"]:
+            st = _loadout_state(p, loadout_data)
         if "setting" in p["target"]:
             setting = _setting_state(p, sources)
             if setting.is_set:
@@ -580,7 +658,7 @@ def _run_generator(pref: dict, ask: Ask, bk: Backup) -> list[str]:
 
 def _apply(prefs: list[dict], states: dict[str, State], answers: dict[str, tuple[str, str]], bk: Backup,
            ask: Ask, interactive: bool) -> list[str]:
-    me_changes, setting_changes, changed, out = {}, {}, [], []
+    me_changes, setting_changes, loadout_changes, changed, out = {}, {}, {}, [], []
     for pid, (value, free) in answers.items():
         pref = by_id_in(prefs, pid)
         st = states[pid]
@@ -591,11 +669,17 @@ def _apply(prefs: list[dict], states: dict[str, State], answers: dict[str, tuple
             me_changes[pid] = (value, free)
         if "setting" in pref["target"]:
             setting_changes[pref["target"]["setting"]] = pref["target"]["values"][value]
+        if "loadout" in pref["target"]:
+            loadout_changes[pref["target"]["loadout"]] = value
+    if loadout_changes:
+        _merged_loadout(loadout_changes)  # refuse before anything is written (a broken file or a nested non-object)
     if me_changes:
         _block_range(_read_me()[1], strict=True)  # refuse before anything is written
         out += _write_me(prefs, states, me_changes, bk, ask, interactive)
     if setting_changes:
         _write_settings(setting_changes, bk)
+    if loadout_changes:
+        _write_loadout(loadout_changes, bk)
     for pref, value, free in changed:
         if _removes_key(pref, value):
             out += _check_effective(pref, value, bk, ask, interactive)
@@ -647,12 +731,15 @@ def ask_all(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup | None 
 
     fill_defaults (first run): an answer that is not set yet takes the default. Without a terminal
     nothing is asked: unset answers take the default (fill_defaults) and automode is skipped.
+    A preference for agents that are all off (available) is neither asked nor applied, not even from given.
     """
     bk = bk if bk is not None else Backup(description="configure preferences")
     prefs = load()
     states = detect()
     answers, out = {}, []
     for pref in prefs:
+        if not available(pref):
+            continue
         st = states[pref["id"]]
         if pref["id"] in (given or {}):
             answer = given[pref["id"]]
@@ -673,7 +760,7 @@ def ask_all(ask: Ask, fill_defaults: bool, interactive: bool, bk: Backup | None 
 def show_lines() -> list[str]:
     states = detect()
     lines = ["Preferences (change one with: loadout configure set pref-choice <id> <value>)"]
-    for pref in load():
+    for pref in filter(available, load()):
         lines.append(f"{describe(states[pref['id']])}  {pref['question']}  — id: pref-choice {pref['id']}")
         lines.append(f"      options: {_options_hint(pref)} (default {pref['default']})")
     return lines

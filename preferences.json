@@ -1,5 +1,5 @@
 {
-  "$comment": "Working preferences asked by `loadout configure prefs`. target.me_md: the line written into the managed block of <personal>/rules/me.md per option ({text} = free text, null = no line). target.setting: dotted key in <personal>/settings.json; values maps option -> JSON value (null = remove the key). A target may have both. detect: how existing answers are read (me_md: case-insensitive regexes on whitespace-normalised free-text lines, read only; me_md_report: patterns that never set an answer, only name a free-text line that also states one; settings: rules with equals, contains or present). generator: special handling (automode).",
+  "$comment": "Working preferences asked by `loadout configure prefs`. target.me_md: the line written into the managed block of <personal>/rules/me.md per option ({text} = free text, null = no line). target.setting: dotted key in <personal>/settings.json; values maps option -> JSON value (null = remove the key). A target may have both. detect: how existing answers are read (me_md: case-insensitive regexes on whitespace-normalised free-text lines, read only; me_md_report: patterns that never set an answer, only name a free-text line that also states one; settings: rules with equals, contains or present). target.loadout: dotted key in <personal>/loadout.json (data only loadout reads, e.g. Codex-only choices); the option value is stored as is. agents: the agents a preference is for (e.g. [\"codex\"]); it is not asked, shown or applied from --answers while all of them are off. generator: special handling (automode).",
   "preferences": [
     {
       "id": "answer_language",
@@ -320,6 +320,27 @@
             "value": "project"
           }
         ]
+      }
+    },
+    {
+      "id": "codex_serena_approval",
+      "agents": [
+        "codex"
+      ],
+      "question": "Should Codex approve Serena's tools automatically? (serena_repl runs code in Serena's process; Claude Code already approves Serena through loadout's hook)",
+      "options": [
+        {
+          "value": "ask",
+          "label": "ask each time"
+        },
+        {
+          "value": "approve",
+          "label": "approve automatically"
+        }
+      ],
+      "default": "ask",
+      "target": {
+        "loadout": "codex.serena_approval"
       }
     }
   ]

@@ -107,3 +107,26 @@ def test_next_line_names_the_claude_extension_next_to_a_codex_cli(fake_home, fak
                         interactive=False, agents="claude,codex", personal="new")
     text = capsys.readouterr().out
     assert "open VS Code's Claude Code extension" in text
+
+
+def test_inventory_bundled_claude_is_optional_not_install(fake_home, fake_runner, monkeypatch):
+    from loadout import inventory
+    exe = _ext(fake_home, "2.1.10")
+    fake_runner.missing.add("claude")
+    monkeypatch.setattr(runner, "FALLBACK", {"claude": str(exe)})
+    verdicts = inventory.classify(inventory._binary_items(with_versions=False))
+    claude = next(v for v in verdicts if v.item.kind == "binary" and v.item.name == "claude")
+    assert claude.action != "install" and claude.action == "keep"
+    assert claude.reason == inventory.BUNDLED_CLAUDE == ("a claude on PATH for the terminal (VS Code's Claude Code "
+                                                         "extension's claude runs loadout's commands now)")
+    from loadout import adopt
+    assert inventory.BUNDLED_CLAUDE in adopt.render_plan(verdicts, [])
+
+
+def test_inventory_missing_claude_without_the_extension_is_install(fake_home, fake_runner, monkeypatch):
+    from loadout import inventory
+    fake_runner.missing.add("claude")
+    monkeypatch.setattr(runner, "FALLBACK", {})
+    verdicts = inventory.classify(inventory._binary_items(with_versions=False))
+    claude = next(v for v in verdicts if v.item.kind == "binary" and v.item.name == "claude")
+    assert claude.action == "install"

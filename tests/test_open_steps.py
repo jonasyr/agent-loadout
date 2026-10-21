@@ -287,3 +287,71 @@ def test_a_codex_plugin_whose_manifest_names_its_server_file_is_found(fake_home,
     (root / "config").mkdir()
     (root / "config" / "servers.json").write_text(json.dumps({"mcpServers": {"own-srv": {"command": "mytool"}}}))
     assert "own-srv" in steps.mcp_servers_started_by("mytool")["codex"]
+
+
+# --- one Codex restart step; the /reload-plugins step knows when loadout's own plugin is the new one ---------------
+
+def test_the_hooks_step_replaces_the_restart_step(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOADOUT_ROOT", str(tmp_path))
+    _write_mcp(tmp_path / "plugins" / "loadout" / ".mcp.json", {"serena": {"command": "serena"}})
+    found = steps.derive({"serena_hooks_added"}, ["serena"], False, True)
+    assert [(s.id, s.text) for s in found] == [("codex/hooks", steps.HOOKS_TEXT)]
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
+    found = steps.derive({"codex_plugins_updated"}, ["serena"], False, True)
+    assert [(s.id, s.text) for s in found] == [("codex/hooks", "restart Codex and approve the changed hooks in /hooks")]
+
+
+def test_derive_never_returns_the_same_id_twice(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOADOUT_ROOT", str(tmp_path))
+    _write_mcp(tmp_path / "plugins" / "loadout" / ".mcp.json", {"serena": {"command": "serena"}})
+    monkeypatch.setattr(steps, "_claude_wants_plugin", lambda: True)
+    found = steps.derive({"codex_plugins_updated", "claude_plugins_updated"}, ["serena", "serena"], True, True)
+    ids = _ids(found)
+    assert len(ids) == len(set(ids)) and ids.count("codex/restart") == 1
+    assert next(s.text for s in found if s.id == "codex/restart") == "restart Codex"  # the first one wins
+
+
+def test_settle_drops_a_saved_restart_step_next_to_a_hooks_step(monkeypatch):
+    monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
+    steps.save([steps.Step("codex/restart", "codex", "restart Codex", "x"),
+                steps.Step("codex/hooks", "codex", steps.HOOKS_TEXT, "x")])
+    steps.settle(True, True)
+    assert _ids(steps.pending("codex")) == ["codex/hooks"]
+
+
+def test_the_reload_step_names_loadouts_own_plugin_only_when_it_changed():
+    plain = steps.derive({"claude_plugins_updated"}, [], True, False)
+    assert [(s.id, s.loadout_plugin) for s in plain] == [("claude/reload-plugins", False)]
+    own = steps.derive({"claude_plugins_updated", "claude_loadout_plugin"}, [], True, False)
+    assert [(s.id, s.loadout_plugin) for s in own] == [("claude/reload-plugins", True)]
+
+
+def test_loadout_plugin_is_saved_only_when_true_and_old_files_load():
+    steps.save([steps.Step("claude/reload-plugins", "claude", "reload", "x", loadout_plugin=True),
+                steps.Step("claude/mcp:a", "claude", "reconnect", "x")])
+    saved = json.loads((paths.state_dir() / "open-steps.json").read_text())["claude"]
+    assert saved[0]["loadout_plugin"] is True and "loadout_plugin" not in saved[1]
+    assert [s.loadout_plugin for s in steps.pending("claude")] == [True, False]
+    steps.save([steps.Step("claude/reload-plugins", "claude", "reload", "x")])  # a later run: only superpowers
+    assert "loadout_plugin" not in json.loads((paths.state_dir() / "open-steps.json").read_text())["claude"][0]
+
+
+def test_update_names_loadouts_own_plugin_in_its_facts(fake_runner):
+    from loadout import update
+    summary = update.Summary()
+    item = update.PlanItem(1, "claude-plugins-refresh", "x", [], ids=("superpowers@x", "loadout@agent-loadout"))
+    fake_runner.responses[("claude", "plugin", "update")] = runner.Result(0, "updated", "")
+    update._refresh_claude_plugins(item, summary)
+    assert {"claude_plugins_updated", "claude_loadout_plugin"} <= summary.facts
+    summary = update.Summary()
+    update._refresh_claude_plugins(update.PlanItem(1, "claude-plugins-refresh", "x", [], ids=("superpowers@x",)),
+                                   summary)
+    assert "claude_loadout_plugin" not in summary.facts
+
+
+def test_settle_keeps_a_restart_step_when_the_saved_hooks_step_is_approved():
+    """Hooks approved in a running Codex, then a run upgraded a binary: the new restart step is still needed."""
+    steps.save([steps.Step("codex/hooks", "codex", steps.HOOKS_TEXT, "x")])  # hooks_status is trusted (fixture)
+    steps.save([steps.Step("codex/restart", "codex", "restart Codex", "x")])
+    steps.settle(False, True)
+    assert _ids(steps.pending("codex")) == ["codex/restart"]

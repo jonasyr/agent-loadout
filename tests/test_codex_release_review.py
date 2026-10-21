@@ -191,7 +191,7 @@ def test_is_release_matches_apply_configs_release_lines(fake_home, fake_runner):
     _apply()
     text = _cfg().read_text().replace('command = "gh-mcp"', 'command = "gh-mcp-mine"')
     text = text.replace('model_reasoning_effort = "medium"', 'model_reasoning_effort = "high"')
-    _cfg().write_text(text + '\n[mcp_servers.sub.tools.x]\nenabled = true\n')
+    _cfg().write_text(text + '\n[mcp_servers.sub.env]\nX = "1"\n')  # tools.* would stay loadout's (ADR 0036)
     lines = _apply()
     released = [l for l in lines if codex.is_release(l)]
     assert len(released) == 3 and len(lines) == 3, lines

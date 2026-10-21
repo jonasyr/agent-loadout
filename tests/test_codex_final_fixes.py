@@ -29,7 +29,7 @@ def test_owned_server_with_a_subtable_is_kept_not_orphaned(fake_home):
     import tomllib
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     assert data["mcp_servers"]["foo"]["command"] == "foo", "the server stays with its subtable"
-    assert any("foo" in l and "left as is" in l for l in lines)
+    assert any("mcp foo: kept in config.toml" in l for l in lines), lines  # ADR 0036
 
 
 def test_a_users_matching_key_stays_the_users(fake_home, monkeypatch):

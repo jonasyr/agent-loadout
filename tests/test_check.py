@@ -54,13 +54,13 @@ def test_check_invalid_settings_json(fake_home, fake_runner):
     assert not r.ok and "invalid JSON" in r.detail
 
 
-def test_missing_plugins_is_a_warning_with_auto_install_hint(fake_home, fake_runner):
+def test_missing_plugins_is_a_warning_with_an_update_fix(fake_home, fake_runner):
     (paths.personal_root() / "rules").mkdir(parents=True)
     link.link_all(backup.Backup())
     settings_merge.apply_settings()
     r = _by(check.run_checks())["plugins installed"]
     assert not r.ok and r.severity == "warn"
-    assert "next Claude Code start" in r.fix
+    assert "loadout update" in r.fix and "automatically" not in r.fix
 
 
 def test_invalid_installed_plugins_json_does_not_abort_check(fake_home, fake_runner):

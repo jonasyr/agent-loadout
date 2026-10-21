@@ -10,10 +10,11 @@ from loadout import configure, paths, preferences, runner, ui
 from loadout.__main__ import main
 
 IDS = ["answer_language", "commit_style", "ai_attribution", "answer_style", "destructive_actions",
-       "effort_level", "extended_thinking", "agent_push_notifications", "automode_trust", "commit_doc_language"]
+       "effort_level", "extended_thinking", "agent_push_notifications", "automode_trust", "commit_doc_language",
+       "codex_serena_approval"]
 DEFAULTS = {"answer_language": "match", "commit_style": "conventional", "ai_attribution": "off",
             "answer_style": "concise", "destructive_actions": "ask", "effort_level": "medium",
-            "extended_thinking": "yes", "agent_push_notifications": "yes", "automode_trust": "generate",
+            "extended_thinking": "yes", "agent_push_notifications": "yes", "automode_trust": "generate", "codex_serena_approval": "ask",
             "commit_doc_language": "english"}
 ME_PREFS = ["answer_language", "commit_style", "ai_attribution", "answer_style", "destructive_actions", "commit_doc_language"]
 ATTRIBUTION_OFF = {"commit": "", "pr": "", "sessionUrl": False}
@@ -79,7 +80,7 @@ def test_preferences_json_is_well_formed():
         assert p["question"] and all(o["label"] for o in p["options"]), p["id"]
         assert p["default"] == DEFAULTS[p["id"]] and p["default"] in values, p["id"]
         target = p["target"]
-        assert "me_md" in target or "setting" in target, p["id"]
+        assert "me_md" in target or "setting" in target or "loadout" in target, p["id"]
         if "me_md" in target:
             assert set(target["me_md"]) == set(values), p["id"]
         if "setting" in target:

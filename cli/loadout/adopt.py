@@ -8,7 +8,7 @@ from typing import Callable
 
 from . import catalog, inventory, out, own, paths, pkgmgr, runner, secrets, targets, ui
 from .backup import Backup
-from .inventory import Verdict
+from .inventory import BUNDLED_CLAUDE, Verdict
 from .jsonio import InvalidJSON, load_json, save_json
 from .secrets import redact
 
@@ -87,10 +87,10 @@ def render_plan(verdicts: list[Verdict], findings: list) -> str:
         if any(v.item.kind == "claude-md" for v in members):
             lines.append("  (CLAUDE.md: picking moves its content into your personal layer instead; restorable.)")
         if group == "keep":
-            bins = [v for v in members if v.item.kind == "binary"]
+            bins = [v for v in members if v.item.kind == "binary" and v.reason != BUNDLED_CLAUDE]  # it says why
             if bins:
                 lines.append("  binaries: " + ", ".join(f"{v.item.name} {v.item.detail}".rstrip() for v in bins))
-            members = [v for v in members if v.item.kind != "binary"]
+            members = [v for v in members if v not in bins]
             for kind, reason in (("plugin", "Enabled by the kit."), ("marketplace", "Declared by the kit.")):
                 kit = [v for v in members if v.item.kind == kind and v.reason == reason]
                 if kit:

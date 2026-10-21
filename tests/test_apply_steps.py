@@ -275,3 +275,10 @@ def test_step_lines_are_redacted_before_anyone_prints_them(fake_home, fake_runne
     r = apply.codex_step(_bk(), refresh_plugins=False, auto=False, keep=False, on=True)
     assert not any(secret in line for line in r.lines)
     assert "failed:codex" in r.facts
+
+
+def test_claude_plugins_step_names_loadouts_own_plugin(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(b, "setup_plugins", lambda say=None: ["plugin loadout@agent-loadout: installed"])
+    assert {"claude_plugins_installed", "claude_loadout_plugin"} <= apply.claude_plugins_step(on=True).facts
+    monkeypatch.setattr(b, "setup_plugins", lambda say=None: ["plugin superpowers@x: installed"])
+    assert "claude_loadout_plugin" not in apply.claude_plugins_step(on=True).facts

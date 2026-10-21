@@ -2,7 +2,7 @@
 
 Working preferences are a fixed set of questions in `preferences.json` at the kit root. `loadout configure prefs` asks them, `loadout configure set pref-choice ID OPTION` sets one, and `loadout configure show` lists them. The code is `cli/loadout/preferences.py`.
 
-Answers go only into your [personal layer](personal-layer.md): as lines in a managed block of `rules/me.md`, as keys in `settings.json`, or both.
+Answers go only into your [personal layer](personal-layer.md): as lines in a managed block of `rules/me.md`, as keys in `settings.json` (or both), or as keys in `loadout.json`, which only loadout reads.
 
 ## File structure
 
@@ -16,6 +16,7 @@ Answers go only into your [personal layer](personal-layer.md): as lines in a man
 | `default` | The recommended option. When a new `me.md` is written (bootstrap's starter layer, or the "about you" questions of `configure`, also with `--first-run`), unanswered questions start at this value; without a terminal it takes them silently. |
 | `target` | Where the answer is written. See below. |
 | `detect` | How an existing answer is recognised. See below. Optional. |
+| `agents` | The agents the preference is for, for example `["codex"]`. While all of them are off, it is not asked, not shown by `loadout configure show`, and not applied from an `--answers` file. Optional; without it the preference is for every agent. |
 | `generator` | Special handling. The only value is `automode`. Optional. |
 
 Free text must be one line, at most 100 characters, and must not contain `<!--` or `-->`.
@@ -28,7 +29,9 @@ Free text must be one line, at most 100 characters, and must not contain `<!--` 
 | `setting` | Dotted key in `<personal>/settings.json`, for example `autoMode.environment`. |
 | `values` | With `setting`: map of option value to the JSON value to write. `null` removes the key. A value equal to the one in the kit's `settings.base.json` is not written, because the kit default already applies. |
 
-A target may have both `me_md` and `setting`.
+| `loadout` | Dotted key in `<personal>/loadout.json`, for example `codex.serena_approval`. The option value is stored as it is. Used for choices only loadout acts on, such as Codex-only ones. |
+
+A target may have both `me_md` and `setting`. Every change to `loadout.json` keeps its other keys and is backed up first; when the file is not valid JSON, loadout writes nothing (not `me.md` or `settings.json` either) and names the file. Reading it never fails: a broken file counts as no answer.
 
 ### `detect`
 
@@ -40,7 +43,7 @@ Existing answers are read so that re-running changes nothing you already decided
 | `me_md_report` | Rules like `me_md` that never set an answer. They only name a free-text line that also states one, so that loadout can tell you about it. |
 | `settings` | Rules `{key, value}` plus one of `equals`, `contains` or `present`. They recognise legacy settings keys, for example `includeCoAuthoredBy`. |
 
-Where an answer is looked for: for a preference with a `setting` target, the settings come first, in order your personal `settings.json`, the kit defaults, then your existing `~/.claude/settings.json`; a value set there wins over `me.md`. Otherwise (and when no setting is set) the answer comes from the managed block, then free text in `me.md`.
+Where an answer is looked for: for a preference with a `setting` target, the settings come first, in order your personal `settings.json`, the kit defaults, then your existing `~/.claude/settings.json`; a value set there wins over `me.md`. Otherwise (and when no setting is set) the answer comes from the managed block, then free text in `me.md`. For a `loadout` target the answer comes from `loadout.json` only.
 
 ## The managed block
 
@@ -78,8 +81,20 @@ If a setting or a `me.md` line still contradicts an answer after it was written,
 | `agent_push_notifications` | Push notifications when an agent needs you? | `yes`, `no` | `yes` | `agentPushNotifEnabled` |
 | `automode_trust` | Draft the auto mode trust environment from your git repos? | `generate`, `skip` | `generate` | `autoMode.environment` |
 | `commit_doc_language` | Language of commit messages, code comments and docs? | `english`, `project` | `english` | `me.md` |
+| `codex_serena_approval` | Should Codex approve Serena's tools automatically? | `ask` (ask each time), `approve` (approve automatically) | `ask` | `loadout.json` (`codex.serena_approval`); Codex only |
 
 With Codex on, `effort_level` also sets `model_reasoning_effort` and `agent_push_notifications` sets `tui.notifications` in `~/.codex/config.toml`. The preferences written to `me.md` reach Codex through the `AGENTS.md` block. The other settings (`extended_thinking`, `automode_trust`) apply to Claude Code only. See [personal-layer](personal-layer.md).
+
+### Serena's approvals in Codex
+
+Claude Code approves Serena's tools through loadout's hook; Codex asks before every `serena_repl` call. `codex_serena_approval` decides that for Codex. The question states the trade-off: `serena_repl` runs code in Serena's process.
+
+- It is asked only while Codex is on: with the other preferences when bootstrap creates a new personal layer, when you answer yes to bootstrap's `Customize preferences and global add-ons now?`, and in `loadout configure prefs`. A personal layer cloned onto a new machine, or Codex turned on later, gets no question of its own: the default `ask` applies until you change it with `loadout configure prefs` or `loadout configure set pref-choice codex_serena_approval approve`.
+- `approve` writes `approval_mode = "approve"` into `[mcp_servers.serena.tools.serena_repl]` in `~/.codex/config.toml`, only while the `serena` table is loadout's. When that section is missing, loadout adds it at the end of the file. The line and the header loadout added are recorded as loadout's.
+- `ask` writes nothing, and removes only the line loadout wrote (and the header, when loadout added it and nothing else is in the section). A line you changed or wrote yourself stays.
+- With your own Serena table (for example from `serena setup codex`), loadout changes nothing there. With `approve` it says once: `Serena is your own server in config.toml; to approve its tools, choose "Always allow" in Codex`. When loadout's `serena` table becomes yours, its approval line becomes yours too and stays as it is.
+
+The decision and its reasons: [ADR 0036](../adr/0036-codex-tool-approvals-and-serena-approval.md).
 
 `ai_attribution: off` writes `{"commit": "", "pr": "", "sessionUrl": false}` to the `attribution` setting and a "Never add Co-Authored-By" line to `me.md`. `on` removes both and leaves Claude Code's default.
 

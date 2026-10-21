@@ -56,7 +56,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 
 | Module | What it does |
 |---|---|
-| `preferences.py` | Structured working preferences from `preferences.json`; answers go only into the personal layer. |
+| `preferences.py` | Structured working preferences from `preferences.json`; answers go only into the personal layer (`rules/me.md`, `settings.json`, `loadout.json`). A preference for some agents only is skipped while they are off. |
 | `configure.py` | The `loadout configure` wizard. |
 | `new_skill.py` | `loadout configure new skill`: a `SKILL.md` stub in one of the three places a skill of yours can live. |
 | `targets.py` | Which agents loadout sets up (`targets.json` in the personal layer). |
@@ -66,7 +66,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | Module | What it does |
 |---|---|
 | `project.py` | `loadout init` and `loadout profile`. |
-| `profiles.py` | Profiles from the personal layer and the kit: settings and `.mcp.json` fragments, plugins to install. |
+| `profiles.py` | Profiles from the personal layer and the kit: settings and `.mcp.json` fragments, plugins to install and the marketplaces they need ([ADR 0037](../adr/0037-marketplaces-only-when-a-plugin-uses-them.md)). |
 | `detect.py` | Suggests profiles from the files in a repo. |
 | `scaffold.py` | Creates missing repo files from `templates/project`; never overwrites. |
 | `repo_config.py` | The repo's `.loadout.json`: its agents, `manage`, and the record of what each profile wrote ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)). |
@@ -101,7 +101,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `hooks/run.sh` | Runs a hook command only when its program is on `PATH`; `--soft` and `--python` as described in [Hooks](hooks.md). |
 | `hooks/tool_hint.sh`, `hooks/tool_hint.py` | The tool hints: a fast bash filter, then the Python script. |
 | `hooks/advisor.py` | The execution advisor's `record` and `stop` hooks. |
-| `hooks/reload_check.py` | Claude Code only: says once per session to run `/reload-plugins` after a plugin update. |
+| `hooks/reload_check.py` | Claude Code only: says once per session to run `/reload-plugins` after a plugin update, and clears the saved `/reload-plugins` step once the session runs loadout's newly installed plugin. |
 | `hooks/typecheck.py` | Codex only: runs the language's type checker after an edit. |
 | `hooks/subagent-context.sh` | Gives a subagent the tool routing. |
 | `evals/` | The skill evals: `run.sh` (the only way to run them), the cases, `bin/` stubs, `lib/`, `mocks/`, `fixtures/` ([Run the skill evals](../how-to/run-evals.md)). |

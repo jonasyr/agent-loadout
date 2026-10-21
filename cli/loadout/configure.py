@@ -247,7 +247,7 @@ def _about_you(ask: Ask, bk: Backup, given: dict | None = None, ask_missing: boo
 def _quick_defaults(ask: Ask, given: dict | None = None) -> bool:
     """First run: show the recommended preferences on one screen (with the --answers ones); Enter (or y) takes them all."""
     given = given or {}
-    shown = [p for p in preferences.load() if not p.get("generator")]
+    shown = [p for p in preferences.load() if not p.get("generator") and preferences.available(p)]
     width = max(len(p["id"]) for p in shown)
     print("\n-- Working preferences (recommended)")
     for p in shown:

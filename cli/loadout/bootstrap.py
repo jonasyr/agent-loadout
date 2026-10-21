@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import codecs
+import json
 import locale
 import os
+import re
 from pathlib import Path
 from typing import Callable
 
@@ -384,15 +386,56 @@ def ensure_personal(ask: Ask, bk: Backup | None = None, interactive: bool | None
     return f"created starter personal layer at {root} (to sync it across machines, make it a private git repo: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)})", True
 
 
+_MARKET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def listed_marketplaces() -> set[str] | None:
+    """The marketplace names Claude Code has added (`claude plugin marketplace list --json`); when that output is
+    not usable JSON, the names from its text form, up to the "From claude.ai:" section (offered there, not added).
+    When `--json` fails (an older Claude Code without it), the plain list once. None only when that fails too."""
+    res = runner.run(["claude", "plugin", "marketplace", "list", "--json"], timeout=60)
+    if not res.ok:
+        res = runner.run(["claude", "plugin", "marketplace", "list"], timeout=60)
+        if not res.ok:
+            return None
+    try:
+        data = json.loads(res.stdout)
+    except ValueError:
+        data = None
+    if isinstance(data, list):
+        return {e["name"] for e in data if isinstance(e, dict) and isinstance(e.get("name"), str)}
+    names = set()
+    for line in res.stdout.splitlines():
+        line = line.strip()
+        if line == "From claude.ai:":
+            break
+        line = line.removeprefix("❯").strip()
+        if not line or line.endswith(":"):
+            continue
+        token = line.split()[0]
+        if _MARKET_NAME.fullmatch(token):
+            names.add(token)
+    return names
+
+
 def plugins_plan() -> tuple[list[str], list[tuple[str, str]], list[str]]:
     """What setup_plugins would do, without changing anything (it only lists the marketplaces): the skip lines, the
-    kit marketplaces to add as (name, origin), and the enabled plugins not installed yet."""
+    kit marketplaces to add as (name, origin), and the enabled plugins not installed yet. A declared marketplace is
+    added only when it is loadout's own or an enabled plugin comes from it. An enabled plugin's marketplace that the
+    merged settings do not declare but a kit profile does (`thesis`'s, ADR 0037) is added from the profile's
+    declaration; settings.json does not get it."""
+    from . import profiles
     out = []
     desired = settings_merge.desired_settings()
-    listed = runner.run(["claude", "plugin", "marketplace", "list"], timeout=60).stdout
+    listed = listed_marketplaces() or set()
+    enabled = [pid for pid, on in get_dict(desired, "enabledPlugins").items() if on]
+    used = {pid.rpartition("@")[2] for pid in enabled if "@" in pid}
+    declared = get_dict(desired, "extraKnownMarketplaces")
+    kit = profiles.kit_marketplaces()
+    from_kit = {name: kit[name] for name in sorted(used) if name not in declared and name in kit}
     markets = []
-    for name, cfg in get_dict(desired, "extraKnownMarketplaces").items():
-        if name in listed:
+    for name, cfg in {**declared, **from_kit}.items():
+        if name in listed or (name != "agent-loadout" and name not in used):
             continue
         src = get_dict(cfg, "source")
         origin = src.get("repo") or src.get("url")
@@ -401,7 +444,7 @@ def plugins_plan() -> tuple[list[str], list[tuple[str, str]], list[str]]:
             continue
         markets.append((name, origin))
     installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
-    plugins = [pid for pid, on in get_dict(desired, "enabledPlugins").items() if on and pid not in installed]
+    plugins = [pid for pid in enabled if pid not in installed]
     return out, markets, plugins
 
 
@@ -1014,9 +1057,12 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if problem:
             out.status("Codex", problem, "warn")
         else:
-            result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True)
+            result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True,
+                                     plugins=plugins)
             out.end_progress()
             _report(result.name, result.summary, result.lines)
+            if codex.own_serena() is not None:  # loadout wrote no serena of its own: say why, once per bootstrap
+                out.problem(codex.SERENA_KEPT)
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
         _step("Adopt existing setup")

@@ -42,8 +42,11 @@ def test_profiles_are_well_formed():
         entries = {f"{part}.{key}" for part in ("settings", "mcp") for key in prof.get(part, {})}
         why = prof.get("why", {})
         assert set(why) == entries and all(isinstance(t, str) and t for t in why.values()), path
+        own = prof.get("settings", {}).get("extraKnownMarketplaces", {})  # a profile may bring its own (ADR 0037)
         for plugin_id in prof.get("install", []):
-            assert plugin_id.split("@")[1] in _declared_marketplaces(), plugin_id
+            assert plugin_id.split("@")[1] in _declared_marketplaces() | set(own), plugin_id
+        for name, cfg in own.items():
+            assert cfg.get("autoUpdate") is True and cfg["source"].get("repo"), name
         for server in prof.get("mcp", {}).get("mcpServers", {}).values():
             for arg in server.get("args", []):
                 assert "@latest" not in arg, f"unpinned version in {path}"

@@ -61,6 +61,11 @@ def personal_root() -> Path:
     return Path(env).expanduser() if env else home() / ".config" / "loadout" / "personal"
 
 
+def personal_loadout_json() -> Path:
+    """<personal>/loadout.json: answers only loadout reads (e.g. Codex-only choices), synced with the personal layer."""
+    return personal_root() / "loadout.json"
+
+
 def secrets_file() -> Path:
     return home() / ".config" / "loadout" / "secrets.env"
 
