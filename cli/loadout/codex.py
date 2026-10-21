@@ -1170,12 +1170,22 @@ def plugin_versions() -> dict[str, str]:
             if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
 
 
-def installed_plugins() -> set[str] | None:
+class Installed(set):
+    """The installed plugin ids, a plain set to every caller, plus `versions`: {plugin id: the version Codex lists,
+    which names its active folder in plugins/cache/<marketplace>/<plugin>/}."""
+    def __init__(self, ids=(), versions: dict[str, str] | None = None):
+        super().__init__(ids)
+        self.versions = dict(versions or {})
+
+
+def installed_plugins() -> Installed | None:
     res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None
     if not isinstance(data, dict):
         return None
-    return {p["pluginId"] for p in get_list(data, "installed") if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
+    items = [p for p in get_list(data, "installed") if isinstance(p, dict) and isinstance(p.get("pluginId"), str)]
+    return Installed((p["pluginId"] for p in items),
+                     {p["pluginId"]: p["version"] for p in items if isinstance(p.get("version"), str)})
 
 
 _NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}  # nobody answers a credential prompt here
@@ -1675,21 +1685,25 @@ def _plugin_servers() -> set[str]:
 LOADOUT_PLUGIN = "loadout@agent-loadout"
 
 
-def _loadout_plugin_servers() -> set[str]:
-    """Names of the MCP servers loadout's own Codex plugin provides, from its installed copies' manifests
-    (plugins/cache/agent-loadout/loadout/*). A broken manifest or server file counts for nothing."""
-    names: set[str] = set()
-    for root in (paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout").glob("*"):
-        try:
-            ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
-        except Exception:
-            ref = None
-        mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
-        try:
-            names |= {n for n in get_dict(load_json(mcp), "mcpServers") if isinstance(n, str)}
-        except Exception:
-            continue
-    return names
+def _loadout_plugin_servers(version: str | None) -> set[str]:
+    """Names of the MCP servers loadout's own Codex plugin provides, from the manifest of its active copy only
+    (plugins/cache/agent-loadout/loadout/<version>, the version `codex plugin list` names): an older copy Codex keeps
+    in its cache is not what it loads. No usable version, a broken manifest or server file: nothing."""
+    base = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
+    if not isinstance(version, str) or version in ("", ".", "..") or "/" in version or "\\" in version:
+        return set()
+    root = base / version
+    if not root.is_dir() or not paths.inside(root, base):
+        return set()
+    try:
+        ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
+    except Exception:
+        ref = None
+    mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
+    try:
+        return {n for n in get_dict(load_json(mcp), "mcpServers") if isinstance(n, str)}
+    except Exception:
+        return set()
 
 
 def servers_twice(installed: set[str] | None) -> list[str]:
@@ -1703,7 +1717,8 @@ def servers_twice(installed: set[str] | None) -> list[str]:
         return []
     if get_dict(get_dict(data, "plugins"), LOADOUT_PLUGIN).get("enabled") is False:
         return []
-    return sorted(set(user_servers()) & _loadout_plugin_servers())
+    version = getattr(installed, "versions", {}).get(LOADOUT_PLUGIN)  # from the list checks() already fetched
+    return sorted(set(user_servers()) & _loadout_plugin_servers(version))
 
 
 HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex`, then run /hooks"
