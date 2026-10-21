@@ -1654,6 +1654,40 @@ def _plugin_servers() -> set[str]:
     return names
 
 
+LOADOUT_PLUGIN = "loadout@agent-loadout"
+
+
+def _loadout_plugin_servers() -> set[str]:
+    """Names of the MCP servers loadout's own Codex plugin provides, from its installed copies' manifests
+    (plugins/cache/agent-loadout/loadout/*). A broken manifest or server file counts for nothing."""
+    names: set[str] = set()
+    for root in (paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout").glob("*"):
+        try:
+            ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
+        except Exception:
+            ref = None
+        mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
+        try:
+            names |= {n for n in get_dict(load_json(mcp), "mcpServers") if isinstance(n, str)}
+        except Exception:
+            continue
+    return names
+
+
+def servers_twice(installed: set[str] | None) -> list[str]:
+    """The user's own config.toml servers that loadout's Codex plugin (installed, not switched off) also provides."""
+    if installed is None or LOADOUT_PLUGIN not in installed:
+        return []
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return []
+    if get_dict(get_dict(data, "plugins"), LOADOUT_PLUGIN).get("enabled") is False:
+        return []
+    return sorted(set(user_servers()) & _loadout_plugin_servers())
+
+
 HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex`, then run /hooks"
 
 
@@ -1769,6 +1803,12 @@ def checks() -> list:
         lacks = missing_routes(installed) if installed is not None else ([], [])
         if lacks[0] or lacks[1]:
             results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
+        config = _tilde(paths.codex_home() / "config.toml")
+        results += [CheckResult(f"Codex MCP {name}", False,
+                                "defined in config.toml and by the loadout plugin; Codex starts one of them",
+                                f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
+                                "or turn the loadout plugin off in Codex", "warn")
+                    for name in servers_twice(installed)]
     else:  # extension mode: plugins need the CLI, and the extension loads none
         results.append(CheckResult("Codex plugin", False, PLUGINS_EXTENSION.split(": ", 1)[1],
                                    "loadout bootstrap --install (the Codex CLI)", "warn"))
