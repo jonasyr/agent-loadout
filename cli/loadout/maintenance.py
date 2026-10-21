@@ -235,13 +235,12 @@ def find_outdated() -> list[tuple[dict, tuple, tuple]]:
         if tool:  # ask mise: it knows the user's minimum_release_age and pins
             status = pkgmgr.mise_outdated(tool)
             if status is not None:
-                if status:
+                if status:  # mise has no install of it (empty current): the binary on PATH says what is installed
                     out.append((entry, status[0] or versions.local_version(entry), status[1]))
                 continue
-        local, latest = versions.local_version(entry), versions.latest_version(entry)
-        if local and latest and latest > local:
-            out.append((entry, local, latest))
-    return out
+        out.append((entry, versions.local_version(entry), versions.latest_version(entry)))
+    # never an `X -> X` or `? -> X` update: only a known installed version older than the offered one
+    return [(e, local, latest) for e, local, latest in out if local and latest and latest > local]
 
 
 def _refused_path() -> Path:

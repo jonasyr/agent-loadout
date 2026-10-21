@@ -1,6 +1,8 @@
 """Package-manager-aware updates (mise, Homebrew) and remembered refusals."""
 import json
 
+import pytest
+
 from loadout import catalog, maintenance as m, paths, pkgmgr, runner, versions
 
 MISE = "/home/u/.local/share/mise/installs"
@@ -239,3 +241,44 @@ def test_mise_tools_get_no_refusal_bookkeeping(fake_home, fake_runner, monkeypat
     monkeypatch.setattr(versions, "local_version", lambda e: (0, 8, 23))  # unchanged after mise upgrade
     m.update(yes=True, ask=lambda q: "")
     assert m._refused() == {}
+
+
+def _gh_world(fake_runner, monkeypatch, current, binary):
+    fake_runner.paths["gh"] = f"{MISE}/gh/2.102.0/bin/gh"
+    gh = _entry("gh")
+    monkeypatch.setattr(m.catalog, "binaries", lambda: [gh])
+    monkeypatch.setattr(versions, "latest_version", lambda e: (9, 9, 9))  # mise is asked, not GitHub
+    _mise_json(fake_runner, "gh", {"gh": {"name": "gh", "current": current, "latest": "2.102.0"}})
+    fake_runner.responses[("gh", "--version")] = (
+        runner.Result(0, f"gh version {binary} (2026-10-01)\n", "") if binary else runner.Result(1, "", "boom"))
+
+
+@pytest.mark.parametrize("current", [None, ""])
+def test_empty_mise_current_compares_the_binary_and_hides_equal_versions(fake_home, fake_runner, monkeypatch, current):
+    """Fix 7: mise without an install of gh, the binary on PATH already at latest: no `2.102.0 -> 2.102.0`."""
+    _gh_world(fake_runner, monkeypatch, current, "2.102.0")
+    assert m.find_outdated() == []
+
+
+def test_empty_mise_current_reports_an_older_binary(fake_home, fake_runner, monkeypatch):
+    _gh_world(fake_runner, monkeypatch, "", "2.101.0")
+    found = [(e["id"], versions.fmt(a), versions.fmt(b)) for e, a, b in m.find_outdated()]
+    assert found == [("gh", "2.101.0", "2.102.0")]
+
+
+def test_unknown_installed_version_is_dropped(fake_home, fake_runner, monkeypatch):
+    """No `? -> 2.102.0`: neither mise nor the binary names the installed version."""
+    _gh_world(fake_runner, monkeypatch, "", None)
+    assert m.find_outdated() == []
+
+
+def test_equal_versions_never_become_an_update_plan_item(fake_home, fake_runner, monkeypatch):
+    from loadout import apply, bootstrap, targets, update
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": False})
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [])
+    monkeypatch.setattr(apply, "claude_plugins_step", lambda **k: apply.StepResult("Plugins", ""))
+    monkeypatch.setattr(apply, "codex_step", lambda *a, **k: apply.StepResult("Codex", ""))
+    _gh_world(fake_runner, monkeypatch, None, "2.102.0")
+    plan = update.build_plan(True, False)
+    assert [i for i in plan if i.kind == "tool-update"] == []
+    assert not any("2.102.0 -> 2.102.0" in i.label for i in plan)
