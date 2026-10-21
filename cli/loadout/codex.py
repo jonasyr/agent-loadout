@@ -1647,10 +1647,14 @@ def plugin_mcp_files() -> list[Path]:
 
 
 def _plugin_servers() -> set[str]:
-    """MCP servers that Codex has from installed plugins, from the file each manifest names (else .mcp.json)."""
+    """MCP servers that Codex has from installed plugins, from the file each manifest names (else .mcp.json).
+    A broken server file counts for nothing, so check, drift and the inventory never stop on it."""
     names: set[str] = set()
     for mcp in plugin_mcp_files():
-        names |= set(get_dict(load_json(mcp), "mcpServers"))
+        try:
+            names |= {n for n in get_dict(load_json(mcp), "mcpServers") if isinstance(n, str)}
+        except Exception:
+            continue
     return names
 
 

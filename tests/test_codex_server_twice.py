@@ -5,6 +5,8 @@ import pytest
 
 from loadout import codex, paths
 
+REAL_DRIFT = codex.drift
+
 USER_TABLE = ('[mcp_servers.codebase-memory-mcp]\ncommand = "codebase-memory-mcp"\n\n'
               '[mcp_servers.codebase-memory-mcp.tools.search_graph]\napproval_mode = "approve"\n')
 DETAIL = "defined in config.toml and by the loadout plugin; Codex starts one of them"
@@ -82,3 +84,17 @@ def test_a_broken_server_file_gives_nothing_and_no_crash(check):
 def test_no_user_table_gives_nothing(check):
     _plugin()
     assert check('[mcp_servers.other]\ncommand = "x"\n') == []
+
+
+def test_a_broken_plugin_server_file_never_breaks_drift_or_check(check, monkeypatch):
+    from loadout import targets
+    targets.set_agents({"claude": True, "codex": True})
+    root = _plugin()
+    (root / ".codex-mcp.json").write_text("{not json")
+    monkeypatch.setattr(codex, "drift", REAL_DRIFT)  # the fixture stubs drift; this test runs the real one
+    monkeypatch.setattr(codex, "mcp_names", lambda: {"x"})
+    assert codex._plugin_servers() == set()
+    assert any('"x" only in Codex' in line for line in codex.drift())
+    assert check() == []  # writes config.toml and runs checks(): no InvalidJSON, no row
+    (row,) = [r for r in codex.checks() if r.name == "Codex drift"]
+    assert not row.ok and '"x" only in Codex' in row.detail
