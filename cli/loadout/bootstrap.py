@@ -1049,7 +1049,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if problem:
             out.status("Codex", problem, "warn")
         else:
-            result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True)
+            result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True,
+                                     plugins=plugins)
             out.end_progress()
             _report(result.name, result.summary, result.lines)
     adopt.LAST_BACKUP = None
