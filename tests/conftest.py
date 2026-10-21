@@ -74,6 +74,7 @@ def fake_home(tmp_path, monkeypatch):
     monkeypatch.delenv("CODEX_HOME", raising=False)  # never a real Codex home
     monkeypatch.setenv("USER", "loadout-test-user")  # wsl.windows_home's /mnt/c/Users/$USER guess never finds a real one
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    monkeypatch.delenv("CBM_CACHE_DIR", raising=False)  # check never reads a real codebase-memory cache
     from loadout import wsl
     monkeypatch.setattr(wsl, "OSRELEASE", tmp_path / "no-osrelease")  # tests never see a real WSL machine
     return home

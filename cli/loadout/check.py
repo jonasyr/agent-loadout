@@ -6,6 +6,7 @@ import os
 import re
 import stat
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -266,6 +267,73 @@ def _mcp_path() -> list[CheckResult]:
     dirs = sorted({str(d) for d in hidden.values()})
     return [CheckResult("MCP servers on PATH", not hidden, ", ".join(hidden),
                         f"open a new terminal, or add {', '.join(dirs)} to PATH", "warn")]
+
+
+_CBM_LOG = "logs/daemon-conflicts.ndjson"
+_CBM_TAIL = 64 * 1024  # only the newest records matter; a huge log is never read whole
+_CBM_WINDOW = 24 * 3600
+
+
+def _cbm_records(path: Path) -> list[dict]:
+    """The parseable records in the last 64 KiB of one log file; anything else is skipped."""
+    try:
+        with path.open("rb") as f:
+            start = max(0, f.seek(0, os.SEEK_END) - _CBM_TAIL)
+            f.seek(max(0, start - 1))
+            data = f.read(_CBM_TAIL + (1 if start else 0))
+    except OSError:
+        return []
+    lines = data.split(b"\n")
+    if start:
+        lines = lines[1:]  # the byte before the tail (a newline, or the cut line's head) is not part of it
+    out = []
+    for line in lines:
+        try:
+            rec = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            continue
+        ts = rec.get("timestamp_unix_s") if isinstance(rec, dict) else None
+        if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+            out.append(rec)
+    return out
+
+
+def _cbm_conflict() -> list[CheckResult]:
+    """codebase-memory-mcp 0.12 runs one daemon per account; a session for another cache folder or version fails
+    and writes why into its own cache folder ($CBM_CACHE_DIR, else ~/.cache/codebase-memory-mcp). Read only: the
+    binary is never run (its `daemon status` hangs)."""
+    if os.name == "nt":
+        return []
+    default = paths.home() / ".cache/codebase-memory-mcp"
+    folders = [(default, False)]
+    env = os.environ.get("CBM_CACHE_DIR")
+    if env and Path(env) != default:
+        folders.append((Path(env), True))
+    now, best = time.time(), None
+    for folder, from_env in folders:
+        for name in (_CBM_LOG, _CBM_LOG + ".1"):
+            for rec in _cbm_records(folder / name):
+                if abs(now - rec["timestamp_unix_s"]) <= _CBM_WINDOW and (
+                        best is None or rec["timestamp_unix_s"] > best[0]["timestamp_unix_s"]):
+                    best = (rec, folder, from_env)
+    if best is None:
+        return []
+    rec, folder, from_env = best
+    active, requested = rec.get("active_version"), rec.get("requested_version")
+    if rec.get("reason") != "cache_root" and isinstance(active, str) and isinstance(requested, str) \
+            and active != requested:
+        detail = (f"a codebase-memory-mcp {requested} session could not start "
+                  f"(version {active} already runs for your account)")
+        fix = ("update every codebase-memory-mcp to one version, or close the other sessions (Codex, Claude Code, "
+               "VS Code); codebase-memory-mcp daemon stop retires the daemon once no session uses it")
+    else:
+        detail = ("a codebase-memory-mcp session with a different cache folder could not start "
+                  "(another one already runs for your account)")
+        fix = ("close the other sessions (Codex, Claude Code, VS Code) or give them the same CBM_CACHE_DIR; "
+               "codebase-memory-mcp daemon stop retires the daemon once no session uses it")
+    if from_env:
+        detail += f"; logged in {folder}, the CBM_CACHE_DIR of this check's own environment"
+    return [CheckResult("codebase-memory-mcp daemon", False, printable(detail), fix, "warn")]
 
 
 def _gh() -> list[CheckResult]:
@@ -671,7 +739,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+            *_binaries(cs), *_mcp_path(), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
