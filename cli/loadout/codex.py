@@ -406,6 +406,20 @@ def user_serena(data: dict, owned: set[str]) -> str | None:
     return None
 
 
+SERENA_KEPT = "Serena: your own server in config.toml kept"
+
+
+def own_serena() -> str | None:
+    """The name of the user's own Serena server in config.toml now (one loadout did not write, or wrote and you
+    changed), or None. Read-only; bootstrap names it once (apply_config does not: it runs at every update and sync)."""
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return None
+    return user_serena(data, set(read_record()["tables"]))
+
+
 def desired_tables(skip_serena: bool = False) -> tuple[dict[str, str], list[str]]:
     """Table text per server name, and the lines for servers that cannot be mapped. skip_serena: the user has
     their own Serena (user_serena), so loadout writes none (spec PR A)."""

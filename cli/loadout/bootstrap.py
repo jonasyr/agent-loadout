@@ -1053,6 +1053,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                                      plugins=plugins)
             out.end_progress()
             _report(result.name, result.summary, result.lines)
+            if codex.own_serena() is not None:  # loadout wrote no serena of its own: say why, once per bootstrap
+                out.problem(codex.SERENA_KEPT)
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
         _step("Adopt existing setup")

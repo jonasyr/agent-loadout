@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from . import catalog, paths, runner, settings_merge, versions
 from .jsonio import get_dict, load_json
@@ -153,6 +153,10 @@ def _why(entry: dict) -> str:
     return entry["reason"] + (f" Replacement: {entry['by']}." if entry.get("by") else "")
 
 
+BUNDLED_CLAUDE = ("a claude on PATH for the terminal (VS Code's Claude Code extension's claude runs loadout's "
+                  "commands now)")
+
+
 def classify(items: list[Item]) -> list[Verdict]:
     from . import own
 
@@ -166,7 +170,10 @@ def classify(items: list[Item]) -> list[Verdict]:
     for item in items:
         if item.kind == "binary":
             entry, state = item.extra["entry"], item.extra["state"]
-            if state == "missing":
+            if state == "missing" and item.name == "claude" and runner._fallback("claude"):
+                # VS Code's Claude Code extension's claude runs loadout's commands: one on PATH is optional
+                out.append(Verdict(replace(item, detail="optional"), "keep", BUNDLED_CLAUDE, entry["id"]))
+            elif state == "missing":
                 action = "install" if entry.get("required") or entry["status"] == "recommended" else "keep"
                 out.append(Verdict(item, action, entry["reason"], entry["id"]))
             elif state == "outdated":

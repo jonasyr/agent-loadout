@@ -147,12 +147,18 @@ def _codex_facts(lines: list[str]) -> set[str]:
     return facts
 
 
-def _codex_summary(lines: list[str]) -> str:
+def _codex_summary(lines: list[str], plugins: bool = True) -> str:
+    """What the Codex step set up, in plain words: plugins only when it handled them, skills only when it linked
+    or copied some (live-tour fixes, spec fix 11)."""
     from . import runner
     failed = sum(1 for line in lines if out.PROBLEM.search(line))
-    done = ("rules, plugins, MCP servers and skills set up" if runner.have("codex")
-            else "rules, MCP servers and skills set up for VS Code's Codex extension")
-    return done if not failed else f"{failed} problem(s) (below)"
+    if failed:
+        return f"{failed} problem(s) (below)"
+    parts = ["rules"] + (["plugins"] if plugins and runner.have("codex") else []) + ["MCP servers"]
+    if any(line.startswith(("linked ", "copied ")) for line in lines):
+        parts.append("skills")
+    done = ", ".join(parts[:-1]) + " and " + parts[-1] + " set up"
+    return done if runner.have("codex") else done + " for VS Code's Codex extension"
 
 
 def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say=None,
@@ -182,7 +188,7 @@ def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say
         facts.add("codex_config_changed")
     if "plugins_updated" in changed:
         facts.add("codex_plugins_updated")
-    summary = _codex_summary(lines)
+    summary = _codex_summary(lines, plugins=plugins)
     if only is not None and set(only) == {"plugins"} and not any(out.PROBLEM.search(line) for line in lines):
         summary = "plugins refreshed; rules, config, hooks and skills left as they are (item 1 was left out)"
     return _finish(StepResult("Codex", summary, lines, facts), "codex")

@@ -475,3 +475,21 @@ def test_loadout_plugin_not_reported_twice(fake_home, fake_runner, monkeypatch):
     assert codex.missing_routes() == ([], [])
     rows = {r.name: r for r in codex.checks()}
     assert not rows["Codex plugin"].ok and "Codex plugins missing" not in rows
+
+
+# --- plain words: the summary names only what was set up (live-tour fixes, spec fix 11)
+
+def test_codex_summary_names_skills_only_when_linked(fake_runner):
+    from loadout import apply
+    assert apply._codex_summary(["instructions written to ~/.codex/AGENTS.md"]) == "rules, plugins and MCP servers set up"
+    assert apply._codex_summary(["linked ~/.codex/skills/x"]) == "rules, plugins, MCP servers and skills set up"
+    assert apply._codex_summary(["copied ~/.codex/skills/x"]) == "rules, plugins, MCP servers and skills set up"
+    assert apply._codex_summary([], plugins=False) == "rules and MCP servers set up"
+    assert apply._codex_summary(["linked x"], plugins=False) == "rules, MCP servers and skills set up"
+
+
+def test_codex_summary_extension_mode_names_skills_only_when_linked(fake_runner):
+    from loadout import apply
+    fake_runner.missing.add("codex")
+    assert apply._codex_summary(["linked x"]) == "rules, MCP servers and skills set up for VS Code's Codex extension"
+    assert apply._codex_summary([]) == "rules and MCP servers set up for VS Code's Codex extension"
