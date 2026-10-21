@@ -266,7 +266,7 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
     """Drop saved steps that no longer hold: every step of an agent that is off; the /hooks step once the hooks are
     approved; a bootstrap step once the rows that produced it pass (checked with local files only, never the
     network); an /mcp step whose server is gone; "restart Codex" without the Codex CLI (no session hook would clear
-    it) or next to a saved /hooks step (that one already says restart). Others stay until their agent's session start clears them."""
+    it) or next to a /hooks step that stays (that one already says restart). Others stay until their agent's session start clears them."""
     from . import codex, runner
     data = _load()
     if not data:
@@ -288,11 +288,13 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
             elif not drop and e["id"] == f"{agent}/bootstrap":
                 drop = _rows_pass(str(e.get("reason", "")), results)
             elif not drop and e["id"] == "codex/restart":
-                drop = any(x["id"] == "codex/hooks" for x in data.get("codex", [])) or not runner.have("codex")
+                drop = not runner.have("codex")
             elif not drop and e["id"].startswith("claude/mcp:"):
                 drop = e["id"][len("claude/mcp:"):] not in {_redact(n) for n in names.get("claude", set())}
             if not drop:
                 keep.setdefault(agent, []).append(e)
+    if any(e["id"] == "codex/hooks" for e in keep.get("codex", [])):  # only a hooks step that stays says restart
+        keep["codex"] = [e for e in keep["codex"] if e["id"] != "codex/restart"]
     if keep != data:
         save_json(_path(), keep)
 

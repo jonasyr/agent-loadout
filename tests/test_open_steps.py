@@ -347,3 +347,11 @@ def test_update_names_loadouts_own_plugin_in_its_facts(fake_runner):
     update._refresh_claude_plugins(update.PlanItem(1, "claude-plugins-refresh", "x", [], ids=("superpowers@x",)),
                                    summary)
     assert "claude_loadout_plugin" not in summary.facts
+
+
+def test_settle_keeps_a_restart_step_when_the_saved_hooks_step_is_approved():
+    """Hooks approved in a running Codex, then a run upgraded a binary: the new restart step is still needed."""
+    steps.save([steps.Step("codex/hooks", "codex", steps.HOOKS_TEXT, "x")])  # hooks_status is trusted (fixture)
+    steps.save([steps.Step("codex/restart", "codex", "restart Codex", "x")])
+    steps.settle(False, True)
+    assert _ids(steps.pending("codex")) == ["codex/restart"]
