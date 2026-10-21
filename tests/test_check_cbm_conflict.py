@@ -64,7 +64,8 @@ def test_old_record_is_ignored(cache):
 def test_malformed_lines_are_skipped(cache):
     _write(cache, "not json", "[1, 2]", '{"timestamp_unix_s": "soon"}', '{"timestamp_unix_s": true}',
            json.dumps(_cache_record(requested_version=None)), _cache_record())
-    (cache / "daemon-conflicts.ndjson").open("ab").write(b"\xff\xfe broken\n")
+    with (cache / "daemon-conflicts.ndjson").open("ab") as f:
+        f.write(b"\xff\xfe broken\n")
     [r] = check._cbm_conflict()
     assert r.detail == CACHE_DETAIL
 
@@ -140,5 +141,23 @@ def test_record_starting_exactly_at_the_tail_is_read(cache):
     rec = rec[:-1] + ', "pad": "' + "x" * (64 * 1024 - len(rec) - 10 - 2) + '"}'
     assert len(rec) + 1 == 64 * 1024
     (cache / "daemon-conflicts.ndjson").write_text(head * 3 + rec + "\n")
+    [r] = check._cbm_conflict()
+    assert r.detail == CACHE_DETAIL
+
+
+def test_huge_integer_timestamp_is_skipped(cache):
+    _write(cache, '{"timestamp_unix_s": 1' + "0" * 400 + "}", _cache_record())
+    [r] = check._cbm_conflict()
+    assert r.detail == CACHE_DETAIL
+
+
+def test_non_finite_timestamp_is_skipped(cache):
+    _write(cache, '{"timestamp_unix_s": NaN}', '{"timestamp_unix_s": Infinity}', _cache_record())
+    [r] = check._cbm_conflict()
+    assert r.detail == CACHE_DETAIL
+
+
+def test_deeply_nested_line_is_skipped(cache):
+    _write(cache, "[" * 30000 + "]" * 30000, _cache_record())
     [r] = check._cbm_conflict()
     assert r.detail == CACHE_DETAIL

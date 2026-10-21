@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import stat
@@ -290,11 +291,17 @@ def _cbm_records(path: Path) -> list[dict]:
     for line in lines:
         try:
             rec = json.loads(line.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
+        except (UnicodeDecodeError, ValueError, RecursionError):  # RecursionError: a deeply nested line
             continue
         ts = rec.get("timestamp_unix_s") if isinstance(rec, dict) else None
-        if isinstance(ts, (int, float)) and not isinstance(ts, bool):
-            out.append(rec)
+        if not isinstance(ts, (int, float)) or isinstance(ts, bool):
+            continue
+        try:
+            ts = float(ts)  # an integer too large for a float would raise later, in the age arithmetic
+        except OverflowError:
+            continue
+        if math.isfinite(ts):
+            out.append({**rec, "timestamp_unix_s": ts})
     return out
 
 
