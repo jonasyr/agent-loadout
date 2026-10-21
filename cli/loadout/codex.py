@@ -1209,6 +1209,10 @@ def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str,
         pass  # the record only saves time; losing it means the next update refreshes everything
 
 
+CLONE_TIMEOUT = 1800  # a large marketplace (pbakaus/impeccable: 400+ MB) outlasted 900 s on a real machine
+LARGE_CLONE = "large repositories can take several minutes"
+
+
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
                     frozen: frozenset = frozenset(), skip_unchanged: bool = False,
                     skips: tuple | None = None) -> tuple[list[str], set[str]]:
@@ -1235,10 +1239,10 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             market = record[src]["name"]
         else:
             step += 1
-            say(f"  adding marketplace {src}, a git clone ({step} of {total})…")
+            say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
             head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
-            res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=900)
+            res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
             info = _json(res.stdout) if res.ok else None
             if not isinstance(info, dict) or "marketplaceName" not in info:
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
@@ -1248,7 +1252,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:
-                up = runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=900)
+                up = runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
                 refreshed = up.ok
             elif not info.get("alreadyAdded"):
                 refreshed = True
@@ -1278,6 +1282,67 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                     purl, ref = own[name]
                     _remember(src, market, plugin=(pid, purl, ref, remote_head(purl, ref)))
     return lines, installed
+
+
+def missing_routes(installed: set[str] | None = None,
+                   listed: dict[str, dict] | None = None) -> tuple[list[str], list[str]]:
+    """(marketplace sources, plugin entries) loadout wants in Codex but Codex lacks, for `loadout check` and "Still to
+    do". A plugin entry is its full `name@market` id; while its marketplace is missing it is `name (from source)`, since
+    the id is unknown until the marketplace exists. loadout's own plugin is left to the `Codex plugin` row.
+    installed / listed: what installed_plugins() and marketplaces() returned, when the caller already has them.
+    ([], []) without the Codex CLI or when a listing fails."""
+    if not runner.have("codex"):
+        return [], []
+    from .settings_merge import desired_settings
+    desired = desired_settings()
+    routes = plugin_routes(desired)[0]
+    own = get_dict(get_dict(get_dict(desired, "extraKnownMarketplaces"), "agent-loadout"), "source").get("repo")
+    claude_names: dict[str, str] = {}  # source -> the Claude Code marketplace name, a fallback for a source-less listing
+    for pid, on in get_dict(desired, "enabledPlugins").items():
+        if on is True and isinstance(pid, str) and "@" in pid:
+            market = pid.rsplit("@", 1)[1]
+            src = OFFICIAL if market == "claude-plugins-official" else get_dict(
+                get_dict(get_dict(desired, "extraKnownMarketplaces"), market), "source").get("repo")
+            if isinstance(src, str):
+                claude_names.setdefault(src, market)
+    if not routes:
+        return [], []
+    installed = installed_plugins() if installed is None else installed
+    listed = marketplaces() if listed is None else listed
+    if installed is None or listed is None:
+        return [], []
+    record = _load_record()
+    lacks_m: list[str] = []
+    lacks_p: list[str] = []
+    for src, names in routes.items():
+        names = [n for n in names if not (n == "loadout" and src == own)]
+        if not names:
+            continue
+        url = _src_url(src) or ""
+        market = next((name for name, info in listed.items() if _same_source(info, url)), None)
+        if market is None:  # Codex lists no source for it: the name loadout recorded, or Claude Code's
+            for name in (get_dict(record, src).get("name"), claude_names.get(src)):
+                if isinstance(name, str) and name in listed and get_dict(listed, name).get("source") is None:
+                    market = name
+                    break
+        if market is None:
+            lacks_m.append(src)
+            lacks_p.extend(f"{n} (from {src})" for n in names)
+            continue
+        lacks_p.extend(pid for pid in (f"{n}@{market}" for n in names) if pid not in installed)
+    return lacks_m, lacks_p
+
+
+MISSING_FIX = "loadout update (retries them)"
+
+
+def _missing_text(lacks: tuple[list[str], list[str]]) -> str:
+    parts = []
+    if lacks[0]:
+        parts.append("marketplaces " + ", ".join(lacks[0]))
+    if lacks[1]:
+        parts.append("plugins " + ", ".join(lacks[1]))
+    return "Codex lacks " + "; ".join(parts)
 
 
 def record_has(src: str) -> bool:
@@ -1588,6 +1653,9 @@ def checks() -> list:
         ok = installed is not None and "loadout@agent-loadout" in installed
         results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
                                    "loadout bootstrap"))
+        lacks = missing_routes(installed) if installed is not None else ([], [])
+        if lacks[0] or lacks[1]:
+            results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
     else:  # extension mode: plugins need the CLI, and the extension loads none
         results.append(CheckResult("Codex plugin", False, PLUGINS_EXTENSION.split(": ", 1)[1],
                                    "loadout bootstrap --install (the Codex CLI)", "warn"))
@@ -1734,5 +1802,8 @@ def open_steps() -> list[str]:
     if not cli:
         return (steps + [f"log in to {name} once: {LOGIN_EXTENSION}" for name in logins_needed()]
                 + [f"optional: log in to {name} for higher limits: {LOGIN_EXTENSION}" for name in logins_optional()])
+    lacks = missing_routes()
+    if lacks[0] or lacks[1]:
+        steps.append(f"{_missing_text(lacks)}: run {MISSING_FIX}")
     return (steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
             + [f"optional: log in to {name} in Codex for higher limits: codex mcp login {name}" for name in logins_optional()])
