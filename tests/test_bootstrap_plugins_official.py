@@ -100,3 +100,20 @@ def test_plugins_row_broken_known_marketplaces_is_invalid_json(fake_home, fake_r
     known.write_text("{ broken")
     r = _row()
     assert not r.ok and "invalid JSON" in r.detail and r.fix == "fix the JSON syntax"
+
+
+def test_an_older_claude_without_json_falls_back_to_the_plain_list(fake_home, fake_runner):
+    fake_runner.responses[LIST + ("--json",)] = runner.Result(1, "", "error: unknown option '--json'")
+    fake_runner.responses[LIST] = runner.Result(
+        0, "Configured marketplaces:\n\n  ❯ agent-loadout\n  ❯ claude-plugins-official\n  ❯ impeccable\n", "")
+    assert bootstrap.listed_marketplaces() == {"agent-loadout", "claude-plugins-official", "impeccable"}
+    assert list(LIST) in fake_runner.calls
+    markets, _ = _markets()
+    assert not {"agent-loadout", "claude-plugins-official", "impeccable"} & {n for n, _ in markets}
+
+
+def test_both_lists_failing_is_none(fake_home, fake_runner):
+    fake_runner.responses[LIST] = runner.Result(1, "", "boom")
+    assert bootstrap.listed_marketplaces() is None
+    assert fake_runner.calls.count(list(LIST)) == 1 and fake_runner.calls.count(list(LIST) + ["--json"]) == 1
+

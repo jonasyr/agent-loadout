@@ -392,10 +392,12 @@ _MARKET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 def listed_marketplaces() -> set[str] | None:
     """The marketplace names Claude Code has added (`claude plugin marketplace list --json`); when that output is
     not usable JSON, the names from its text form, up to the "From claude.ai:" section (offered there, not added).
-    None only when the command fails."""
+    When `--json` fails (an older Claude Code without it), the plain list once. None only when that fails too."""
     res = runner.run(["claude", "plugin", "marketplace", "list", "--json"], timeout=60)
     if not res.ok:
-        return None
+        res = runner.run(["claude", "plugin", "marketplace", "list"], timeout=60)
+        if not res.ok:
+            return None
     try:
         data = json.loads(res.stdout)
     except ValueError:
