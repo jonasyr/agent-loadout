@@ -112,7 +112,7 @@ Why it matters: for humans, an ADR answers "why on earth is it like this?" in a 
 - **Lean always-loaded context.** AGENTS.md is loaded into every session, so it should hold only what is needed on every task: commands, hard conventions, a map. Anthropic's guidance for agents is "the smallest possible set of high-signal tokens", and Claude Code's docs recommend keeping each CLAUDE.md under 200 lines, because longer files cost context and reduce adherence [Anthropic 2025; Claude Code memory docs].
 - **Details on demand.** The map tells the agent where the facts are, and it reads the one page it needs, when it needs it. This is the "just in time" pattern Anthropic describes: keep lightweight identifiers such as file paths and load the data with tools at runtime [Anthropic 2025].
 - **Verifiable claims.** A fact with one home can be checked against the code once and fixed once. A fact with five copies cannot.
-- **Agent-neutral.** AGENTS.md works with the agents listed above; nothing about the structure is tied to Claude Code. (loadout's skills that maintain it run in Claude Code and the Codex CLI.)
+- **Agent-neutral.** AGENTS.md works with the agents listed above; nothing about the structure is tied to Claude Code. (loadout's skills that maintain it run in Claude Code, the Codex CLI and VS Code's Codex extension.)
 
 The evidence on context files themselves is mixed, which is exactly why the kit keeps AGENTS.md small. One 2026 study found that context files, both LLM-generated and developer-written, did not generally improve task success, raised inference cost by over 20%, and that repository overviews in particular did not help; agents did follow the instructions, and the files were useful for specifying non-standard practices [Gloaguen 2026]. Another found that an AGENTS.md was associated with 28.64% lower median runtime and 16.58% fewer output tokens with comparable task completion [Lulla 2026]. Both are preprints. The common thread: a short file with the non-obvious commands and conventions earns its place; a long overview mostly costs tokens.
 
@@ -120,13 +120,13 @@ The evidence on context files themselves is mixed, which is exactly why the kit 
 
 Writing good docs once is the easy part. loadout ships three skills for keeping them right, in Claude Code, the Codex CLI and VS Code's Codex extension:
 
-| Skill | When | What it does |
-|---|---|---|
-| `/loadout:onboard` | After `loadout init`, or when a repo has no AGENTS.md | **New repo:** asks purpose, users, stack and constraints one at a time, then writes AGENTS.md, `docs/README.md` and `docs/adr/0001-<stack-decision>.md`. **Existing repo:** indexes the code, finds the install/test/run commands and verifies each with a harmless form (`--help`, `--collect-only`, dry run), writes or repairs AGENTS.md, offers to move CLAUDE.md content into AGENTS.md, and writes Serena memories as summary plus link. If docs or memories already exist, it recommends a docs audit. |
-| `/loadout:docs-sync` | End of every feature, before merging | Reads the branch diff, decides which facts changed and which layer owns each, updates only those (a new decision becomes an ADR), checks every link and path it touched, and commits separately as `docs: …` after approval. A small change usually touches zero or one doc file; if it finds widespread rot, it stops and recommends an audit. |
-| `/loadout:docs-audit` | On request, when docs may be stale or duplicated | Inventories every doc artifact, extracts each claim (commands, paths, symbols, defaults, behaviour, decisions, status), verifies it against the current code, and classifies it: correct, stale, wrong, unclear, contradictory, duplicated, misplaced or unverifiable. It also lists what is missing. Anything the code cannot settle it asks you, in batches; it never guesses intent. It proposes the target structure before rewriting, validates every link afterwards, and commits per layer after approval. Its checklist lives in `.loadout/docs-audit/<date>.md`, so it can resume after a context reset or in a new session. |
+- **`/loadout:onboard`** runs after `loadout init`, or when a repo has no AGENTS.md. In a new repo it asks about purpose, users, stack and constraints, then writes AGENTS.md, `docs/README.md` and a first ADR. In an existing repo it finds the install, test and run commands, verifies each with a harmless form, and writes or repairs AGENTS.md and the Serena memories as summary plus link. It recommends an audit when docs or memories already exist.
+- **`/loadout:docs-sync`** runs at the end of every feature, before merging. It reads the branch diff, decides which facts changed and which layer owns each, updates only those (a new decision becomes an ADR), checks the links it touched, and commits separately as `docs: ...` after approval. A small change usually touches zero or one doc file; widespread rot makes it recommend an audit.
+- **`/loadout:docs-audit`** runs on request, when docs may be stale or duplicated. It verifies every claim in the docs against the current code and classifies it (correct, stale, wrong, unclear, contradictory, duplicated, misplaced or unverifiable), lists what is missing, asks you what the code cannot settle, proposes the target structure before rewriting, and commits per layer after approval. Its checklist lives in `.loadout/docs-audit/<date>.md`, so it can resume after a context reset.
 
-All three read the rules and the sections of this page they need (the four kinds of docs, ADRs) from your clone of the kit (`loadout kit-path`), so they write pages and ADRs in this format in Claude Code and the Codex CLI alike.
+Each skill's full steps are in its `SKILL.md` ([onboard](../../plugins/loadout/skills/onboard/SKILL.md), [docs-sync](../../plugins/loadout/skills/docs-sync/SKILL.md), [docs-audit](../../plugins/loadout/skills/docs-audit/SKILL.md)). In Codex they start as `$loadout:onboard` and so on.
+
+All three read the rules and the sections of this page they need (the four kinds of docs, ADRs) from your clone of the kit (`loadout kit-path`), so they write pages and ADRs in this format in every agent.
 
 The audit is deliberately thorough and expensive; it runs only when you invoke it. docs-sync is the cheap habit that makes audits rare.
 
@@ -179,25 +179,7 @@ The copy had already drifted: the code says `MAX_TITLE_LEN = 120`.
 
 ## Adopting it
 
-**With the kit**
-
-| Situation | Steps |
-|---|---|
-| New project | `loadout init`, then the onboard skill: `/loadout:onboard` in Claude Code, `$loadout:onboard` in the Codex CLI (VS Code's Codex extension cannot run it) |
-| Existing repo | `loadout init` (never overwrites a scaffold file; if only a CLAUDE.md exists, it leaves it for onboard to migrate), then the onboard skill |
-| Existing repo with messy docs | Then `/loadout:docs-audit` |
-| Every feature | `/loadout:docs-sync` before merging |
-
-`loadout init` shows a plan, asks, then scaffolds what is missing ([loadout init](../reference/cli.md#loadout-init)).
-
-**Without the kit**
-
-1. Create `docs/README.md` as an index and `docs/adr/` with a one-line README describing the format.
-2. Move your CLAUDE.md content into AGENTS.md, cut it to purpose, commands, hard conventions and a map, and make CLAUDE.md the single line `@AGENTS.md`.
-3. Move every other fact into `docs/`, sorted by Diátaxis type, only creating the types you need. Delete the copies.
-4. Turn decisions buried in notes, issues and commit messages into ADRs.
-5. Shrink agent memories to one summary line and a link per topic.
-6. Add "docs updated?" to your pull request checklist, and check links in CI.
+With the kit, `loadout init` scaffolds what is missing and `/loadout:onboard` writes AGENTS.md and the docs index; without it, six manual steps give the same layout. The steps are in [Adopt the documentation strategy in a repo](../how-to/adopt-the-doc-strategy.md).
 
 ## FAQ
 
@@ -205,6 +187,8 @@ The copy had already drifted: the code says `MAX_TITLE_LEN = 120`.
 For a small project it is a README, a 30-line AGENTS.md, a one-line CLAUDE.md and maybe two pages in `docs/`. That is less text than the usual README-plus-long-CLAUDE.md, not more. The overhead is in keeping copies in sync, and this model removes the copies.
 
 **Where do I put X?**
+The layers and what each holds are in [Documentation layers](../../rules/docs-policy.md); these are examples.
+
 
 | X | Home |
 |---|---|

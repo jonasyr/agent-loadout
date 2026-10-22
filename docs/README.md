@@ -10,10 +10,11 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 
 ## How-to guides
 
+- [Adopt the documentation strategy in a repo](how-to/adopt-the-doc-strategy.md). Read this when you want a repo of your own to follow loadout's documentation layers.
 - [Ask your agent about loadout](how-to/ask-about-loadout.md). Read this when you have a question about loadout or want to change your setup without looking up the command.
 - [Handle your own tools](how-to/your-own-tools.md). Read this when you installed a skill, MCP server or plugin yourself (`npx`, `claude mcp add`, ...), when `adopt` or `check` lists tools loadout does not manage, or when you want to create a skill of your own.
 - [Keep your personal layer in a private git repo](how-to/personal-repo.md). Read this when you want your preferences and own tools on more than one machine.
-- [Pick your setup](how-to/setups.md). Read this before installing: it names one recommended path for each platform, agent choice and surface (terminal, VS Code or both), and what to do on a machine or repo that already has parts set up.
+- [Pick your setup](how-to/setups.md). Read this before installing (the cells are in the [setup matrix](reference/setup-matrix.md)): it names one recommended path for each platform, agent choice and surface (terminal, VS Code or both), and what to do on a machine or repo that already has parts set up.
 - [Use loadout with Codex](how-to/codex.md). Read this for the Codex-only details: switching Codex on, hook approval, project trust and where it stays different.
 - [Undo what loadout changed](how-to/undo-and-restore.md). Read this when something went wrong, you want a removed tool back, or you want to undo what `loadout init`, `loadout profile` or a new repo skill wrote in a repo.
 - [Set your working preferences](how-to/set-preferences.md). Read this when you want to change answer language, commit style, effort or another preference everywhere.
@@ -30,6 +31,8 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 
 - [CLI reference](reference/cli.md). Read this when you need a command, flag or exit code.
 - [Included tools](reference/included-tools.md). Read this when you want to know which plugins, tools, profiles and add-ons the kit sets up.
+- [Setup matrix](reference/setup-matrix.md). Read this when you want the bootstrap flags and the steps after it for your platform, agent choice and surface.
+- [Your own tools: options and rules](reference/own-tools.md). Read this when you want the scopes, choices, secret guard and limits for tools you set up yourself.
 - [Personal layer](reference/personal-layer.md). Read this when you want to know which file in your personal layer does what, and what stays on one machine.
 - [Settings merge](reference/settings-merge.md). Read this when you want to know exactly how your `settings.json` and the kit's settings are combined, including hooks.
 - [Hooks](reference/hooks.md). Read this when you want to know which hooks the loadout plugin runs, or how to name one of your own hooks.
@@ -50,7 +53,7 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 
 ## Decisions
 
-- [Architecture decision records](adr/README.md). Read this when you want to know why something was decided, and what else was considered. The newest: [0033. Codex set up for VS Code's Codex extension without its CLI](adr/0033-codex-for-the-vscode-extension-without-its-cli.md) and [0034. The extensions' own binaries as runners, and VS Code fixes as asked-for plans](adr/0034-vscode-extension-binaries-and-vscode-fixes.md).
+- [Architecture decision records](adr/README.md). Read this when you want to know why something was decided, and what else was considered.
 
 ## Working documents
 

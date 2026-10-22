@@ -4,6 +4,7 @@
 - Date: 2026-10-16
 - Source: [Design: repos for chosen agents](../superpowers/specs/2026-10-16-repo-agents-and-careful-ux-design.md), Parts 0 and 1
 - Supersedes: the decision line of [ADR 0027](0027-repo-files-follow-the-agents.md) ("A repo gets the files of the agents that are on")
+- Amends: [ADR 0012](0012-destructive-actions-dry-run-confirm-backup.md) (repo writes are previewed and backed up)
 
 ## Context
 

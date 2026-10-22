@@ -28,7 +28,7 @@ Claude Code and Codex get much better with the right plugins, MCP servers and in
 
 ## Quick start
 
-**Recommended:** Linux, macOS, or WSL 2 on Windows, with the CLI of each agent you use, also when you work in VS Code. That is what the steps below set up. For another platform, one agent only, or VS Code's extensions without their CLIs, [Pick your setup](docs/how-to/setups.md#recommended-setups) names one recommended path for each combination.
+**Recommended:** Linux, macOS, or WSL 2 on Windows, with the CLI of each agent you use, also when you work in VS Code. That is what the steps below set up. For another platform, one agent only, or VS Code's extensions without their CLIs, [Pick your setup](docs/how-to/setups.md) and the [setup matrix](docs/reference/setup-matrix.md) name one recommended path for each combination.
 
 You need git and curl ([how to get them](docs/tutorials/getting-started.md#before-you-start)); you log in to your agents and gh at the end.
 
@@ -148,6 +148,8 @@ One workflow from idea to merged change: your agent plans before it builds, work
 | Safe, documented changes | [security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance) (warnings and commit review) · `/loadout:docs-sync`, `/loadout:docs-audit`, `/loadout:onboard` (docs that match the code) · [commit-commands](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/commit-commands) (commit, push, PR) | plugins · loadout skills |
 | Fewer tokens | [rtk](https://github.com/rtk-ai/rtk) (compact command output, applied by a hook) | CLI |
 
+The code tools are used, not just installed: Serena and the code graph load in every session and subagent, Serena's reminder steps in when an agent drifts into grep, and the graph stays indexed ([how](docs/explanation/the-toolset.md), [ADR 0039](docs/adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md)).
+
 Domain tools (research, databases, SonarQube, Android) are added per project with profiles. How the pieces work together: [The toolset](docs/explanation/the-toolset.md). Every tool with its settings: [Included tools](docs/reference/included-tools.md).
 
 ## Why you can trust it
@@ -166,7 +168,7 @@ The full index is [docs/README.md](docs/README.md).
 | I want to | Read |
 |---|---|
 | Ask a question or change my setup | [Ask your agent about loadout](docs/how-to/ask-about-loadout.md) |
-| Pick the install path for my platform, agents and VS Code | [Pick your setup](docs/how-to/setups.md#recommended-setups) |
+| Pick the install path for my platform, agents and VS Code | [Pick your setup](docs/how-to/setups.md), [setup matrix](docs/reference/setup-matrix.md) |
 | Install step by step, per platform | [Getting started](docs/tutorials/getting-started.md) |
 | Decide what happens to tools I already have | [Handle your own tools](docs/how-to/your-own-tools.md) |
 | I installed a skill or MCP server myself, or want to write a skill | [You installed a tool yourself](docs/how-to/your-own-tools.md#you-installed-a-tool-yourself), [Create a skill of your own](docs/how-to/your-own-tools.md#create-a-skill-of-your-own) |

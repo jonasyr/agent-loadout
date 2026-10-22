@@ -8,7 +8,7 @@ Before loadout removes or replaces a tool, file or link you own, it moves the ol
 
 - `bootstrap` and `adopt`;
 - `configure` (preference choices, own-tool decisions, turning an agent on);
-- `update` (when it undoes an installer's changes, and for the Codex plugins it updates);
+- `update` (any file its re-apply replaces, and what it undoes after an installer);
 - the daily sync after a pull that brought new commits (the links and copies it replaces, and the Codex files it refreshes);
 - `init`, `profile` and `configure new skill --to repo` (for the files they write in a repo);
 - `bootstrap --vscode-wsl` and `bootstrap --vscode-path` (the VS Code files they change);
@@ -21,7 +21,7 @@ The routine sync of kit-managed state is not backed up; see [What restore does n
 Undo any time: loadout restore --list
 ```
 
-`loadout restore` in a terminal lets you pick it from a numbered list; `--list` shows the backups with their paths. `init`, `profile` and `configure new skill --to repo` always print the path (`undo: loadout restore <dir>`). With `--verbose`, bootstrap and adopt print the path directly, and `configure`, `update` and the daily sync always do:
+`loadout restore` in a terminal lets you pick it from a numbered list; `--list` shows the backups with their paths. `init`, `profile` and `configure new skill --to repo` always print the path (`undo: loadout restore <dir>`). With `--verbose`, bootstrap and adopt print the path directly. `configure` and `update` print it when they made a backup. The daily sync prints it as a notice, and only when it replaced or edited something:
 
 ```
 backup: ~/.local/state/loadout/backups/loadout-20261010-093000  (undo: loadout restore ~/.local/state/loadout/backups/loadout-20261010-093000)

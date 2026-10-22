@@ -24,4 +24,4 @@ Nothing that looks like a secret or a private file is written to the personal la
 - `cli/loadout/own.py` (`_refuse_if_secret`, `_scan_tree`, `_secret_free`, `_private_in_raw`, `_portable_hook`)
 - `cli/loadout/secrets.py` (`redact`, `looks_secret`, `private_path`, `PRIVATE_DIRS`, `PRIVATE_NAMES`)
 - `cli/loadout/configure.py` (`offer_commit`)
-- Guide: [the secret guard](../how-to/your-own-tools.md#secret-guard)
+- Guide: [the secret guard](../reference/own-tools.md#secret-guard)

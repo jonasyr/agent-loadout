@@ -1,7 +1,7 @@
 sequenceDiagram
   autonumber
   box rgba(234, 88, 12, 0.10) Your agent
-    participant S as Claude Code or Codex CLI session
+    participant S as Claude Code or Codex session
   end
   box rgba(37, 99, 235, 0.10) loadout
     participant H as hook-session-start
@@ -31,7 +31,7 @@ sequenceDiagram
         end
         opt Codex on and usable
           M->>X: refresh rules, config, hooks and skills
-          Note over X: plugins only with the Codex CLI
+          Note over X: plugins with the Codex CLI or the extension's own codex
         end
       end
     end

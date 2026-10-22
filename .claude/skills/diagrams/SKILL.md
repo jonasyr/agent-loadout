@@ -20,7 +20,7 @@ Colour comes only from classes in `docs/diagrams/palette.light.mmd` and `palette
 | `engine`, `engineGroup` | loadout's own processing steps (merge, sync) |
 | `state`, `local` | machine-local state and snapshots (dashed) |
 | `truth`, `notes`, `notesGroup`, `entry` | the documentation-layers diagram |
-| `kit`, `claude`, `engine`, `state` and the `*Group` classes | the toolset-workflow diagram uses its own meaning: `kit` loadout skills, `claude` plugin skills, `engine` tool groups, `state` the start and rtk, groups only tint the stages. Its legend is in [The toolset](../../../docs/explanation/the-toolset.md); change both together |
+| `kit`, `claude`, `engine`, `state` and the `*Group` classes | the toolset-workflow diagram uses its own meaning: `kit` loadout skills, `claude` plugin skills, `engine` tool groups, `state` the start and rtk, groups only tint the stages. The `class` lines in `docs/diagrams/toolset-workflow.mmd` say which node gets which class; change them together with this row |
 | `emph`, `truthLink`, `muted` | edges: the main path, the single-source link, background links |
 
 Nodes: `class nodeId kit`. Subgraphs: `class SUBGRAPH kitGroup`. Edges: name them (`a e4@--> b`), then `class e4 emph`. A flowchart's last line is `%% palette`; `render.sh` replaces it with the palette. Sequence diagrams use `box rgba(...)` with the same hues as the palette (as used in architecture-daily-sync: orange your agent, blue loadout, green your machine; teal is free for a Codex-only box).

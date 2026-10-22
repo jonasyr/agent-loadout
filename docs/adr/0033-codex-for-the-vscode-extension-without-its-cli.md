@@ -41,7 +41,7 @@ We will set Codex up for VS Code's Codex extension when there is no Codex CLI on
 
 ## In the code
 
-- `cli/loadout/codex.py` (`unavailable`, `extension_state`, `program`, `apply_plugins`, `checks`, `remove_server`, `PLUGINS_EXTENSION`)
+- `cli/loadout/codex.py` (`unavailable`, `extension_state`, `program`, `apply_plugins`, `checks`, `remove_server`; `PLUGINS_EXTENSION` was removed with [ADR 0038](0038-codex-extension-loads-plugins-and-reviews-hooks.md))
 - `cli/loadout/vscode.py` (`extensions`, `bundled_version`, `too_old`, `CODEX_MIN`)
 - `cli/loadout/bootstrap.py` (`CODEX_CLI_QUESTION`, `codex_cli_choice`, `codex_recommended`, `RECOMMENDED_WHY`, `_prereq_summary`)
 - `cli/loadout/check.py` (`_binaries`), `cli/loadout/maintenance.py` (`update`), `cli/loadout/commands.py` (`--without-codex-cli`)

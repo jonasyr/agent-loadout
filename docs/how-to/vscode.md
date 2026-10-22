@@ -1,14 +1,14 @@
 # Use loadout with VS Code
 
-Use this page if you work in VS Code with the Claude Code extension, VS Code's Codex extension, or both, with or without the CLIs. loadout sets up the same agent folders the CLIs read; this page says what each extension sees of that, what it lacks, and the fix. Which bootstrap flags fit your platform: [Pick your setup](setups.md#recommended-setups). Why it works this way: [ADR 0032](../adr/0032-vscode-extensions-are-a-surface-of-an-agent.md), [ADR 0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md) [ADR 0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md) and [ADR 0038](../adr/0038-codex-extension-loads-plugins-and-reviews-hooks.md).
+Use this page if you work in VS Code with the Claude Code extension, VS Code's Codex extension, or both, with or without the CLIs. loadout sets up the same agent folders the CLIs read; this page says what each extension sees of that, what it lacks, and the fix. Which bootstrap flags fit your platform: [Setup matrix](../reference/setup-matrix.md) ([how to pick](setups.md)). Why it works this way: [ADR 0032](../adr/0032-vscode-extensions-are-a-surface-of-an-agent.md), [ADR 0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md), [ADR 0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md) and [ADR 0038](../adr/0038-codex-extension-loads-plugins-and-reviews-hooks.md).
 
 ## What loadout recommends
 
-The home of these is [Recommended setups](setups.md#recommended-setups); in short:
+The flags for each platform are in the [Setup matrix](../reference/setup-matrix.md); in short:
 
-- **VS Code's Codex extension alone is a full setup.** The Codex CLI next to it is optional, for `codex` in a terminal ([Recommended setups](setups.md#recommended-setups); [Codex in VS Code without the CLI](#codex-in-vs-code-without-the-cli)).
-- **Let `--install` install the Claude Code CLI too** ([Recommended setups](setups.md#recommended-setups); [Claude Code in VS Code without the CLI](#claude-code-in-vs-code-without-the-cli)).
-- **In WSL, open repos in a Remote-WSL window** (`code .` from WSL), for both extensions; `--vscode-wsl` is the fix for a Windows window you open anyway ([Recommended setups](setups.md#recommended-setups); [Windows and WSL](#windows-and-wsl)).
+- **VS Code's Codex extension alone is a full setup.** The Codex CLI next to it is optional, for `codex` in a terminal ([Setup matrix](../reference/setup-matrix.md); [Codex in VS Code without the CLI](#codex-in-vs-code-without-the-cli)).
+- **Let `--install` install the Claude Code CLI too** ([Setup matrix](../reference/setup-matrix.md); [Claude Code in VS Code without the CLI](#claude-code-in-vs-code-without-the-cli)).
+- **In WSL, open repos in a Remote-WSL window** (`code .` from WSL), for both extensions; `--vscode-wsl` is the fix for a Windows window you open anyway ([Setup matrix](../reference/setup-matrix.md); [Windows and WSL](#windows-and-wsl)).
 
 ## What each extension sees
 
@@ -22,7 +22,7 @@ Both extensions bring their own copy of the agent and do not use the `claude` or
 
 ### The Codex CLI alongside VS Code
 
-The Codex CLI is optional next to the extension. Both read the same `~/.codex`, so what loadout installs once serves both. With `--install`, bootstrap asks in a terminal whether to install it, default No (`[y/N]`); without a terminal, or with `--yes`, it installs it. `--without-codex-cli` skips it. Install it only if you want `codex` in a terminal.
+The Codex CLI is optional next to the extension. Both read the same `~/.codex`, so what loadout installs once serves both. Without `--install`, bootstrap installs nothing and asks nothing. With `--install`, it asks in a terminal whether to install it, default No (`[y/N]`); without a terminal, or with `--yes`, it installs it. `--without-codex-cli` skips the question and the install. Install it only if you want `codex` in a terminal.
 
 `loadout check` warns `VS Code (Codex)` when the extension's own Codex is older than the version loadout needs ([Switch it on](codex.md#switch-it-on)): update the extension in VS Code's Extensions view. With a Codex CLI next to the extension, the same row warns that an old extension may not load what the CLI installed.
 
@@ -39,7 +39,7 @@ Do this, in order:
 3. In VS Code, click the hooks icon in the prompt bar ("Review hooks · N need approval"), then Allow all. Or use Settings > Hooks.
 4. If bootstrap says so, reload the window (Command Palette: Developer: Reload Window) so the extension loads the plugins.
 
-loadout never writes hook approval for you. The extension records it in `config.toml` (`[hooks.state]`), as the CLI does, and the `Codex hooks` row and the "Still to do" step clear once you approve. The loadout plugin's hooks need approval only while the plugin is on in `config.toml`; Serena's hooks always do. Logins run in the extension (gear, MCP servers, Authenticate) instead of `codex mcp login`.
+loadout never writes hook approval for you. The extension records it in `config.toml` (`[hooks.state]`), as the CLI does, and the `Codex hooks` row and the "Still to do" step clear once you approve. The loadout plugin's hooks need approval only while the plugin is on in `config.toml`; Serena's hooks (including its `remind` hook) always do. Logins run in the extension (gear, MCP servers, Authenticate) instead of `codex mcp login`.
 
 When this applies:
 
@@ -74,11 +74,11 @@ A Remote-WSL window runs no shell startup file, so folders that your shell adds 
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 ```
 
-The block takes effect when VS Code's WSL server restarts: close every Remote-WSL window, run `wsl --shutdown` in Windows (it stops every WSL distro), then reopen the folder. In other windows, `VS Code PATH` warns when a server's command (one of yours: in `config.toml` or `~/.claude.json`, or in the repo's `.mcp.json` or trusted `.codex/config.toml`) is not on your shell's PATH: install it, or give it an absolute command. That check uses the PATH `loadout check` runs with; it does not start your login shell (its startup files can prompt or change things), so run it from a plain terminal, not an activated virtualenv, to see what VS Code sees. The Claude Code extension takes PATH from your login shell, according to its current code (not yet confirmed in a live test).
+The block takes effect when VS Code's WSL server restarts: close every Remote-WSL window, run `wsl --shutdown` in Windows (it stops every WSL distro), then reopen the folder. In other windows, `VS Code PATH` warns when a server's command (one of yours: in `config.toml` or `~/.claude.json`, or in the repo's `.mcp.json` or trusted `.codex/config.toml`) is not on your shell's PATH: install it, or give it an absolute command. That check uses the PATH `loadout check` runs with; it does not start your login shell (its startup files can prompt or change things), so run it from a plain terminal, not an activated virtualenv, to see what VS Code sees. Claude Code's extension is expected to take PATH from your login shell (read from its code, not yet confirmed in a live test).
 
 ## VS Code on native Windows
 
-With loadout on native Windows (`bootstrap.ps1`, experimental; WSL 2 is recommended, see [Pick your setup](setups.md#native-windows-experimental)), a local VS Code window reads `%USERPROFILE%\.claude` and `%USERPROFILE%\.codex`, which `bootstrap.ps1` sets up. The rest of this page applies as for a local window: the `VS Code (Claude Code)` and `VS Code (Codex)` rows, the `VS Code PATH` row against your shell's PATH, and the extensions' own binaries when no CLI is on PATH. `--vscode-wsl`, `--vscode-path` and the `VS Code` switch row are for WSL only: on Windows the two flags change nothing and say so. loadout on Windows does not report a Codex in WSL.
+With loadout on native Windows (`bootstrap.ps1`, experimental; WSL 2 is recommended, see [Setup matrix](../reference/setup-matrix.md#native-windows-experimental)), a local VS Code window reads `%USERPROFILE%\.claude` and `%USERPROFILE%\.codex`, which `bootstrap.ps1` sets up. The rest of this page applies as for a local window: the `VS Code (Claude Code)` and `VS Code (Codex)` rows, the `VS Code PATH` row against your shell's PATH, and the extensions' own binaries when no CLI is on PATH. `--vscode-wsl`, `--vscode-path` and the `VS Code` switch row are for WSL only: on Windows the two flags change nothing and say so. loadout on Windows does not report a Codex in WSL.
 
 ## A committed .mcp.json with your own path
 

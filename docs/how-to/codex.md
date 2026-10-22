@@ -4,9 +4,9 @@ Most of loadout works the same in both agents: the kit, your personal layer, the
 
 ## Switch it on
 
-On a new machine, bootstrap asks which coding agents to set up, Claude Code, Codex or both, right after the personal layer question. With Codex and `--install`, it installs Codex too (through mise); without `--install` it reports Codex as missing. Scripts can pass the choice: `bootstrap.sh --install --agents codex` (or `claude`, or `claude,codex`). On a machine set up before this choice existed, bootstrap asks only when `codex` is on your PATH (in WSL, also a Windows `codex.exe`). A personal layer you clone that already holds a choice (`targets.json`) decides without the question, and bootstrap says so; `--agents` wins over it ([bootstrap flags](../reference/cli.md#loadout-bootstrap)).
+On a new machine, bootstrap asks which coding agents to set up, Claude Code, Codex or both, right after the personal layer question. With Codex and `--install`, it installs Codex too (through mise); without `--install` it reports Codex as missing. Scripts can pass the choice: `bootstrap.sh --install --agents codex` (or `claude`, or `claude,codex`). On a machine set up before this choice existed (an existing personal layer), bootstrap asks only when `codex` is on your PATH (in WSL, also a Windows `codex.exe`); with no Codex seen it asks nothing and sets up Claude Code. A personal layer you clone that already holds a choice (`targets.json`) decides without the question, and bootstrap says so; `--agents` wins over it ([bootstrap flags](../reference/cli.md#loadout-bootstrap)).
 
-With VS Code's Codex extension and no Codex CLI, loadout sets Codex up for the extension. That is a full setup, plugins and hooks included: the Codex CLI next to it is optional, and bootstrap asks (default No) ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli), [ADR 0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md), [ADR 0038](../adr/0038-codex-extension-loads-plugins-and-reviews-hooks.md)).
+With VS Code's Codex extension and no Codex CLI, loadout sets Codex up for the extension. That is a full setup, plugins and hooks included: the Codex CLI next to it is optional, and with `--install` in a terminal bootstrap asks (default No) ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli), [ADR 0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md), [ADR 0038](../adr/0038-codex-extension-loads-plugins-and-reviews-hooks.md)).
 
 To switch an agent on or off later:
 
@@ -21,7 +21,7 @@ One agent must stay on. Switching an agent off uninstalls nothing; loadout just 
 
 The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; a progress line names each step (with `--verbose`, or without a terminal, one line each). Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
 
-Then approve loadout's hooks once in the Codex CLI: start `codex` and run `/hooks` (in VS Code's Codex extension use the hooks icon in the prompt bar, then Allow all; see [Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). Codex runs plugin hooks, and the Serena hooks loadout puts into `~/.codex/hooks.json`, only after you approve them, and again after they change ([which hooks](../reference/hooks.md), [Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)).
+Then approve loadout's hooks once in the Codex CLI: start `codex` and run `/hooks` (in VS Code's Codex extension, approve them there; see [Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). Codex runs plugin hooks, and the Serena hooks loadout puts into `~/.codex/hooks.json`, only after you approve them, and again after they change ([which hooks](../reference/hooks.md), [Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)).
 
 ## What Codex gets
 
@@ -41,11 +41,11 @@ The same kit and personal layer reach Codex. Where each part goes (the instructi
 
 ## Project trust
 
-When the repo is for Codex (its `.loadout.json`, or your agents without one), `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout prints the same step with only VS Code's Codex extension; whether the extension asks the trust question itself is not confirmed yet, and the Codex CLI in VS Code's terminal does ask it. loadout never trusts a project for you. Like every repo write, these show a plan and ask first, and `loadout restore` undoes them ([Repo writes](../reference/cli.md#repo-writes)).
+When the repo is for Codex (its `.loadout.json`, or your agents without one), `loadout init` and `loadout profile NAME` also set up Codex in the repo ([what each profile field becomes](../reference/profile-format.md#in-codex)). Codex reads a repo's `.codex/config.toml` only in a trusted project. Until you trust it, loadout prints the step: start `codex` in the repo once and accept the trust question. loadout prints the same step with only VS Code's Codex extension; this is Codex's project trust, not VS Code's workspace trust (Trust Folder & Continue). Whether the extension asks the project trust question itself is not confirmed yet, and the Codex CLI in VS Code's terminal does ask it. loadout never trusts a project for you. Like every repo write, these show a plan and ask first, and `loadout restore` undoes them ([Repo writes](../reference/cli.md#repo-writes)).
 
 ## Where to read more
 
 - Codex on Windows with WSL (which side loadout sets up, the VS Code setting, `--codex-side`): [Codex in WSL](wsl.md#codex).
 - What loadout changes in `~/.codex`, and what it never touches: [Security and trust](../explanation/security-and-trust.md).
-- Record a Codex-only MCP server or skill (`loadout adopt`): [Handle your own tools](your-own-tools.md#tools-only-one-agent-has).
+- Record a Codex-only MCP server or skill (`loadout adopt`): [Handle your own tools](../reference/own-tools.md#tools-only-one-agent-has).
 - Undo and remove: [Undo what loadout changed](undo-and-restore.md#codex) and [Uninstall](uninstall.md#codex). Turning Codex off with `loadout configure set target codex off` removes nothing.
