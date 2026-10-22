@@ -549,3 +549,14 @@ def test_a_rewrite_in_another_repo_refreshes_that_repo(env, tmp_path):
         env["spawned"].clear()
         _bash(env, command)
         assert env["spawned"] == [(str(other), True)], command
+
+
+def test_stop_retries_a_noted_rewrite_in_another_repo(env, tmp_path):
+    other = (tmp_path / "other2")
+    other.mkdir()
+    other = other.resolve()
+    (env["cache"] / f"{str(other).lstrip('/').replace('/', '-')}.db").write_bytes(b"")
+    _bash(env, f"git -C {other} checkout main")  # its child exits at a held lock: only `noted` is left
+    env["spawned"].clear()
+    _stop(env)
+    assert (str(other), False) in env["spawned"]

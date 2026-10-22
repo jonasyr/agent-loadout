@@ -258,11 +258,16 @@ def _binaries(cs=None) -> list[CheckResult]:
 
 
 def _cbm_auto_index() -> list[CheckResult]:
-    """The cbm_auto_index row; none without codebase-memory-mcp."""
+    """The cbm_auto_index row; none without codebase-memory-mcp. An OK row carries its state in the name, since
+    `loadout check` prints details only for warnings."""
     from . import cbm
-    now = cbm.current()
+    now = cbm.query()
     if now is None:
         return []
+    name = "codebase-memory auto_index"
+    if now == cbm.UNREADABLE:
+        return [CheckResult(name, False, "could not read it (codebase-memory-mcp config get auto_index failed)",
+                            "run codebase-memory-mcp config get auto_index to see why", "warn")]
     if now:
         detail = "on"
     elif cbm.answer() == "off":
@@ -270,8 +275,8 @@ def _cbm_auto_index() -> list[CheckResult]:
     elif cbm._record():  # loadout turned it on and you turned it off
         detail = "off (yours)"
     else:
-        detail = "off (loadout turns it on at the next update)"
-    return [CheckResult("codebase-memory auto_index", True, detail, "", "warn")]
+        return [CheckResult(name, False, "off (loadout turns it on at the next update)", "loadout update", "warn")]
+    return [CheckResult(f"{name}: {detail}", True, detail, "", "warn")]
 
 
 def _mcp_path() -> list[CheckResult]:

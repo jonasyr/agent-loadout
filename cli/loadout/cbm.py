@@ -32,15 +32,24 @@ def answer() -> str | None:
     return value or preferences.by_id(PREF)["default"]
 
 
-def current() -> bool | None:
-    """codebase-memory's auto_index now; None when the binary is missing or its answer is not readable."""
+UNREADABLE = "unreadable"  # codebase-memory-mcp is there, but `config get auto_index` failed or said nothing
+
+
+def query() -> bool | str | None:
+    """codebase-memory's auto_index now; None when the binary is missing, UNREADABLE when it cannot be read."""
     if not runner.have(BINARY):
         return None
     res = runner.run([BINARY, "config", "get", "auto_index"], timeout=30)
-    if not res.ok:
-        return None
-    words = re.findall(r"\b(true|false)\b", res.stdout.lower())
-    return words[-1] == "true" if words else None
+    if res.returncode == 127:
+        return None  # not found after all (runner's "command not found")
+    words = re.findall(r"\b(true|false)\b", res.stdout.lower()) if res.ok else []
+    return words[-1] == "true" if words else UNREADABLE
+
+
+def current() -> bool | None:
+    """codebase-memory's auto_index now; None when the binary is missing or its answer is not readable."""
+    now = query()
+    return now if isinstance(now, bool) else None
 
 
 def _record() -> str | None:
@@ -71,9 +80,11 @@ def _write_record(bk, value: str | None) -> None:
 
 def apply_auto_index(bk, dry: bool = False) -> list[str]:
     given = answer()
-    now, want = current(), given == "on"
+    now, want = query(), given == "on"
     if given is None or now is None:
         return []
+    if now == UNREADABLE:
+        return ["codebase-memory: could not read auto_index (config get failed)"]
     record = _record()
     if now == want:
         if not want and record == "true" and not dry:

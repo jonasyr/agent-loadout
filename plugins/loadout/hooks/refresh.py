@@ -348,7 +348,8 @@ def handle(payload: dict) -> None:
             try:
                 for p in sorted(state_dir().glob("*.json"))[:64]:
                     st = _load(p)
-                    if st.get("session") == session and _changed(st) and isinstance(st.get("root"), str):
+                    pending = _changed(st) or st.get("more") or st.get("noted") is True
+                    if st.get("session") == session and pending and isinstance(st.get("root"), str):
                         due.add(st["root"])
             except OSError:
                 pass

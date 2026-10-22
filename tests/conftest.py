@@ -88,6 +88,8 @@ def fake_runner(monkeypatch):
     monkeypatch.setattr(codex, "_CLI_VERSIONS", {})  # nor a Codex CLI version
     monkeypatch.setattr(runner, "FALLBACK", {})  # no bundled binary registered by another test
     fake = FakeRunner()
+    # codebase-memory's auto_index reads as already on, so tests that are not about it see no cbm change
+    fake.responses[("codebase-memory-mcp", "config", "get", "auto_index")] = runner.Result(0, "true\n", "")
     monkeypatch.setattr(runner, "run", fake)
     monkeypatch.setattr(runner, "have", fake.have)
     monkeypatch.setattr(runner, "which", fake.which)

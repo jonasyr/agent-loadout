@@ -96,7 +96,7 @@ def test_restore_replays_auto_index_undo(fake_home, fake_runner):
 def test_check_row_auto_index(fake_home, fake_runner):
     _value(fake_runner, "true\n")
     row, = check._cbm_auto_index()
-    assert (row.name, row.ok, row.detail) == ("codebase-memory auto_index", True, "on")
+    assert (row.name, row.ok, row.detail) == ("codebase-memory auto_index: on", True, "on")
     _value(fake_runner, "false\n")
     assert check._cbm_auto_index()[0].detail == "off (loadout turns it on at the next update)"
     _record().parent.mkdir(parents=True, exist_ok=True)
@@ -168,3 +168,22 @@ def test_matching_off_answer_drops_a_stale_record(fake_home, fake_runner):
     fake_runner.calls.clear()
     assert cbm.apply_auto_index(backup.Backup(description="t")) == []
     assert _sets(fake_runner) == []
+
+
+def test_check_output_shows_the_auto_index_state(fake_home, fake_runner):
+    _value(fake_runner, "false\n")
+    row, = check._cbm_auto_index()
+    assert not row.ok and row.severity == "warn" and row.fix == "loadout update"  # not applied yet
+    _record().parent.mkdir(parents=True, exist_ok=True)
+    _record().write_text(json.dumps({"set": "yours"}), encoding="utf-8")
+    text, _ = check.format_results(check._cbm_auto_index())
+    assert text == "[ok  ] codebase-memory auto_index: off (yours)"
+
+
+def test_an_unreadable_auto_index_is_reported_not_skipped(fake_home, fake_runner):
+    fake_runner.responses[GET] = runner.Result(1, "", "daemon busy")
+    assert cbm.apply_auto_index(backup.Backup(description="t")) == [
+        "codebase-memory: could not read auto_index (config get failed)"]
+    assert _sets(fake_runner) == []
+    row, = check._cbm_auto_index()
+    assert not row.ok and row.detail == "could not read it (codebase-memory-mcp config get auto_index failed)"

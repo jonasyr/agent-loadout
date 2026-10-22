@@ -327,7 +327,7 @@ The rows, in the order they are printed:
 | `Serena hooks` | Claude Code on: your own settings already run one of Serena's hooks. `ok`, naming the file; the plugin's copy stays silent ([the guard](hooks.md#the-guard)). | warn |
 | `Serena servers`, `codebase-memory servers` | Claude Code on: a second server of that tool next to the plugin's, defined by you (for example in `~/.claude.json` or `.mcp.json`). | warn |
 | `codebase-memory hooks` | Claude Code on: your settings run codebase-memory's own `hook-augment`, which adds up to 2 s per call and prints nothing in 0.12 (upstream #2683). | warn |
-| `codebase-memory auto_index` | `codebase-memory-mcp` is installed: whether its `auto_index` is `on`, `off (yours)`, `off (your answer)` or `off (loadout turns it on at the next update)` ([preference](preferences-format.md#codebase-memorys-auto_index)). | warn |
+| `codebase-memory auto_index` | `codebase-memory-mcp` is installed. OK rows carry the state in the name (`codebase-memory auto_index: on`, `: off (yours)`, `: off (your answer)`); a warning when it is still `off` and loadout turns it on at the next update (fix `loadout update`), or when `config get auto_index` fails. |
 | `codebase-memory refresh` | One row per repo whose last background re-index failed ([the refresh](hooks.md#the-code-graph-refresh)); nothing while they succeed. | warn |
 | `codebase-memory-mcp daemon` | Not on native Windows: codebase-memory-mcp's own log of daemon conflicts (`logs/daemon-conflicts.ndjson` in `$CBM_CACHE_DIR` or `~/.cache/codebase-memory-mcp`) has an entry from the last 24 hours, so a session with another cache folder or version could not start. Read only; no server is started. | warn |
 | `gh auth` | `gh auth status`, when `gh` is installed. | warn |
