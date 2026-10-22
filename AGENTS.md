@@ -28,7 +28,7 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 - No plaintext secret is written to the personal layer, `mcp.json`, `config.toml`, the backup manifest or the output. Only variable names; values go to `secrets.env`. P1.
 
 ### External commands
-- External commands run only through `runner.run` with argument lists, never a shell string built from user or file data. Restore replays only allowlisted undo commands. P1.
+- External commands run only through `runner.run` with argument lists, never a shell string built from user or file data. Hook scripts in `plugins/loadout/hooks/` run from the installed plugin and cannot import `loadout`: they use `subprocess` with argument lists and timeouts, never `shell=True`. Restore replays only allowlisted undo commands. P1.
 
 ### Tests
 - Tests use `fake_home` and `fake_runner`; a test that can reach the real `~/.claude`, `~/.claude.json`, `~/.codex` or `~/.config/loadout`, or run real `claude`/`codex`/installers, is P1.

@@ -38,8 +38,8 @@ DENIALS = ("Too many consecutive grep calls", "Too many consecutive read calls",
            "Too many consecutive non-symbolic tool calls")  # Serena 2.1.0's `remind` deny reasons (serena/hooks.py)
 
 
-def _symbol_search(text: str) -> bool:
-    return searches.is_symbol_search(text or "")
+def _symbol_searches(text: str) -> int:
+    return searches.count_symbol_searches(text or "")
 
 
 def _symbol_pattern(pattern: object) -> bool:
@@ -167,8 +167,8 @@ def _claude(cutoff: float) -> dict | None:
                     calls[fam] = calls.get(fam, 0) + 1
                     if fam == "grep" and _symbol_pattern(inp.get("pattern")):
                         found += 1
-                    elif fam == "shell" and _symbol_search(_command_text(inp)):
-                        found += 1
+                    elif fam == "shell":
+                        found += _symbol_searches(_command_text(inp))
             except (AttributeError, TypeError, ValueError):
                 skipped[0] += 1
         _add(out["subagent" if "subagents" in path.parts else "main"], calls, found, denied)
@@ -204,8 +204,8 @@ def _codex(cutoff: float) -> dict | None:
                     calls[fam] = calls.get(fam, 0) + 1
                     if fam not in ("shell", "other") and isinstance(p.get("call_id"), str):
                         mcp_ids.add(p["call_id"])
-                    if fam == "shell" and _symbol_search(_command_text(args)):
-                        found += 1
+                    if fam == "shell":
+                        found += _symbol_searches(_command_text(args))
                 elif kind in ("function_call_output", "custom_tool_call_output") and not denied:
                     out_ = p.get("output")
                     denied = _denial(out_.get("content") if isinstance(out_, dict) else out_)

@@ -215,22 +215,34 @@ def _segments(command: str) -> list[list[str]]:
     return [s for s in out if s]
 
 
-def rewrites_tree(command: object) -> bool:
-    """A git command that rewrites the working tree or HEAD (the plan's list), anywhere in the line."""
+def rewrite_dir(command: object, cwd: str) -> str | None:
+    """The folder a tree-rewriting git command (the plan's list) runs in: cwd, moved by an earlier `cd DIR` in the
+    line and by `git -C DIR`; None when the line rewrites nothing."""
     if not isinstance(command, str) or len(command) > 10_000:
-        return False
+        return None
+    here = cwd
     for seg in _segments(command.replace("\n", " ; ")):
+        if seg[:1] == ["cd"] and len(seg) > 1:
+            here = os.path.join(here, os.path.expanduser(seg[1]))
+            continue
         for i, w in enumerate(seg):
             if os.path.basename(w) != "git" or (i and seg[i - 1] in NOT_A_RUN):
                 continue
-            rest, j = seg[i + 1:], 0
+            rest, j, target = seg[i + 1:], 0, here
             while j < len(rest) and rest[j].startswith("-"):
+                if rest[j] == "-C" and j + 1 < len(rest):
+                    target = os.path.join(target, os.path.expanduser(rest[j + 1]))
                 j += 2 if rest[j] in GIT_VALUE_OPTS else 1
             sub = rest[j] if j < len(rest) else None
             if sub in REWRITES or (sub == "stash" and j + 1 < len(rest) and rest[j + 1] in STASH_REWRITES):
-                return True
+                return os.path.normpath(target)
             break
-    return False
+    return None
+
+
+def rewrites_tree(command: object) -> bool:
+    """A git command that rewrites the working tree or HEAD (the plan's list), anywhere in the line."""
+    return rewrite_dir(command, ".") is not None
 
 
 def _open(root: str, cwd: str) -> dict | None:
@@ -295,11 +307,13 @@ def handle(payload: dict) -> None:
         if not isinstance(tool_input, dict):
             return
         if payload.get("tool_name") == "Bash":
-            root = repo_root(cwd)
-            state = _open(root, cwd) if root else None
+            target = rewrite_dir(tool_input.get("command"), cwd)
+            where = target if target is not None and os.path.isdir(target) else cwd  # an unknown dir: the session's
+            root = repo_root(where)  # `git -C ../other checkout` rewrites ../other, not the session's repo
+            state = _open(root, where) if root else None
             if state is None:
                 return
-            if rewrites_tree(tool_input.get("command")):
+            if target is not None:
                 _note(root, state, session, at=time.time())  # first: a refresh still running cannot drop it
                 if not _failed_recently(state):
                     spawn(root, now=True)

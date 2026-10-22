@@ -75,13 +75,9 @@ def _words(command: object) -> list[str]:
         return command.split()[:200]
 
 
-def shell_search(command: object) -> tuple[bool, str | None, list[str]]:
-    """(is a search, symbol or None, path arguments) for the rg/grep/git grep/find commands of a shell line (after
-    `;`, `&&`, `rtk`, `xargs` and the like): the first search with a symbol, else the first search. A grep that
-    filters another command's output (`ls | grep X`), a word in a message (`echo grep X`) and a find that changes
-    files are no search."""
+def _searches(command: object):
+    """Each rg/grep/git grep/find search of a shell line, as (is a search, symbol or None, path arguments)."""
     words = _words(command)
-    first = None
     for i, w in enumerate(words):
         prev = words[i - 1] if i else ""
         if i and prev not in OPERATORS and prev not in PREFIXES:
@@ -94,12 +90,26 @@ def shell_search(command: object) -> tuple[bool, str | None, list[str]]:
             found = _search_args(words[i + 2:])
         elif base in SEARCH_CMDS and prev != "|":
             found = _search_args(words[i + 1:])
-        if not found or not found[0]:
-            continue
+        if found and found[0]:
+            yield found
+
+
+def shell_search(command: object) -> tuple[bool, str | None, list[str]]:
+    """(is a search, symbol or None, path arguments) for the rg/grep/git grep/find commands of a shell line (after
+    `;`, `&&`, `rtk`, `xargs` and the like): the first search with a symbol, else the first search. A grep that
+    filters another command's output (`ls | grep X`), a word in a message (`echo grep X`) and a find that changes
+    files are no search."""
+    first = None
+    for found in _searches(command):
         if found[1] is not None and not non_code(found[2]):
             return found
         first = first or found
     return first or (False, None, [])
+
+
+def count_symbol_searches(command: object) -> int:
+    """How many searches of a shell line look for a symbol in code (what `loadout usage` counts)."""
+    return sum(1 for _, name, paths in _searches(command) if name is not None and not non_code(paths))
 
 
 def _find_args(rest: list[str]) -> tuple[bool, str | None, list[str]]:
@@ -153,8 +163,3 @@ def doc_filter(value: object) -> bool:
     v = value.strip("'\"").lower()
     return v in DOC_TYPES or v.endswith(NON_CODE)
 
-
-def is_symbol_search(command: object) -> bool:
-    """A shell line that searches code for a symbol (what `loadout usage` counts)."""
-    hit, name, paths = shell_search(command)
-    return hit and name is not None and not non_code(paths)

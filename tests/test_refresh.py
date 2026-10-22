@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(os.name == "nt", reason="stub executables are sh
 GIT = """#!/bin/sh
 echo "git $*" >> "$STUB/log"
 case "$*" in
-  *"rev-parse --show-toplevel"*) [ -f "$STUB/root" ] && cat "$STUB/root" && exit 0; exit 128;;
+  *"rev-parse --show-toplevel"*) [ -f "$STUB/root" ] && pwd -P && exit 0; exit 128;;  # the folder git runs in
   *"rev-parse HEAD"*) cat "$STUB/head";;
   *"status --porcelain"*) cat "$STUB/porcelain" 2>/dev/null;;
 esac
@@ -537,3 +537,15 @@ def test_the_verdict_cache_is_per_agent(env, monkeypatch):
     monkeypatch.setattr(env["mod"], "AGENT", "claude")  # Claude Code has it off here: Codex's verdict must not count
     _edit(env, env["repo"] / "b.py")
     assert str(env["repo"] / "b.py") not in _state(env)["changed"]
+
+
+def test_a_rewrite_in_another_repo_refreshes_that_repo(env, tmp_path):
+    other = (tmp_path / "other")
+    other.mkdir()
+    other = other.resolve()
+    default = str(other).lstrip("/").replace("/", "-")
+    (env["cache"] / f"{default}.db").write_bytes(b"")
+    for command in (f"git -C {other} checkout main", f"cd {other} && git reset --hard"):
+        env["spawned"].clear()
+        _bash(env, command)
+        assert env["spawned"] == [(str(other), True)], command

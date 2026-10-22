@@ -41,7 +41,7 @@ The plugin also declares two MCP servers in `plugins/loadout/.mcp.json`: `serena
 
 - the program is not on `PATH`;
 - Claude Code has the server off for the folder (`~/.claude.json`, `projects[<folder or a parent>].disabledMcpServers` lists `plugin:loadout:serena` or `serena`), unless your own `serena` server is on (in `mcpServers` of `~/.claude.json`, in the project's entry, or in `<repo>/.mcp.json` and not in `disabledMcpjsonServers`);
-- your settings (`~/.claude/settings.json`, `.claude/settings.json`, `.claude/settings.local.json`) already run the same program and subcommand for that event. Flags are ignored; an `echo ...` that only mentions it does not count.
+- your settings (`~/.claude/settings.json`, `.claude/settings.json`, `.claude/settings.local.json`) already run the same program and subcommand for that event, under a matcher that matches the current tool (a `remind` of yours on `Grep` silences the plugin's for Grep only). Flags are ignored; an `echo ...` that only mentions it does not count.
 
 The program's own run ends before the hook's timeout (14 s for `activate`, 9 s for `cleanup` and `auto-approve`, 4 s otherwise). An exact copy of a plugin hook (same event, matcher and command) in your `~/.claude/settings.json` is still removed by `loadout update`; the same command under another matcher, as in Serena's docs (matcher `""`), stays yours and makes the plugin's copy silent, after a backup ([ADR 0035](../adr/0035-loadout-update-brings-a-machine-current.md)); the guard prefix is stripped when it compares.
 

@@ -261,3 +261,9 @@ def test_serena_denial_in_claude_codes_real_format_counts(fake_home, monkeypatch
     report = usage.collect(14)
     assert report["claude"]["subagent"]["serena_denials"] == 1
     assert report["claude"]["main"]["serena_denials"] == 0
+
+
+def test_chained_symbol_searches_count_one_each(fake_home, monkeypatch):
+    _on(monkeypatch, codex=False)
+    _claude([_tool("Bash", command="rg alpha_fn src; rg beta_fn src")])
+    assert usage.collect(14)["claude"]["main"]["symbol_searches"] == 2

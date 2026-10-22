@@ -112,11 +112,27 @@ def _words(hook: dict) -> list[str]:
     return words + [a for a in _list(hook, "args") if isinstance(a, str)]
 
 
-def users_hook_runs(event: str, argv: list[str], cwd: str, home: Path) -> bool:
-    """A hook of the user's or the project's for <event> that runs the same program and subcommand as argv."""
+def _matches(matcher: object, tool: str | None) -> bool:
+    """Claude Code's matcher rule: none, "" or "*" matches every tool, else a regex over the tool name."""
+    if tool is None or matcher in (None, "", "*"):
+        return True
+    if not isinstance(matcher, str):
+        return False
+    import re
+    try:
+        return re.fullmatch(matcher, tool) is not None
+    except re.error:
+        return matcher == tool
+
+
+def users_hook_runs(event: str, argv: list[str], cwd: str, home: Path, tool: str | None = None) -> bool:
+    """A hook of the user's or the project's for <event> (and, when given, a matcher that matches <tool>) that runs
+    the same program and subcommand as argv."""
     program, sub = os.path.basename(argv[0]), argv[1] if len(argv) > 1 else None
     for path in _settings_files(cwd, home):
         for group in _list(_dict(_json(path), "hooks"), event):
+            if not _matches(group.get("matcher") if isinstance(group, dict) else None, tool):
+                continue
             for hook in _list(group, "hooks"):
                 words = _words(hook) if isinstance(hook, dict) else []
                 for i, w in enumerate(words):
@@ -136,7 +152,9 @@ def should_run(server: str, argv: list[str], payload: dict, home: Path) -> bool:
     if not server_available(server, cwd, home):
         return False
     event = payload.get("hook_event_name")
-    return not (isinstance(event, str) and users_hook_runs(event, argv, cwd, home))
+    raw_tool = payload.get("tool_name")
+    tool = raw_tool if isinstance(raw_tool, str) and raw_tool else None
+    return not (isinstance(event, str) and users_hook_runs(event, argv, cwd, home, tool))
 
 
 def main(args: list[str]) -> int:

@@ -175,3 +175,10 @@ def test_codex_availability_reads_codex_config_not_claudes(env, monkeypatch):
     (env["home"] / ".codex").mkdir()
     (env["home"] / ".codex" / "config.toml").write_text('[mcp_servers.codebase-memory-mcp]\nenabled = false\n')
     assert not mod.available("codebase-memory-mcp", "codex", str(env["repo"]), env["home"])
+
+
+def test_a_users_narrower_matcher_silences_only_its_own_tools(env):
+    _settings(env["home"] / ".claude" / "settings.json", "PreToolUse",
+              "serena-hooks remind --client=claude-code", matcher="Grep")
+    assert _run(env, _payload(env, tool="Grep")) is None  # the user's runs for Grep
+    assert _run(env, _payload(env, tool="Bash"))  # not for Bash: the plugin's still reminds

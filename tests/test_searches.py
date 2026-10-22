@@ -57,3 +57,8 @@ def test_a_find_for_code_files_is_a_search_without_a_symbol():
     hit, name, paths = searches.shell_search("find src -name '*.py'")
     assert hit and name is None and paths is searches.FIND
 
+
+
+def test_every_symbol_search_in_a_line_is_counted():
+    assert searches.count_symbol_searches("rg alpha_fn src; rg beta_fn src && grep -n gamma_fn x.py") == 3
+    assert searches.count_symbol_searches("rg -n error src; ls | grep beta_fn; rg beta_fn docs/a.md") == 0
