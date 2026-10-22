@@ -37,6 +37,27 @@ Serena's docs already say this for Claude Code: dynamic tool loading makes agent
    - The setting is per account, so it covers Claude Code and Codex alike.
    - Builder: run it through `runner.run` as a recorded, undoable command, and include it in `check` (cbm's `config get auto_index`).
 
+7. **Refresh at logical change points** (user, 2026-10-22: "Serena and codebase should reindex themselves at logical change thresholds so they don't sabotage themselves with stale indexes after work is done").
+   - **Why cbm's watcher is not enough.** It watches only the git project an open MCP session is rooted in. A repo indexed from another session or with `cli` is not watched, nor is a non-git folder. There is also a poll lag between an edit and the next query.
+   - **Triggers** (author's thresholds, the user can change them):
+     - (a) The end of a turn (`Stop`, and `SubagentStop` for a subagent's own work) when code files changed since the last refresh.
+     - (b) After a shell git command that rewrites the working tree: `checkout`, `switch`, `pull`, `merge`, `rebase`, `reset`, `stash pop`/`apply`, `cherry-pick`, `revert`.
+     - (c) Within a long turn, after 20 changed code files since the last refresh.
+   - **What changed** comes from the edit tools' PostToolUse (Claude Code `Write|Edit|MultiEdit`, Codex `apply_patch`) plus a cheap snapshot (`git status --porcelain` and HEAD) for shell edits and git commands (builder's call how).
+   - **codebase-memory.**
+     - An incremental `index_repository` of the session's repo, in the background, detached, and never blocking the agent.
+     - Only for a repo cbm has already indexed; a new repo is decision 6's job.
+     - At most one refresh per repo at a time, under a lock in loadout's state folder.
+     - A refresh cbm refuses ("another index operation … is active") is dropped silently. The next trigger retries.
+     - Run through `codebase-memory-mcp cli index_repository` with the same options the repo was indexed with, so it does not hit that refusal. The builder reads them from `index_status`.
+   - **Serena.**
+     - The builder first verifies whether Serena returns stale symbols after an edit made outside Serena: Claude Code's Edit tool, a shell write, a `git checkout`.
+     - If it does, the same triggers run `serena project index-file` for the changed files, and `serena project index` after a git command that rewrites the tree.
+     - If Serena already refreshes itself (for example a content-hashed LSP cache), nothing is added. `docs/` records the finding either way.
+   - **Both agents.** Claude Code and Codex use the same triggers through their own hooks. The refresh itself is one `loadout` subcommand that both call, run through `run.sh`, so the rule lives in one place.
+   - **No refresh when** the binary is missing, the server is not available (as defined under "Every setup variation"), or the folder is no repo cbm indexed.
+   - `loadout check` shows the last refresh's result only when it failed.
+
 ## What changes beyond the decisions
 
 - **codebase-memory's documented Claude Code hooks.** cbm's own installer sets these for Claude Code (README "Multi-Agent Support"): `SessionStart`, `SubagentStart`, a non-blocking `PreToolUse` for `Grep`/`Glob`/`Bash`, and `PostToolUse` on `Read` (coverage). For Codex it sets `SessionStart` and `SubagentStart`.
@@ -82,7 +103,6 @@ The builder covers each with a test (`fake_home`/`fake_runner`) and, where loado
 - Shipping codex-reviewer in the kit.
 - Blocking anything beyond what Serena's `remind` itself does; loadout writes no deny logic of its own.
 - Changing Serena's or cbm's thresholds or texts.
-- A reindex hook of loadout's own (cbm's watcher does it).
 
 ## Anti-goals
 
@@ -111,3 +131,4 @@ All of AGENTS.md:
 - "Not available" is defined as binary missing, plugin disabled, or the server disabled in Claude Code's config.
 - The grep parser is split out and improved, and "before" is recomputed with it.
 - Only the server names `serena` and the plugin's are matched.
+- The refresh thresholds in decision 7 ((a) end of turn with changes, (b) tree-rewriting git commands, (c) 20 changed code files) are the author's.
