@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import shlex
 import stat
 import sys
 import time
@@ -371,16 +372,16 @@ def _cbm_refresh() -> list[CheckResult]:
         except (InvalidJSON, OSError):
             continue
         last, root = data.get("last"), data.get("root")
-        if not isinstance(last, dict) or last.get("ok") is not False or not isinstance(root, str):
-            continue
+        if not isinstance(last, dict) or last.get("ok") is not False or not isinstance(root, str) \
+                or not Path(root).is_dir():
+            continue  # no failure, or a repo that is gone
         at = last.get("at")
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(at)) if isinstance(at, (int, float)) else "?"
         error = last.get("error") if isinstance(last.get("error"), str) else ""
-        args = json.dumps({"repo_path": root})
         out.append(CheckResult("codebase-memory refresh", False,
                                printable(f"{root}: the last re-index failed ({when}): {error}"),
-                               printable(f"codebase-memory-mcp cli index_repository '{args}'; the next change retries"),
-                               "warn"))
+                               printable(f"codebase-memory-mcp cli index_repository --repo-path {shlex.quote(root)}; "
+                                         "the next change retries"), "warn"))
     return out
 
 

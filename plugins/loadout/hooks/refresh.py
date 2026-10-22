@@ -5,20 +5,24 @@
   refresh.py --run <root> [--now]   the detached child that re-indexes <root>
 
 The hook only notes and decides; it never waits for an index:
-  - an edit (Claude Code's file_path, Codex's apply_patch headers) of a code file in an indexed git repo is added
-    to the repo's `changed` list; 20 entries refresh at once;
+  - an edit (Claude Code's file_path, Codex's apply_patch headers, deleted and moved files too) of a code file in
+    an indexed git repo is added to the repo's `changed` list (at most 20, then a `more` mark); 20 entries
+    refresh at once;
   - a tree-rewriting git command (checkout, switch, pull, merge, rebase, reset, stash pop/apply, cherry-pick,
     revert) refreshes at once; any other Bash command is noted, so the next Stop lets the child compare HEAD and
     the `git status --porcelain` hash with the last refresh's;
-  - Stop and SubagentStop refresh when `changed` is non-empty or a Bash command was noted.
+  - Stop and SubagentStop refresh when `changed` is non-empty, `more` is set or a Bash command was noted;
+  - after a failed refresh, the mid-turn triggers wait 10 minutes; Stop still retries.
 Nothing happens when codebase-memory-mcp is not on PATH, Claude Code has the server off for the folder
 (mcp_guard's rules), the folder is no git repo, or codebase-memory never indexed it (a first index is
-auto_index's job).
+auto_index's job). That verdict and the project name are kept in the repo's state for 10 minutes. A new state
+file prunes those of gone repos and those idle for 30 days.
 
-The child takes <state>/cbm-refresh/<hash>.lock (one refresh per repo; a lock older than 10 minutes is a crashed
-run's), asks `index_status`, leaves a project codebase-memory's own watcher watches alone, and runs
-`index_repository` (with `name` for a project indexed under another name). A busy refusal ("another index
-operation") is silent; any other failure is kept in the state file's `last`, which `loadout check` shows.
+The child takes <state>/cbm-refresh/<hash>.lock (one refresh per repo; a lock older than the longest refresh is a
+crashed run's; a child removes only its own lock), asks `index_status`, leaves a project codebase-memory's own
+watcher watches alone, and runs `index_repository` (with `--name` for a project indexed under another name). A
+busy refusal ("another index operation") is silent; any other failure is kept in the state file's `last`, which
+`loadout check` shows; a repo cbm watches or no longer indexes drops it.
 See docs/reference/hooks.md."""
 from __future__ import annotations
 
@@ -42,15 +46,21 @@ SERVER = "codebase-memory-mcp"
 MAX_INPUT = 200_000
 LIMIT = 20  # changed code files that refresh mid-turn
 MAX_FILES = 50  # files of one patch that are looked at
-STALE = 600  # seconds after which a lock is a crashed run's
 GIT_TIMEOUT = 2  # in the hook
 CHILD_GIT_TIMEOUT = 10
 STATUS_TIMEOUT = 60  # every daemon-backed cli call takes ~6 s on a cold daemon
 INDEX_TIMEOUT = 1800
+STALE = STATUS_TIMEOUT + INDEX_TIMEOUT + 300  # seconds after which a lock is a crashed run's, never a running one's
+CACHE_TTL = 600  # the hook keeps the project name and the guard's verdict this long in the repo's state
+HOOK_MAX_DBS = 8  # index files the hook reads to find a project indexed under another name (the child reads 64)
+BACKOFF = 600  # after a failed refresh, no mid-turn trigger for this long; Stop still retries
+KEEP_DAYS = 30
+MAX_STATE_FILES = 256
 BUSY = "another index operation"
 CODE_EXT = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".kt", ".java", ".cs", ".rb", ".php", ".c", ".cc",
             ".cpp", ".h", ".hpp", ".swift", ".scala", ".ex", ".lua", ".sh")  # cli/loadout/searches.py's list
-PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+?)\s*$", re.M)  # the same headers as advisor.py
+# advisor.py's headers plus the files a patch deletes or moves (to): they change the graph too
+PATCH_FILE = re.compile(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$", re.M)
 REWRITES = {"checkout", "switch", "pull", "merge", "rebase", "reset", "cherry-pick", "revert"}
 STASH_REWRITES = {"pop", "apply"}
 GIT_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
@@ -94,6 +104,39 @@ def _save(path: Path, data: dict) -> None:
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(data, fh)
     os.replace(tmp, path)
+
+
+def _save_state(root: str, state: dict) -> None:
+    """Save a repo's state; a new state file first prunes those of gone repos and those idle for 30 days."""
+    path = state_path(root)
+    new = not path.exists()
+    _save(path, state)
+    if new:
+        _clean(path)
+
+
+def _clean(keep: Path) -> None:
+    cutoff = time.time() - KEEP_DAYS * 86400
+    try:
+        entries = sorted(keep.parent.glob("*.json"))[:MAX_STATE_FILES]
+    except OSError:
+        return
+    for p in entries:
+        if p == keep:
+            continue
+        try:
+            root = _load(p).get("root")
+            if p.stat().st_mtime < cutoff or not isinstance(root, str) or not os.path.isdir(root):
+                p.unlink()
+        except OSError:
+            pass
+
+
+def _failed_recently(state: dict) -> bool:
+    last = state.get("last")
+    at = last.get("at") if isinstance(last, dict) else None
+    return (isinstance(last, dict) and last.get("ok") is False and isinstance(at, (int, float))
+            and time.time() - at < BACKOFF)
 
 
 def _changed(state: dict) -> list[str]:
@@ -187,39 +230,55 @@ def rewrites_tree(command: object) -> bool:
     return False
 
 
-def _indexed(root: str) -> bool:
-    return bool(cbm_project.project_for(root))
+def _open(root: str, cwd: str) -> dict | None:
+    """The repo's state when codebase-memory is there for it (on PATH, on for the folder, the repo indexed), else
+    None. The verdict and the project name are kept in the state for CACHE_TTL, so most hook calls neither parse
+    ~/.claude.json nor read index files."""
+    state = _load(state_path(root))
+    cache = state.get("cache")
+    now = time.time()
+    if (isinstance(cache, dict) and cache.get("cwd") == cwd and isinstance(cache.get("at"), (int, float))
+            and 0 <= now - cache["at"] < CACHE_TTL):
+        return state if cache.get("ok") is True else None
+    name = cbm_project.project_for(root, max_dbs=HOOK_MAX_DBS) if available(cwd) else None
+    state.update(root=root, cache={"at": now, "cwd": cwd, "ok": bool(name), "name": name})
+    state.setdefault("changed", [])
+    _save_state(root, state)
+    return state if name else None
 
 
-def _record(root: str, files: list[str], session: object) -> None:
-    path = state_path(root)
-    state = _load(path)
+def _session(state: dict, session: object) -> None:
+    state["session"] = session if isinstance(session, str) else None
+
+
+def _record(root: str, state: dict, files: list[str], session: object) -> None:
     changed = _changed(state)
     for f in files:
-        if f not in changed:
+        if f in changed:
+            continue
+        if len(changed) < LIMIT:
             changed.append(f)
-    state.update(changed=changed, root=root, session=session if isinstance(session, str) else None)
-    _save(path, state)
-    if len(changed) >= LIMIT:
+        else:
+            state["more"] = time.time()  # more than LIMIT files changed: the list stops growing
+    state["changed"] = changed
+    _session(state, session)
+    _save_state(root, state)
+    if len(changed) >= LIMIT and not _failed_recently(state):
         spawn(root)
 
 
-def _note(root: str, session: object) -> None:
-    path = state_path(root)
-    state = _load(path)
-    if state.get("noted") is True and state.get("root") == root:
+def _note(root: str, state: dict, session: object) -> None:
+    if state.get("noted") is True:
         return
-    state.update(noted=True, root=root, session=session if isinstance(session, str) else None)
-    state.setdefault("changed", [])
-    _save(path, state)
+    state["noted"] = True
+    _session(state, session)
+    _save_state(root, state)
 
 
 def handle(payload: dict) -> None:
     raw_cwd = payload.get("cwd")
     cwd = raw_cwd if isinstance(raw_cwd, str) and raw_cwd else os.getcwd()
     event = payload.get("hook_event_name")
-    if not available(cwd):
-        return
     session = payload.get("session_id")
     if event == "PostToolUse":
         tool_input = payload.get("tool_input")
@@ -227,12 +286,13 @@ def handle(payload: dict) -> None:
             return
         if payload.get("tool_name") == "Bash":
             root = repo_root(cwd)
-            if not root or not _indexed(root):
+            state = _open(root, cwd) if root else None
+            if state is None:
                 return
-            if rewrites_tree(tool_input.get("command")):
+            if rewrites_tree(tool_input.get("command")) and not _failed_recently(state):
                 spawn(root, now=True)
             else:
-                _note(root, session)
+                _note(root, state, session)  # after a recent failure, the rewrite waits for Stop
             return
         by_root: dict[str, list[str]] = {}
         roots: dict[str, str | None] = {}
@@ -248,14 +308,15 @@ def handle(payload: dict) -> None:
             if root and (f == root or f.startswith(root.rstrip(os.sep) + os.sep)):
                 by_root.setdefault(root, []).append(f)
         for root, files in by_root.items():
-            if _indexed(root):
-                _record(root, files, session)
+            state = _open(root, cwd)
+            if state is not None:
+                _record(root, state, files, session)
     elif event in ("Stop", "SubagentStop"):
         root = repo_root(cwd)
         due = set()
         if root:
             state = _load(state_path(root))
-            if _changed(state) or state.get("noted") is True:
+            if (_changed(state) or state.get("more") or state.get("noted") is True) and _open(root, cwd) is not None:
                 due.add(root)
         if isinstance(session, str):  # this session's edits in other repos
             try:
@@ -320,36 +381,67 @@ def _snapshot(root: str) -> tuple[str | None, str | None]:
             hashlib.sha256(status.encode("utf-8")).hexdigest() if status is not None else None)
 
 
-def _settle(root: str, done: list[str], head: str | None, status: str | None, last: dict | None) -> None:
-    """Drop the refreshed files (edits that came in meanwhile stay), store the baseline and the outcome."""
+def _settle(root: str, done: list[str], head: str | None, status: str | None, last: dict | None,
+            started: float, clear: bool = False) -> None:
+    """Drop the refreshed files (edits that came in meanwhile stay), store the baseline and the outcome; clear:
+    drop a failure that no longer holds (codebase-memory watches the repo itself)."""
     path = state_path(root)
     state = _load(path)
     state["changed"] = [f for f in _changed(state) if f not in done]
+    more = state.get("more")
+    if not (isinstance(more, (int, float)) and more > started):
+        state.pop("more", None)  # an overflow from before this refresh is covered by it
     state.update(root=root, noted=False, head=head, status=status)
     if last is not None:
         state["last"] = last
+    elif clear:
+        state.pop("last", None)
     _save(path, state)
+
+
+def _clear_failure(root: str) -> None:
+    """A repo codebase-memory no longer has (or no longer indexes): its old failure is no failure any more."""
+    path = state_path(root)
+    state = _load(path)
+    if isinstance(state.get("last"), dict) and state["last"].get("ok") is False:
+        state.pop("last")
+        _save(path, state)
+
+
+def _unlock(root: str) -> None:
+    """Remove the lock only while it is ours: a lock taken over meanwhile belongs to another child."""
+    path = lock_path(root)
+    try:
+        if path.read_text(encoding="utf-8").strip() == str(os.getpid()):
+            path.unlink()
+    except OSError:
+        pass
 
 
 def run(root: str, now: bool = False) -> None:
     root = os.path.normpath(root)
     name = cbm_project.project_for(root)
-    if not name or not _lock(root):
+    if not name:
+        _clear_failure(root)
+        return
+    if not _lock(root):
         return
     try:
+        started = time.time()
         state = _load(state_path(root))
         done = _changed(state)
         head, status = _snapshot(root)
         if not now and not done and head is not None and (head, status) == (state.get("head"), state.get("status")):
-            _settle(root, done, head, status, None)  # a noted command moved nothing
+            _settle(root, done, head, status, None, started)  # a noted command moved nothing
             return
         rc, out, err = _cbm("index_status", ["--project", name, "--format", "json"], STATUS_TIMEOUT)  # else a tree
         info = _json_out(out)
         if rc != 0 or info.get("error") or info.get("status") != "ready":
+            _clear_failure(root)
             return  # not indexed (or busy indexing): no failure; a first index is auto_index's job
         watch = info.get("watch")
         if isinstance(watch, dict) and watch.get("watched") is True:
-            _settle(root, done, head, status, None)  # codebase-memory's own watcher re-indexes it
+            _settle(root, done, head, status, None, started, clear=True)  # cbm's own watcher re-indexes it
             return
         flags = ["--repo-path", root]
         if name != cbm_project.default_name(root):
@@ -359,17 +451,14 @@ def run(root: str, now: bool = False) -> None:
             return  # a refresh cbm refuses is dropped silently; the next trigger retries
         result = _json_out(out)
         if rc == 0 and not result.get("error"):
-            _settle(root, done, head, status, {"at": int(time.time()), "ok": True, "error": ""})
+            _settle(root, done, head, status, {"at": int(time.time()), "ok": True, "error": ""}, started)
             return
         text = (err.strip() or str(result.get("error") or "") or out.strip() or f"exit {rc}")
         state = _load(state_path(root))
         state.update(root=root, last={"at": int(time.time()), "ok": False, "error": text[:300]})
         _save(state_path(root), state)
     finally:
-        try:
-            lock_path(root).unlink()
-        except OSError:
-            pass
+        _unlock(root)
 
 
 def main(argv: list[str]) -> int:

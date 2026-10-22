@@ -163,7 +163,7 @@ def test_refresh_skips_unindexed_repo(env):
     (env["cache"] / f"{env['default']}.db").unlink()
     _edit(env, env["repo"] / "a.py")
     _stop(env)
-    assert env["spawned"] == [] and _state(env) is None
+    assert env["spawned"] == [] and (_state(env) or {}).get("changed", []) == []
     env["mod"].run(str(env["repo"]))
     assert not [line for line in _log(env) if line.startswith("cbm")]
 
@@ -205,7 +205,7 @@ def test_refresh_runs_once_under_lock(env):
     lock.write_text("123")
     mod.run(str(env["repo"]))
     assert _indexes(env) == []
-    old = time.time() - 11 * 60  # a lock older than 10 minutes is a crashed run's
+    old = time.time() - mod.STALE - 60  # a lock older than the longest index is a crashed run's
     os.utime(lock, (old, old))
     mod.run(str(env["repo"]))
     assert len(_indexes(env)) == 1 and not lock.exists()
@@ -244,7 +244,7 @@ def test_hook_skips_when_codebase_memory_is_off_for_the_folder(env):
     _edit(env, env["repo"] / "a.py")
     _bash(env, "git checkout main")
     _stop(env)
-    assert env["spawned"] == [] and _state(env) is None
+    assert env["spawned"] == [] and (_state(env) or {}).get("changed", []) == []
 
 
 def test_hook_skips_without_the_binary(env):
@@ -311,3 +311,183 @@ def test_cbm_is_called_with_its_flags_and_json_output(env):
     status = [l for l in _log(env) if " index_status " in l]
     assert status == [f"cbm cli --quiet index_status --project {env['default']} --format json"]
     assert _indexes(env) == [f"cbm cli --quiet index_repository --repo-path {env['repo']}"]
+
+
+# --- fix round 1 ------------------------------------------------------------------------------------------------
+
+def _fail(env, at=None):
+    """A state file whose last refresh failed."""
+    mod = env["mod"]
+    path = mod.state_path(str(env["repo"]))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    state = mod._load(path)
+    state.update(root=str(env["repo"]), last={"at": int(at if at is not None else time.time()), "ok": False,
+                                               "error": "boom"})
+    path.write_text(json.dumps(state))
+
+
+def test_live_lock_is_never_taken_over(env):
+    mod = env["mod"]
+    assert mod.STALE > mod.INDEX_TIMEOUT
+    _edit(env, env["repo"] / "a.py")
+    lock = mod.lock_path(str(env["repo"]))
+    lock.write_text("99999")
+    old = time.time() - 11 * 60  # a running index may take up to INDEX_TIMEOUT: its lock is not stale yet
+    os.utime(lock, (old, old))
+    mod.run(str(env["repo"]))
+    assert _indexes(env) == [] and lock.read_text() == "99999"
+
+
+def test_child_never_removes_anothers_lock(env, monkeypatch):
+    mod = env["mod"]
+    lock = mod.lock_path(str(env["repo"]))
+    real = mod._cbm
+
+    def cbm(tool, flags, timeout):
+        if tool == "index_repository":
+            lock.write_text("424242")  # another child took the lock over meanwhile
+        return real(tool, flags, timeout)
+    monkeypatch.setattr(mod, "_cbm", cbm)
+    _edit(env, env["repo"] / "a.py")
+    mod.run(str(env["repo"]))
+    assert lock.read_text() == "424242"
+
+
+def test_watched_project_clears_a_failure(env):
+    from loadout import check
+    _fail(env)
+    (env["stub"] / "status.json").write_text(json.dumps({**READY, "watch": {"watched": True}}))
+    env["mod"].run(str(env["repo"]), now=True)
+    assert check._cbm_refresh() == []
+
+
+def test_unindexed_project_clears_a_failure(env):
+    from loadout import check
+    _fail(env)
+    (env["stub"] / "status.rc").write_text("1")
+    env["mod"].run(str(env["repo"]), now=True)
+    assert check._cbm_refresh() == []
+    _fail(env)
+    (env["cache"] / f"{env['default']}.db").unlink()
+    env["mod"].run(str(env["repo"]), now=True)
+    assert check._cbm_refresh() == []
+
+
+def test_check_skips_a_repo_that_is_gone(env):
+    from loadout import check
+    _fail(env)
+    assert len(check._cbm_refresh()) == 1
+    import shutil
+    shutil.rmtree(env["repo"])
+    assert check._cbm_refresh() == []
+
+
+def test_check_fix_uses_cbm_flags(env):
+    import shlex
+    from loadout import check
+    _fail(env)
+    fix = check._cbm_refresh()[0].fix
+    assert fix.startswith(f"codebase-memory-mcp cli index_repository --repo-path {shlex.quote(str(env['repo']))}")
+    assert "{" not in fix
+
+
+def test_a_new_state_file_prunes_gone_and_old_ones(env, tmp_path):
+    mod = env["mod"]
+    folder = mod.state_dir()
+    folder.mkdir(parents=True)
+    gone = folder / "gone.json"
+    gone.write_text(json.dumps({"root": str(tmp_path / "nowhere"), "changed": []}))
+    old = folder / "old.json"
+    old.write_text(json.dumps({"root": str(env["repo"]), "changed": []}))
+    t = time.time() - 31 * 86400
+    os.utime(old, (t, t))
+    other = tmp_path / "other"
+    other.mkdir()
+    fresh = folder / "fresh.json"
+    fresh.write_text(json.dumps({"root": str(other), "changed": []}))
+    _edit(env, env["repo"] / "a.py")
+    assert not gone.exists() and not old.exists() and fresh.exists()
+    assert mod.state_path(str(env["repo"])).exists()
+
+
+def test_changed_is_capped_with_a_more_flag(env):
+    for i in range(25):
+        _edit(env, env["repo"] / f"m{i}.py")
+    st = _state(env)
+    assert len(st["changed"]) == 20 and st["more"]
+    env["mod"].run(str(env["repo"]))
+    st = _state(env)
+    assert st["changed"] == [] and not st.get("more")
+
+
+def test_more_alone_makes_stop_refresh(env):
+    mod = env["mod"]
+    path = mod.state_path(str(env["repo"]))
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"root": str(env["repo"]), "changed": [], "more": time.time()}))
+    _stop(env)
+    assert env["spawned"] == [(str(env["repo"]), False)]
+
+
+def test_failed_refresh_backs_off_mid_turn_but_stop_retries(env):
+    _fail(env)
+    for i in range(20):
+        _edit(env, env["repo"] / f"m{i}.py")
+    _bash(env, "git checkout main")
+    assert env["spawned"] == []
+    _stop(env)
+    assert env["spawned"] == [(str(env["repo"]), False)]
+    env["spawned"].clear()
+    _fail(env, at=time.time() - 11 * 60)
+    _edit(env, env["repo"] / "m20.py")
+    assert env["spawned"] == [(str(env["repo"]), False)]
+
+
+def test_hook_caches_project_name_and_guard_verdict(env, monkeypatch):
+    mod = env["mod"]
+    calls = {"project": [], "guard": 0}
+    real_project, real_guard = mod.cbm_project.project_for, mod.mcp_guard.server_available
+
+    def project_for(cwd, *a, **kw):
+        calls["project"].append(kw)
+        return real_project(cwd, *a, **kw)
+
+    def guard(*a, **kw):
+        calls["guard"] += 1
+        return real_guard(*a, **kw)
+    monkeypatch.setattr(mod.cbm_project, "project_for", project_for)
+    monkeypatch.setattr(mod.mcp_guard, "server_available", guard)
+    _edit(env, env["repo"] / "a.py")
+    _edit(env, env["repo"] / "b.py")
+    _bash(env, "ls")
+    _stop(env)
+    assert len(calls["project"]) == 1 and calls["guard"] == 1
+    assert calls["project"][0].get("max_dbs") == 8  # the hook reads at most 8 index files
+    path = mod.state_path(str(env["repo"]))
+    st = json.loads(path.read_text())
+    st["cache"]["at"] -= 11 * 60  # after 10 minutes the verdict is asked again
+    path.write_text(json.dumps(st))
+    _edit(env, env["repo"] / "c.py")
+    assert len(calls["project"]) == 2 and calls["guard"] == 2
+
+
+def test_project_for_honours_max_dbs(env, tmp_path):
+    import sqlite3
+    mod = env["mod"]
+    (env["cache"] / f"{env['default']}.db").unlink()
+    for i in range(10):
+        con = sqlite3.connect(env["cache"] / f"p{i}.db")
+        con.execute("create table projects(name text, indexed_at text, root_path text)")
+        con.execute("insert into projects values (?, 'now', ?)", (f"n{i}", str(env["repo"]) if i == 9 else "/x"))
+        con.commit()
+        con.close()
+    assert mod.cbm_project.project_for(str(env["repo"]), max_dbs=8) is None
+    assert mod.cbm_project.project_for(str(env["repo"])) == "n9"
+
+
+def test_codex_delete_and_move_paths_are_recorded(env):
+    patch = ("*** Begin Patch\n*** Delete File: old.py\n*** Update File: x.py\n*** Move to: y.py\n@@\n-a\n+b\n"
+             "*** End Patch\n")
+    env["mod"].handle({"session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "apply_patch",
+                       "cwd": str(env["repo"]), "tool_input": {"command": patch}})
+    assert sorted(_state(env)["changed"]) == sorted(str(env["repo"] / n) for n in ("old.py", "x.py", "y.py"))

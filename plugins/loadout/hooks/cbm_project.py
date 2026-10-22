@@ -36,13 +36,13 @@ def default_name(cwd: str) -> str:
     return re.sub(r"-{2,}", "-", cwd.lstrip("/").replace("/", "-"))
 
 
-def project_for(cwd: str) -> str | None:
+def project_for(cwd: str, max_dbs: int = MAX_DBS) -> str | None:
     try:
         cache = cache_dir()
         default = default_name(cwd)
         if (cache / f"{default}.db").is_file():
             return default
-        for db in sorted(cache.glob("*.db"))[:MAX_DBS]:
+        for db in [d for d in sorted(cache.glob("*.db")) if d.name not in SKIP][:max_dbs]:
             if db.name in SKIP:
                 continue
             try:
