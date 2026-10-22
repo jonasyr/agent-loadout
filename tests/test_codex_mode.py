@@ -57,3 +57,30 @@ def test_undo_recorded_with_the_extension_runs_the_cli_once_it_is_installed(code
     fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.163.0\n", "")
     backup.restore(bk.root)
     assert ["codex", "plugin", "remove", "x@m"] in fake_runner.calls
+
+
+def test_no_mode_runs_plain_codex(fake_home, fake_runner):
+    fake_runner.missing.add("codex")
+    assert codex.program() == "codex"
+
+
+def test_the_unusable_text_names_both(codex_ext):
+    assert codex.CLI_UNUSABLE.format(why="codex 0.150.0 is too old") == (
+        "codex 0.150.0 is too old; loadout uses VS Code's Codex extension's codex instead")
+
+
+def test_one_install_run_asks_which_codex_once(fake_home, fake_runner):
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
+    routes = {"o/a": ["p1", "p2"], "o/b": ["p3"]}
+    codex._install_routes(routes, None, refresh=True, say=lambda line: None, listed=set())
+    assert sum(1 for c in fake_runner.calls if c[1:] == ["--version"]) == 1
+
+
+def test_a_windows_codex_in_wsl_next_to_a_usable_extension_is_extension_mode(codex_ext, fake_runner, monkeypatch):
+    from loadout import wsl
+    fake_runner.missing.discard("codex")
+    fake_runner.paths["codex"] = "/mnt/c/Users/x/AppData/Roaming/npm/codex"
+    monkeypatch.setattr(wsl, "detect", lambda: object())
+    monkeypatch.setattr(wsl, "is_windows_program", lambda name: True)
+    assert "Windows" in codex.cli_problem()
+    assert codex.mode() == "extension" and codex.program() == str(codex_ext)

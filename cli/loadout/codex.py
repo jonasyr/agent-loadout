@@ -37,6 +37,7 @@ WINDOWS_CODEX = "the codex on PATH is the Windows one"
 SHARED_HOME = "CODEX_HOME points into Windows"
 NO_VERSION = "could not read codex --version"
 TOO_OLD = " is too old; loadout needs"
+CLI_UNUSABLE = "{why}; loadout uses VS Code's Codex extension's codex instead"
 
 
 def cli_problem() -> str | None:
@@ -63,13 +64,14 @@ def _state() -> tuple[str | None, str | None, object]:
     """(mode, why not, the extension): "cli" for a usable codex on PATH, else "extension" when VS Code's Codex
     extension on this side runs a usable one (also next to a CLI that cannot be used; spec decision 8), else None
     with the reason: the CLI's first, then the extension's, then NOT_FOUND."""
-    problem = cli_problem() if runner.have("codex") else NOT_FOUND
+    cli = runner.have("codex")
+    problem = cli_problem() if cli else NOT_FOUND
     if problem is None:
         return "cli", None, None
     ext, why = extension_state()  # VS Code's Codex extension: loadout sets Codex up for it
     if ext is not None:
         return "extension", None, ext
-    return None, problem if runner.have("codex") else (why or NOT_FOUND), None
+    return None, problem if cli else (why or NOT_FOUND), None
 
 
 def mode() -> str | None:
@@ -1378,6 +1380,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
     """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards.
     frozen: marketplaces a refresh leaves as they are (`autoUpdate: false`); missing plugins are still installed.
     skip_unchanged (with refresh): marketplaces and plugins whose upstream head did not move are left alone."""
+    exe = program()  # one codex for the whole run, asked once
     lines, installed = [], set(listed or ())
     have = {pid.split("@")[0] for pid in installed}
     planned = skips is not None and refresh
@@ -1401,7 +1404,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
             head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
-            res = runner.run([program(), "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+            res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
             info = _json(res.stdout) if res.ok else None
             if not isinstance(info, dict) or "marketplaceName" not in info:
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
@@ -1411,7 +1414,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:
-                up = runner.run([program(), "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
+                up = runner.run([exe, "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
                 refreshed = up.ok
             elif not info.get("alreadyAdded"):
                 refreshed = True
@@ -1425,7 +1428,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
             before = _enabled_line(pid)
-            res = runner.run([program(), "plugin", "add", pid, "--json"], timeout=600)
+            res = runner.run([exe, "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
                 continue
