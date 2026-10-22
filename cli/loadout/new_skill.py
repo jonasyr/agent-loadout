@@ -1,5 +1,5 @@
 """`loadout configure new skill`: a SKILL.md stub in one of the three places a skill of yours can live
-(docs/how-to/your-own-tools.md#where-a-tool-of-yours-can-live)."""
+(docs/reference/own-tools.md#where-a-tool-of-yours-can-live)."""
 from __future__ import annotations
 
 import re

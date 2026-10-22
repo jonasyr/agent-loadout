@@ -37,10 +37,10 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 
 Every module and kit part, grouped, is in [docs/reference/modules.md](docs/reference/modules.md). Start with these:
 
-- `cli/loadout/__main__.py` (the parser, `init`, `profile`) and `commands.py` (the other subcommands); `bin/loadout` runs them from a checkout
+- `cli/loadout/__main__.py` (the parser and the state-move gate), `project.py` (`init` and `profile`) and `commands.py` (the other subcommands); `bin/loadout` runs them from a checkout
 - `cli/loadout/runner.py`, the only place external commands run; `paths.py`, every location from `HOME`
 - `cli/loadout/bootstrap.py` (setup), `check.py` (health report), `codex.py` (Codex as a second target), `vscode.py` (VS Code's extensions)
-- `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`); `catalog.json`, `profiles/`, `rules/`, `templates/`; `tests/conftest.py` (the fixtures)
+- `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`); at the repo root: `catalog.json`, `profiles/`, `rules/`, `templates/`, `tests/conftest.py` (the fixtures)
 - loadout's state folders and the daily sync: [docs/reference/state-and-sync.md](docs/reference/state-and-sync.md)
 
 `docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security, documentation strategy, execution advisor), `adr/` (decisions 0001-0039), `examples/`, `assets/` (wordmark, demo GIF), `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).

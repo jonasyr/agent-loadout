@@ -88,7 +88,7 @@ flowchart LR
   snap <-. "read, then rewrite" .-> merge
   merge e7@==> cSet
   pMcp -- "claude mcp add-json" --> cMcp
-  kPlugin -. "loadout installs and refreshes (Codex CLI only)" .-> xPlugin
+  kPlugin -. "loadout installs and refreshes (Codex CLI or extension codex)" .-> xPlugin
   serena -- "owned entries" --> xHooks
   kRules -- "copied into the block" --> xAgents
   pRules -- "copied into the block" --> xAgents

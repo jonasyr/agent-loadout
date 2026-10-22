@@ -179,8 +179,8 @@ def _register_bootstrap(sub):
                    help="in WSL with VS Code's Remote-WSL server: put loadout's tool folders on PATH in "
                         "~/.vscode-server/server-env-setup without asking (backup first)")
     p.add_argument("--without-codex-cli", action="store_true",
-                   help="with VS Code's Codex extension: do not install the Codex CLI (loadout sets Codex up for the "
-                        "extension; /hooks and plugins need the CLI)")
+                   help="with VS Code's Codex extension: skip the optional Codex CLI (loadout sets Codex up for the "
+                        "extension; the CLI is optional, VS Code's Codex extension runs its own codex)")
 
     def run(a):
         if a.verbose:

@@ -102,7 +102,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `hooks/hooks.json`, `hooks/codex.json` | The hooks for Claude Code and for Codex ([Hooks](hooks.md)). |
 | `hooks/run.sh` | Runs a hook command only when its program is on `PATH`; `--soft` and `--python` as described in [Hooks](hooks.md). |
 | `hooks/tool_hint.sh`, `hooks/tool_hint.py` | The docs hint for library-docs web lookups (Claude Code): a fast bash filter, then the Python script. Code searches are Serena's `remind` hook. |
-| `hooks/mcp_guard.py` | The guard that runs Serena's hooks for Claude Code and stays silent when Serena is absent, off for the folder, or already hooked by the user ([the guard](hooks.md#the-guard)). |
+| `hooks/mcp_guard.py` | The guard that runs Serena's hooks for Claude Code and stays silent when Serena is absent, off for the folder, or already hooked by the user ([the guard](hooks.md#the-guard)). Its `--available AGENT SERVER...` mode answers, by exit code, whether the agent has the servers here; `subagent-context.sh`, `cbm_project.py` and `refresh.py` ask it. |
 | `hooks/cbm_project.py` | Session and subagent start: names the folder's codebase-memory project ([details](hooks.md#the-codebase-memory-project-pointer)). |
 | `hooks/refresh.py` | Re-indexes a stale codebase-memory graph in the background ([details](hooks.md#the-code-graph-refresh)). |
 | `hooks/advisor.py` | The execution advisor's `record` and `stop` hooks. |

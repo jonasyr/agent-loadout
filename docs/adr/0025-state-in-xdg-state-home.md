@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-13
 - Source: [Design: state out of ~/.claude](../superpowers/specs/2026-10-13-state-out-of-claude-design.md)
+- Amends: [ADR 0012](0012-destructive-actions-dry-run-confirm-backup.md) (where backups live)
 
 ## Context
 loadout kept its state (`~/.claude/.loadout`) and its undo backups (`~/.claude/backups`) under `~/.claude` for every user. A Codex-only user, who has no use for Claude Code, therefore still got a `~/.claude` folder. Backups also sat next to Claude Code's configuration, which is not where machine-local state belongs.

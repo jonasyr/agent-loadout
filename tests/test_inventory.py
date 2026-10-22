@@ -37,7 +37,7 @@ def test_classification_of_author_machine(machine):
     assert v[("skill", "gpt-taste")].action == "remove"
     assert v[("skill", "my-skill")].action == "own"
     assert v[("hook", "PreToolUse:Bash")].action == "migrate"
-    assert v[("hook", "PreToolUse:")].action == "remove"
+    assert v[("hook", "PreToolUse:")].action == "migrate"  # serena-hooks remind: the kit provides it
     assert v[("hook", "PreToolUse:Read")].action == "scope-down"
     assert v[("hook", "PreToolUse:Edit")].action == "own"
     assert v[("hook", "Stop:")].action == "remove"
@@ -122,3 +122,12 @@ def test_missing_helper_is_not_listed(fake_home, fake_runner):
     fake_runner.missing.add("mise")
     names = {(i.kind, i.name) for i in inventory.collect(with_versions=False)}
     assert ("binary", "mise") not in names
+
+
+def test_users_serena_remind_hook_is_provided_by_the_kit(fake_home, fake_runner):
+    import json
+    (fake_home / ".claude").mkdir(parents=True, exist_ok=True)
+    (fake_home / ".claude/settings.json").write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
+        {"type": "command", "command": "serena-hooks remind --client=claude-code"}]}]}}))
+    v = [x for x in inventory.classify(inventory.collect(with_versions=False)) if x.item.kind == "hook"]
+    assert [x.action for x in v] == ["migrate"] and v[0].entry_id == "hook-serena-remind"

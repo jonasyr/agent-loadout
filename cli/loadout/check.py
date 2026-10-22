@@ -340,8 +340,8 @@ def _tool_setups() -> list[CheckResult]:
         hooks = duplicates.equivalent_user_hooks(str(cwd))
         if hooks:
             files = ", ".join(dict.fromkeys(f for _, _, f in hooks))
-            out.append(CheckResult("Serena hooks", True, f"yours in {files}; the plugin's copy stays silent",
-                                   "loadout configure own", "warn"))
+            out.append(CheckResult(f"Serena hooks: yours in {files}; the plugin's copy stays silent", True,
+                                   f"yours in {files}; the plugin's copy stays silent", "loadout configure own", "warn"))
         servers = _user_servers(cwd)
         for label, test, tool in (("Serena", _is_serena_server, "serena"),
                                   ("codebase-memory", _is_cbm_server, "codebase-memory-mcp")):

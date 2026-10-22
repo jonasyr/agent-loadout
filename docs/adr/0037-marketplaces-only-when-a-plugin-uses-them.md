@@ -31,3 +31,10 @@ We will clone a marketplace only when a plugin uses it, and let a profile bring 
 - A `loadout profile thesis` run can need network for a clone, and that clone is not undone by `loadout restore`; the plan says so.
 - `claude plugin marketplace add` declares the marketplace at user scope (its default `--scope user`), so applying `thesis` makes Claude Code declare `academic-research-skills` in `~/.claude/settings.json`. The entry is Claude Code's, not loadout's: the settings merge never recorded it, so there is no `settings drift` row for it and `loadout restore` cannot undo it.
 - A person who used `academic-research-skills` outside a `thesis` repo keeps the clone, but the global declaration is gone; adopt records it in the personal layer when they keep its plugin.
+
+## In the code
+
+- `cli/loadout/bootstrap.py` (`plugins_plan`, `listed_marketplaces`)
+- `cli/loadout/profiles.py` (`marketplace_adds`, `kit_marketplaces`), `cli/loadout/project.py` (applies the adds before the installs)
+- `cli/loadout/own.py` (`_kit_markets`), `cli/loadout/inventory.py`
+- `profiles/thesis.json` (`settings.extraKnownMarketplaces`)

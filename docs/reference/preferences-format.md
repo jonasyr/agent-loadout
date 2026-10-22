@@ -28,7 +28,6 @@ Free text must be one line, at most 100 characters, and must not contain `<!--` 
 | `me_md` | Map of option value to the line written into the managed block of `<personal>/rules/me.md`. `{text}` stands for the free text. `null` means the option writes no line. |
 | `setting` | Dotted key in `<personal>/settings.json`, for example `autoMode.environment`. |
 | `values` | With `setting`: map of option value to the JSON value to write. `null` removes the key. A value equal to the one in the kit's `settings.base.json` is not written, because the kit default already applies. |
-
 | `loadout` | Dotted key in `<personal>/loadout.json`, for example `codex.serena_approval`. The option value is stored as it is. Used for choices only loadout acts on, such as Codex-only ones. |
 
 A target may have both `me_md` and `setting`. Every change to `loadout.json` keeps its other keys and is backed up first; when the file is not valid JSON, loadout writes nothing (not `me.md` or `settings.json` either) and names the file. Reading it never fails: a broken file counts as no answer.
@@ -82,7 +81,7 @@ If a setting or a `me.md` line still contradicts an answer after it was written,
 | `automode_trust` | Draft the auto mode trust environment from your git repos? | `generate`, `skip` | `generate` | `autoMode.environment` |
 | `commit_doc_language` | Language of commit messages, code comments and docs? | `english`, `project` | `english` | `me.md` |
 | `codex_serena_approval` | Should Codex approve Serena's tools automatically? | `ask` (ask each time), `approve` (approve automatically) | `ask` | `loadout.json` (`codex.serena_approval`); Codex only |
-| `cbm_auto_index` | Should codebase-memory index a new git repo by itself the first time a session opens it? | `on`, `off` | `on` | codebase-memory's own `auto_index` setting; both agents ([below](#codebase-memorys-auto_index)) |
+| `cbm_auto_index` | Should codebase-memory index a new git repo by itself the first time a session opens it? | `on`, `off` | `on` | `loadout.json` (`cbm.auto_index`), applied to codebase-memory's own `auto_index` setting; both agents ([below](#codebase-memorys-auto_index)) |
 
 With Codex on, `effort_level` also sets `model_reasoning_effort` and `agent_push_notifications` sets `tui.notifications` in `~/.codex/config.toml`. The preferences written to `me.md` reach Codex through the `AGENTS.md` block. The other settings (`extended_thinking`, `automode_trust`) apply to Claude Code only. See [personal-layer](personal-layer.md).
 
@@ -103,7 +102,7 @@ In Codex the `me.md` line reaches the agent through the instruction block, but t
 
 ### codebase-memory's auto_index
 
-`cbm_auto_index: on` runs `codebase-memory-mcp config set auto_index true`, so codebase-memory indexes a new git repo at its first session (up to its `auto_index_limit`, 50 000 files); afterwards its watcher or [loadout's refresh](hooks.md#the-code-graph-refresh) keeps it current. It applies to both agents and needs `codebase-memory-mcp` on `PATH`; with it missing, or with both agents off, nothing happens.
+`cbm_auto_index: on` runs `codebase-memory-mcp config set auto_index true`, so codebase-memory indexes a new git repo at its first session (up to codebase-memory's own `auto_index_limit`, 50 000 files by default at the time of writing); afterwards its watcher or [loadout's refresh](hooks.md#the-code-graph-refresh) keeps it current. It applies to both agents and needs `codebase-memory-mcp` on `PATH`; with it missing, or with both agents off, nothing happens.
 
 - loadout sets the value only from `false` to `true`. It records that in `cbm-auto-index.json` in [its state folder](state-and-sync.md), and puts the undo (`config set auto_index false`) in the backup first, so `loadout restore` replays it. Restore runs exactly these two `config set auto_index` forms and nothing else.
 - A value you set back to `false` after loadout set it `true` stays yours, for good: loadout records that (`cbm-auto-index.json` holds `yours`), `loadout check` shows `off (yours)`, and loadout never changes `auto_index` again, whatever you later set or answer. A failed `config set` leaves no undo step behind.

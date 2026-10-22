@@ -1077,14 +1077,14 @@
     {
       "id": "hook-serena-remind",
       "kind": "hook",
-      "status": "deprecated",
+      "status": "core",
       "match": {
         "contains": [
           "serena-hooks remind"
         ]
       },
-      "reason": "Fires on every tool call; kit rules route tools instead.",
-      "short": "fires on every tool call"
+      "reason": "loadout provides this hook (guarded: it stays silent when yours runs).",
+      "short": "loadout provides this hook"
     },
     {
       "id": "hook-serena",

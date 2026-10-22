@@ -9,7 +9,7 @@ loadout's state folder is `$XDG_STATE_HOME/loadout` when `XDG_STATE_HOME` is an 
 | Folder | Holds |
 |---|---|
 | `~/.local/state/loadout/` | Machine-local state: the settings snapshot, the record of loadout's `config.toml` and `hooks.json` entries, your `leave` decisions, queued notices, the sync's timestamps and locks, the hook scripts' session files. Each file is listed in [Machine-local state](personal-layer.md#machine-local-state); the docs hint's `tool-hint/` folder and the code-graph refresh's `cbm-refresh/` folder are described in [Hooks](hooks.md). Not synced. |
-| `~/.local/state/loadout/cbm-refresh/` | One state file and lock per repo that codebase-memory indexes: the changed code files, the last refresh and its error, the cached project name and guard verdict. Written by `hooks/refresh.py`, mode `0700`, pruned after 30 days or when the repo is gone. See [the code-graph refresh](hooks.md#the-code-graph-refresh). |
+| `~/.local/state/loadout/cbm-refresh/` | Per-repo state and lock of the code-graph refresh. See [the code-graph refresh](hooks.md#the-code-graph-refresh). |
 | `~/.local/state/loadout/backups/` | One `loadout-<timestamp>` folder per change that moved or replaced something you own, with a manifest of undo steps (`paths.backups_root`). A run of `init`, `profile`, `configure new skill --to repo`, or `adopt` when it applies a profile to a repo, makes one for the repo files it changes; the manifest names the repo. See [Undo what loadout changed](../how-to/undo-and-restore.md). |
 
 Every command except `kit-path`, `check` and `usage` creates the state folder at its start, readable only by you (mode `0700`; Windows keeps its default permissions). Those three promise to change nothing, so they neither create it nor run the move below.

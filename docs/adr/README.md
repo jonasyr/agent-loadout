@@ -32,12 +32,12 @@ Template:
 | [0004](0004-rules-linked-as-directories.md) | Rules are linked as directories; `~/.claude/CLAUDE.md` changes only when you ask adopt to migrate it | Accepted |
 | [0005](0005-catalog-as-source-of-tool-knowledge.md) | `catalog.json` is the source of tool knowledge | Accepted |
 | [0006](0006-secrets-in-secrets-env.md) | Secrets live in `secrets.env` and are referenced as `${VAR}` | Accepted |
-| [0007](0007-tiered-scoping-with-profiles.md) | Tiered scoping: core tools global, domain tools per project | Accepted; merge rule superseded by 0031 |
+| [0007](0007-tiered-scoping-with-profiles.md) | Tiered scoping: core tools global, domain tools per project | Accepted; merge rule superseded by 0031; amended by 0037 |
 | [0008](0008-code-intelligence-routed-by-rule.md) | Code intelligence: LSP plugins, Serena and codebase-memory, routed by a rule | Accepted; dropping Serena's `remind` superseded by 0039 |
 | [0009](0009-design-tooling-frontend-design-and-impeccable.md) | Design tooling: frontend-design and impeccable | Accepted |
 | [0010](0010-docs-as-single-source-of-truth.md) | `docs/` is the single source of truth; AGENTS.md and memories link to it | Accepted |
 | [0011](0011-tool-binaries-notice-and-deliberate-update.md) | Tool binaries: a weekly notice and a deliberate `loadout update` | Accepted |
-| [0012](0012-destructive-actions-dry-run-confirm-backup.md) | Destructive actions: dry run, confirm, backup, restore | Accepted |
+| [0012](0012-destructive-actions-dry-run-confirm-backup.md) | Destructive actions: dry run, confirm, backup, restore | Accepted; amended by 0025 and 0030 |
 | [0013](0013-playwright-cli-instead-of-browser-mcp.md) | playwright-cli instead of a browser MCP server | Accepted |
 | [0014](0014-execution-advisor-instead-of-default-sdd.md) | Execution advisor instead of subagent-driven development by default | Accepted |
 | [0015](0015-claude-code-installs-synced-plugins.md) | Claude Code, not loadout, installs plugins synced through the personal layer | Accepted; amended by 0035 |
