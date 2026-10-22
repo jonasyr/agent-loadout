@@ -358,6 +358,32 @@ def _tool_setups() -> list[CheckResult]:
     return out
 
 
+def _cbm_refresh() -> list[CheckResult]:
+    """A row per repo whose last background refresh (hooks/refresh.py) failed; nothing while they succeed."""
+    out = []
+    try:
+        files = sorted((paths.state_dir() / "cbm-refresh").glob("*.json"))[:64]
+    except OSError:
+        return out
+    for f in files:
+        try:
+            data = load_json(f)
+        except (InvalidJSON, OSError):
+            continue
+        last, root = data.get("last"), data.get("root")
+        if not isinstance(last, dict) or last.get("ok") is not False or not isinstance(root, str):
+            continue
+        at = last.get("at")
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(at)) if isinstance(at, (int, float)) else "?"
+        error = last.get("error") if isinstance(last.get("error"), str) else ""
+        args = json.dumps({"repo_path": root})
+        out.append(CheckResult("codebase-memory refresh", False,
+                               printable(f"{root}: the last re-index failed ({when}): {error}"),
+                               printable(f"codebase-memory-mcp cli index_repository '{args}'; the next change retries"),
+                               "warn"))
+    return out
+
+
 _CBM_LOG = "logs/daemon-conflicts.ndjson"
 _CBM_TAIL = 64 * 1024  # only the newest records matter; a huge log is never read whole
 _CBM_WINDOW = 24 * 3600
@@ -830,7 +856,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []), *_cbm_refresh(), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

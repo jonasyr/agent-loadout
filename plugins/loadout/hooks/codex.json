@@ -48,6 +48,17 @@
             "timeout": 90
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh.py\"",
+            "shell": "bash",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [
@@ -57,6 +68,12 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/advisor.py\" stop",
+            "shell": "bash",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh.py\"",
             "shell": "bash",
             "timeout": 5
           }

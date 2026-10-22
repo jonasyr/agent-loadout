@@ -29,10 +29,15 @@ def cache_dir() -> Path:
     return Path(home) / ".cache" / "codebase-memory-mcp"
 
 
+def default_name(cwd: str) -> str:
+    """codebase-memory's name for a project indexed without a name override."""
+    return cwd.lstrip("/").replace("/", "-")
+
+
 def project_for(cwd: str) -> str | None:
     try:
         cache = cache_dir()
-        default = cwd.lstrip("/").replace("/", "-")
+        default = default_name(cwd)
         if (cache / f"{default}.db").is_file():
             return default
         for db in sorted(cache.glob("*.db"))[:MAX_DBS]:
