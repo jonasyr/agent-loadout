@@ -54,7 +54,7 @@ def test_next_line_names_the_hooks_icon_next_to_a_broken_cli(codex_ext, fake_run
 
 
 def test_no_page_repeats_the_old_extension_claims():
-    stale = ("runs no plugin hooks", "(default yes)", "approve them once in the CLI", "installs the recommended Codex CLI",
+    stale = ("| `codex` | required while Codex is on |", "a missing `codex` or `claude` only warns", "runs no plugin hooks", "(default yes)", "approve them once in the CLI", "installs the recommended Codex CLI",
              "loads no plugins", "has no /hooks", "plugins do not load")
     hits = [(p.relative_to(ROOT).as_posix(), s) for p in (ROOT / "docs").rglob("*.md")
             if "/adr/" not in p.as_posix() and "/superpowers/" not in p.as_posix() and "examples" not in p.parts
