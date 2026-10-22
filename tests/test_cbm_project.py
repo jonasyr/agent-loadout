@@ -142,3 +142,16 @@ def test_no_project_line_without_the_binary_or_with_the_server_off(tmp_path):
     off = {"projects": {str(cwd): {"disabledMcpServers": ["plugin:loadout:codebase-memory-mcp"]}}}
     assert _run_cbm(tmp_path, ["session-start"], cwd, claude_json=off) == ""
     assert "indexed as project" in _run_cbm(tmp_path, ["session-start", "--agent", "codex"], cwd, claude_json=off)
+
+
+def test_a_colliding_default_name_of_another_root_is_not_this_folder(tmp_path):
+    # /x/a-b/c and /x/a/b-c both give the default name x-a-b-c: the index's own root_path decides
+    cache = _cache(tmp_path)
+    mine, other = tmp_path / "a" / "b-c", tmp_path / "a-b" / "c"
+    mine.mkdir(parents=True)
+    other.mkdir(parents=True)
+    name = str(mine).lstrip("/").replace("/", "-")
+    assert name == str(other).lstrip("/").replace("/", "-")
+    _db(cache / f"{name}.db", name, other)
+    assert _run(tmp_path, mine) is None
+    assert "indexed as project" in _run(tmp_path, other)["hookSpecificOutput"]["additionalContext"]

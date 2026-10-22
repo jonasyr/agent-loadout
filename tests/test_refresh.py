@@ -560,3 +560,18 @@ def test_stop_retries_a_noted_rewrite_in_another_repo(env, tmp_path):
     env["spawned"].clear()
     _stop(env)
     assert (str(other), False) in env["spawned"]
+
+
+def test_stop_finds_this_sessions_repo_among_many_state_files(env, tmp_path):
+    folder = env["home"] / ".local" / "state" / "loadout" / "cbm-refresh"
+    folder.mkdir(parents=True, exist_ok=True)
+    for i in range(80):  # other repos' state files that sort first
+        (folder / f"0000{i:03d}.json").write_text(json.dumps({"root": f"/gone/{i}", "changed": []}))
+    other = (tmp_path / "zz-other")
+    other.mkdir()
+    other = other.resolve()
+    st = {"root": str(other), "changed": [str(other / "a.py")], "session": "s1"}
+    (folder / "ffff-last.json").write_text(json.dumps(st))
+    env["spawned"].clear()
+    _stop(env)
+    assert (str(other), False) in env["spawned"]

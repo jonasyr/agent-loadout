@@ -137,9 +137,24 @@ def user_settings_files(cwd: str | None = None) -> list[tuple[str, "Path"]]:
             (".claude/settings.local.json", base / ".claude" / "settings.local.json")]
 
 
+def _split(command: str) -> list[str]:
+    """A hook command's words, a quoted path with spaces kept whole (shlex; plain split if it cannot parse)."""
+    import shlex
+    try:
+        return shlex.split(command.replace("\\", "/"))
+    except ValueError:
+        return command.split()
+
+
+def _program(word: str) -> str:
+    """A word's program name: its basename without quotes, either slash, or a Windows .exe/.cmd/.bat suffix."""
+    base = word.strip("'\"").replace("\\", "/").rsplit("/", 1)[-1]
+    return base[:-4] if base.lower().endswith((".exe", ".cmd", ".bat")) else base
+
+
 def _hook_words(hook: dict) -> list[str]:
     command = hook.get("command")
-    words = command.split() if isinstance(command, str) else []
+    words = _split(command) if isinstance(command, str) else []
     return words + [a for a in get_list(hook, "args") if isinstance(a, str)]
 
 
@@ -169,7 +184,7 @@ def runs_program(words: list[str], program: str, sub: str | None = None) -> bool
     """mcp_guard.users_hook_runs for one hook: a word whose basename is program, not right after echo/printf/#,
     and the first non-flag word after it is sub (when given)."""
     for i, w in enumerate(words):
-        if os.path.basename(w.strip("'\"")) != program or (i and words[i - 1] in NOT_A_RUN):
+        if _program(w) != program or (i and words[i - 1] in NOT_A_RUN):
             continue
         rest = [x for x in words[i + 1:] if not x.startswith("-")]
         if sub is None or rest[:1] == [sub]:

@@ -36,11 +36,25 @@ def default_name(cwd: str) -> str:
     return re.sub(r"-{2,}", "-", cwd.lstrip("/").replace("/", "-"))
 
 
+def _root_ok(db: Path, cwd: str) -> bool:
+    """The default-named index is this folder's: its recorded root is cwd, or it records none (two paths can
+    collapse to one default name, e.g. /a-b/c and /a/b-c)."""
+    try:
+        con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=0.2)
+        try:
+            roots = [r[0] for r in con.execute("select root_path from projects")]
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return True  # unreadable or no projects table: trust the name, as before
+    return not roots or cwd in roots
+
+
 def project_for(cwd: str, max_dbs: int = MAX_DBS) -> str | None:
     try:
         cache = cache_dir()
         default = default_name(cwd)
-        if (cache / f"{default}.db").is_file():
+        if (cache / f"{default}.db").is_file() and _root_ok(cache / f"{default}.db", cwd):
             return default
         for db in [d for d in sorted(cache.glob("*.db")) if d.name not in SKIP][:max_dbs]:
             if db.name in SKIP:

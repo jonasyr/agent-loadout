@@ -106,9 +106,24 @@ def available(server: str, agent: str, cwd: str, home: Path) -> bool:
     return codex_server_enabled(server, home) if agent == "codex" else server_available(server, cwd, home)
 
 
+def _split(command: str) -> list[str]:
+    """A hook command's words, a quoted path with spaces kept whole (shlex; plain split if it cannot parse)."""
+    import shlex
+    try:
+        return shlex.split(command.replace("\\", "/"))
+    except ValueError:
+        return command.split()
+
+
+def _program(word: str) -> str:
+    """A word's program name: its basename without quotes, either slash, or a Windows .exe/.cmd/.bat suffix."""
+    base = word.strip("'\"").replace("\\", "/").rsplit("/", 1)[-1]
+    return base[:-4] if base.lower().endswith((".exe", ".cmd", ".bat")) else base
+
+
 def _words(hook: dict) -> list[str]:
     command = hook.get("command")
-    words = command.split() if isinstance(command, str) else []
+    words = _split(command) if isinstance(command, str) else []
     return words + [a for a in _list(hook, "args") if isinstance(a, str)]
 
 
@@ -136,7 +151,7 @@ def users_hook_runs(event: str, argv: list[str], cwd: str, home: Path, tool: str
             for hook in _list(group, "hooks"):
                 words = _words(hook) if isinstance(hook, dict) else []
                 for i, w in enumerate(words):
-                    if os.path.basename(w.strip("'\"")) != program or (i and words[i - 1] in NOT_A_RUN):
+                    if _program(w) != program or (i and words[i - 1] in NOT_A_RUN):
                         continue
                     rest = [x for x in words[i + 1:] if not x.startswith("-")]  # flags may come first
                     if sub is None or rest[:1] == [sub]:

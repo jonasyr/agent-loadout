@@ -346,7 +346,7 @@ def handle(payload: dict) -> None:
                 due.add(root)
         if isinstance(session, str):  # this session's edits in other repos
             try:
-                for p in sorted(state_dir().glob("*.json"))[:64]:
+                for p in sorted(state_dir().glob("*.json")):  # all: pruning keeps the folder small
                     st = _load(p)
                     pending = _changed(st) or st.get("more") or st.get("noted") is True
                     if st.get("session") == session and pending and isinstance(st.get("root"), str):

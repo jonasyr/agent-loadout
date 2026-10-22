@@ -182,3 +182,9 @@ def test_a_users_narrower_matcher_silences_only_its_own_tools(env):
               "serena-hooks remind --client=claude-code", matcher="Grep")
     assert _run(env, _payload(env, tool="Grep")) is None  # the user's runs for Grep
     assert _run(env, _payload(env, tool="Bash"))  # not for Bash: the plugin's still reminds
+
+
+def test_a_quoted_path_with_spaces_is_one_program(env):
+    _settings(env["home"] / ".claude" / "settings.json", "PreToolUse",
+              '"C:\\Program Files\\Serena\\serena-hooks.exe" remind --client=claude-code')
+    assert _run(env, _payload(env)) is None
