@@ -7,7 +7,7 @@ loadout keeps itself current for Claude Code and Codex, so you should know what 
 | What | When | Who runs it |
 |---|---|---|
 | Plugin and marketplace updates, Claude Code | Whenever Claude Code decides: it updates plugins from `claude-plugins-official` (on by default) and from the marketplaces `settings.base.json` sets to `autoUpdate: true` (listed under [Marketplaces](../reference/included-tools.md#marketplaces)) | Claude Code |
-| Plugin refresh, Codex | After a daily pull that brought new commits, if Codex is on and the Codex CLI is installed (VS Code's Codex extension alone loads no plugins) | `maintenance._maintain`, through the Codex CLI |
+| Plugin refresh, Codex | After a daily pull that brought new commits, if Codex is on and a usable codex exists (the Codex CLI, or VS Code's Codex extension's own) | `maintenance._maintain`, through that codex |
 | The session hook, Claude Code | Start of every session | Claude Code runs `loadout hook-session-start` from the plugin's `hooks/hooks.json` |
 | The session hook, Codex | Start of every session of the Codex CLI, once you approved the plugin's hooks in `/hooks` (VS Code's Codex extension runs no plugin hooks; [At each session start](../reference/state-and-sync.md#at-each-session-start)) | Codex runs `loadout hook-session-start` from the plugin's `hooks/codex.json` |
 | Pull of the kit and the personal layer | At most once a day, in a detached background process started by the session hook | `maintenance._maintain` |
@@ -16,7 +16,7 @@ loadout keeps itself current for Claude Code and Codex, so you should know what 
 
 How the pull and the weekly check work, what they re-apply and how to turn them off: [The daily sync](../reference/state-and-sync.md#the-daily-sync). Tool binaries are updated only by [`loadout update`](../reference/cli.md#loadout-update), which shows each command and asks first.
 
-Both agents run loadout's code only through the plugin's hooks. Codex runs plugin hooks only after you approve them in `/hooks`, and asks again when they change; loadout never approves them for you. VS Code's Codex extension without the Codex CLI loads no plugins, so it runs none of loadout's code ([Codex in VS Code without the CLI](../how-to/vscode.md#codex-in-vs-code-without-the-cli)). A plugin can ship hooks, so a plugin update can run new code in your next session. Which hooks the loadout plugin ships is listed in [Hooks](../reference/hooks.md).
+Both agents run loadout's code only through the plugin's hooks. Codex runs plugin hooks only after you approve them (`/hooks` in the CLI), and asks again when they change; loadout never approves them for you. In VS Code's Codex extension you approve them in its own hook review (the hooks icon, then Allow all), and loadout does not write that approval either ([Codex in VS Code without the CLI](../how-to/vscode.md#codex-in-vs-code-without-the-cli)). A plugin can ship hooks, so a plugin update can run new code in your next session. Which hooks the loadout plugin ships is listed in [Hooks](../reference/hooks.md).
 
 ## What runs when you ask
 

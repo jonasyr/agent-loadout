@@ -58,8 +58,9 @@ Template:
 | [0030](0030-repo-files-follow-the-repos-agents.md) | Repo files follow the repo's agents | Accepted |
 | [0031](0031-repo-profile-entries-merge-three-way.md) | Profile entries in repo files merge three-way against a record | Accepted |
 | [0032](0032-vscode-extensions-are-a-surface-of-an-agent.md) | VS Code extensions are a surface of an agent | Accepted; amended by 0034 |
-| [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) | Codex set up for VS Code's Codex extension without its CLI | Accepted |
+| [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) | Codex set up for VS Code's Codex extension without its CLI | Accepted; plugins and hooks parts superseded by 0038 |
 | [0034](0034-vscode-extension-binaries-and-vscode-fixes.md) | The extensions' own binaries as runners, and VS Code fixes as asked-for plans | Accepted |
 | [0035](0035-loadout-update-brings-a-machine-current.md) | `loadout update` brings a machine current | Accepted |
 | [0036](0036-codex-tool-approvals-and-serena-approval.md) | Codex tool approvals stay yours, and Codex asks once about Serena's | Accepted |
 | [0037](0037-marketplaces-only-when-a-plugin-uses-them.md) | Marketplaces only when a plugin uses them | Accepted |
+| [0038](0038-codex-extension-loads-plugins-and-reviews-hooks.md) | VS Code's Codex extension loads plugins and reviews hooks itself | Accepted |

@@ -15,7 +15,7 @@ Blue boxes are loadout's own skills. Orange boxes are skills from plugins the ki
 
 The kit's rules make this the default path, not a suggestion you have to remember: `workflow.md` sends Claude through the process skills, and `tooling.md` routes each question to the right tool. Both are loaded in every session ([The loadout plugin](../reference/included-tools.md#the-loadout-plugin)).
 
-The full workflow runs in Claude Code (CLI or the Claude Code extension) and in the Codex CLI. VS Code's Codex extension without the Codex CLI loads no plugins and none of their hooks, so superpowers, loadout's skills and the hooks below are missing there; use the Codex CLI alongside it ([The Codex CLI alongside VS Code](../how-to/vscode.md#the-codex-cli-alongside-vs-code)).
+The full workflow runs in Claude Code (CLI or the Claude Code extension), in the Codex CLI and in VS Code's Codex extension. In the extension, approve the hooks once (the hooks icon in the prompt bar, then Allow all) before the hooks below run ([Codex in VS Code without the CLI](../how-to/vscode.md#codex-in-vs-code-without-the-cli)).
 
 ## Think first
 
@@ -27,11 +27,11 @@ The full workflow runs in Claude Code (CLI or the Claude Code extension) and in 
 - **Test-driven build.** superpowers' *test-driven-development* and *executing-plans* skills: write the failing test, watch it fail, make it pass, commit.
 - **Know the code.** Two MCP servers answer different questions ([ADR 0008](../adr/0008-code-intelligence-routed-by-rule.md)):
   - **[codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)** indexes the repo into a knowledge graph. It answers structure questions (who calls this, what does a change affect, what is dead code) in one query instead of many file reads.
-  - **[Serena](https://github.com/oraios/serena)** works on exact symbols: find a definition and its references, rename, replace a function body.
+  - **[Serena](https://github.com/oraios/serena)** works on exact symbols: find a definition and its references, rename, replace a function body. Commit its `.serena/project.yml` and `.serena/memories/`, so a teammate gets the same project setup and notes. Serena writes `.serena/.gitignore` itself, with `/cache` and `/project.local.yml` (your local overrides); leave those out of git, and add nothing else for them.
   - The **LSP plugins** ([pyright](https://github.com/microsoft/pyright), [typescript-language-server](https://github.com/typescript-language-server/typescript-language-server), [rust-analyzer](https://github.com/rust-lang/rust-analyzer), through [Anthropic's official plugins](https://github.com/anthropics/claude-plugins-official)) report type errors right after each edit, so Claude fixes them before it moves on. They exist for Claude Code only; in the Codex CLI the loadout plugin's type-check hook runs the language's checker on the changed files instead ([ADR 0024](../adr/0024-codex-parity-update-model.md)).
 - **Know the libraries.** **[Context7](https://github.com/upstash/context7)** fetches current documentation for a library or framework, and **[Microsoft Learn](https://github.com/MicrosoftDocs/mcp)** does the same for .NET, Azure and Windows. Claude uses them before web search and instead of its training data, which may be out of date.
 - **UI work.** **[frontend-design](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/frontend-design)** sets a distinctive direction, **[playwright-cli](https://github.com/microsoft/playwright-cli)** checks the result in a real browser at phone, tablet and desktop widths, and **[impeccable](https://github.com/pbakaus/impeccable)** audits and polishes it ([ADR 0009](../adr/0009-design-tooling-frontend-design-and-impeccable.md)). playwright-cli keeps screenshots and page snapshots on disk instead of in Claude's context, which is why it is the default over a browser MCP server ([ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md)).
-- **[rtk](https://github.com/rtk-ai/rtk)** (command-line tool) rewrites shell commands through a proxy that strips noise from their output, so test runs and git logs cost fewer tokens. A plugin hook applies it automatically (in Codex, in the Codex CLI only).
+- **[rtk](https://github.com/rtk-ai/rtk)** (command-line tool) rewrites shell commands through a proxy that strips noise from their output, so test runs and git logs cost fewer tokens. A plugin hook applies it automatically (in Codex, once the hooks are approved).
 
 ## Finish
 

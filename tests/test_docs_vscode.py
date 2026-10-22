@@ -1,7 +1,7 @@
 """The VS Code how-to names every check row loadout prints, and the ADR and index exist (spec Part 4)."""
 from pathlib import Path
 
-from loadout import check
+from loadout import codex
 
 ROOT = Path(__file__).resolve().parent.parent
 HOWTO = ROOT / "docs/how-to/vscode.md"
@@ -23,9 +23,12 @@ def test_adr_and_indexes_link_it():
     assert "`vscode.py`" in (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
 
-def test_the_gap_message_in_the_docs_matches_the_code():
-    assert "plugins do not load in VS Code's Codex extension" in check.CODEX_GAP
-    assert "plugins do not load" in HOWTO.read_text(encoding="utf-8")
+def test_the_hooks_wording_in_the_docs_matches_the_code():
+    text = HOWTO.read_text(encoding="utf-8")
+    assert "hooks icon" in codex.HOOKS_EXTENSION and "Allow all" in codex.HOOKS_EXTENSION
+    assert "hooks icon" in text and "Allow all" in text
+    assert "Trust Folder & Continue" in text
+    assert "plugins do not load" not in text
 
 
 def test_agent_page_and_configure_skill_ask_about_vscode():

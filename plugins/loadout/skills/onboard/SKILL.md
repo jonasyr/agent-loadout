@@ -47,5 +47,6 @@ Stop there. For the first feature, suggest `superpowers:brainstorming`.
 4. Leave an existing `.mcp.json` and `.claude/settings.json` unchanged; mention what they configure.
 5. Serena:
    - **No memories:** run Serena onboarding; keep each memory a 1–3 line summary linking into `docs/` if it exists, otherwise to `AGENTS.md` or the source files.
+   - **Git:** commit `.serena/project.yml` and `.serena/memories/`. Serena's own `.serena/.gitignore` (`/cache`, `/project.local.yml`) keeps the rest out; leave it as it is.
    - **Memories or docs already exist:** leave existing ones as they are and also recommend `/loadout:docs-audit` (`$loadout:docs-audit` in Codex).
 6. Show the diff and commit after approval (`docs: onboard repository for agents`).

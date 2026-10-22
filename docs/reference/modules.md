@@ -23,7 +23,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 
 | Module | What it does |
 |---|---|
-| `bootstrap.py` | `loadout bootstrap`: first-time setup and repair, safe to re-run. It also writes the PATH block for `--vscode-path` (`setup_vscode_path`) and asks about the Codex CLI next to VS Code's Codex extension. |
+| `bootstrap.py` | `loadout bootstrap`: first-time setup and repair, safe to re-run. It also writes the PATH block for `--vscode-path` (`setup_vscode_path`) and asks whether to install the optional Codex CLI next to VS Code's Codex extension. |
 | `answers.py` | Checks the `--answers` file that bootstrap reads when there is no terminal ([Set loadout up from inside an agent](../how-to/install-with-an-agent.md)). |
 | `adopt.py` | `loadout adopt`: moves an existing machine's setup onto the kit. |
 | `link.py` | Links the kit's and your rules, skills and hook scripts into `~/.claude` (or copies them when links do not work: copy mode), and puts `loadout` on `PATH`. |
@@ -79,7 +79,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 
 | Module | What it does |
 |---|---|
-| `codex.py` | Codex as a second target: the rules block in `AGENTS.md`, owned `config.toml` entries, plugins, skill links, the drift check. Without the Codex CLI, extension mode: it sets Codex up for VS Code's Codex extension and runs that extension's own `codex` for its `codex` commands, including `codex mcp remove`; plugins are skipped ([Use loadout with VS Code](../how-to/vscode.md)). |
+| `codex.py` | Codex as a second target: the rules block in `AGENTS.md`, owned `config.toml` entries, plugins, skill links, the drift check. `mode()` and `program()` pick the codex: the CLI, or without a usable one VS Code's Codex extension's own (extension mode), which gets the same setup, plugins included ([Use loadout with VS Code](../how-to/vscode.md)). |
 | `codex_hooks.py` | Serena's hooks as owned entries in `~/.codex/hooks.json` ([ADR 0028](../adr/0028-serena-codex-hooks-in-hooks-json.md)). |
 | `codex_project.py` | The Codex side of `init` and `profile`: the repo's `.codex/config.toml`, `.agents/skills` and plugins. |
 
