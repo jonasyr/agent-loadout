@@ -82,3 +82,11 @@ def test_extension_only_declined_is_a_clean_codex_setup(fake_home, fake_runner, 
     assert codex.HOOKS_EXTENSION in text  # Still to do names the extension's hooks icon
     assert not any(c[:1] == ["mise"] and "codex" in " ".join(c) for c in fake_runner.calls)  # the CLI was not installed
     assert "[FAIL] binary codex" not in text
+
+
+def test_help_does_not_say_plugins_and_hooks_need_the_cli(capsys):
+    from loadout.__main__ import build_parser
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["bootstrap", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "need the CLI" not in text and "optional Codex CLI" in text

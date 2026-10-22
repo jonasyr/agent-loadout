@@ -226,7 +226,7 @@ def _codex(cutoff: float) -> dict | None:
 
 
 def _hint_sessions(cutoff: float) -> int:
-    """Sessions whose last search or docs hint was shown inside the window (`hint_at`, written by the hook). The
+    """Sessions whose last docs hint was shown inside the window (`hint_at`, written by the hook). The
     hook keeps its state files for 7 days, so a longer window still counts only about the last week."""
     folder = paths.state_dir() / "tool-hint"
     n = 0

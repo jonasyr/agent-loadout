@@ -23,7 +23,7 @@ def rows(name):
 def test_row_names_users_equivalent_serena_hook(fake_home, fake_runner, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write(fake_home / ".claude" / "settings.json", MINE)
-    [r] = rows("Serena hooks")
+    [r] = rows("Serena hooks: yours in ~/.claude/settings.json; the plugin's copy stays silent")
     assert r.ok and r.detail == "yours in ~/.claude/settings.json; the plugin's copy stays silent"
     assert r.fix == "loadout configure own"
 
@@ -47,13 +47,14 @@ def test_exact_duplicate_server_is_not_a_second_server(fake_home, fake_runner, t
         "matcher": "Bash|Read|Grep|Glob|mcp__plugin_loadout_serena__.*|mcp__serena__.*", "hooks": [
             {"type": "command", "command": "serena-hooks remind --client=claude-code"}]}]}})
     assert not rows("Serena servers") and not rows("codebase-memory servers")
-    assert not rows("Serena hooks")  # an exact copy (event, matcher, command): `loadout update` removes it
+    assert not [r for r in check.run_checks() if r.name.startswith("Serena hooks")]  # an exact copy (event, matcher, command): `loadout update` removes it
 
 
 def test_rows_absent_in_default_setup(fake_home, fake_runner, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    names = {"Serena hooks", "Serena servers", "codebase-memory servers", "codebase-memory hooks"}
-    assert not names & {r.name for r in check.run_checks()}
+    names = {"Serena servers", "codebase-memory servers", "codebase-memory hooks"}
+    got = {r.name for r in check.run_checks()}
+    assert not names & got and not any(n.startswith("Serena hooks") for n in got)
 
 
 def test_cbm_second_server_row(fake_home, fake_runner, tmp_path, monkeypatch):
