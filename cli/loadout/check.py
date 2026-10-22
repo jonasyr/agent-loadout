@@ -275,6 +275,72 @@ def _mcp_path() -> list[CheckResult]:
                         f"open a new terminal, or add {', '.join(dirs)} to PATH", "warn")]
 
 
+def _is_serena_server(cfg: dict) -> bool:
+    command, args = cfg.get("command"), cfg.get("args")
+    if not isinstance(command, str):
+        return False
+    base = re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe")
+    args = [a for a in args if isinstance(a, str)] if isinstance(args, list) else []
+    return base in ("serena", "serena-agent") or (base in ("uvx", "uv") and any("serena" in a for a in args))
+
+
+def _is_cbm_server(cfg: dict) -> bool:
+    command = cfg.get("command")
+    return isinstance(command, str) and re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe") == "codebase-memory-mcp"
+
+
+def _user_servers(cwd: Path) -> list[tuple[str, dict, str, bool]]:
+    """(name, config, file, user scope) of the servers in ~/.claude.json (user and this folder's project scope)
+    and <cwd>/.mcp.json."""
+    config = load_json(paths.claude_json())
+    out = [(n, c, "~/.claude.json", True) for n, c in get_dict(config, "mcpServers").items() if isinstance(c, dict)]
+    projects = get_dict(config, "projects")
+    for folder in (cwd, *cwd.parents):
+        entry = next((projects[k] for k in (str(folder), folder.as_posix()) if k in projects), None)
+        if isinstance(entry, dict):
+            out += [(n, c, "~/.claude.json", False) for n, c in get_dict(entry, "mcpServers").items()
+                    if isinstance(c, dict)]
+            break
+    out += [(n, c, ".mcp.json", False) for n, c in get_dict(load_json(cwd / ".mcp.json"), "mcpServers").items()
+            if isinstance(c, dict)]
+    return out
+
+
+def _tool_setups() -> list[CheckResult]:
+    """Serena or codebase-memory run next to the plugin's: your own hooks, a second server. Read only; the
+    tools are never run."""
+    from . import duplicates
+    from .inventory import Item
+    out = []
+    try:
+        cwd = Path(os.path.abspath(Path.cwd()))
+        hooks = duplicates.equivalent_user_hooks(str(cwd))
+        if hooks:
+            files = ", ".join(dict.fromkeys(f for _, _, f in hooks))
+            out.append(CheckResult("Serena hooks", True, f"yours in {files}; the plugin's copy stays silent",
+                                   "loadout configure own", "warn"))
+        servers = _user_servers(cwd)
+        for label, test, tool in (("Serena", _is_serena_server, "serena"),
+                                  ("codebase-memory", _is_cbm_server, "codebase-memory-mcp")):
+            mine = [(n, f) for n, c, f, user in servers if test(c) and not (
+                user and duplicates.is_duplicate_mcp(Item("mcp", n, "", f, {"config": c})))]
+            if mine:
+                n, f = mine[0]
+                out.append(CheckResult(f"{label} servers", False,
+                                       f"two {label} servers: the plugin's and yours ({n} in {f})",
+                                       "loadout configure own", "warn"))
+        n_cbm = [(f, 1) for ev, words, f in duplicates.user_hooks(str(cwd)) if "hook-augment" in words]
+        if n_cbm:
+            files = ", ".join(dict.fromkeys(f for f, _ in n_cbm))
+            out.append(CheckResult(
+                "codebase-memory hooks", False,
+                f"codebase-memory's own hooks ({len(n_cbm)} in {files}) add up to 2 s per call and print nothing "
+                "in codebase-memory 0.12 (upstream #2683)", "loadout configure own (remove, or leave them)", "warn"))
+    except Exception:  # an odd file shape never breaks the report
+        return out
+    return out
+
+
 _CBM_LOG = "logs/daemon-conflicts.ndjson"
 _CBM_TAIL = 64 * 1024  # only the newest records matter; a huge log is never read whole
 _CBM_WINDOW = 24 * 3600
@@ -747,7 +813,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+            *_binaries(cs), *_mcp_path(), *(_tool_setups() if on else []), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

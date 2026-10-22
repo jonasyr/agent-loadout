@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from pathlib import Path
 
 from . import paths, runner
 from .inventory import Item
@@ -113,3 +114,78 @@ def would_refuse_undo(item: Item) -> bool:
         return False
     cfg = json.dumps(item.extra.get("config", {}))
     return runner.would_refuse(["claude", "mcp", "add-json", "-s", "user", item.name, cfg])
+
+
+NOT_A_RUN = frozenset({"echo", "printf", "#"})  # mirrors mcp_guard.NOT_A_RUN: `echo serena-hooks remind` mentions it
+
+
+def user_settings_files(cwd: str | None = None) -> list[tuple[str, "Path"]]:
+    """(label, path) of the Claude Code settings files whose hooks run next to the plugin's (mirrors mcp_guard)."""
+    base = Path(cwd) if cwd else Path.cwd()
+    return [("~/.claude/settings.json", paths.claude_home() / "settings.json"),
+            (".claude/settings.json", base / ".claude" / "settings.json"),
+            (".claude/settings.local.json", base / ".claude" / "settings.local.json")]
+
+
+def _hook_words(hook: dict) -> list[str]:
+    command = hook.get("command")
+    words = command.split() if isinstance(command, str) else []
+    return words + [a for a in get_list(hook, "args") if isinstance(a, str)]
+
+
+def user_hooks(cwd: str | None = None) -> list[tuple[str, list[str], str]]:
+    """(event, words, file label) of every hook in the user's and the project's Claude Code settings."""
+    out = []
+    for label, path in user_settings_files(cwd):
+        try:
+            data = load_json(path)
+        except Exception:
+            continue
+        for event, groups in get_dict(data, "hooks").items():
+            for group in get_list({"g": groups}, "g"):
+                for hook in get_list(group, "hooks"):
+                    if isinstance(hook, dict):
+                        out.append((event, _hook_words(hook), label))
+    return out
+
+
+def runs_program(words: list[str], program: str, sub: str | None = None) -> bool:
+    """mcp_guard.users_hook_runs for one hook: a word whose basename is program, not right after echo/printf/#,
+    and the first non-flag word after it is sub (when given)."""
+    for i, w in enumerate(words):
+        if os.path.basename(w.strip("'\"")) != program or (i and words[i - 1] in NOT_A_RUN):
+            continue
+        rest = [x for x in words[i + 1:] if not x.startswith("-")]
+        if sub is None or rest[:1] == [sub]:
+            return True
+    return False
+
+
+def plugin_guarded_hooks(program: str) -> list[tuple[str, str]]:
+    """(event, inner command) of the plugin's hooks that run <program> through the guard."""
+    out = []
+    hooks = get_dict(load_json(_plugin_dir() / "hooks" / "hooks.json"), "hooks")
+    for event, groups in hooks.items():
+        for group in get_list({"g": groups}, "g"):
+            for hook in get_list(group, "hooks"):
+                cmd = hook.get("command", "") if isinstance(hook, dict) else ""
+                inner = _norm(_RUN_SH.sub("", cmd)) if _RUN_SH.match(cmd) else ""
+                words = inner.split()
+                if words and os.path.basename(words[0]) == program:
+                    out.append((event, inner))
+    return out
+
+
+def equivalent_user_hooks(cwd: str | None = None) -> list[tuple[str, str, str]]:
+    """(event, command, file) of the user's own Serena hooks that make the plugin's guarded copy go silent
+    (mcp_guard.users_hook_runs). Exact duplicates of the plugin's are left out: `loadout update` removes them."""
+    found = []
+    for event, inner in plugin_guarded_hooks("serena-hooks"):
+        words = inner.split()
+        sub = next((w for w in words[1:] if not w.startswith("-")), None)
+        for ev, hwords, label in user_hooks(cwd):
+            if ev == event and runs_program(hwords, os.path.basename(words[0]), sub):
+                command = " ".join(hwords)
+                if not is_duplicate_hook(Item("hook", event, command, label, {})):
+                    found.append((event, command, label))
+    return found
