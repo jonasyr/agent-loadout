@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "loadout"
 SCRIPT = PLUGIN / "hooks" / "cbm_project.py"
 
@@ -131,6 +133,7 @@ def _run_cbm(tmp_path, args, cwd, path_bin=True, claude_json=None):
     return res.stdout.strip()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a shell-script stub and a POSIX default project name")
 def test_no_project_line_without_the_binary_or_with_the_server_off(tmp_path):
     cwd = tmp_path / "repo"
     cwd.mkdir()

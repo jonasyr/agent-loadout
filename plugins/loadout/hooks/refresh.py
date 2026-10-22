@@ -240,11 +240,12 @@ def _open(root: str, cwd: str) -> dict | None:
     state = _load(state_path(root))
     cache = state.get("cache")
     now = time.time()
-    if (isinstance(cache, dict) and cache.get("cwd") == cwd and isinstance(cache.get("at"), (int, float))
+    if (isinstance(cache, dict) and cache.get("cwd") == cwd and cache.get("agent") == AGENT
+            and isinstance(cache.get("at"), (int, float))
             and 0 <= now - cache["at"] < CACHE_TTL):
         return state if cache.get("ok") is True else None
     name = cbm_project.project_for(root, max_dbs=HOOK_MAX_DBS) if available(cwd) else None
-    state.update(root=root, cache={"at": now, "cwd": cwd, "ok": bool(name), "name": name})
+    state.update(root=root, cache={"at": now, "cwd": cwd, "agent": AGENT, "ok": bool(name), "name": name})
     state.setdefault("changed", [])
     _save_state(root, state)
     return state if name else None
@@ -256,14 +257,19 @@ def _session(state: dict, session: object) -> None:
 
 def _record(root: str, state: dict, files: list[str], session: object) -> None:
     changed = _changed(state)
+    touched = state.get("touched") if isinstance(state.get("touched"), dict) else {}
+    now = time.time()
     for f in files:
         if f in changed:
+            touched[f] = now  # edited again: a refresh that began before now must keep it
             continue
+        touched[f] = now
         if len(changed) < LIMIT:
             changed.append(f)
         else:
             state["more"] = time.time()  # more than LIMIT files changed: the list stops growing
     state["changed"] = changed
+    state["touched"] = {k: v for k, v in touched.items() if k in changed}
     _session(state, session)
     _save_state(root, state)
     if len(changed) >= LIMIT and not _failed_recently(state):
@@ -273,11 +279,8 @@ def _record(root: str, state: dict, files: list[str], session: object) -> None:
 def _note(root: str, state: dict, session: object, at: float | None = None) -> None:
     """Remember a shell command for the next Stop; `at` (a tree rewrite) also keeps it past a refresh that
     started before it, so a refresh still running cannot settle it away."""
-    if state.get("noted") is True and at is None:
-        return
     state["noted"] = True
-    if at is not None:
-        state["noted_at"] = at
+    state["noted_at"] = at if at is not None else time.time()  # a refresh that began before this keeps it
     _session(state, session)
     _save_state(root, state)
 
@@ -396,7 +399,10 @@ def _settle(root: str, done: list[str], head: str | None, status: str | None, la
     drop a failure that no longer holds (codebase-memory watches the repo itself)."""
     path = state_path(root)
     state = _load(path)
-    state["changed"] = [f for f in _changed(state) if f not in done]
+    touched = state.get("touched") if isinstance(state.get("touched"), dict) else {}
+    later = {f for f, t in touched.items() if isinstance(t, (int, float)) and t > started}
+    state["changed"] = [f for f in _changed(state) if f not in done or f in later]  # edits after the start stay
+    state["touched"] = {f: t for f, t in touched.items() if f in state["changed"]}
     more = state.get("more")
     if not (isinstance(more, (int, float)) and more > started):
         state.pop("more", None)  # an overflow from before this refresh is covered by it

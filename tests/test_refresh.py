@@ -515,3 +515,25 @@ def test_a_rewrite_during_a_running_refresh_is_kept_for_stop(env):
     env["spawned"].clear()
     _stop(env)
     assert env["spawned"] == [(str(env["repo"]), False)]
+
+
+def test_work_after_a_refresh_began_survives_its_settle(env):
+    _edit(env, env["repo"] / "a.py")
+    started = time.time()
+    time.sleep(0.01)
+    _edit(env, env["repo"] / "a.py")  # edited again while the child indexes
+    _bash(env, "ls")  # and an ordinary command while it runs
+    env["mod"]._settle(str(env["repo"]), [str(env["repo"] / "a.py")], "aaa", "x", None, started)
+    st = _state(env)
+    assert st["changed"] == [str(env["repo"] / "a.py")] and st["noted"] is True
+
+
+def test_the_verdict_cache_is_per_agent(env, monkeypatch):
+    (env["home"] / ".claude.json").write_text(json.dumps(
+        {"projects": {str(env["repo"]): {"disabledMcpServers": ["plugin:loadout:codebase-memory-mcp"]}}}))
+    monkeypatch.setattr(env["mod"], "AGENT", "codex")
+    _edit(env, env["repo"] / "a.py")
+    assert _state(env)["changed"] == [str(env["repo"] / "a.py")]
+    monkeypatch.setattr(env["mod"], "AGENT", "claude")  # Claude Code has it off here: Codex's verdict must not count
+    _edit(env, env["repo"] / "b.py")
+    assert str(env["repo"] / "b.py") not in _state(env)["changed"]
