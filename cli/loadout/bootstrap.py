@@ -1113,7 +1113,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         steps.print_pending(here["claude"], chosen["codex"], skip={"codex/hooks"}, show_codex=here["codex"])
     except Exception:
         pass
-    extension = here["codex"] and not runner.have("codex") and codex.extension_state()[0] is not None
+    extension = here["codex"] and codex.mode() == "extension"
     claude_ext = here["claude"] and claude_bundled is not None and not runner.have("claude")
     run = " or ".join(f"`{a}`" for a in ("claude", "codex")
                       if here[a] and not (a == "claude" and claude_ext) and (a == "claude" or not extension))

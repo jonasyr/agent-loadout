@@ -41,6 +41,25 @@ CLI_OPTIONAL = "not installed (optional: VS Code's Codex extension runs its own)
 CLI_UNUSABLE = "{why}; loadout uses VS Code's Codex extension's codex instead"
 
 
+_CLI_VERSIONS: dict = {}  # (path, mtime, size) -> the `codex --version` match: one run per binary per process
+
+
+def _cli_version(found: str | None):
+    """The version match of the codex on PATH, asked once per binary that did not change (mode() runs per command)."""
+    try:
+        st = os.stat(found) if found else None
+        key = (found, st.st_mtime_ns, st.st_size) if st else None
+    except OSError:
+        key = None
+    if key is not None and key in _CLI_VERSIONS:
+        return _CLI_VERSIONS[key]
+    res = runner.run(["codex", "--version"], timeout=20)
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
+    if key is not None:
+        _CLI_VERSIONS[key] = m
+    return m
+
+
 def cli_problem() -> str | None:
     """Why the codex on PATH cannot be used (the Windows one in WSL, no version, too old); None when it is usable or
     there is none."""
@@ -52,8 +71,7 @@ def cli_problem() -> str | None:
         # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
         return (f"{WINDOWS_CODEX} ({found}): run bootstrap with --install to install Codex in "
                 "WSL, or set loadout up on Windows (docs/how-to/wsl.md#codex)")
-    res = runner.run(["codex", "--version"], timeout=20)
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
+    m = _cli_version(found)
     if not m:
         return NO_VERSION
     if (int(m.group(1)), int(m.group(2))) < MIN_VERSION:
@@ -1982,12 +2000,13 @@ def hooks_status(remember: bool = False) -> str | None:
     current = {k: v.get("trusted_hash") for k, v in state.items()
                if (k.startswith(HOOK_PLUGIN + ":") or k.startswith(in_file)) and isinstance(v, dict)
                and v.get("trusted_hash")}
-    if not (set(serena) | (hook_keys() if _plugin_hooks_on(data) else set())) <= set(current):
+    plugin_on = _plugin_hooks_on(data)
+    if not (set(serena) | (hook_keys() if plugin_on else set())) <= set(current):
         return "untrusted"
     digest, seen = _hooks_digest(), load_json(_hooks_record())
     plugin_now = {k: v for k, v in current.items() if k.startswith(HOOK_PLUGIN + ":")}
     plugin_seen = {k: v for k, v in get_dict(seen, "hashes").items() if k.startswith(HOOK_PLUGIN + ":")}
-    if seen.get("digest") not in (None, digest) and plugin_seen == plugin_now:
+    if plugin_on and seen.get("digest") not in (None, digest) and plugin_seen == plugin_now:  # off: they cannot run
         return "changed"
     # a Serena key whose content changed (edited, or another hook moved onto it) is approved again only when Codex
     # stored a new hash for it; the old hash belongs to what was there before
