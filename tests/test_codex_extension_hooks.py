@@ -15,7 +15,7 @@ def _serena_key():
 
 
 def _trust(keys, plugin_on=True):
-    lines = (['[plugins."loadout@agent-loadout"]', "enabled = true", ""] if plugin_on else []) + ["[hooks.state]"] + [f'"{k}" = {{ trusted_hash = "h{i}" }}' for i, k in enumerate(keys)]
+    lines = (['[plugins."loadout@agent-loadout"]', "enabled = true", ""] if plugin_on else []) + ["[hooks.state]"] + [f'{codex.toml_value(k)} = {{ trusted_hash = "h{i}" }}' for i, k in enumerate(keys)]
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n")

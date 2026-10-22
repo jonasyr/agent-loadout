@@ -2014,7 +2014,10 @@ def hooks_status(remember: bool = False) -> str | None:
     if any(k in seen_hashes and seen_items.get(k) != content and seen_hashes[k] == current.get(k)
            for k, content in serena.items()):
         return "changed"
-    record = {"digest": digest, "hashes": current, "serena": serena}
+    # while the plugin is off its hooks cannot run: keep the digest last approved, so a change made meanwhile is
+    # still asked about once it is on again
+    kept = digest if plugin_on or seen.get("digest") is None else seen.get("digest")
+    record = {"digest": kept, "hashes": current, "serena": serena}
     if remember and seen != record:
         _hooks_record().parent.mkdir(parents=True, exist_ok=True)
         save_json(_hooks_record(), record)

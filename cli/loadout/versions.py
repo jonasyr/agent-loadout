@@ -21,13 +21,15 @@ class Version(tuple):
         return self
 
     def _key(self):
-        return (tuple(self), 0 if self.pre else 1, self.pre)
+        # semver: dot-separated identifiers, numbers compared as numbers and before words (alpha.2 < alpha.10)
+        ids = tuple((0, int(i), "") if i.isdigit() else (1, 0, i) for i in self.pre.split(".")) if self.pre else ()
+        return (tuple(self), 0 if self.pre else 1, ids)
 
     @staticmethod
     def _other_key(other):
         if isinstance(other, Version):
             return other._key()
-        return (tuple(other), 1, "")
+        return (tuple(other), 1, ())
 
     def __eq__(self, other):
         if not isinstance(other, tuple):
