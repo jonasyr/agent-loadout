@@ -63,3 +63,50 @@ def test_marketplace_lists_kit_core_without_version():
     assert market["plugins"][0]["source"] == "./plugins/loadout"
     plugin = json.loads((PLUGIN / ".claude-plugin/plugin.json").read_text())
     assert "version" not in plugin and "version" not in market["plugins"][0]
+
+
+GUARD = '"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" --soft --python "${CLAUDE_PLUGIN_ROOT}/hooks/mcp_guard.py" serena '
+
+
+def _groups(event):
+    return json.loads((PLUGIN / "hooks/hooks.json").read_text())["hooks"].get(event, [])
+
+
+def _guarded(event, inner):
+    return [(g["matcher"], h) for g in _groups(event) for h in g["hooks"] if h["command"] == GUARD + inner]
+
+
+def test_claude_hooks_match_serena_docs():
+    # Serena's documented Claude Code hooks (oraios.github.io/serena/02-usage/030_clients.html), each once, guarded
+    serena = "mcp__plugin_loadout_serena__.*|mcp__serena__.*"
+    assert [m for m, _ in _guarded("SessionStart", "serena-hooks activate --client=claude-code")] == [""]
+    assert [m for m, _ in _guarded("SessionEnd", "serena-hooks cleanup --client=claude-code")] == [""]
+    assert [m for m, _ in _guarded("PreToolUse", "serena-hooks auto-approve --client=claude-code")] == [serena]
+    assert [m for m, _ in _guarded("PreToolUse", "serena-hooks remind --client=claude-code")] == \
+        ["Bash|Read|Grep|Glob|" + serena]
+    assert not [c for c in _commands() if "serena-hooks" in c and not c.startswith(GUARD)]
+    timeouts = {inner: h["timeout"] for ev, inner in (("SessionStart", "serena-hooks activate --client=claude-code"),
+                                                      ("SessionEnd", "serena-hooks cleanup --client=claude-code"),
+                                                      ("PreToolUse", "serena-hooks remind --client=claude-code"))
+                for _, h in _guarded(ev, inner)}
+    assert list(timeouts.values()) == [15, 10, 5]
+
+
+def test_remind_matcher_covers_windows_tools():
+    import re
+    (matcher, _), = _guarded("PreToolUse", "serena-hooks remind --client=claude-code")
+    for tool in ("Grep", "Glob", "Read", "Bash", "mcp__serena__find_symbol", "mcp__plugin_loadout_serena__find_symbol"):
+        assert re.fullmatch(matcher, tool), tool
+    for tool in ("Edit", "WebSearch", "mcp__plugin_loadout_codebase-memory-mcp__search_graph"):
+        assert not re.fullmatch(matcher, tool), tool
+
+
+def test_cbm_hook_augment_is_not_wired():
+    # codebase-memory 0.12.1's hook-augment exceeds its own 2 s deadline and prints nothing (upstream #2683, #2441)
+    for name in ("hooks.json", "codex.json"):
+        assert "hook-augment" not in (PLUGIN / "hooks" / name).read_text()
+
+
+def test_plugin_servers_always_load():
+    servers = json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]
+    assert servers["serena"]["alwaysLoad"] is True and servers["codebase-memory-mcp"]["alwaysLoad"] is True

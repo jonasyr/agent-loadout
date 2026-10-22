@@ -16,7 +16,8 @@ from .jsonio import get_dict, get_list, load_json
 PLUGIN_ID = "loadout@agent-loadout"
 # script files older codebase-memory-mcp installers put into ~/.claude/hooks (the kit replaces them)
 LEGACY_SCRIPTS = {"cbm-code-discovery-gate", "cbm-session-reminder", "cbm-subagent-reminder"}
-_RUN_SH = re.compile(r'^"?\$\{CLAUDE_PLUGIN_ROOT\}/hooks/run\.sh"?\s+(?:--soft\s+)?')
+_RUN_SH = re.compile(r'^"?\$\{CLAUDE_PLUGIN_ROOT\}/hooks/run\.sh"?\s+(?:--soft\s+)?'
+                     r'(?:--python\s+"?\$\{CLAUDE_PLUGIN_ROOT\}/hooks/mcp_guard\.py"?\s+\S+\s+)?')  # the guard's server
 
 
 def _plugin_dir():

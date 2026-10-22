@@ -219,3 +219,10 @@ def test_server_with_own_env_or_type_is_not_a_duplicate(fake_home, fake_runner, 
                          "codebase-memory-mcp": {"type": "http", "command": CBM}})
     _run_update(fake_home, fake_runner, monkeypatch, side_effects=False)
     assert _removed(fake_runner) == []
+
+
+def test_guarded_plugin_hook_counts_as_duplicate(fake_home):
+    from loadout import duplicates
+    assert "serena-hooks remind --client=claude-code" in duplicates.plugin_hook_commands()
+    assert duplicates.is_duplicate_hook(_hook_item("serena-hooks remind --client=claude-code"))
+    assert not duplicates.is_duplicate_hook(_hook_item("serena-hooks remind"))  # equivalent, not exact: the user's
