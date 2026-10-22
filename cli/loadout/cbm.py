@@ -43,40 +43,66 @@ def current() -> bool | None:
     return words[-1] == "true" if words else None
 
 
-def _ours() -> bool:
+def _record() -> str | None:
+    """loadout's record: "true" (loadout turned auto_index on) or "yours" (you changed it after that)."""
     try:
         data = load_json(record_path())
     except InvalidJSON:
-        return False
-    return isinstance(data, dict) and data.get("set") == "true"
+        return None
+    value = data.get("set") if isinstance(data, dict) else None
+    return value if value in ("true", "yours") else None
+
+
+def _ours() -> bool:
+    return _record() == "true"
+
+
+def _write_record(bk, value: str | None) -> None:
+    """Change loadout's record with a backup first; None drops it."""
+    if record_path().exists():
+        bk.save_copy(record_path(), "loadout's codebase-memory auto_index record before it changed")
+    else:
+        bk.record_created(record_path(), "created loadout's codebase-memory auto_index record")
+    if value is None:
+        record_path().unlink(missing_ok=True)
+    else:
+        save_json(record_path(), {"set": value})
 
 
 def apply_auto_index(bk, dry: bool = False) -> list[str]:
     given = answer()
     now, want = current(), given == "on"
-    if given is None or now is None or now == want:
+    if given is None or now is None:
         return []
-    ours = _ours()
+    record = _record()
+    if now == want:
+        if not want and record == "true" and not dry:
+            _write_record(bk, None)  # the value is off anyway: nothing of loadout's is left to own
+        return []
     if want:
-        if ours:  # we set it true and it is false now: the person changed it
+        if record == "true" and not dry:
+            _write_record(bk, "yours")  # we set it true and it is false now: you changed it, it stays yours
+        if record:
             return [LINE_YOURS]
         if not dry:
             if not _set(bk, "true", "false"):
                 return ["codebase-memory: could not set auto_index (config set failed)"]
-            bk.record_created(record_path(), "created loadout's codebase-memory auto_index record")
-            save_json(record_path(), {"set": "true"})
+            _write_record(bk, "true")
         return [LINE_ON]
-    if not ours:  # true, and not loadout's: the person's own value
+    if record != "true":  # true, and not loadout's: your own value
         return []
     if not dry:
         if not _set(bk, "false", "true"):
             return ["codebase-memory: could not set auto_index (config set failed)"]
-        bk.save_copy(record_path(), "loadout's codebase-memory auto_index record before it was dropped")
-        record_path().unlink()
+        _write_record(bk, None)
     return [LINE_OFF]
 
 
 def _set(bk, value: str, old: str) -> bool:
     """The undo is in the backup before the command runs."""
     bk.record_command(f"codebase-memory auto_index set to {value}", [BINARY, "config", "set", "auto_index", old])
-    return runner.run([BINARY, "config", "set", "auto_index", value], timeout=30).ok
+    if runner.run([BINARY, "config", "set", "auto_index", value], timeout=30).ok:
+        return True
+    bk.steps.pop()  # nothing changed: no undo may run later (as Backup.move does on a failed move)
+    bk._save()
+    return False

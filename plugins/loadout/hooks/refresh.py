@@ -270,10 +270,14 @@ def _record(root: str, state: dict, files: list[str], session: object) -> None:
         spawn(root)
 
 
-def _note(root: str, state: dict, session: object) -> None:
-    if state.get("noted") is True:
+def _note(root: str, state: dict, session: object, at: float | None = None) -> None:
+    """Remember a shell command for the next Stop; `at` (a tree rewrite) also keeps it past a refresh that
+    started before it, so a refresh still running cannot settle it away."""
+    if state.get("noted") is True and at is None:
         return
     state["noted"] = True
+    if at is not None:
+        state["noted_at"] = at
     _session(state, session)
     _save_state(root, state)
 
@@ -292,8 +296,10 @@ def handle(payload: dict) -> None:
             state = _open(root, cwd) if root else None
             if state is None:
                 return
-            if rewrites_tree(tool_input.get("command")) and not _failed_recently(state):
-                spawn(root, now=True)
+            if rewrites_tree(tool_input.get("command")):
+                _note(root, state, session, at=time.time())  # first: a refresh still running cannot drop it
+                if not _failed_recently(state):
+                    spawn(root, now=True)
             else:
                 _note(root, state, session)  # after a recent failure, the rewrite waits for Stop
             return
@@ -394,7 +400,12 @@ def _settle(root: str, done: list[str], head: str | None, status: str | None, la
     more = state.get("more")
     if not (isinstance(more, (int, float)) and more > started):
         state.pop("more", None)  # an overflow from before this refresh is covered by it
-    state.update(root=root, noted=False, head=head, status=status)
+    noted_at = state.get("noted_at")
+    if isinstance(noted_at, (int, float)) and noted_at > started:
+        state.update(root=root, head=head, status=status)  # a rewrite after this refresh began: Stop runs again
+    else:
+        state.pop("noted_at", None)
+        state.update(root=root, noted=False, head=head, status=status)
     if last is not None:
         state["last"] = last
     elif clear:

@@ -11,8 +11,20 @@ PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "loadout"
 SCRIPT = PLUGIN / "hooks" / "cbm_project.py"
 
 
+def _stub_bin(tmp_path):
+    """A codebase-memory-mcp on PATH: the hook points only to a tool the agent has (CI machines have none)."""
+    bindir = tmp_path / "stub-bin"
+    bindir.mkdir(exist_ok=True)
+    stub = bindir / ("codebase-memory-mcp.cmd" if os.name == "nt" else "codebase-memory-mcp")
+    stub.write_text("@echo off\n" if os.name == "nt" else "#!/bin/sh\n")
+    stub.chmod(0o755)
+    return bindir
+
+
 def _run(tmp_path, cwd, event="session-start", raw=None, extra_env=None):
-    env = {"HOME": str(tmp_path / "home"), "PATH": os.environ.get("PATH", "")}
+    path = f"{_stub_bin(tmp_path)}{os.pathsep}{os.environ.get('PATH', '')}"
+    env = {"HOME": str(tmp_path / "home"), "PATH": path, **({"PATHEXT": os.environ["PATHEXT"]}
+                                                             if "PATHEXT" in os.environ else {})}
     env.update(extra_env or {})
     res = subprocess.run([sys.executable, str(SCRIPT), event], input=raw if raw is not None else json.dumps({"cwd": str(cwd)}),
                          env=env, capture_output=True, text=True, timeout=20)

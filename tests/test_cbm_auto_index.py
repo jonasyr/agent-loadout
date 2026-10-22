@@ -47,7 +47,8 @@ def test_auto_index_respects_users_own_value(fake_home, fake_runner):
     _value(fake_runner, "false\n")
     bk = backup.Backup(description="t")
     assert cbm.apply_auto_index(bk) == ["codebase-memory: auto_index off (yours)"]
-    assert _sets(fake_runner) == [] and bk.empty
+    assert _sets(fake_runner) == [] and not [s for s in bk.steps if "run" in s["undo"]]
+    assert json.loads(_record().read_text(encoding="utf-8")) == {"set": "yours"}  # handed back, for good
 
 
 def test_auto_index_off_answer_reverts_only_ours(fake_home, fake_runner):
@@ -132,3 +133,38 @@ def test_configure_set_pref_choice_off_reverts_ours_at_once(fake_home, fake_runn
     fake_runner.calls.clear()
     assert main(["configure", "set", "pref-choice", "cbm_auto_index", "off"]) == 0
     assert SET_FALSE in fake_runner.calls and not _record().exists()
+
+
+def test_a_failed_set_leaves_no_undo_step(fake_home, fake_runner):
+    _value(fake_runner, "false\n")
+    fake_runner.responses[tuple(SET_TRUE)] = runner.Result(1, "", "boom")
+    bk = backup.Backup(description="t")
+    assert cbm.apply_auto_index(bk) == ["codebase-memory: could not set auto_index (config set failed)"]
+    assert bk.empty and not _record().exists()
+    manifest = bk.root / "manifest.json"
+    assert not manifest.exists() or json.loads(manifest.read_text(encoding="utf-8"))["steps"] == []
+
+
+def test_your_override_is_handed_back_to_you_for_good(fake_home, fake_runner):
+    # loadout turned it on; you turned it off: from then on it is yours, whatever the answer says later
+    _value(fake_runner, "false\n")
+    cbm.apply_auto_index(backup.Backup(description="t"))
+    _value(fake_runner, "false\n")  # you: off
+    assert cbm.apply_auto_index(backup.Backup(description="t")) == [cbm.LINE_YOURS]
+    _value(fake_runner, "true\n")  # you: on again, by hand
+    _answer("off")
+    fake_runner.calls.clear()
+    assert cbm.apply_auto_index(backup.Backup(description="t")) == []
+    assert _sets(fake_runner) == []  # your manual `true` stays
+
+
+def test_matching_off_answer_drops_a_stale_record(fake_home, fake_runner):
+    _value(fake_runner, "false\n")
+    cbm.apply_auto_index(backup.Backup(description="t"))
+    _value(fake_runner, "false\n")  # you turned it off, and your answer is off too
+    _answer("off")
+    assert cbm.apply_auto_index(backup.Backup(description="t")) == []
+    _value(fake_runner, "true\n")  # later you turn it on by hand
+    fake_runner.calls.clear()
+    assert cbm.apply_auto_index(backup.Backup(description="t")) == []
+    assert _sets(fake_runner) == []

@@ -106,7 +106,7 @@ In Codex the `me.md` line reaches the agent through the instruction block, but t
 `cbm_auto_index: on` runs `codebase-memory-mcp config set auto_index true`, so codebase-memory indexes a new git repo at its first session (up to its `auto_index_limit`, 50 000 files); afterwards its watcher or [loadout's refresh](hooks.md#the-code-graph-refresh) keeps it current. It applies to both agents and needs `codebase-memory-mcp` on `PATH`; with it missing, or with both agents off, nothing happens.
 
 - loadout sets the value only from `false` to `true`. It records that in `cbm-auto-index.json` in [its state folder](state-and-sync.md), and puts the undo (`config set auto_index false`) in the backup first, so `loadout restore` replays it. Restore runs exactly these two `config set auto_index` forms and nothing else.
-- A value you set back to `false` after loadout set it `true` stays yours: `loadout check` shows `off (yours)`, and loadout does not turn it on again.
+- A value you set back to `false` after loadout set it `true` stays yours, for good: loadout records that (`cbm-auto-index.json` holds `yours`), `loadout check` shows `off (yours)`, and loadout never changes `auto_index` again, whatever you later set or answer. A failed `config set` leaves no undo step behind.
 - The answer `off` reverts only loadout's own change. A `true` you set yourself is left alone.
 - codebase-memory's default is `false`. A `false` you set before loadout therefore looks like the default, and loadout turns it on once (undoable).
 - If `loadout.json` cannot be read, the answer is unknown and nothing changes.

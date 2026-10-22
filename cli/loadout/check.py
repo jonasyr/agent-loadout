@@ -267,7 +267,7 @@ def _cbm_auto_index() -> list[CheckResult]:
         detail = "on"
     elif cbm.answer() == "off":
         detail = "off (your answer)"
-    elif cbm._ours():
+    elif cbm._record():  # loadout turned it on and you turned it off
         detail = "off (yours)"
     else:
         detail = "off (loadout turns it on at the next update)"

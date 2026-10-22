@@ -504,3 +504,14 @@ def test_codex_refresh_ignores_claude_codes_switch(env, monkeypatch):
         f.unlink()
     _edit(env, env["repo"] / "a.py")
     assert _state(env)["changed"] == [str(env["repo"] / "a.py")]
+
+
+def test_a_rewrite_during_a_running_refresh_is_kept_for_stop(env):
+    started = time.time() - 5  # a child is indexing since 5 s and holds the lock
+    _bash(env, "git checkout -b feature")  # its spawn exits at the lock: the rewrite must be remembered
+    assert env["spawned"] == [(str(env["repo"]), True)] and _state(env)["noted"] is True
+    env["mod"]._settle(str(env["repo"]), [], "aaa", "x", None, started)  # the older child settles afterwards
+    assert _state(env)["noted"] is True
+    env["spawned"].clear()
+    _stop(env)
+    assert env["spawned"] == [(str(env["repo"]), False)]
