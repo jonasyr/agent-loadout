@@ -476,6 +476,8 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem]
         _show(apply.link_step(bk, claude_on), summary)
         if claude_on:
             _show(apply.settings_step(bk, on=True), summary)
+    if reapply and (claude_on or codex_ok):
+        _show(apply.cbm_step(bk), summary)
     install = next((i for i in chosen if i.kind == "claude-plugin-install" and i.planned), None)
     if claude_on and install is not None:
         with out.step("Claude Code plugins") as st:

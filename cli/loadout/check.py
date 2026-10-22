@@ -256,6 +256,16 @@ def _binaries(cs=None) -> list[CheckResult]:
     return out
 
 
+def _cbm_auto_index() -> list[CheckResult]:
+    """The cbm_auto_index row; none without codebase-memory-mcp."""
+    from . import cbm
+    now = cbm.current()
+    if now is None:
+        return []
+    detail = "on" if now else "off (your answer)" if cbm.answer() == "off" else "off (yours)"
+    return [CheckResult("codebase-memory auto_index", True, detail, "", "warn")]
+
+
 def _mcp_path() -> list[CheckResult]:
     """Claude Code starts the plugin's servers by name, so a new terminal's PATH must find them."""
     hidden, absent = {}, False
@@ -813,7 +823,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *(_tool_setups() if on else []), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

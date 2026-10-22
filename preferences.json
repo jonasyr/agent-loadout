@@ -342,6 +342,28 @@
       "target": {
         "loadout": "codex.serena_approval"
       }
+    },
+    {
+      "id": "cbm_auto_index",
+      "agents": [
+        "claude",
+        "codex"
+      ],
+      "question": "Should codebase-memory index a new git repo by itself the first time a session opens it? (up to 50 000 files; afterwards its watcher keeps it current)",
+      "options": [
+        {
+          "value": "on",
+          "label": "yes"
+        },
+        {
+          "value": "off",
+          "label": "no, I index repos myself"
+        }
+      ],
+      "default": "on",
+      "target": {
+        "loadout": "cbm.auto_index"
+      }
     }
   ]
 }

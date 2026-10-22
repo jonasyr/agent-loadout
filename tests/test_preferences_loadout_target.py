@@ -43,6 +43,11 @@ def test_the_preference_and_its_question():
     assert paths.personal_loadout_json() == paths.personal_root() / "loadout.json"
 
 
+def _codex_file() -> dict:
+    """The codex section of loadout.json ({} when the file or the section is missing)."""
+    return json.loads(_file().read_text(encoding="utf-8")).get("codex", {}) if _file().exists() else {}
+
+
 def test_round_trip_keeps_unknown_keys(fake_home, codex_on):
     _file().parent.mkdir(parents=True)
     _file().write_text(json.dumps({"other": 1, "codex": {"later": [2]}}), encoding="utf-8")
@@ -90,7 +95,7 @@ def test_codex_off_is_not_asked_in_configure_prefs(fake_home, codex_off):
     ask, asked = _asker()
     preferences.ask_all(ask, fill_defaults=True, interactive=True)
     assert not any(q.startswith(PID) for q in asked)
-    assert not _file().exists()
+    assert not _codex_file()  # cbm_auto_index, which both agents get, may write its own key
     assert not any(PID in line for line in preferences.show_lines())
 
 
@@ -117,14 +122,14 @@ def test_codex_off_answers_file_is_not_applied(tmp_path, fake_home, codex_off):
     given = answers.load(f).prefs
     assert given == {PID: ("approve", "")}
     preferences.ask_all(lambda q: "", fill_defaults=True, interactive=False, given=given)
-    assert not _file().exists()
+    assert not _codex_file()  # cbm_auto_index, which both agents get, may write its own key
 
 
 def test_codex_on_answers_file_is_applied(tmp_path, fake_home, codex_on):
     f = tmp_path / "answers.json"
     f.write_text(json.dumps({"preferences": {PID: "approve"}}), encoding="utf-8")
     preferences.ask_all(lambda q: "", fill_defaults=True, interactive=False, given=answers.load(f).prefs)
-    assert json.loads(_file().read_text(encoding="utf-8")) == {"codex": {"serena_approval": "approve"}}
+    assert _codex_file() == {"serena_approval": "approve"}
 
 
 def test_bootstrap_starter_with_codex_off_does_not_ask(fake_home, fake_runner, codex_off):
@@ -132,7 +137,7 @@ def test_bootstrap_starter_with_codex_off_does_not_ask(fake_home, fake_runner, c
     bootstrap.ensure_personal(ask, interactive=True)
     assert any(q.startswith("answer_language") for q in asked)
     assert not any(q.startswith(PID) for q in asked)
-    assert not _file().exists()
+    assert not _codex_file()  # cbm_auto_index, which both agents get, may write its own key
 
 
 def test_bootstrap_starter_with_codex_on_asks(fake_home, fake_runner, codex_on):

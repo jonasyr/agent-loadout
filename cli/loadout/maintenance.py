@@ -371,6 +371,15 @@ def _maintain(now: float) -> None:
                                f"(undo: loadout restore {bk.root})")
                 except Exception as exc:  # never crash in the background; surface next session
                     notify(f"loadout: could not link after sync: {exc}")
+            try:  # installs nothing, so the sync runs it
+                from . import apply as apply_steps
+                bk = Backup(description="maintenance: codebase-memory auto_index")
+                for line in apply_steps.cbm_step(bk).lines:
+                    notify(f"loadout: {line}")
+                if not bk.empty:
+                    notify(f"loadout: codebase-memory auto_index changed (undo: loadout restore {bk.root})")
+            except Exception as exc:  # never crash in the background; surface next session
+                notify(f"loadout: could not apply codebase-memory auto_index: {exc}")
             try:
                 from . import codex
                 if codex.enabled() and codex.unavailable() is None:

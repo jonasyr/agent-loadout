@@ -185,6 +185,8 @@ def _allowed_run(cmd) -> bool:
         return n == 5
     if cmd[:3] == ["codex", "plugin", "remove"]:
         return n == 4
+    if cmd[:4] == ["codebase-memory-mcp", "config", "set", "auto_index"]:  # cbm.apply_auto_index (cbm_auto_index)
+        return n == 5 and cmd[4] in ("true", "false")
     if cmd[:4] == ["codex", "plugin", "marketplace", "remove"]:
         return n == 5
     return False
