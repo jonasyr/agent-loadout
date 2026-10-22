@@ -292,9 +292,10 @@ def _lock(root: str) -> bool:
     return False
 
 
-def _cbm(tool: str, args: dict, timeout: float) -> tuple[int, str, str]:
+def _cbm(tool: str, flags: list[str], timeout: float) -> tuple[int, str, str]:
+    """One cbm tool through its CLI with flags (cbm 0.12 deprecates raw JSON arguments)."""
     try:
-        res = subprocess.run([SERVER, "cli", "--quiet", tool, json.dumps(args)], capture_output=True, text=True,
+        res = subprocess.run([SERVER, "cli", "--quiet", tool, *flags], capture_output=True, text=True,
                              timeout=timeout, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return -1, "", f"{tool} timed out after {int(timeout)} s"
@@ -342,7 +343,7 @@ def run(root: str, now: bool = False) -> None:
         if not now and not done and head is not None and (head, status) == (state.get("head"), state.get("status")):
             _settle(root, done, head, status, None)  # a noted command moved nothing
             return
-        rc, out, err = _cbm("index_status", {"project": name}, STATUS_TIMEOUT)
+        rc, out, err = _cbm("index_status", ["--project", name, "--format", "json"], STATUS_TIMEOUT)  # else a tree
         info = _json_out(out)
         if rc != 0 or info.get("error") or info.get("status") != "ready":
             return  # not indexed (or busy indexing): no failure; a first index is auto_index's job
@@ -350,10 +351,10 @@ def run(root: str, now: bool = False) -> None:
         if isinstance(watch, dict) and watch.get("watched") is True:
             _settle(root, done, head, status, None)  # codebase-memory's own watcher re-indexes it
             return
-        args = {"repo_path": root}
+        flags = ["--repo-path", root]
         if name != cbm_project.default_name(root):
-            args["name"] = name
-        rc, out, err = _cbm("index_repository", args, INDEX_TIMEOUT)
+            flags += ["--name", name]
+        rc, out, err = _cbm("index_repository", flags, INDEX_TIMEOUT)
         if BUSY in out or BUSY in err:
             return  # a refresh cbm refuses is dropped silently; the next trigger retries
         result = _json_out(out)

@@ -11,6 +11,7 @@ name is found by the root_path in the projects table of the *.db files.
 from __future__ import annotations
 
 import json
+import re
 import os
 import sqlite3
 import sys
@@ -30,8 +31,9 @@ def cache_dir() -> Path:
 
 
 def default_name(cwd: str) -> str:
-    """codebase-memory's name for a project indexed without a name override."""
-    return cwd.lstrip("/").replace("/", "-")
+    """codebase-memory's name for a project indexed without a name override: `/` becomes `-`, and a run of `-`
+    becomes one (cbm 0.12.1: /tmp/claude-1000/-home-x is `tmp-claude-1000-home-x`)."""
+    return re.sub(r"-{2,}", "-", cwd.lstrip("/").replace("/", "-"))
 
 
 def project_for(cwd: str) -> str | None:

@@ -84,3 +84,14 @@ def test_broken_db_and_broken_stdin_are_silent(tmp_path):
     assert _run(tmp_path, tmp_path / "repo") is None
     assert _run(tmp_path, tmp_path / "repo", raw="not json") is None
     assert _run(tmp_path, tmp_path / "repo", raw="") is None
+
+
+def test_default_name_collapses_repeated_dashes_like_cbm():
+    # cbm 0.12.1 names /tmp/claude-1000/-home-x/repo `tmp-claude-1000-home-x-repo` (verified with a real index)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("cbm_project_t", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.default_name("/tmp/claude-1000/-home-x/repo") == "tmp-claude-1000-home-x-repo"
+    assert mod.default_name("/home/jonas/Documents/Code/arsnova.eu") == "home-jonas-Documents-Code-arsnova.eu"
+    assert mod.default_name("/a/b/.claude/worktrees/x") == "a-b-.claude-worktrees-x"

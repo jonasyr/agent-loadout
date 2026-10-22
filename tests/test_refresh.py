@@ -28,7 +28,9 @@ CBM = """#!/bin/sh
 echo "cbm $*" >> "$STUB/log"
 [ -f "$STUB/sleep" ] && sleep "$(cat "$STUB/sleep")"
 case "$3" in
-  index_status) cat "$STUB/status.json"; exit "$(cat "$STUB/status.rc" 2>/dev/null || echo 0)";;
+  index_status)  # like cbm 0.12.1: JSON only with --format json (the default is a tree), flags as cbm takes them
+    case "$*" in *"--project "*" --format json"*) cat "$STUB/status.json";; *) echo "project: p"; echo "status: ready";; esac
+    exit "$(cat "$STUB/status.rc" 2>/dev/null || echo 0)";;
   index_repository) cat "$STUB/index.out" 2>/dev/null; [ -f "$STUB/index.err" ] && cat "$STUB/index.err" >&2
                     exit "$(cat "$STUB/index.rc" 2>/dev/null || echo 0)";;
 esac
@@ -105,8 +107,7 @@ def test_edit_then_stop_triggers_one_refresh(env):
     assert env["spawned"] == [(str(env["repo"]), False)]
     env["mod"].run(str(env["repo"]))
     assert len(_indexes(env)) == 1
-    args = json.loads(_indexes(env)[0].split(" ", 4)[4])
-    assert args == {"repo_path": str(env["repo"])}  # the default project name: no name override, no mode
+    assert _indexes(env) == [f"cbm cli --quiet index_repository --repo-path {env['repo']}"]  # no name, no mode
     st = _state(env)
     assert st["changed"] == [] and st["head"] == "aaa" and st["last"]["ok"] is True
 
@@ -192,8 +193,8 @@ def test_custom_project_name_is_passed(env):
     con.close()
     _edit(env, env["repo"] / "a.py")
     env["mod"].run(str(env["repo"]))
-    assert any('"project": "mine"' in line for line in _log(env) if "index_status" in line)
-    assert json.loads(_indexes(env)[0].split(" ", 4)[4]) == {"repo_path": str(env["repo"]), "name": "mine"}
+    assert any("--project mine --format json" in line for line in _log(env) if "index_status" in line)
+    assert _indexes(env) == [f"cbm cli --quiet index_repository --repo-path {env['repo']} --name mine"]
 
 
 def test_refresh_runs_once_under_lock(env):
@@ -301,3 +302,12 @@ def test_hooks_are_wired():
     assert has(claude, "PostToolUse", "Write|Edit|MultiEdit|Bash") and has(claude, "Stop", "")
     assert has(claude, "SubagentStop", "")
     assert has(codex, "PostToolUse", "Edit|Write|Bash") and has(codex, "Stop", "")
+
+
+def test_cbm_is_called_with_its_flags_and_json_output(env):
+    _edit(env, env["repo"] / "a.py")
+    _stop(env)
+    env["mod"].run(str(env["repo"]))
+    status = [l for l in _log(env) if " index_status " in l]
+    assert status == [f"cbm cli --quiet index_status --project {env['default']} --format json"]
+    assert _indexes(env) == [f"cbm cli --quiet index_repository --repo-path {env['repo']}"]
