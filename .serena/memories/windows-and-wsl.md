@@ -1,6 +1,5 @@
 # Windows and WSL
-Native Windows is experimental and not recommended (hooks run under Git Bash); WSL 2 is the recommended Windows setup.
-WSL is detected by `cli/loadout/wsl.py` (shown in `loadout check` and at bootstrap start); CI has a `test (wsl2)` job. Compare paths as POSIX strings so WSL tests also pass on the Windows job.
-npm's global commands on Windows live in `npm prefix -g` (anywhere; the GitHub runner uses `C:\npm\prefix`), not in mise's shims: `bootstrap.npm_global_dir()` adds it to PATH (PR #7).
-Codex in WSL: one loadout per side (ADR 0029); `wsl.codex_side()` reads the side, bootstrap's `codex_gate` runs before Prerequisites, `check._codex_side` reports the Windows side; `--vscode-wsl` and `check._vscode` handle VS Code's Codex extension (docs/how-to/wsl.md#when-your-only-codex-is-the-windows-one); `--vscode-path` (`bootstrap.setup_vscode_path`) puts loadout's tool folders on the Remote-WSL server PATH, and check reads folder and profile overrides of the WSL switch (`vscode.wsl_switch_overrides`): docs/how-to/vscode.md#windows-and-wsl. Tests never touch real `/mnt/c`: patch `wsl.windows_home`/`wsl.MOUNT`; `fake_home` sets `USER` so the `/mnt/c/Users/$USER` guess finds nothing.
-Details: docs/how-to/wsl.md#codex, docs/how-to/troubleshooting.md.
+Native Windows is experimental; WSL 2 is the recommended Windows setup: docs/how-to/wsl.md, docs/reference/setup-matrix.md. Codex in WSL: one loadout per side (ADR 0029); VS Code side: docs/how-to/vscode.md#windows-and-wsl.
+Where: `cli/loadout/wsl.py` (detection, `codex_side`, `windows_home`), `bootstrap.codex_gate`, `check._codex_side`, `check._vscode`, `bootstrap.setup_vscode_path`, `vscode.wsl_switch_overrides`.
+Tests: patch `wsl.windows_home`/`wsl.MOUNT`, compare paths as POSIX strings, `fake_home` sets `USER`: CONTRIBUTING.md#test-rules.
+Details: docs/how-to/troubleshooting.md.
