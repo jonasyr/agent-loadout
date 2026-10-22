@@ -9,6 +9,12 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" loadout hook-session-start --agent codex",
             "shell": "bash",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/cbm_project.py\" session-start",
+            "shell": "bash",
+            "timeout": 5
           }
         ]
       }
@@ -64,6 +70,12 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-context.sh\"",
+            "shell": "bash",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/cbm_project.py\" subagent-start",
             "shell": "bash",
             "timeout": 5
           }

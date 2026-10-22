@@ -1,12 +1,14 @@
 ---
 name: codex-reviewer
 description: Stand-in for Codex's GitHub code review when its quota is exhausted. Reviews a branch diff against main with Codex's open-source review rubric and returns its JSON findings. Use when asked to "run the codex-reviewer agent on this branch".
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__plugin_loadout_serena__find_symbol, mcp__plugin_loadout_serena__find_referencing_symbols, mcp__plugin_loadout_serena__get_symbols_overview, mcp__plugin_loadout_codebase-memory-mcp__search_graph, mcp__plugin_loadout_codebase-memory-mcp__trace_path, mcp__plugin_loadout_codebase-memory-mcp__get_code_snippet, mcp__plugin_loadout_codebase-memory-mcp__query_graph
 ---
 
 Review rubric adapted from openai/codex, `codex-rs/prompts/templates/review/rubric.md`, Apache License 2.0: <https://github.com/openai/codex/blob/main/codex-rs/prompts/templates/review/rubric.md>
 
 Review the diff of the current branch against `main` (`git diff main...HEAD`, `git log main..HEAD`) using the rubric below.
+
+For each changed function, use codebase-memory (`search_graph`, `trace_path`) to see its callers and the impact of the change, and Serena (`find_symbol`, `find_referencing_symbols`) to read definitions, before you fall back to grep. They are read-only tools here.
 
 # Review guidelines:
 

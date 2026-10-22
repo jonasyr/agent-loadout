@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 
 import pytest
@@ -55,6 +56,27 @@ def test_subagent_context_is_valid_json(tmp_path):
     data = json.loads(proc.stdout)
     assert data["hookSpecificOutput"]["hookEventName"] == "SubagentStart"
     assert "codebase-memory" in data["hookSpecificOutput"]["additionalContext"]
+
+
+def test_subagent_context_names_exact_tools(tmp_path):
+    proc = subprocess.run(["/bin/bash", str(PLUGIN / "hooks/subagent-context.sh")], env={"PATH": str(tmp_path)}, capture_output=True, text=True)
+    card = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+    for name in ("mcp__plugin_loadout_codebase-memory-mcp__search_graph", "mcp__plugin_loadout_serena__find_symbol", "already active"):
+        assert name in card
+
+
+def test_tooling_rule_says_name_tools_when_delegating():
+    assert "When you delegate code work" in (paths.kit_root() / "rules/tooling.md").read_text(encoding="utf-8")
+
+
+def test_codex_reviewer_can_use_serena_and_graph():
+    text = (paths.kit_root() / ".claude/agents/codex-reviewer.md").read_text(encoding="utf-8")
+    tools = [t.strip() for t in re.search(r"^tools: (.*)$", text, re.M).group(1).split(",")]
+    serena, cbm = "mcp__plugin_loadout_serena__", "mcp__plugin_loadout_codebase-memory-mcp__"
+    for t in ("Read", "Grep", "Glob", "Bash", serena + "find_symbol", serena + "find_referencing_symbols",
+              serena + "get_symbols_overview", cbm + "search_graph", cbm + "trace_path", cbm + "get_code_snippet", cbm + "query_graph"):
+        assert t in tools, t
+    assert not {"Edit", "Write", "MultiEdit"} & set(tools) and not any("replace_" in t or "insert_" in t for t in tools)
 
 
 def test_marketplace_lists_kit_core_without_version():

@@ -34,6 +34,6 @@ def test_codex_has_no_hint():
 def test_the_subagent_card_leads_with_triggers_and_stays_short():
     out = subprocess.run(["bash", str(PLUGIN / "hooks" / "subagent-context.sh")], capture_output=True, text=True)
     card = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
-    assert len(card) < 400
+    assert len(card) < 700
     for word in ("search_graph", "Serena", "Context7", "Microsoft Learn", "planning", "paths and symbols"):
         assert word in card
