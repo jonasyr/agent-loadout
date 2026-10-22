@@ -91,3 +91,11 @@ def test_a_prerelease_may_hold_hyphens():
     v = versions.parse_version
     assert v("1.0.0-alpha-beta.1").pre == "alpha-beta.1"
     assert v("1.0.0-alpha-beta.1") < v("1.0.0-alpha-gamma.1")
+
+
+def test_check_names_an_extension_codex_without_a_plugin_command(codex_ext, fake_runner):
+    fake_runner.responses[(str(codex_ext), "plugin")] = runner.Result(
+        2, "", "error: unrecognized subcommand 'plugin'\n")
+    (row,) = [r for r in codex.checks() if r.name == "Codex plugin"]
+    assert not row.ok and row.severity == "warn"
+    assert "no plugin command" in row.detail and "update the extension" in row.fix and "bootstrap" not in row.fix

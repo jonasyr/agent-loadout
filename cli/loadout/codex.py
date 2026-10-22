@@ -1900,8 +1900,12 @@ def checks() -> list:
     cli = mode() != "extension"  # the wording: the CLI's /hooks and logins, or the extension's
     installed = installed_plugins()
     ok = installed is not None and "loadout@agent-loadout" in installed
-    results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
-                               "loadout bootstrap"))
+    if installed is None and no_plugin_command():  # bootstrap cannot install plugins with this codex
+        results.append(CheckResult("Codex plugin", False, PLUGINS_OLD.split(": ", 2)[2],
+                                   "update the extension in VS Code, then run loadout update", "warn"))
+    else:
+        results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
+                                   "loadout bootstrap"))
     lacks = missing_routes(installed) if installed is not None else ([], [])
     if lacks[0] or lacks[1]:
         results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
