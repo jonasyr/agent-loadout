@@ -45,7 +45,8 @@ def test_recorded_undo_shapes_still_run(fake_home, fake_runner, cmd):
     root = paths.backups_root() / "loadout-2"
     _manifest(root, [{"label": "x", "undo": {"run": cmd}}])
     backup.restore(root)
-    assert fake_runner.calls == [cmd]
+    ran = [c for c in fake_runner.calls if c[1:] != ["--version"]]  # a codex undo first asks which codex runs it
+    assert ran == [cmd]
 
 
 def test_a_move_source_outside_the_backup_is_refused(fake_home, tmp_path):

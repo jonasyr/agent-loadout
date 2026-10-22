@@ -39,34 +39,58 @@ NO_VERSION = "could not read codex --version"
 TOO_OLD = " is too old; loadout needs"
 
 
-def unavailable(allow_shared_home: bool = False) -> str | None:
-    """None when a usable codex is on PATH, or, without one, when VS Code's Codex extension on this side runs a usable
-    codex (extension mode); else the reason in one line. In WSL, a Windows codex and a CODEX_HOME that points into
-    Windows are reasons too (ADR 0029); only bootstrap --codex-side wsl allows the latter."""
+def cli_problem() -> str | None:
+    """Why the codex on PATH cannot be used (the Windows one in WSL, no version, too old); None when it is usable or
+    there is none."""
     from . import wsl
-    cli = runner.have("codex")
-    if not cli:
-        ext, why = extension_state()  # VS Code's Codex extension alone: loadout sets Codex up for it
-        if ext is None:
-            return why or NOT_FOUND
-    found = runner.which("codex") if cli else None
+    if not runner.have("codex"):
+        return None
+    found = runner.which("codex")
     if found and wsl.detect() is not None and wsl.is_windows_program("codex"):
         # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
         return (f"{WINDOWS_CODEX} ({found}): run bootstrap with --install to install Codex in "
                 "WSL, or set loadout up on Windows (docs/how-to/wsl.md#codex)")
-    shared = os.environ.get("CODEX_HOME", "")
-    if (not allow_shared_home and shared and wsl.detect() is not None
-            and wsl._on_windows_drive(Path(shared), wsl.MOUNT)):
-        return (f"{SHARED_HOME} ({shared}): both sides would read loadout's WSL commands; unset it "
-                "in WSL, or run bootstrap with --codex-side wsl to set it up anyway (docs/how-to/wsl.md#codex)")
-    if not cli:
-        return None  # extension mode: the extension's codex was checked in extension_state
     res = runner.run(["codex", "--version"], timeout=20)
     m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
     if not m:
         return NO_VERSION
     if (int(m.group(1)), int(m.group(2))) < MIN_VERSION:
         return f"codex {m.group(0)} is too old; loadout needs 0.161 or newer (update it: mise upgrade codex)"
+    return None
+
+
+def _state() -> tuple[str | None, str | None, object]:
+    """(mode, why not, the extension): "cli" for a usable codex on PATH, else "extension" when VS Code's Codex
+    extension on this side runs a usable one (also next to a CLI that cannot be used; spec decision 8), else None
+    with the reason: the CLI's first, then the extension's, then NOT_FOUND."""
+    problem = cli_problem() if runner.have("codex") else NOT_FOUND
+    if problem is None:
+        return "cli", None, None
+    ext, why = extension_state()  # VS Code's Codex extension: loadout sets Codex up for it
+    if ext is not None:
+        return "extension", None, ext
+    return None, problem if runner.have("codex") else (why or NOT_FOUND), None
+
+
+def mode() -> str | None:
+    """"cli", "extension" or None (no codex loadout can use on this side)."""
+    return _state()[0]
+
+
+def unavailable(allow_shared_home: bool = False) -> str | None:
+    """None when a usable codex is on PATH, or, without one (or next to one that cannot be used), when VS Code's Codex
+    extension on this side runs a usable codex (extension mode); else the reason in one line. In WSL, a Windows codex
+    and a CODEX_HOME that points into Windows are reasons too (ADR 0029); only bootstrap --codex-side wsl allows the
+    latter."""
+    from . import wsl
+    current, why, _ = _state()
+    if current is None:
+        return why
+    shared = os.environ.get("CODEX_HOME", "")
+    if (not allow_shared_home and shared and wsl.detect() is not None
+            and wsl._on_windows_drive(Path(shared), wsl.MOUNT)):
+        return (f"{SHARED_HOME} ({shared}): both sides would read loadout's WSL commands; unset it "
+                "in WSL, or run bootstrap with --codex-side wsl to set it up anyway (docs/how-to/wsl.md#codex)")
     return None
 
 
@@ -118,12 +142,10 @@ def extension_state():
 
 
 def program() -> str:
-    """The codex for loadout's own `codex mcp` commands: the CLI, else the VS Code extension's own (extension mode).
-    Besides `mcp list` it runs one write, `mcp remove` (remove_server saves config.toml first; ADR 0033)."""
-    if runner.have("codex"):
-        return "codex"
-    ext, _ = extension_state()
-    return str(ext.binary) if ext is not None else "codex"
+    """The codex loadout runs (`mcp`, `plugin`): the CLI in CLI mode, VS Code's Codex extension's own in extension
+    mode (spec decision 1, ADR 0038), else "codex". Undo records keep "codex"; restore runs them with this one."""
+    current, _, ext = _state()
+    return str(ext.binary) if current == "extension" else "codex"
 
 
 START = "<!-- loadout:start -->"
@@ -1164,7 +1186,7 @@ def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
 
 def plugin_versions() -> dict[str, str]:
     """{plugin id: version} of the installed Codex plugins; {} when the list fails."""
-    res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
+    res = runner.run([program(), "plugin", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None
     return {p["pluginId"]: str(p.get("version", "")) for p in get_list(data if isinstance(data, dict) else {}, "installed")
             if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
@@ -1179,7 +1201,7 @@ class Installed(set):
 
 
 def installed_plugins() -> Installed | None:
-    res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
+    res = runner.run([program(), "plugin", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None
     if not isinstance(data, dict):
         return None
@@ -1194,7 +1216,7 @@ _NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}  # nobody 
 def marketplaces() -> dict[str, dict] | None:
     """{marketplace name: {"root": str, "source": str | None}} from `codex plugin marketplace list --json` (read-only).
     Codex's own output: anything unexpected gives None, and callers refresh as before."""
-    res = runner.run(["codex", "plugin", "marketplace", "list", "--json"], timeout=60)
+    res = runner.run([program(), "plugin", "marketplace", "list", "--json"], timeout=60)
     data = _json(res.stdout) if res.ok else None
     items = data.get("marketplaces") if isinstance(data, dict) else None
     if not isinstance(items, list):
@@ -1379,7 +1401,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
             head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
-            res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+            res = runner.run([program(), "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
             info = _json(res.stdout) if res.ok else None
             if not isinstance(info, dict) or "marketplaceName" not in info:
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
@@ -1389,7 +1411,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:
-                up = runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
+                up = runner.run([program(), "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
                 refreshed = up.ok
             elif not info.get("alreadyAdded"):
                 refreshed = True
@@ -1403,7 +1425,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
             before = _enabled_line(pid)
-            res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
+            res = runner.run([program(), "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
                 continue

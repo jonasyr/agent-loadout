@@ -55,6 +55,7 @@ def _codex_item(items: list) -> tuple | None:
     routes, _ = codex.plugin_routes(desired_settings())
     if not routes:
         return
+    exe = codex.program()  # the codex that runs them: the CLI, or VS Code's Codex extension's own
     installed = codex.installed_plugins()
     skip_m, skip_p = codex.unchanged_routes(routes, installed)
     installed = installed or set()
@@ -79,12 +80,12 @@ def _codex_item(items: list) -> tuple | None:
             groups.append((f"skip marketplace {name} (unchanged since {_date(at)})", []))
         elif market is None:  # no record of it: Codex may have it already, and then upgrades it
             groups.append((f"add or refresh marketplace {name}",
-                           [["codex", "plugin", "marketplace", "add", name, "--json"],
-                            ["codex", "plugin", "marketplace", "upgrade", f"<{name}'s marketplace>",
+                           [[exe, "plugin", "marketplace", "add", name, "--json"],
+                            [exe, "plugin", "marketplace", "upgrade", f"<{name}'s marketplace>",
                              "(only when Codex had it)"]]))
         else:
-            groups.append((f"refresh marketplace {name}", [["codex", "plugin", "marketplace", "add", name, "--json"],
-                                                           ["codex", "plugin", "marketplace", "upgrade",
+            groups.append((f"refresh marketplace {name}", [[exe, "plugin", "marketplace", "add", name, "--json"],
+                                                           [exe, "plugin", "marketplace", "upgrade",
                                                             out.printable(market)]]))
         for plugin in names:
             pid = f"{plugin}@{market}" if market else f"{plugin}@<{src}'s marketplace>"  # its name comes from the add
@@ -93,7 +94,7 @@ def _codex_item(items: list) -> tuple | None:
             again = pid in installed
             adds, readds = adds + (not again), readds + again
             groups.append((f"{'re-add' if again else 'add'} plugin {out.printable(pid)}",
-                           [["codex", "plugin", "add", out.printable(pid), "--json"]]))
+                           [[exe, "plugin", "add", out.printable(pid), "--json"]]))
     if refresh and not any(isinstance(get_dict(record, src).get("name"), str) for src in routes):
         label += " (no record to compare yet)"
     if adds or readds:

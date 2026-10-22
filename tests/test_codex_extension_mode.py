@@ -1,22 +1,12 @@
 """Codex set up for VS Code's Codex extension when no Codex CLI is installed (spec Part 2)."""
 import pytest
 
-from conftest import host_codex_bin
-
 from loadout import codex, runner, targets
 
 
 @pytest.fixture
-def ext_only(fake_home, fake_runner, monkeypatch):
-    monkeypatch.setattr(targets, "OVERRIDE", {"claude": False, "codex": True})
-    fake_runner.missing.add("codex")
-    folder = fake_home / ".vscode" / "extensions" / "openai.chatgpt-26.715.61943-linux-x64"
-    binary = folder / host_codex_bin()
-    binary.parent.mkdir(parents=True)
-    binary.write_text("bin")
-    binary.chmod(0o755)
-    fake_runner.responses[(str(binary), "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
-    return binary
+def ext_only(codex_ext):
+    return codex_ext
 
 
 def test_a_new_enough_extension_makes_codex_available(ext_only):

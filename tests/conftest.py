@@ -132,3 +132,18 @@ def codex_bin() -> str:
 def host_claude_bin() -> str:
     import sys
     return "resources/native-binary/claude.exe" if sys.platform == "win32" else "resources/native-binary/claude"
+
+
+@pytest.fixture
+def codex_ext(fake_home, fake_runner, monkeypatch):
+    """VS Code's Codex extension (a usable bundled codex 0.162.1) and no Codex CLI on PATH; returns the binary."""
+    from loadout import targets
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": False, "codex": True})
+    fake_runner.missing.add("codex")
+    folder = fake_home / ".vscode" / "extensions" / "openai.chatgpt-26.715.61943-linux-x64"
+    binary = folder / host_codex_bin()
+    binary.parent.mkdir(parents=True)
+    binary.write_text("bin")
+    binary.chmod(0o755)
+    fake_runner.responses[(str(binary), "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
+    return binary

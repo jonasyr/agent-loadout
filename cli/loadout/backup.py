@@ -277,6 +277,9 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
         if runner.would_refuse(cmd):
             where = runner.write_manual_commands(root or pre.root, f"restore: {label} (full command, contains secrets)", [cmd])
             return f"failed: {label}: cannot run through this claude (Windows .cmd shim); run the command in {where} by hand"
+        if cmd[0] == "codex":  # recorded as "codex": run with the codex of the current mode (ADR 0038)
+            from . import codex
+            cmd = [codex.program(), *cmd[1:]]
         res = runner.run(cmd)
         if not res.ok:
             return f"failed: {' '.join(cmd)}: {res.stderr.strip()}"
