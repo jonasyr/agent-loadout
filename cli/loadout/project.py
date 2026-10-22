@@ -221,7 +221,7 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
                  notes: list[str], problems: list[str], approve=None) -> bool:
     """After the plan's files and commands: a follow-up plan for skills the commands installed, then the Codex
     plugins and the repo's Codex config without the plugins that failed."""
-    from . import codex_project, repo_config, targets, wsl
+    from . import codex, codex_project, repo_config, targets, wsl
     from .repo_writes import RepoWrites
     later = RepoWrites(project)
     later.watch(project / repo_config.FILE)  # the follow-up question is a second window for a change
@@ -246,7 +246,8 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
             for line in lines:
                 if line.startswith("backup: "):  # Codex's own backup: its undo line must reach the user
                     notes.append(line)
-                elif line.startswith("skipped") or any(s in line for s in (": failed", "not installed", "no Codex route")):
+                elif line.startswith("skipped") or line == codex.PLUGINS_OLD or any(
+                        s in line for s in (": failed", "not installed", "no Codex route")):
                     problems.append(line)
             failed = codex_project.failed_plugins(prof, lines)
             for line in codex_project.config(prof, project, False, skip=failed, w=RepoWrites(project, now=True, bk=bk)):

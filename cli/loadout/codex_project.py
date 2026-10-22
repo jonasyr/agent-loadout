@@ -156,6 +156,8 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
         return lines + [f"plugins: skipped: {locks.busy_message(codex.LOCK)}"]
     try:
         listed = codex.installed_plugins()
+        if listed is None and codex.no_plugin_command():
+            return lines + [codex.PLUGINS_OLD]
         if listed is None:  # without the list, loadout cannot tell your plugins from new ones: install nothing
             return lines + [f"plugin {name}@?: not installed (could not list Codex plugins; run loadout profile again)"
                             for names in routes.values() for name in names]
@@ -207,6 +209,8 @@ def _trusted(project: Path) -> bool:
 def failed_plugins(prof: profiles.Profile, lines: list[str]) -> frozenset:
     """The profile's plugins that a line reports as not installed."""
     bad = (": failed", "not installed", "no Codex route")
+    if codex.PLUGINS_OLD in lines:  # nothing was installed
+        return frozenset(_wanted(prof)[1])
     return frozenset(pid for pid in _wanted(prof)[1]
                      if any(l.startswith((f"plugin {pid}:", f"plugin {pid.split('@')[0]}@?:")) and any(b in l for b in bad)  # @?: all failed
                             for l in lines))

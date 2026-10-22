@@ -74,6 +74,12 @@ def _state() -> tuple[str | None, str | None, object]:
     return None, problem if cli else (why or NOT_FOUND), None
 
 
+def no_plugin_command() -> bool:
+    """True when the codex loadout runs has no `codex plugin` (an older bundled one in VS Code's Codex extension)."""
+    res = runner.run([program(), "plugin", "list", "--json"], timeout=120)
+    return not res.ok and _NO_PLUGIN_COMMAND in res.stderr
+
+
 def has_codex() -> bool:
     """A codex to run plugin commands with: one on PATH (its version is the `Codex` row's business), or VS Code's
     Codex extension's own (ADR 0038)."""
@@ -120,7 +126,7 @@ def unavailable_fix(problem: str) -> str:
 
 EXT_OLD = ("VS Code's Codex extension runs codex {version}; loadout needs 0.161 or newer: update the extension in "
            "VS Code (or install the Codex CLI: loadout bootstrap --install)")
-PLUGINS_OLD = ("plugins: not installed: VS Code's Codex extension's codex has no plugin command; update the extension "
+PLUGINS_OLD = ("plugins: skipped: VS Code's Codex extension's codex has no plugin command; update the extension "
                "in VS Code, then run loadout update")
 _NO_PLUGIN_COMMAND = "unrecognized subcommand"
 LOGIN_EXTENSION = "in VS Code's Codex extension: gear, MCP servers, Authenticate"
@@ -1413,7 +1419,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
             res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
             if not res.ok and _NO_PLUGIN_COMMAND in res.stderr:  # an extension codex from before `codex plugin`
-                return [PLUGINS_OLD], installed
+                return lines + [PLUGINS_OLD], installed
             info = _json(res.stdout) if res.ok else None
             if not isinstance(info, dict) or "marketplaceName" not in info:
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
