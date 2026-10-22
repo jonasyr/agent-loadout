@@ -50,10 +50,12 @@ Serena's docs already say this for Claude Code: dynamic tool loading makes agent
      - At most one refresh per repo at a time, under a lock in loadout's state folder.
      - A refresh cbm refuses ("another index operation … is active") is dropped silently. The next trigger retries.
      - Run through `codebase-memory-mcp cli index_repository` with the same options the repo was indexed with, so it does not hit that refusal. The builder reads them from `index_status`.
-   - **Serena.**
-     - The builder first verifies whether Serena returns stale symbols after an edit made outside Serena: Claude Code's Edit tool, a shell write, a `git checkout`.
-     - If it does, the same triggers run `serena project index-file` for the changed files, and `serena project index` after a git command that rewrites the tree.
-     - If Serena already refreshes itself (for example a content-hashed LSP cache), nothing is added. `docs/` records the finding either way.
+   - **Serena needs none (verified 2026-10-22, Serena 2.1.0, Python).** `find_symbol` saw each of these at once, without a reindex:
+     - a function appended outside Serena;
+     - a new file;
+     - a deleted file.
+
+     The builder repeats the check for TypeScript (the second language the tests cover). If TypeScript goes stale, that becomes a finding for the user; it is not silently added. `docs/` records the result.
    - **Both agents.** Claude Code and Codex use the same triggers through their own hooks. The refresh itself is one `loadout` subcommand that both call, run through `run.sh`, so the rule lives in one place.
    - **No refresh when** the binary is missing, the server is not available (as defined under "Every setup variation"), or the folder is no repo cbm indexed.
    - `loadout check` shows the last refresh's result only when it failed.
