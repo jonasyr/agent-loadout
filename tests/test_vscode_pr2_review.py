@@ -78,7 +78,7 @@ def test_hints_name_the_extension_not_a_bare_codex(ext_only, monkeypatch):
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "untrusted")
     monkeypatch.setattr(codex, "logins_needed", lambda: ["notion"])
     rows = {r.name: r for r in codex.checks()}
-    assert "Codex CLI" in rows["Codex hooks"].fix and "start codex" not in rows["Codex hooks"].fix
+    assert rows["Codex hooks"].fix == codex.HOOKS_EXTENSION and "start codex" not in rows["Codex hooks"].fix
     assert "VS Code" in rows["Codex logins"].fix
 
 

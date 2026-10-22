@@ -45,10 +45,10 @@ def test_plugins_install_with_the_extensions_codex(ext_only, fake_runner):
     assert plugin_calls and all(c[0] == str(ext_only) for c in plugin_calls)
 
 
-def test_still_to_do_names_the_cli_for_hooks(ext_only, monkeypatch):
+def test_still_to_do_names_the_extensions_hooks_icon(ext_only, monkeypatch):
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "untrusted")
     steps = codex.open_steps()
-    assert steps[0] == codex.HOOKS_NO_CLI and "Codex CLI" in steps[0] and "loadout bootstrap --install" in steps[0]
+    assert steps[0] == codex.HOOKS_EXTENSION and "Codex CLI" not in steps[0]
 
 
 

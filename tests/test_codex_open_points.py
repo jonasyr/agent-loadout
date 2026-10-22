@@ -8,10 +8,19 @@ from loadout import bootstrap, check, codex, paths, runner
 
 
 
+PLUGIN_ON = '[plugins."loadout@agent-loadout"]\nenabled = true\n\n'  # the plugin is installed: its hooks count
+
+
+def _plugin_on():
+    path = paths.codex_home() / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(PLUGIN_ON, encoding="utf-8")
+
+
 def _trust(keys, hash_="sha256:aa"):
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(f'[hooks.state.{codex.toml_value(k)}]\ntrusted_hash = "{hash_}"\n\n' for k in keys), encoding="utf-8")
+    path.write_text(PLUGIN_ON + "".join(f'[hooks.state.{codex.toml_value(k)}]\ntrusted_hash = "{hash_}"\n\n' for k in keys), encoding="utf-8")
 
 
 def test_expected_hook_keys_follow_codex_json():
@@ -35,7 +44,8 @@ def test_hooks_status_needs_the_serena_hooks_in_hooks_json_approved_too(fake_hom
     assert codex.hooks_status() == "trusted"
 
 
-def test_hooks_status_untrusted_trusted_and_changed(fake_home, monkeypatch):
+def test_hooks_status_untrusted_trusted_and_changed(fake_home, fake_runner, monkeypatch):
+    _plugin_on()
     assert codex.hooks_status() == "untrusted"
     _trust(codex.hook_keys())
     assert codex.hooks_status(remember=True) == "trusted"
@@ -48,6 +58,7 @@ def test_hooks_status_untrusted_trusted_and_changed(fake_home, monkeypatch):
 def test_still_to_do_names_hooks_only_while_not_approved(fake_home, fake_runner):
     codex.set_enabled(True)
     fake_runner.responses[("codex", "mcp", "list")] = runner.Result(0, "[]", "")
+    _plugin_on()
     assert any("/hooks" in line for line in bootstrap.still_to_do("linux"))
     _trust(codex.hook_keys())
     assert not any("/hooks" in line for line in bootstrap.still_to_do("linux"))
@@ -67,6 +78,7 @@ def test_check_reports_hooks_and_logins(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(codex, "installed_plugins", lambda: {"loadout@agent-loadout"})
     monkeypatch.setattr(codex, "drift", lambda: [])
     fake_runner.responses[("codex", "mcp", "list")] = runner.Result(0, json.dumps([{"name": "x-docs", "auth_status": "not_logged_in"}]), "")
+    _plugin_on()
     results = {r.name: r for r in check.run_checks() if r.name.startswith("Codex")}
     assert not results["Codex hooks"].ok and "/hooks" in results["Codex hooks"].fix
     assert not results["Codex logins"].ok and "codex mcp login x-docs" in results["Codex logins"].fix

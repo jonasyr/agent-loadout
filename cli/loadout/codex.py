@@ -132,9 +132,12 @@ _NO_PLUGIN_COMMAND = "unrecognized subcommand"
 LOGIN_EXTENSION = "in VS Code's Codex extension: gear, MCP servers, Authenticate"
 EXT_NOVERSION = ("VS Code's Codex extension's own codex gives no version, so loadout does not use it: update the "
                  "extension in VS Code (or install the Codex CLI: loadout bootstrap --install)")
-HOOKS_NO_CLI = ("approve the loadout hooks once in the Codex CLI's /hooks (VS Code's Codex extension has none), and use "
-                "the CLI for plugin skills: install it with loadout bootstrap --install, then run `codex` in VS Code's "
-                "terminal and /hooks")
+HOOKS_EXTENSION = ("approve loadout's hooks in VS Code's Codex extension: the hooks icon in the prompt bar, then Allow "
+                   "all (or Settings > Hooks)")
+HOOKS_EXTENSION_CHANGED = ("approve the changed loadout hooks in VS Code's Codex extension: the hooks icon in the prompt "
+                           "bar, then Allow all (or Settings > Hooks)")
+RESTART_EXTENSION = ("reload the VS Code window (Command Palette: Developer: Reload Window) so the Codex extension loads "
+                     "the plugins")
 
 
 def extension_state():
@@ -1904,7 +1907,8 @@ def checks() -> list:
     if status in ("untrusted", "changed"):
         results.append(CheckResult("Codex hooks", False, "loadout's hooks are not approved yet" if status == "untrusted"
                                    else "loadout's hooks changed since you approved them",
-                                   "start codex, then run /hooks and approve them" if cli else HOOKS_NO_CLI, "warn"))
+                                   "start codex, then run /hooks and approve them" if cli
+                                   else HOOKS_EXTENSION if status == "untrusted" else HOOKS_EXTENSION_CHANGED, "warn"))
     elif status == "trusted":
         results.append(CheckResult("Codex hooks", True))
     logins = logins_needed()
@@ -1947,6 +1951,14 @@ def _hooks_record() -> Path:
     return paths.state_dir() / "codex-hooks.json"
 
 
+def _plugin_hooks_on(data: dict) -> bool:
+    """Whether the loadout plugin's hooks can run, so they need an approval: config.toml switches the plugin on
+    (`codex plugin add` writes [plugins."loadout@agent-loadout"] enabled = true, the CLI's and VS Code's Codex
+    extension's alike; ADR 0038). Read from the file only: no codex runs."""
+    entry = get_dict(get_dict(data, "plugins"), "loadout@agent-loadout")
+    return entry.get("enabled") is True
+
+
 def hooks_status(remember: bool = False) -> str | None:
     """"trusted", "untrusted" (never approved) or "changed" (the hooks changed since the user approved them);
     None when config.toml cannot be read. Codex's own hash cannot be recomputed stably, so a change is detected as:
@@ -1954,8 +1966,8 @@ def hooks_status(remember: bool = False) -> str | None:
     tl = _tomllib()
     path = paths.codex_home() / "config.toml"
     try:
-        state = tl.loads(path.read_text(encoding="utf-8")).get("hooks", {}) if path.exists() else {}
-        state = get_dict(state, "state")
+        data = tl.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        state = get_dict(get_dict(data, "hooks"), "state")
     except Exception:
         return None
     from . import codex_hooks
@@ -1964,7 +1976,7 @@ def hooks_status(remember: bool = False) -> str | None:
     current = {k: v.get("trusted_hash") for k, v in state.items()
                if (k.startswith(HOOK_PLUGIN + ":") or k.startswith(in_file)) and isinstance(v, dict)
                and v.get("trusted_hash")}
-    if not (hook_keys() | set(serena)) <= set(current):
+    if not (set(serena) | (hook_keys() if _plugin_hooks_on(data) else set())) <= set(current):
         return "untrusted"
     digest, seen = _hooks_digest(), load_json(_hooks_record())
     plugin_now = {k: v for k, v in current.items() if k.startswith(HOOK_PLUGIN + ":")}
@@ -2012,18 +2024,19 @@ def open_steps() -> list[str]:
     """What the user still has to do in Codex, for "Still to do" lists; empty when nothing is open."""
     if not enabled():
         return []
-    cli = runner.have("codex")
-    if not cli and extension_state()[0] is None:
+    if not has_codex():
         return []
+    cli = mode() != "extension"  # the wording: the CLI's /hooks, or VS Code's Codex extension's hooks icon
     status = hooks_status(remember=True)
     # unknown (unreadable config): remind, since the approval cannot be confirmed
-    todo = HOOKS_TODO if cli else HOOKS_NO_CLI
-    steps = [HOOKS_CHANGED if cli else HOOKS_NO_CLI] if status == "changed" else [] if status == "trusted" else [todo]
-    if not cli:
-        return (steps + [f"log in to {name} once: {LOGIN_EXTENSION}" for name in logins_needed()]
-                + [f"optional: log in to {name} for higher limits: {LOGIN_EXTENSION}" for name in logins_optional()])
+    todo = HOOKS_TODO if cli else HOOKS_EXTENSION
+    changed = HOOKS_CHANGED if cli else HOOKS_EXTENSION_CHANGED
+    steps = [changed] if status == "changed" else [] if status == "trusted" else [todo]
     lacks = missing_routes()
     if lacks[0] or lacks[1]:
         steps.append(f"{_missing_text(lacks)}: run {MISSING_FIX}")
+    if not cli:
+        return (steps + [f"log in to {name} once: {LOGIN_EXTENSION}" for name in logins_needed()]
+                + [f"optional: log in to {name} for higher limits: {LOGIN_EXTENSION}" for name in logins_optional()])
     return (steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
             + [f"optional: log in to {name} in Codex for higher limits: codex mcp login {name}" for name in logins_optional()])

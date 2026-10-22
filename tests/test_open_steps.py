@@ -243,14 +243,13 @@ def test_check_ends_with_pending_codex_steps(monkeypatch, capsys):
     assert "Now do this" in capsys.readouterr().out
 
 
-def test_without_the_codex_cli_there_is_no_restart_step_and_the_hooks_step_says_how(monkeypatch, tmp_path):
-    monkeypatch.setattr(runner, "have", lambda binary: binary != "codex")  # VS Code's Codex extension only
+def test_without_any_codex_there_is_no_restart_step(monkeypatch, tmp_path):
+    monkeypatch.setattr(runner, "have", lambda binary: binary != "codex")  # no CLI
+    monkeypatch.setattr(codex, "mode", lambda: None)  # and no usable extension
     monkeypatch.setenv("LOADOUT_ROOT", str(tmp_path))
     _write_mcp(tmp_path / "plugins" / "loadout" / ".mcp.json", {"serena": {"command": "serena"}})
     assert "codex/restart" not in _ids(steps.derive({"codex_plugins_updated"}, ["serena"], False, True))
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
-    found = steps.derive({"serena_hooks_added"}, [], False, True)
-    assert [(s.id, s.text) for s in found] == [("codex/hooks", codex.HOOKS_NO_CLI)]
     steps.save([steps.Step("codex/restart", "codex", "restart Codex", "x")])  # saved while the CLI was there
     steps.settle(False, True)
     assert "codex/restart" not in _ids(steps.pending("codex"))

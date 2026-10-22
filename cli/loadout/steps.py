@@ -175,14 +175,16 @@ def _plugin_copy_differs() -> bool:
 def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool, results: list | None = None) -> list[Step]:
     """The steps a run leaves, for the agents that are on. facts: the apply steps' facts and the plugin refresh's;
     upgraded: the tool ids a run updated or installed; results: the health check's rows (bootstrap-only needs).
-    Without the Codex CLI (VS Code's Codex extension only) no plugin hook runs, so no "restart Codex" step could ever
-    clear: there is none, and the hooks step says how to approve them without the CLI (codex.HOOKS_NO_CLI).
+    In VS Code's Codex extension (no usable CLI) the steps name the extension's hooks icon and a window reload
+    (ADR 0038).
     The hooks step already makes you restart Codex, so with it there is no "restart Codex" step; no id twice (the
     first wins). The reload step is marked loadout_plugin when loadout's own plugin changed (LOADOUT_FACT): loadout's
     Stop hook (reload_check.py) clears it once the session runs the new copy; another plugin's reload no hook sees."""
     from . import codex, runner
     out: list[Step] = []
-    cli = runner.have("codex")
+    current = codex.mode() if codex_on else None
+    ext = current == "extension"
+    usable = current is not None or runner.have("codex")  # a codex on PATH keeps today's steps whatever its version
     if claude_on and (facts & CLAUDE_FACTS or _plugin_copy_differs()):
         out.append(Step("claude/reload-plugins", "claude", "run /reload-plugins (or restart Claude Code)",
                         "Claude Code plugins were installed or updated", loadout_plugin=LOADOUT_FACT in facts))
@@ -193,9 +195,10 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
             for name in found["claude"]:
                 out.append(Step(f"claude/mcp:{_redact(name)}", "claude", f"run /mcp and reconnect {printable(name)} (it was upgraded)",
                                 f"{binary} was upgraded and starts this MCP server"))
-        restart = restart or bool(codex_on and cli and found["codex"])
+        restart = restart or bool(codex_on and usable and found["codex"])
     if restart:
-        out.append(Step("codex/restart", "codex", "restart Codex", "an upgraded binary starts one of its MCP servers"))
+        out.append(Step("codex/restart", "codex", codex.RESTART_EXTENSION if ext else "restart Codex",
+                        "an upgraded binary starts one of its MCP servers"))
     if codex_on:
         status = None
         try:
@@ -204,11 +207,12 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
             pass
         plugins = bool(facts & {"codex_plugins_installed", "codex_plugins_updated"})
         if "serena_hooks_added" in facts or status in ("untrusted", "changed"):
-            text = (codex.HOOKS_NO_CLI if not cli
+            text = ((codex.HOOKS_EXTENSION_CHANGED if status == "changed" else codex.HOOKS_EXTENSION) if ext
                     else "restart Codex and approve the changed hooks in /hooks" if plugins else HOOKS_TEXT)
             out.append(Step("codex/hooks", "codex", text, "Codex runs a changed hook only after you approve it"))
-        elif plugins and cli:
-            out.append(Step("codex/restart", "codex", "restart Codex (it loads plugins per session)",
+        elif plugins and usable:
+            out.append(Step("codex/restart", "codex",
+                            codex.RESTART_EXTENSION if ext else "restart Codex (it loads plugins per session)",
                             "Codex plugins were installed or updated"))
     needs = [r for r in results or [] if not r.ok and r.name in BOOTSTRAP_ROWS]
     if needs:
@@ -288,7 +292,7 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
             elif not drop and e["id"] == f"{agent}/bootstrap":
                 drop = _rows_pass(str(e.get("reason", "")), results)
             elif not drop and e["id"] == "codex/restart":
-                drop = not runner.have("codex")
+                drop = not codex.has_codex()
             elif not drop and e["id"].startswith("claude/mcp:"):
                 drop = e["id"][len("claude/mcp:"):] not in {_redact(n) for n in names.get("claude", set())}
             if not drop:

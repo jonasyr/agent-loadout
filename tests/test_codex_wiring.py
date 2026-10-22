@@ -27,6 +27,8 @@ def test_bootstrap_sets_up_codex_and_lists_the_hooks_step(fake_home, fake_runner
     codex.set_enabled(True)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: ["instructions written"])
+    (paths.codex_home()).mkdir(parents=True, exist_ok=True)  # the run installed the loadout plugin: its hooks wait
+    (paths.codex_home() / "config.toml").write_text('[plugins."loadout@agent-loadout"]\nenabled = true\n')
     monkeypatch.setattr(out, "VERBOSE", False)
     _run()
     text = capsys.readouterr().out

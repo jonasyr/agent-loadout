@@ -79,6 +79,6 @@ def test_extension_only_declined_is_a_clean_codex_setup(fake_home, fake_runner, 
     assert bootstrap.CODEX_CLI_DECLINED in text
     assert "Codex step skipped" not in text and "codex not found on PATH" not in text
     assert codex.START in (paths.codex_home() / "AGENTS.md").read_text(encoding="utf-8")  # the rules block was written
-    assert codex.HOOKS_NO_CLI in text  # Still to do names what only the CLI adds
+    assert codex.HOOKS_EXTENSION in text  # Still to do names the extension's hooks icon
     assert not any(c[:1] == ["mise"] and "codex" in " ".join(c) for c in fake_runner.calls)  # the CLI was not installed
     assert "[FAIL] binary codex" not in text
