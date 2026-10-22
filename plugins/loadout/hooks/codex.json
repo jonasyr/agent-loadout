@@ -24,17 +24,6 @@
             "timeout": 10
           }
         ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.sh\"",
-            "shell": "bash",
-            "timeout": 5
-          }
-        ]
       }
     ],
     "PostToolUse": [
@@ -51,17 +40,6 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/typecheck.py\"",
             "timeout": 90
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__serena__.*|mcp__codebase-memory-mcp__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.sh\"",
-            "shell": "bash",
-            "timeout": 5
           }
         ]
       }

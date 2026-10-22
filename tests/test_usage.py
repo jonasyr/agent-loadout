@@ -231,3 +231,21 @@ def test_usage_is_read_only_and_never_migrates_or_creates_state(fake_home, monke
     _claude([_tool("Read", file_path="a")])
     main(["usage"])
     assert not paths.state_dir().exists()
+
+
+def _denial(text):
+    return {"type": "user", "timestamp": "2026-10-14T10:00:01Z",
+            "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": text}]}}
+
+
+def test_usage_counts_serena_denials_per_group(fake_home, monkeypatch):
+    _on(monkeypatch, codex=False)
+    deny = "Too many consecutive grep calls without using symbolic tools. You can continue using grep now"
+    _claude([_tool("Bash", command="rg -n record_project src"), _denial(deny), _denial(deny)])
+    _claude([_tool("Read", file_path="a.py"), _denial("Too many consecutive read calls of files without using")],
+            sub=True)
+    _claude([_tool("Bash", command="ls"), _denial("some other error")], name="s2")
+    report = usage.collect(14)
+    assert report["claude"]["main"]["serena_denials"] == 1
+    assert report["claude"]["subagent"]["serena_denials"] == 1
+    assert "sessions with a Serena reminder: 1" in usage.render(report)

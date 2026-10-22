@@ -19,18 +19,15 @@ def _matchers_for(name, event):
     return [m for m, h in _entries(name, event) if h["command"] == HINT]
 
 
-def test_claude_code_runs_the_hint_on_searches_web_lookups_and_mcp_use():
-    pre = _matchers_for("hooks.json", "PreToolUse")
-    assert "Grep|Glob|Bash|WebSearch|WebFetch" in pre
-    post = _matchers_for("hooks.json", "PostToolUse")
-    assert "mcp__plugin_loadout_serena__.*|mcp__plugin_loadout_codebase-memory-mcp__.*" in post
-    assert all(h["timeout"] == 5 for m, h in _entries("hooks.json", "PreToolUse") + _entries("hooks.json", "PostToolUse")
-               if h["command"] == HINT)
+def test_claude_code_runs_the_hint_on_web_lookups_only():
+    assert _matchers_for("hooks.json", "PreToolUse") == ["WebSearch|WebFetch"]
+    assert _matchers_for("hooks.json", "PostToolUse") == []
+    assert all(h["timeout"] == 5 for m, h in _entries("hooks.json", "PreToolUse") if h["command"] == HINT)
 
 
-def test_codex_runs_the_hint_on_shell_and_mcp_use():
-    assert "Bash" in _matchers_for("codex.json", "PreToolUse")
-    assert "mcp__serena__.*|mcp__codebase-memory-mcp__.*" in _matchers_for("codex.json", "PostToolUse")
+def test_codex_has_no_hint():
+    # Codex gives hooks no web tools, and Serena's remind covers shell searches there
+    assert _matchers_for("codex.json", "PreToolUse") == [] and _matchers_for("codex.json", "PostToolUse") == []
 
 
 @pytest.mark.skipif(os.name == "nt", reason="bash")
