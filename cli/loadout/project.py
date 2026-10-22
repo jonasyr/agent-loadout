@@ -130,7 +130,7 @@ def _show(project: Path, title: str, w, notes: list[str]) -> list[str]:
     return plan
 
 
-CODEX_BAD = (": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is")
+CODEX_BAD = (": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is", "has no plugin command")
 RECORD_LATER = (".loadout.json: the record of profile {name}'s .codex/config.toml entries is written after the Codex "
                 "plugin installs, naming only what was added")
 
@@ -391,12 +391,12 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
         ok = False
     if skipped or not skills_ok:
         ok = False
-    from . import codex_project, targets
+    from . import codex, codex_project, targets
     if on["codex"]:  # the repo's Codex file; installs only for a user with Codex on
         codex_ok = links_ok
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run, w=w,
                                         user_codex=targets.codex_enabled()):
-            bad = line.startswith("skipped") or any(s in line for s in (
+            bad = line.startswith("skipped") or line == codex.PLUGINS_OLD or any(s in line for s in (
                 ": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is"))
             step = line == codex_project.TRUST_NOTE or line.startswith("backup: ")
             (warn if bad else steps.append if step and calm else info)(line)

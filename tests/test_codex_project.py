@@ -404,3 +404,10 @@ def test_profile_plan_with_no_usable_codex_names_the_failures(repo, fake_runner,
     assert project.add_profile(repo, "thesis", install=True, dry_run=True) == 0  # a dry run only shows the plan
     out = capsys.readouterr().out
     assert "not installed" in out and "0.100.0" in out
+
+
+def test_profile_with_an_extension_codex_without_a_plugin_command_fails(repo, fake_runner, monkeypatch, capsys):
+    exe = _extension_only(fake_runner, monkeypatch)
+    fake_runner.responses[(exe, "plugin")] = runner.Result(2, "", "error: unrecognized subcommand 'plugin'\n")
+    assert project.add_profile(repo, "thesis", install=True) == 1
+    assert codex.PLUGINS_OLD.split(": ", 2)[2] in capsys.readouterr().out
