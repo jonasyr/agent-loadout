@@ -35,17 +35,24 @@ def plugin_servers() -> dict:
     return servers if isinstance(servers, dict) else {}
 
 
-def plugin_hook_commands() -> set[str]:
-    """The inner commands the plugin's hooks run (after run.sh), e.g. `rtk hook claude`."""
+def plugin_hooks() -> set[tuple[str, str, str]]:
+    """(event, matcher, inner command) of each plugin hook, the command after run.sh (and the guard), e.g.
+    ("PreToolUse", "Bash", "rtk hook claude")."""
+    from .settings_merge import matcher_of
     out = set()
     hooks = get_dict(load_json(_plugin_dir() / "hooks" / "hooks.json"), "hooks")
-    for groups in hooks.values() if isinstance(hooks, dict) else []:
+    for event, groups in hooks.items() if isinstance(hooks, dict) else []:
         for group in groups if isinstance(groups, list) else []:
             for hook in get_list(group, "hooks"):
                 cmd = hook.get("command", "") if isinstance(hook, dict) else ""
-                if _RUN_SH.match(cmd):
-                    out.add(_norm(_RUN_SH.sub("", cmd)))
+                if isinstance(group, dict) and _RUN_SH.match(cmd):
+                    out.add((event, matcher_of(group), _norm(_RUN_SH.sub("", cmd))))
     return out
+
+
+def plugin_hook_commands() -> set[str]:
+    """The inner commands the plugin's hooks run (after run.sh), e.g. `rtk hook claude`."""
+    return {cmd for _, _, cmd in plugin_hooks()}
 
 
 def _norm(cmd: str) -> str:
@@ -100,8 +107,11 @@ def _legacy_script(cmd: str) -> bool:
 
 
 def is_duplicate_hook(item: Item) -> bool:
+    """The same command under the same event and matcher as a plugin hook (item.name is `Event:matcher`, maybe
+    with `#n`), or an old codebase-memory hook script. The same command under another matcher stays the user's."""
     cmd = _norm(item.detail)
-    return cmd in plugin_hook_commands() or _legacy_script(cmd)
+    event, _, matcher = re.sub(r"#\d+$", "", item.name).partition(":")
+    return (event, matcher, cmd) in plugin_hooks() or _legacy_script(cmd)
 
 
 def is_legacy_script_file(name: str) -> bool:
@@ -133,8 +143,9 @@ def _hook_words(hook: dict) -> list[str]:
     return words + [a for a in get_list(hook, "args") if isinstance(a, str)]
 
 
-def user_hooks(cwd: str | None = None) -> list[tuple[str, list[str], str]]:
-    """(event, words, file label) of every hook in the user's and the project's Claude Code settings."""
+def user_hook_entries(cwd: str | None = None) -> list[tuple[str, str, list[str], str]]:
+    """(event, matcher, words, file label) of every hook in the user's and the project's Claude Code settings."""
+    from .settings_merge import matcher_of
     out = []
     for label, path in user_settings_files(cwd):
         try:
@@ -144,9 +155,14 @@ def user_hooks(cwd: str | None = None) -> list[tuple[str, list[str], str]]:
         for event, groups in get_dict(data, "hooks").items():
             for group in get_list({"g": groups}, "g"):
                 for hook in get_list(group, "hooks"):
-                    if isinstance(hook, dict):
-                        out.append((event, _hook_words(hook), label))
+                    if isinstance(hook, dict) and isinstance(group, dict):
+                        out.append((event, matcher_of(group), _hook_words(hook), label))
     return out
+
+
+def user_hooks(cwd: str | None = None) -> list[tuple[str, list[str], str]]:
+    """(event, words, file label) of every hook in the user's and the project's Claude Code settings."""
+    return [(event, words, label) for event, _, words, label in user_hook_entries(cwd)]
 
 
 def runs_program(words: list[str], program: str, sub: str | None = None) -> bool:
@@ -183,9 +199,28 @@ def equivalent_user_hooks(cwd: str | None = None) -> list[tuple[str, str, str]]:
     for event, inner in plugin_guarded_hooks("serena-hooks"):
         words = inner.split()
         sub = next((w for w in words[1:] if not w.startswith("-")), None)
-        for ev, hwords, label in user_hooks(cwd):
+        for ev, matcher, hwords, label in user_hook_entries(cwd):
             if ev == event and runs_program(hwords, os.path.basename(words[0]), sub):
                 command = " ".join(hwords)
-                if not is_duplicate_hook(Item("hook", event, command, label, {})):
+                exact = label == "~/.claude/settings.json" and \
+                    is_duplicate_hook(Item("hook", f"{event}:{matcher}", command, label, {}))
+                if not exact:  # only the user file's exact copies go on update (ADR 0035)
                     found.append((event, command, label))
     return found
+
+
+def plugin_server_off(server: str, cwd: str) -> bool:
+    """Claude Code has the plugin's <server> switched off for cwd or its nearest parent project
+    (`disabledMcpServers`; mirrors mcp_guard._project)."""
+    from pathlib import Path
+    try:
+        projects = get_dict(load_json(paths.home() / ".claude.json"), "projects")
+    except Exception:
+        return False
+    path = Path(cwd)
+    for folder in (path, *path.parents):
+        for key in (str(folder), folder.as_posix()):
+            if key in projects:
+                off = get_list(get_dict(projects, key), "disabledMcpServers")
+                return f"plugin:loadout:{server}" in off
+    return False

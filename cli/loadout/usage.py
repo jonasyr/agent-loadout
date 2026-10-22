@@ -46,11 +46,17 @@ def _symbol_pattern(pattern: object) -> bool:
     return searches.symbol(pattern) is not None
 
 
+_HOOK_ERROR = re.compile(r"^PreToolUse:\S+ hook error: ")
+
+
 def _denial(content: object) -> bool:
     """A tool result that is Serena's reminder (its PreToolUse deny reason, shown to the agent)."""
     if isinstance(content, list):
         content = " ".join(c.get("text", "") for c in content if isinstance(c, dict) and isinstance(c.get("text"), str))
-    return isinstance(content, str) and content.lstrip().startswith(DENIALS)
+    if not isinstance(content, str):
+        return False
+    text = _HOOK_ERROR.sub("", content.lstrip(), count=1)  # Claude Code: "PreToolUse:Grep hook error: <reason>"
+    return text.startswith(DENIALS)
 
 
 SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish", "pwsh", "powershell"})

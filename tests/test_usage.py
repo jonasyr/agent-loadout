@@ -249,3 +249,15 @@ def test_usage_counts_serena_denials_per_group(fake_home, monkeypatch):
     assert report["claude"]["main"]["serena_denials"] == 1
     assert report["claude"]["subagent"]["serena_denials"] == 1
     assert "sessions with a Serena reminder: 1" in usage.render(report)
+
+
+def test_serena_denial_in_claude_codes_real_format_counts(fake_home, monkeypatch):
+    # what Claude Code 2.1.305 records for a PreToolUse deny (seen live with this branch's remind hook)
+    _on(monkeypatch, codex=False)
+    real = ("PreToolUse:Grep hook error: Too many consecutive non-symbolic tool calls (mixed grep and read). "
+            "You can continue using these tools now if needed, the counter was reset.")
+    _claude([_tool("Grep", pattern="record_project"), _denial(real)], sub=True)
+    _claude([_tool("Bash", command="echo"), _denial("grep found: Too many consecutive grep calls? no")], name="s3")
+    report = usage.collect(14)
+    assert report["claude"]["subagent"]["serena_denials"] == 1
+    assert report["claude"]["main"]["serena_denials"] == 0

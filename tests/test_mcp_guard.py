@@ -151,3 +151,27 @@ def test_own_mcp_json_serena_off_by_disabled_mcpjson_servers(env):
     (env["home"] / ".claude.json").write_text(json.dumps(
         {"projects": {str(env["repo"]): {"disabledMcpServers": ["plugin:loadout:serena"]}}}))
     assert _run(env, _payload(env)) is None
+
+
+def _guard_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("mcp_guard_t", GUARD)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_codex_availability_reads_codex_config_not_claudes(env, monkeypatch):
+    mod = _guard_module()
+    monkeypatch.setenv("PATH", f"{env['bin']}{os.pathsep}/usr/bin:/bin")
+    (env["bin"] / "codebase-memory-mcp").write_text("#!/bin/sh\n")
+    (env["bin"] / "codebase-memory-mcp").chmod(0o755)
+    # Claude Code has it off here: that must not matter for Codex
+    (env["home"] / ".claude.json").write_text(json.dumps(
+        {"projects": {str(env["repo"]): {"disabledMcpServers": ["plugin:loadout:codebase-memory-mcp"]}}}))
+    monkeypatch.setenv("CODEX_HOME", str(env["home"] / ".codex"))
+    assert mod.available("codebase-memory-mcp", "codex", str(env["repo"]), env["home"])
+    assert not mod.available("codebase-memory-mcp", "claude", str(env["repo"]), env["home"])
+    (env["home"] / ".codex").mkdir()
+    (env["home"] / ".codex" / "config.toml").write_text('[mcp_servers.codebase-memory-mcp]\nenabled = false\n')
+    assert not mod.available("codebase-memory-mcp", "codex", str(env["repo"]), env["home"])

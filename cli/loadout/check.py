@@ -327,7 +327,7 @@ def _user_servers(cwd: Path) -> list[tuple[str, dict, str, bool]]:
 def _tool_setups() -> list[CheckResult]:
     """Serena or codebase-memory run next to the plugin's: your own hooks, a second server. Read only; the
     tools are never run."""
-    from . import duplicates
+    from . import duplicates, own
     from .inventory import Item
     out = []
     try:
@@ -340,13 +340,17 @@ def _tool_setups() -> list[CheckResult]:
         servers = _user_servers(cwd)
         for label, test, tool in (("Serena", _is_serena_server, "serena"),
                                   ("codebase-memory", _is_cbm_server, "codebase-memory-mcp")):
+            if duplicates.plugin_server_off(tool, str(cwd)):
+                continue  # the plugin's is off here: yours is the only one
             mine = [(n, f) for n, c, f, user in servers if test(c) and not (
-                user and duplicates.is_duplicate_mcp(Item("mcp", n, "", f, {"config": c})))]
+                user and duplicates.is_duplicate_mcp(Item("mcp", n, "", f, {"config": c})))
+                and not own.is_left(Item("mcp", n, "", f, {}))]
             if mine:
                 n, f = mine[0]
                 out.append(CheckResult(f"{label} servers", False,
                                        f"two {label} servers: the plugin's and yours ({n} in {f})",
-                                       "loadout configure own", "warn"))
+                                       f"keep one: in Claude Code's /mcp, disable plugin:loadout:{tool}; or remove "
+                                       f"yours, or keep both (leave), with loadout configure own", "warn"))
         n_cbm = [(f, 1) for ev, words, f in duplicates.user_hooks(str(cwd)) if "hook-augment" in words]
         if n_cbm:
             files = ", ".join(dict.fromkeys(f for f, _ in n_cbm))

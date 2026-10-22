@@ -60,6 +60,12 @@ def project_for(cwd: str, max_dbs: int = MAX_DBS) -> str | None:
     return None
 
 
+def _available(agent: str, cwd: str) -> bool:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import mcp_guard
+    return mcp_guard.available("codebase-memory-mcp", agent, cwd, mcp_guard._home())
+
+
 def main(argv: list[str]) -> None:
     event = EVENTS.get(argv[1]) if len(argv) > 1 else None
     if not event:
@@ -68,7 +74,10 @@ def main(argv: list[str]) -> None:
         cwd = json.loads(sys.stdin.read()).get("cwd")
     except Exception:
         return
-    name = project_for(cwd) if isinstance(cwd, str) and cwd else None
+    agent = argv[argv.index("--agent") + 1] if "--agent" in argv[:-1] else "claude"
+    if not isinstance(cwd, str) or not cwd or not _available(agent, cwd):
+        return  # never point to a tool the agent does not have
+    name = project_for(cwd)
     if not name:
         return
     text = (f"codebase-memory: this folder is indexed as project {name}; "

@@ -24,7 +24,7 @@ OMITTED = {
 OMITTED_EVENTS = {"SubagentStop": "Codex refreshes codebase-memory at Stop only; a subagent's edits wait for the "
                                   "parent's Stop (or the 20-file limit)"}
 CODEX_ARGS = {"--client=claude-code": "--client=codex", "rtk hook claude": "rtk hook codex",
-              "--agent claude": "--agent codex",
+              "--agent claude": "--agent codex", 'subagent-context.sh" claude': 'subagent-context.sh" codex',
               "mcp__plugin_loadout_serena__": "mcp__serena__", "Write|Edit|MultiEdit": "Edit|Write"}
 
 

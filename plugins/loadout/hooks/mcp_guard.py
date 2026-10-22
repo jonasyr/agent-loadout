@@ -85,6 +85,27 @@ def server_available(server: str, cwd: str, home: Path) -> bool:
     return server in _dict(_json(Path(cwd) / ".mcp.json"), "mcpServers") and server not in off | json_off
 
 
+def codex_server_enabled(server: str, home: Path) -> bool:
+    """False only when Codex's config.toml switches <server> off (`[mcp_servers.<server>] enabled = false`)."""
+    root = Path(os.environ["CODEX_HOME"]) if os.environ.get("CODEX_HOME") else home / ".codex"
+    try:
+        import tomllib
+        with open(root / "config.toml", "rb") as fh:
+            data = tomllib.load(fh)
+    except Exception:
+        return True
+    table = _dict(_dict(data, "mcp_servers"), server)
+    return table.get("enabled") is not False
+
+
+def available(server: str, agent: str, cwd: str, home: Path) -> bool:
+    """The server's binary is on PATH and the agent has it on: Claude Code by its per-folder switch, Codex by its
+    config.toml. Each agent reads only its own files."""
+    if not binary_on_path(server):
+        return False
+    return codex_server_enabled(server, home) if agent == "codex" else server_available(server, cwd, home)
+
+
 def _words(hook: dict) -> list[str]:
     command = hook.get("command")
     words = command.split() if isinstance(command, str) else []

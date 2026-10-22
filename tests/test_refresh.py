@@ -491,3 +491,16 @@ def test_codex_delete_and_move_paths_are_recorded(env):
     env["mod"].handle({"session_id": "s1", "hook_event_name": "PostToolUse", "tool_name": "apply_patch",
                        "cwd": str(env["repo"]), "tool_input": {"command": patch}})
     assert sorted(_state(env)["changed"]) == sorted(str(env["repo"] / n) for n in ("old.py", "x.py", "y.py"))
+
+
+def test_codex_refresh_ignores_claude_codes_switch(env, monkeypatch):
+    (env["home"] / ".claude.json").write_text(json.dumps(
+        {"projects": {str(env["repo"]): {"disabledMcpServers": ["plugin:loadout:codebase-memory-mcp"]}}}))
+    _edit(env, env["repo"] / "a.py")
+    assert not (_state(env) or {}).get("changed")  # Claude Code: off here, nothing tracked
+    monkeypatch.setattr(env["mod"], "AGENT", "codex")
+    monkeypatch.setattr(env["mod"], "CACHE_SECONDS", 0, raising=False)
+    for f in (env["home"] / ".local" / "state" / "loadout" / "cbm-refresh").glob("*.json"):
+        f.unlink()
+    _edit(env, env["repo"] / "a.py")
+    assert _state(env)["changed"] == [str(env["repo"] / "a.py")]

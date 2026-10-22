@@ -95,3 +95,35 @@ def test_default_name_collapses_repeated_dashes_like_cbm():
     assert mod.default_name("/tmp/claude-1000/-home-x/repo") == "tmp-claude-1000-home-x-repo"
     assert mod.default_name("/home/jonas/Documents/Code/arsnova.eu") == "home-jonas-Documents-Code-arsnova.eu"
     assert mod.default_name("/a/b/.claude/worktrees/x") == "a-b-.claude-worktrees-x"
+
+
+def _run_cbm(tmp_path, args, cwd, path_bin=True, claude_json=None):
+    import subprocess, sys, json, os
+    home = tmp_path / "h"
+    (home / ".cache" / "codebase-memory-mcp").mkdir(parents=True, exist_ok=True)
+    name = str(cwd).lstrip("/").replace("/", "-")
+    (home / ".cache" / "codebase-memory-mcp" / f"{name}.db").write_bytes(b"")
+    bindir = tmp_path / "b"
+    bindir.mkdir(exist_ok=True)
+    stub = bindir / "codebase-memory-mcp"
+    if path_bin:
+        stub.write_text("#!/bin/sh\n")
+        stub.chmod(0o755)
+    elif stub.exists():
+        stub.unlink()
+    if claude_json is not None:
+        (home / ".claude.json").write_text(json.dumps(claude_json))
+    env = {"HOME": str(home), "PATH": f"{bindir}{os.pathsep}/usr/bin:/bin"}
+    res = subprocess.run([sys.executable, str(SCRIPT), *args], input=json.dumps({"cwd": str(cwd)}), env=env,
+                         capture_output=True, text=True, timeout=10)
+    return res.stdout.strip()
+
+
+def test_no_project_line_without_the_binary_or_with_the_server_off(tmp_path):
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    assert "indexed as project" in _run_cbm(tmp_path, ["session-start"], cwd)
+    assert _run_cbm(tmp_path, ["session-start"], cwd, path_bin=False) == ""
+    off = {"projects": {str(cwd): {"disabledMcpServers": ["plugin:loadout:codebase-memory-mcp"]}}}
+    assert _run_cbm(tmp_path, ["session-start"], cwd, claude_json=off) == ""
+    assert "indexed as project" in _run_cbm(tmp_path, ["session-start", "--agent", "codex"], cwd, claude_json=off)

@@ -12,7 +12,7 @@
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/cbm_project.py\" session-start",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/cbm_project.py\" session-start --agent codex",
             "shell": "bash",
             "timeout": 5
           }
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh.py\" --agent codex",
             "shell": "bash",
             "timeout": 5
           }
@@ -73,7 +73,7 @@
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh.py\" --agent codex",
             "shell": "bash",
             "timeout": 5
           }
@@ -86,13 +86,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-context.sh\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-context.sh\" codex",
             "shell": "bash",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/cbm_project.py\" subagent-start",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/cbm_project.py\" subagent-start --agent codex",
             "shell": "bash",
             "timeout": 5
           }

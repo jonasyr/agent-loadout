@@ -59,7 +59,11 @@ def test_subagent_context_is_valid_json(tmp_path):
 
 
 def test_subagent_context_names_exact_tools(tmp_path):
-    proc = subprocess.run(["/bin/bash", str(PLUGIN / "hooks/subagent-context.sh")], env={"PATH": str(tmp_path)}, capture_output=True, text=True)
+    for tool in ("serena", "codebase-memory-mcp"):
+        (tmp_path / tool).write_text("#!/bin/sh\n")
+        (tmp_path / tool).chmod(0o755)
+    proc = subprocess.run(["/bin/bash", str(PLUGIN / "hooks/subagent-context.sh"), "claude"],
+                          env={"PATH": str(tmp_path)}, capture_output=True, text=True)
     card = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
     for name in ("mcp__plugin_loadout_codebase-memory-mcp__search_graph", "mcp__plugin_loadout_serena__find_symbol", "already active"):
         assert name in card
@@ -132,3 +136,22 @@ def test_cbm_hook_augment_is_not_wired():
 def test_plugin_servers_always_load():
     servers = json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]
     assert servers["serena"]["alwaysLoad"] is True and servers["codebase-memory-mcp"]["alwaysLoad"] is True
+
+
+def _card(args=(), path=None):
+    env = {"PATH": path or os.environ["PATH"]}
+    out = subprocess.run(["/bin/bash", str(PLUGIN / "hooks/subagent-context.sh"), *args], env=env,
+                         capture_output=True, text=True)
+    return json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
+
+
+def test_codex_subagent_card_says_search_first_and_names_codex_tools():
+    card = _card(["codex"])
+    assert "mcp__plugin_loadout" not in card and "already active" not in card and "are loaded" not in card
+    assert "search" in card.lower() and "search_graph" in card and "find_symbol" in card
+    codex = json.loads((PLUGIN / "hooks/codex.json").read_text())["hooks"]["SubagentStart"]
+    assert any(h["command"].endswith("subagent-context.sh\" codex") for g in codex for h in g["hooks"])
+
+
+def test_claude_card_claims_loaded_tools_only_when_both_are_installed(tmp_path):
+    assert "already active" not in _card(path=f"{tmp_path}:/usr/bin:/bin")

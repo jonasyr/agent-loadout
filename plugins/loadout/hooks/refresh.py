@@ -159,9 +159,12 @@ def repo_root(folder: str) -> str | None:
     return os.path.normpath(root) if root else None
 
 
+AGENT = "claude"  # `--agent codex` from codex.json: Codex's own switch, never Claude Code's files
+
+
 def available(cwd: str) -> bool:
-    """mcp_guard's rules (a) and (b): the binary is on PATH and Claude Code has the server on for the folder."""
-    return mcp_guard.binary_on_path(SERVER) and mcp_guard.server_available(SERVER, cwd, mcp_guard._home())
+    """mcp_guard's rules (a) and (b) for the agent that runs this hook."""
+    return mcp_guard.available(SERVER, AGENT, cwd, mcp_guard._home())
 
 
 def spawn(root: str, now: bool = False) -> None:
@@ -462,7 +465,10 @@ def run(root: str, now: bool = False) -> None:
 
 
 def main(argv: list[str]) -> int:
+    global AGENT
     try:
+        if argv[:1] == ["--agent"] and len(argv) >= 2:
+            AGENT, argv = argv[1], argv[2:]
         if len(argv) >= 2 and argv[0] == "--run":
             run(argv[1], now="--now" in argv[2:])
             return 0
