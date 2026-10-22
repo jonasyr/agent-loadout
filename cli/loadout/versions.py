@@ -66,7 +66,7 @@ class Version(tuple):
 
 
 def parse_version(text: str) -> Version | None:
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.]+))?", text or "")
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", text or "")
     if not m:
         return None
     return Version((int(m.group(1)), int(m.group(2)), int(m.group(3))), m.group(4) or "")

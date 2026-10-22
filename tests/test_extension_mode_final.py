@@ -29,11 +29,15 @@ def test_the_cli_version_is_asked_once_per_binary(fake_home, fake_runner, tmp_pa
     assert sum(1 for c in fake_runner.calls if c == ["codex", "--version"]) == 1
 
 
-def test_the_extension_starts_the_plugins_mcp_servers_too(codex_ext):
+def test_the_extension_starts_the_installed_plugins_mcp_servers_too(codex_ext, monkeypatch):
+    import test_codex_server_twice as twice
+    twice._plugin(servers=("codebase-memory-mcp", "old-server"))  # the installed copy, not the kit checkout
+    monkeypatch.setattr(codex, "installed_plugins", lambda: twice.INSTALLED)
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('[plugins."loadout@agent-loadout"]\nenabled = true\n')
-    assert "codebase-memory-mcp" in vscode.mcp_commands("codex")
+    found = vscode.mcp_commands("codex")
+    assert found["old-server"] == "old-server" and "codebase-memory-mcp" in found
     path.write_text('[plugins."loadout@agent-loadout"]\nenabled = false\n')
     assert "codebase-memory-mcp" not in vscode.mcp_commands("codex")
 
@@ -80,3 +84,10 @@ def test_numbered_prereleases_sort_by_number():
     assert v("0.163.0-alpha.2") < v("0.163.0-alpha.10") < v("0.163.0")
     assert v("0.163.0-alpha") < v("0.163.0-alpha.1") < v("0.163.0-beta")
     assert v("1.0.0-1") < v("1.0.0-alpha")  # numeric identifiers sort before alphanumeric ones (semver)
+
+
+def test_a_prerelease_may_hold_hyphens():
+    from loadout import versions
+    v = versions.parse_version
+    assert v("1.0.0-alpha-beta.1").pre == "alpha-beta.1"
+    assert v("1.0.0-alpha-beta.1") < v("1.0.0-alpha-gamma.1")

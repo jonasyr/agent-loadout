@@ -494,19 +494,16 @@ def _codex_plugin_on() -> bool:
 
 def mcp_commands(agent: str, project: Path | None = None, plugin: bool = True) -> dict[str, str]:
     """The commands of the MCP servers an extension starts: Codex's [mcp_servers.*] in config.toml, and in a
-    project its .codex/config.toml, which wins for a name it shares, plus the loadout plugin's (.codex-mcp.json) while
-    config.toml switches it on (ADR 0038); Claude Code's user servers in ~/.claude.json plus the loadout plugin's."""
+    project its .codex/config.toml, which wins for a name it shares, plus the servers of the loadout plugin's installed
+    copy while config.toml switches it on (ADR 0038); Claude Code's user servers in ~/.claude.json plus the loadout plugin's."""
     if agent == "codex":
         tables = _toml_tables(paths.codex_home() / "config.toml")
-        if plugin and _codex_plugin_on():
-            try:
-                kit = json.loads((paths.kit_root() / "plugins" / "loadout" / ".codex-mcp.json").read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                kit = {}
-            servers = kit.get("mcpServers") if isinstance(kit, dict) else None
-            for name, table in (servers.items() if isinstance(servers, dict) else ()):
-                if isinstance(table, dict):
-                    tables.setdefault(name, table)
+        if plugin and _codex_plugin_on():  # the installed copy's servers: what the extension really starts
+            from . import codex
+            installed = codex.installed_plugins()
+            version = getattr(installed, "versions", {}).get(codex.LOADOUT_PLUGIN) if installed is not None else None
+            for name, table in codex.loadout_plugin_tables(version).items():
+                tables.setdefault(name, table)
         from .codex_project import _trusted
         if project is not None and _trusted(project):  # Codex reads a project's layer only once it is trusted;
             # that layer wins key by key, `enabled = false` included

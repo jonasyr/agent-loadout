@@ -1746,24 +1746,29 @@ LOADOUT_PLUGIN = "loadout@agent-loadout"
 
 
 def _loadout_plugin_servers(version: str | None) -> set[str]:
-    """Names of the MCP servers loadout's own Codex plugin provides, from the manifest of its active copy only
-    (plugins/cache/agent-loadout/loadout/<version>, the version `codex plugin list` names): an older copy Codex keeps
-    in its cache is not what it loads. No usable version, a broken manifest or server file: nothing."""
+    """Names of the MCP servers loadout's own Codex plugin provides (loadout_plugin_tables)."""
+    return set(loadout_plugin_tables(version))
+
+
+def loadout_plugin_tables(version: str | None) -> dict[str, dict]:
+    """The MCP servers loadout's own Codex plugin provides (name -> its table), from the manifest of its active copy
+    only (plugins/cache/agent-loadout/loadout/<version>, the version `codex plugin list` names): an older copy Codex
+    keeps in its cache is not what it loads. No usable version, a broken manifest or server file: nothing."""
     base = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
     if not isinstance(version, str) or version in ("", ".", "..") or "/" in version or "\\" in version:
-        return set()
+        return {}
     root = base / version
     if not root.is_dir() or not paths.inside(root, base):
-        return set()
+        return {}
     try:
         ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
     except Exception:
         ref = None
     mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
     try:
-        return {n for n in get_dict(load_json(mcp), "mcpServers") if isinstance(n, str)}
+        return {n: t for n, t in get_dict(load_json(mcp), "mcpServers").items() if isinstance(n, str) and isinstance(t, dict)}
     except Exception:
-        return set()
+        return {}
 
 
 def servers_twice(installed: set[str] | None) -> list[str]:
