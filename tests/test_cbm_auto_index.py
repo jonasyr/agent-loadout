@@ -97,9 +97,38 @@ def test_check_row_auto_index(fake_home, fake_runner):
     row, = check._cbm_auto_index()
     assert (row.name, row.ok, row.detail) == ("codebase-memory auto_index", True, "on")
     _value(fake_runner, "false\n")
+    assert check._cbm_auto_index()[0].detail == "off (loadout turns it on at the next update)"
+    _record().parent.mkdir(parents=True, exist_ok=True)
+    _record().write_text(json.dumps({"set": "true"}), encoding="utf-8")
     assert check._cbm_auto_index()[0].detail == "off (yours)"
     _answer("off")
     row = check._cbm_auto_index()[0]
     assert row.ok and row.detail == "off (your answer)"
     fake_runner.missing.add("codebase-memory-mcp")
     assert check._cbm_auto_index() == []
+
+
+def test_unreadable_preferences_change_nothing(fake_home, fake_runner):
+    f = paths.personal_root() / "loadout.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("{not json", encoding="utf-8")
+    _value(fake_runner, "false\n")
+    assert cbm.apply_auto_index(backup.Backup(description="t")) == []
+    assert _sets(fake_runner) == [] and not _record().exists()
+
+
+def test_record_that_is_not_an_object_is_no_record(fake_home, fake_runner):
+    _record().parent.mkdir(parents=True, exist_ok=True)
+    _record().write_text("[1]", encoding="utf-8")
+    _value(fake_runner, "false\n")
+    assert cbm.apply_auto_index(backup.Backup(description="t")) == [ON_LINE]
+
+
+def test_configure_set_pref_choice_off_reverts_ours_at_once(fake_home, fake_runner):
+    from loadout.__main__ import main
+    _value(fake_runner, "false\n")
+    cbm.apply_auto_index(backup.Backup(description="t"))
+    _value(fake_runner, "true\n")
+    fake_runner.calls.clear()
+    assert main(["configure", "set", "pref-choice", "cbm_auto_index", "off"]) == 0
+    assert SET_FALSE in fake_runner.calls and not _record().exists()

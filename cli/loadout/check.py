@@ -262,7 +262,14 @@ def _cbm_auto_index() -> list[CheckResult]:
     now = cbm.current()
     if now is None:
         return []
-    detail = "on" if now else "off (your answer)" if cbm.answer() == "off" else "off (yours)"
+    if now:
+        detail = "on"
+    elif cbm.answer() == "off":
+        detail = "off (your answer)"
+    elif cbm._ours():
+        detail = "off (yours)"
+    else:
+        detail = "off (loadout turns it on at the next update)"
     return [CheckResult("codebase-memory auto_index", True, detail, "", "warn")]
 
 

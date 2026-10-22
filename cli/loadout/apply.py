@@ -195,11 +195,11 @@ def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say
     return _finish(StepResult("Codex", summary, lines, facts), "codex")
 
 
-def cbm_step(bk: Backup, dry: bool = False, on: bool | None = None) -> StepResult:
+def cbm_step(bk: Backup, dry: bool = False) -> StepResult:
     """codebase-memory's auto_index from the cbm_auto_index preference (cbm.apply_auto_index). Installs nothing, so
     the daily sync runs it too. Nothing while both agents are off or codebase-memory-mcp is missing."""
     from . import cbm, preferences
-    if on is False or not preferences.available(preferences.by_id(cbm.PREF)):
+    if not preferences.available(preferences.by_id(cbm.PREF)):
         return StepResult("codebase-memory", "")
     lines = cbm.apply_auto_index(bk, dry=dry)
     return _finish(StepResult("codebase-memory", lines[0].removeprefix("codebase-memory: ") if lines else "", lines),

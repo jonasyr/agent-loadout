@@ -21,12 +21,14 @@ def record_path():
     return paths.state_dir() / "cbm-auto-index.json"
 
 
-def answer() -> str:
-    """'on' or 'off': the person's answer, else the preference's default."""
+def answer() -> str | None:
+    """'on' or 'off': the person's answer, else the preference's default; None when loadout.json cannot be read
+    (the answer is unknown, so nothing is changed against it)."""
     try:
+        preferences._loadout_data()  # raises ValueError for a file that is not valid JSON; detect() reads it as unset
         value = preferences.detect()[PREF].value
     except (ValueError, InvalidJSON):
-        value = None
+        return None
     return value or preferences.by_id(PREF)["default"]
 
 
@@ -43,14 +45,16 @@ def current() -> bool | None:
 
 def _ours() -> bool:
     try:
-        return load_json(record_path()).get("set") == "true"
+        data = load_json(record_path())
     except InvalidJSON:
         return False
+    return isinstance(data, dict) and data.get("set") == "true"
 
 
 def apply_auto_index(bk, dry: bool = False) -> list[str]:
-    now, want = current(), answer() == "on"
-    if now is None or now == want:
+    given = answer()
+    now, want = current(), given == "on"
+    if given is None or now is None or now == want:
         return []
     ours = _ours()
     if want:
