@@ -1,48 +1,51 @@
 # Use loadout with VS Code
 
-Use this page if you work in VS Code with the Claude Code extension, VS Code's Codex extension, or both, with or without the CLIs. loadout sets up the same agent folders the CLIs read; this page says what each extension sees of that, what it lacks, and the fix. Which bootstrap flags fit your platform: [Pick your setup](setups.md#recommended-setups). Why it works this way: [ADR 0032](../adr/0032-vscode-extensions-are-a-surface-of-an-agent.md), [ADR 0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md) and [ADR 0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md).
+Use this page if you work in VS Code with the Claude Code extension, VS Code's Codex extension, or both, with or without the CLIs. loadout sets up the same agent folders the CLIs read; this page says what each extension sees of that, what it lacks, and the fix. Which bootstrap flags fit your platform: [Pick your setup](setups.md#recommended-setups). Why it works this way: [ADR 0032](../adr/0032-vscode-extensions-are-a-surface-of-an-agent.md), [ADR 0033](../adr/0033-codex-for-the-vscode-extension-without-its-cli.md) [ADR 0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md) and [ADR 0038](../adr/0038-codex-extension-loads-plugins-and-reviews-hooks.md).
 
 ## What loadout recommends
 
 The home of these is [Recommended setups](setups.md#recommended-setups); in short:
 
-- **Keep the Codex CLI next to VS Code's Codex extension** ([Recommended setups](setups.md#recommended-setups); what you lose without it: [Codex in VS Code without the CLI](#codex-in-vs-code-without-the-cli)).
+- **VS Code's Codex extension alone is a full setup.** The Codex CLI next to it is optional, for `codex` in a terminal ([Recommended setups](setups.md#recommended-setups); [Codex in VS Code without the CLI](#codex-in-vs-code-without-the-cli)).
 - **Let `--install` install the Claude Code CLI too** ([Recommended setups](setups.md#recommended-setups); [Claude Code in VS Code without the CLI](#claude-code-in-vs-code-without-the-cli)).
 - **In WSL, open repos in a Remote-WSL window** (`code .` from WSL), for both extensions; `--vscode-wsl` is the fix for a Windows window you open anyway ([Recommended setups](setups.md#recommended-setups); [Windows and WSL](#windows-and-wsl)).
 
 ## What each extension sees
 
-Both extensions bring their own copy of the agent and do not use the `claude` or `codex` on your PATH. `loadout check` shows one row per extension install, `VS Code (Claude Code)` and `VS Code (Codex)`, with the window type added for a Windows window or a Remote-WSL window; every `VS Code (…)` row is a warning, never a failure. A `VS Code settings` row means a settings file does not parse, so loadout cannot read what it sets: fix its JSON (Preferences: Open User Settings (JSON)).
+Both extensions bring their own copy of the agent and do not use the `claude` or `codex` on your PATH. `loadout check` shows one row per extension install, `VS Code (Claude Code)` and `VS Code (Codex)`, with the window type added for a Windows window or a Remote-WSL window; every `VS Code (…)` row is a warning, never a failure. Without a Codex CLI, one `Codex CLI` row says it is optional and counts as no problem. A `VS Code settings` row means a settings file does not parse, so loadout cannot read what it sets: fix its JSON (Preferences: Open User Settings (JSON)).
 
 | | Claude Code extension | VS Code's Codex extension |
 |---|---|---|
-| Reads | `~/.claude` and `~/.claude.json`, like the CLI: rules, settings, plugins, hooks, MCP servers, `CLAUDE.md`, your login | `~/.codex` (or `$CODEX_HOME`), like the CLI: `config.toml`, `AGENTS.md`, `hooks.json`, MCP servers, your login; skills in `~/.agents/skills` |
-| Lacks | Little: it does not run in VS Code's Restricted Mode | Plugins: loadout's skills (such as `loadout:configure`), superpowers and plugin hooks do not load. `/hooks`: there is no command to approve hooks. Restricted Mode: it declares no support for untrusted workspaces either |
-| Fix for what it lacks | Trust the workspace | Use the Codex CLI alongside VS Code (below), and trust the workspace |
+| Reads | `~/.claude` and `~/.claude.json`, like the CLI: rules, settings, plugins, hooks, MCP servers, `CLAUDE.md`, your login | `~/.codex` (or `$CODEX_HOME`), like the CLI: `config.toml`, `AGENTS.md`, `hooks.json`, plugins, MCP servers, your login; skills in `~/.agents/skills` |
+| Lacks | Little: it does not run in VS Code's Restricted Mode | Nothing loadout sets up. It has its own hook review instead of `/hooks`, and it does not run in VS Code's Restricted Mode |
+| Step 1 | Trust the workspace (Restricted Mode: Trust Folder & Continue) | Trust the workspace (Trust Folder & Continue), then approve the hooks: the hooks icon in the prompt bar, then Allow all |
 
 ### The Codex CLI alongside VS Code
 
-`loadout check` shows `VS Code (Codex)` with the warning "plugins do not load" when the Codex CLI is missing (for a local or Remote-WSL window). The fix: install the Codex CLI with `loadout bootstrap --install`, open VS Code's terminal, run `codex` once and approve loadout's hooks in `/hooks`. Use `codex` in that terminal whenever you need a plugin skill; the extension and the Codex CLI share your settings and login.
+The Codex CLI is optional next to the extension. Both read the same `~/.codex`, so what loadout installs once serves both. With `--install`, bootstrap asks in a terminal whether to install it, default No (`[y/N]`); without a terminal, or with `--yes`, it installs it. `--without-codex-cli` skips it. Install it only if you want `codex` in a terminal.
 
-`loadout check` also warns when the extension's own Codex is older than the version loadout needs ([Switch it on](codex.md#switch-it-on)): update the extension in VS Code's Extensions view.
+`loadout check` warns `VS Code (Codex)` when the extension's own Codex is older than the version loadout needs ([Switch it on](codex.md#switch-it-on)): update the extension in VS Code's Extensions view. With a Codex CLI next to the extension, the same row warns that an old extension may not load what the CLI installed.
+
+A Codex CLI on PATH that is unusable (too old, no version, or the Windows codex in WSL) next to a working extension: loadout uses the extension's Codex for everything and the `Codex CLI` row warns once, with the reason and the fix.
 
 ## Codex in VS Code without the CLI
 
-With VS Code's Codex extension and no Codex CLI on your PATH, loadout still sets Codex up for the extension: the rules block in `AGENTS.md`, `config.toml`, Serena's hooks and the skills. It runs the extension's own Codex for the little it runs. It skips plugins, which the extension does not load.
+With VS Code's Codex extension and no Codex CLI on your PATH, loadout sets Codex up fully for the extension: the rules block in `AGENTS.md`, `config.toml`, Serena's hooks, the skills and the plugins (loadout's skills such as `loadout:configure`, superpowers, codebase-memory-mcp). It installs the plugins with the extension's own bundled Codex, and bootstrap, `loadout update`, the daily sync and `loadout profile` do the same. The daily sync, the weekly update check and the notices from Codex sessions work as with the CLI ([At each session start](../reference/state-and-sync.md#at-each-session-start)).
 
-Without the Codex CLI you lose:
+Do this, in order:
 
-- **Plugins:** loadout's skills (such as `loadout:configure`), superpowers and the plugin hooks.
-- **`/hooks`:** the extension has no command to approve hooks, so Serena's hooks in `~/.codex/hooks.json` wait for an approval only the Codex CLI can give.
-- **The daily sync, the weekly update check and the notices** from Codex sessions ([At each session start](../reference/state-and-sync.md#at-each-session-start)).
+1. Open the folder in VS Code and choose Trust Folder & Continue (Restricted Mode). The extension does not run in an untrusted workspace.
+2. Run `loadout bootstrap`.
+3. In VS Code, click the hooks icon in the prompt bar ("Review hooks · N need approval"), then Allow all. Or use Settings > Hooks.
+4. If bootstrap says so, reload the window (Command Palette: Developer: Reload Window) so the extension loads the plugins.
 
-Bootstrap's "Still to do" and `loadout check` name the approval as the one step only the Codex CLI has, and name logins in the extension (gear, MCP servers, Authenticate) instead of `codex mcp login`. `loadout check` warns `binary codex` instead of failing.
+loadout never writes hook approval for you. The extension records it in `config.toml` (`[hooks.state]`), as the CLI does, and the `Codex hooks` row and the "Still to do" step clear once you approve. The loadout plugin's hooks need approval only while the plugin is on in `config.toml`; Serena's hooks always do. Logins run in the extension (gear, MCP servers, Authenticate) instead of `codex mcp login`.
 
 When this applies:
 
-- The extension's own Codex must be new enough ([Switch it on](codex.md#switch-it-on)) and report its version. With an older one, or one that gives no version, extension mode is off: bootstrap's Codex step stops with a line that says to update the extension (or install the Codex CLI), and `loadout check` fails `binary codex`.
-- With `--install`, bootstrap asks in a terminal whether to install the Codex CLI next to the extension (default yes). Without a terminal, or with `--yes`, it installs it. `--without-codex-cli` leaves it out; when no extension qualifies, or a Codex CLI is already on PATH, bootstrap prints `--without-codex-cli: not used` and goes on as without the flag.
-- In WSL, only VS Code's Codex extension in a Remote-WSL window counts (it lives in `~/.vscode-server/extensions` once it is installed in WSL: install it from the Extensions view in a Remote-WSL window, or select Install on a dimmed local copy; [VS Code's WSL docs](https://code.visualstudio.com/docs/remote/wsl)), never the one in a Windows window. The walkthrough [Codex only on Windows with VS Code](setups.md#codex-only-on-windows-with-vs-code) installs the Codex CLI in WSL.
+- The extension's own Codex must be new enough ([Switch it on](codex.md#switch-it-on)) and report its version. With an older one, or one that gives no version, Codex is not set up: bootstrap's Codex step stops with a line that says to update the extension, then run `loadout update`. A Codex that is 0.161 or newer but has no `codex plugin` command skips the plugins with one line; the rest is set up.
+- `loadout check` shows one `Codex CLI` row: "not installed (optional: VS Code's Codex extension runs its own)". It is not a warning. The `Codex plugin`, `Codex hooks`, `Codex plugins missing` and `Codex MCP` rows check the real state through the extension's Codex.
+- In WSL, only VS Code's Codex extension in a Remote-WSL window counts (it lives in `~/.vscode-server/extensions` once it is installed in WSL: install it from the Extensions view in a Remote-WSL window, or select Install on a dimmed local copy; [VS Code's WSL docs](https://code.visualstudio.com/docs/remote/wsl)), never the one in a Windows window. The walkthrough [Codex only on Windows with VS Code](setups.md#codex-only-on-windows-with-vs-code) shows the Windows case.
 
 ## Claude Code in VS Code without the CLI
 
@@ -73,7 +76,7 @@ The block takes effect when VS Code's WSL server restarts: close every Remote-WS
 
 ## VS Code on native Windows
 
-With loadout on native Windows (`bootstrap.ps1`, experimental; WSL 2 is recommended, see [Pick your setup](setups.md#native-windows-experimental)), a local VS Code window reads `%USERPROFILE%\.claude` and `%USERPROFILE%\.codex`, which `bootstrap.ps1` sets up. The rest of this page applies as for a local window: the `VS Code (Claude Code)` and `VS Code (Codex)` rows, the `VS Code PATH` row against your shell's PATH, the extensions' own binaries when no CLI is on PATH, and `--without-codex-cli`. `--vscode-wsl`, `--vscode-path` and the `VS Code` switch row are for WSL only: on Windows the two flags change nothing and say so. loadout on Windows does not report a Codex in WSL.
+With loadout on native Windows (`bootstrap.ps1`, experimental; WSL 2 is recommended, see [Pick your setup](setups.md#native-windows-experimental)), a local VS Code window reads `%USERPROFILE%\.claude` and `%USERPROFILE%\.codex`, which `bootstrap.ps1` sets up. The rest of this page applies as for a local window: the `VS Code (Claude Code)` and `VS Code (Codex)` rows, the `VS Code PATH` row against your shell's PATH, and the extensions' own binaries when no CLI is on PATH. `--vscode-wsl`, `--vscode-path` and the `VS Code` switch row are for WSL only: on Windows the two flags change nothing and say so. loadout on Windows does not report a Codex in WSL.
 
 ## A committed .mcp.json with your own path
 
@@ -81,4 +84,4 @@ A repo's `.mcp.json` is shared. When it starts a server from a path in one perso
 
 ## What loadout does not do here
 
-loadout does not install or update extensions, trust a workspace, approve hooks, or change your MCP entries. It writes VS Code files only when you ask: the `chatgpt.runCodexInWindowsSubsystemForLinux` switch (`--vscode-wsl`, or a yes in a terminal) and the PATH block (`--vscode-path`, or a yes), each with a backup ([ADR 0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md)). An MCP entry you wrote, such as a Serena entry with an absolute command and a fixed `--project`, is used as it is ([Serena already set up](codex.md#what-stays-different)).
+loadout does not install or update extensions, trust a workspace, approve hooks (you do, in the extension), or change your MCP entries. It writes VS Code files only when you ask: the `chatgpt.runCodexInWindowsSubsystemForLinux` switch (`--vscode-wsl`, or a yes in a terminal) and the PATH block (`--vscode-path`, or a yes), each with a backup ([ADR 0034](../adr/0034-vscode-extension-binaries-and-vscode-fixes.md)). An MCP entry you wrote, such as a Serena entry with an absolute command and a fixed `--project`, is used as it is ([Serena already set up](codex.md#what-stays-different)).

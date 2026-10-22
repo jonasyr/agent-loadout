@@ -1,6 +1,6 @@
 # 0033. Codex set up for VS Code's Codex extension without its CLI
 
-- Status: Accepted
+- Status: Accepted; superseded in part by [0038](0038-codex-extension-loads-plugins-and-reviews-hooks.md) (plugins and hooks: the extension loads plugins and reviews hooks itself). The usability rule, the 0.161 floor and `chatgpt.cliExecutable` stand.
 - Date: 2026-10-19
 - Source: [Design: VS Code extensions as a surface of each agent](../superpowers/specs/2026-10-17-vscode-extensions-design.md), Part 2 (shipped in #50)
 - Amends: [ADR 0024](0024-codex-parity-update-model.md) ("usable" includes Codex without its CLI, with no plugins to refresh)

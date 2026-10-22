@@ -274,6 +274,9 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
         if not _allowed_run(cmd):  # the undo commands loadout records only, never a shell
             shown = " ".join(map(str, cmd)) if isinstance(cmd, list) else str(cmd)
             return f"failed: refusing to run this command from a manifest: {shown}"
+        if cmd[0] == "codex":  # recorded as "codex": run with the codex of the current mode (ADR 0038)
+            from . import codex
+            cmd = [codex.program(), *cmd[1:]]
         if runner.would_refuse(cmd):
             where = runner.write_manual_commands(root or pre.root, f"restore: {label} (full command, contains secrets)", [cmd])
             return f"failed: {label}: cannot run through this claude (Windows .cmd shim); run the command in {where} by hand"

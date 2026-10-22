@@ -364,42 +364,36 @@ def _extension_only(fake_runner, monkeypatch):
     monkeypatch.setattr(targets, "claude_enabled", lambda: False)
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
     fake_runner.missing.add("codex")
-    monkeypatch.setattr(codex, "extension_state", lambda: (object(), None))  # a usable extension
+    ext = __import__("types").SimpleNamespace(binary=Path("/opt/vscode ext/codex"))
+    monkeypatch.setattr(codex, "extension_state", lambda: (ext, None))  # a usable extension
+    return str(ext.binary)
 
 
-def test_extension_mode_sets_no_plugins_and_says_so(repo, fake_runner, monkeypatch):
-    _extension_only(fake_runner, monkeypatch)
-    for dry in (False, True):
-        assert codex_project.plugins(THESIS, dry_run=dry) == [codex_project.PLUGINS_EXTENSION_NOTE]
+def test_extension_mode_installs_the_profiles_plugins_with_its_codex(repo, fake_runner, monkeypatch):
+    exe = _extension_only(fake_runner, monkeypatch)
+    fake_runner.responses[(exe, "plugin", "list")] = runner.Result(0, '{"installed": [], "available": []}', "")
+    fake_runner.responses[(exe, "plugin", "marketplace", "add")] = runner.Result(
+        0, '{"marketplaceName": "claude-plugins-official"}', "")
+    lines = codex_project.plugins(THESIS, dry_run=False)
+    assert any(c[:3] == [exe, "plugin", "add"] for c in fake_runner.calls), (lines, fake_runner.calls)
     assert not any(c[:2] == ["codex", "plugin"] for c in fake_runner.calls)
 
 
-def test_profile_in_extension_mode_prints_the_note_and_exits_0(repo, fake_runner, monkeypatch, capsys):
-    _extension_only(fake_runner, monkeypatch)
-    assert project.add_profile(repo, "thesis", install=True) == 0
-    out = capsys.readouterr().out
-    assert "VS Code's Codex extension loads no plugins; the profile's Codex plugins are not set" in out
-    assert "run loadout profile again" not in out and "installed in your Codex" not in out
-    cfg = repo / ".codex" / "config.toml"
-    assert not cfg.exists() or "deepeval" not in cfg.read_text()
-
-
-def test_profile_plan_in_extension_mode_has_the_note(repo, fake_runner, monkeypatch, capsys):
+def test_profile_plan_in_extension_mode_names_the_installs(repo, fake_runner, monkeypatch, capsys):
     _extension_only(fake_runner, monkeypatch)
     assert project.add_profile(repo, "thesis", install=True, dry_run=True) == 0
-    out = capsys.readouterr().out
-    assert codex_project.PLUGINS_EXTENSION_NOTE in out and "installed in your Codex" not in out
+    text = capsys.readouterr().out
+    assert "loads no plugins" not in text and "installed in your Codex" in text
 
 
 def test_profile_with_no_codex_and_no_usable_extension_fails_with_the_reason(repo, fake_runner, monkeypatch, capsys):
     _extension_only(fake_runner, monkeypatch)
     monkeypatch.setattr(codex, "extension_state", lambda: (None, codex.EXT_OLD.format(version="0.100.0")))
     lines = codex_project.plugins(THESIS, dry_run=False)
-    assert codex_project.PLUGINS_EXTENSION_NOTE not in lines
     assert lines and all("0.100.0" in l and "not installed" in l for l in lines)
     assert project.add_profile(repo, "thesis", install=True) == 1
     out = capsys.readouterr().out
-    assert codex_project.PLUGINS_EXTENSION_NOTE not in out and "installed in your Codex" not in out
+    assert "installed in your Codex" not in out
     assert "0.100.0" in out
 
 
@@ -410,3 +404,10 @@ def test_profile_plan_with_no_usable_codex_names_the_failures(repo, fake_runner,
     assert project.add_profile(repo, "thesis", install=True, dry_run=True) == 0  # a dry run only shows the plan
     out = capsys.readouterr().out
     assert "not installed" in out and "0.100.0" in out
+
+
+def test_profile_with_an_extension_codex_without_a_plugin_command_fails(repo, fake_runner, monkeypatch, capsys):
+    exe = _extension_only(fake_runner, monkeypatch)
+    fake_runner.responses[(exe, "plugin")] = runner.Result(2, "", "error: unrecognized subcommand 'plugin'\n")
+    assert project.add_profile(repo, "thesis", install=True) == 1
+    assert codex.PLUGINS_OLD.split(": ", 2)[2] in capsys.readouterr().out

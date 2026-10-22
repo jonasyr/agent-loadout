@@ -240,11 +240,8 @@ def _binaries(cs=None) -> list[CheckResult]:
                else entry.get("manual") or f"install {name} and make sure it is on PATH")
         if name == "codex" and not ok:
             from . import codex
-            if codex.extension_state()[0] is not None:  # VS Code's Codex extension runs its own: the CLI adds /hooks
-                out.append(CheckResult(f"binary {name}", False, "not on PATH; VS Code's Codex extension runs its own",
-                                       "loadout bootstrap --install (recommended next to the extension, for /hooks "
-                                       "and plugins)", "warn"))
-                continue
+            if codex.enabled() and codex.extension_state()[0] is not None:
+                continue  # VS Code's Codex extension runs its own: the `Codex CLI` row says the CLI is optional
         if name == "claude" and not ok:
             from . import vscode
             found = vscode.bundled_claude()
@@ -490,10 +487,6 @@ def _vscode(cs) -> list[CheckResult]:
     return rows
 
 
-CODEX_GAP = ("plugins do not load in VS Code's Codex extension (loadout's skills such as loadout:configure, "
-             "superpowers, plugin hooks), and it has no /hooks, so Serena's hooks wait for your approval")
-CODEX_GAP_FIX = ("use the Codex CLI alongside VS Code: loadout bootstrap --install installs it; run codex once in "
-                 "VS Code's terminal and approve the hooks in /hooks, and use it there when you need the plugin skills")
 _HOME_PATH = re.compile(r"(?:^|=)(/home/(?!linuxbrew/)[^/]+/|/Users/[^/]+/|/mnt/[A-Za-z]/(?i:users)/[^/]+/|"
                         r"[A-Za-z]:[\\/](?i:users)[\\/][^\\/]+[\\/])")  # a user name may hold spaces
 
@@ -537,15 +530,15 @@ def _surface_rows(ext, windows_only: bool = False, vscode_row: bool = False) -> 
                              "update that Codex, or remove chatgpt.cliExecutable from VS Code's settings so the "
                              "extension runs its own"))
             elif version is not None and vscode.too_old(version):
-                gaps.append((f"its bundled Codex is {version}; loadout's Codex setup needs 0.161 or newer",
+                gaps.append((f"its bundled Codex is {version}; it may not load what the Codex CLI set up (loadout needs "
+                             "0.161 or newer)" if _codex_cli_here() else
+                             f"its bundled Codex is {version}; loadout's Codex setup needs 0.161 or newer",
                              "update the Codex extension in VS Code (Extensions view)"))
         if ext.install.where == "remote-wsl" and windows_only:
             gaps.append(("the Codex extension in a Remote-WSL window reads the WSL ~/.codex, which loadout does not "
                          "set up while your Codex runs on Windows",
                          "open the repo in a Windows window, or set up Codex in WSL with loadout bootstrap "
                          "--codex-side wsl (docs/how-to/wsl.md#codex)"))
-        elif (ext.install.where != "windows" or vscode.runs_in_wsl(ext)) and not _codex_cli_here():
-            gaps.append((CODEX_GAP, CODEX_GAP_FIX))  # a Windows-side Codex: its side and home are the "VS Code" row's
     else:
         if ext.install.where == "windows":  # the home first; whether it can start Claude below, for every window
             home = vscode.reads_home(ext)

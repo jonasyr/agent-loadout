@@ -488,8 +488,8 @@ def test_codex_summary_names_skills_only_when_linked(fake_runner):
     assert apply._codex_summary(["linked x"], plugins=False) == "rules, MCP servers and skills set up"
 
 
-def test_codex_summary_extension_mode_names_skills_only_when_linked(fake_runner):
+def test_codex_summary_extension_mode_names_skills_only_when_linked(codex_ext):
     from loadout import apply
-    fake_runner.missing.add("codex")
-    assert apply._codex_summary(["linked x"]) == "rules, MCP servers and skills set up for VS Code's Codex extension"
-    assert apply._codex_summary([]) == "rules and MCP servers set up for VS Code's Codex extension"
+    assert apply._codex_summary(["linked x"]) == (
+        "rules, plugins, MCP servers and skills set up for VS Code's Codex extension")
+    assert apply._codex_summary([]) == "rules, plugins and MCP servers set up for VS Code's Codex extension"

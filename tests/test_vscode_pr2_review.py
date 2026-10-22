@@ -18,14 +18,18 @@ def ext_only(fake_home, fake_runner, monkeypatch):
     return binary
 
 
-def test_check_has_no_failure_in_extension_mode(ext_only):
+def test_check_has_no_failure_in_extension_mode(ext_only, fake_runner):
     from loadout.backup import Backup
+    fake_runner.responses[(str(ext_only), "plugin", "list")] = runner.Result(
+        0, '{"installed": [{"pluginId": "loadout@agent-loadout"}], "available": []}', "")
     codex.apply_instructions(Backup(description="test"))  # what bootstrap writes; a missing block fails for anyone
     rows = codex.checks()
     assert not [r for r in rows if not r.ok and r.severity == "error"], [r.name for r in rows if not r.ok]
 
 
-def test_extension_only_bootstrap_has_no_codex_failure(ext_only, capsys, monkeypatch):
+def test_extension_only_bootstrap_has_no_codex_failure(ext_only, fake_runner, capsys, monkeypatch):
+    fake_runner.responses[(str(ext_only), "plugin", "list")] = runner.Result(
+        0, '{"installed": [{"pluginId": "loadout@agent-loadout"}], "available": []}', "")
     (paths.home() / ".config/loadout/personal").mkdir(parents=True)
     monkeypatch.setattr(out, "VERBOSE", False)
     bootstrap.bootstrap(install=True, yes=True, plugins=False, adopt_step=False, ask=lambda q: "", interactive=False,
@@ -62,18 +66,19 @@ def test_the_bundled_version_is_asked_once_per_process(ext_only, fake_runner):
     assert sum(1 for c in fake_runner.calls if c == [str(ext_only), "--version"]) == 1
 
 
-def test_update_does_not_offer_a_plugin_refresh_in_extension_mode(ext_only, capsys, monkeypatch):
+def test_update_offers_the_plugin_refresh_in_extension_mode(ext_only, capsys, monkeypatch):
     monkeypatch.setattr(maintenance, "find_outdated", lambda: [])
     monkeypatch.setattr(bootstrap, "missing_tools", lambda *a, **k: [])
     maintenance.update(False, lambda q: pytest.fail("asked"))  # no terminal: the plan, no question
-    assert codex.PLUGINS_EXTENSION in capsys.readouterr().out
+    text = capsys.readouterr().out
+    assert "loads none" not in text and "marketplace" in text
 
 
 def test_hints_name_the_extension_not_a_bare_codex(ext_only, monkeypatch):
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "untrusted")
     monkeypatch.setattr(codex, "logins_needed", lambda: ["notion"])
     rows = {r.name: r for r in codex.checks()}
-    assert "Codex CLI" in rows["Codex hooks"].fix and "start codex" not in rows["Codex hooks"].fix
+    assert rows["Codex hooks"].fix == codex.HOOKS_EXTENSION and "start codex" not in rows["Codex hooks"].fix
     assert "VS Code" in rows["Codex logins"].fix
 
 

@@ -49,12 +49,13 @@ def _codex_item(items: list) -> tuple | None:
     """The Codex marketplaces and plugins to refresh, and those skipped because upstream did not move. Lists what
     runs (ADR 0011): per marketplace "refresh", "add" (new) or "skip", each plugin to add or re-add, and the commands
     in the shape codex._install_routes runs them."""
-    if codex.unavailable() is not None or not runner.have("codex"):  # unusable, or extension mode: no plugins
+    if codex.unavailable() is not None:  # no usable codex: nothing to refresh
         return
     from .settings_merge import desired_settings
     routes, _ = codex.plugin_routes(desired_settings())
     if not routes:
         return
+    exe = codex.program()  # the codex that runs them: the CLI, or VS Code's Codex extension's own
     installed = codex.installed_plugins()
     skip_m, skip_p = codex.unchanged_routes(routes, installed)
     installed = installed or set()
@@ -79,12 +80,12 @@ def _codex_item(items: list) -> tuple | None:
             groups.append((f"skip marketplace {name} (unchanged since {_date(at)})", []))
         elif market is None:  # no record of it: Codex may have it already, and then upgrades it
             groups.append((f"add or refresh marketplace {name}",
-                           [["codex", "plugin", "marketplace", "add", name, "--json"],
-                            ["codex", "plugin", "marketplace", "upgrade", f"<{name}'s marketplace>",
+                           [[exe, "plugin", "marketplace", "add", name, "--json"],
+                            [exe, "plugin", "marketplace", "upgrade", f"<{name}'s marketplace>",
                              "(only when Codex had it)"]]))
         else:
-            groups.append((f"refresh marketplace {name}", [["codex", "plugin", "marketplace", "add", name, "--json"],
-                                                           ["codex", "plugin", "marketplace", "upgrade",
+            groups.append((f"refresh marketplace {name}", [[exe, "plugin", "marketplace", "add", name, "--json"],
+                                                           [exe, "plugin", "marketplace", "upgrade",
                                                             out.printable(market)]]))
         for plugin in names:
             pid = f"{plugin}@{market}" if market else f"{plugin}@<{src}'s marketplace>"  # its name comes from the add
@@ -93,7 +94,7 @@ def _codex_item(items: list) -> tuple | None:
             again = pid in installed
             adds, readds = adds + (not again), readds + again
             groups.append((f"{'re-add' if again else 'add'} plugin {out.printable(pid)}",
-                           [["codex", "plugin", "add", out.printable(pid), "--json"]]))
+                           [[exe, "plugin", "add", out.printable(pid), "--json"]]))
     if refresh and not any(isinstance(get_dict(record, src).get("name"), str) for src in routes):
         label += " (no record to compare yet)"
     if adds or readds:
@@ -150,8 +151,6 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
         step = apply.codex_step(object(), refresh_plugins=True, auto=False, keep=False, skip_unchanged=True,
                          dry=True, on=True)
         parts.append(f"Codex ({step.summary or 'rules block and config'})")
-        if not runner.have("codex"):
-            notes.append(codex.PLUGINS_EXTENSION)
         codex_skips = _codex_item(items)
     for entry, local, latest in maintenance.find_outdated():
         cmds, how = pkgmgr.update_plan(entry)

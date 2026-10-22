@@ -268,7 +268,7 @@ def test_codex_windows_window_with_the_wsl_switch_runs_the_linux_codex(vs, fake_
     assert ext.binary == folder / linux_codex_bin()
     fake_runner.missing.add("codex")
     rows = check._vscode_surfaces(_cs(win))
-    assert any("plugins do not load" in r.detail for r in rows)
+    assert rows and all(r.ok for r in rows)  # it runs the WSL codex: loadout's setup, no gap
 
 
 @pytest.mark.parametrize("os_name,present,expected", [("linux", ["claude.exe"], None), ("windows", ["claude"], None),
@@ -397,7 +397,7 @@ def test_a_windows_codex_shim_in_wsl_is_not_the_wsl_codex_cli(vs, fake_runner, m
     _ext(vs / ".vscode-server" / "extensions", "openai.chatgpt-26.715.61943-linux-x64", linux_codex_bin())
     fake_runner.paths["codex"] = "/mnt/c/Users/a/AppData/Roaming/npm/codex"
     rows = check._vscode_surfaces(_cs(None))
-    assert any("plugins do not load" in r.detail for r in rows)
+    assert rows and all(r.ok for r in rows)  # the extension runs its own codex in WSL: a full setup (ADR 0038)
 
 
 

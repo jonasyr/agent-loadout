@@ -50,6 +50,8 @@ def test_set_target_on_sets_codex_up_now(fake_home, fake_runner, monkeypatch, ca
     monkeypatch.setattr(configure, "apply_all", lambda ask: claude.append(1))
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: ["instructions written to ~/.codex/AGENTS.md"])
+    (paths.codex_home()).mkdir(parents=True, exist_ok=True)  # the run installed the loadout plugin: its hooks wait
+    (paths.codex_home() / "config.toml").write_text('[plugins."loadout@agent-loadout"]\nenabled = true\n')
     assert main(["configure", "set", "target", "codex", "on"]) == 0
     out = capsys.readouterr().out
     assert "instructions written" in out and claude == [] and codex.HOOKS_TODO in out

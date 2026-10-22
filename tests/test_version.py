@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from loadout import paths, runner
+from loadout import paths, runner, versions
 from loadout.__main__ import build_parser, main
 
 RELEASE = re.search(r'^version = "([^"]+)"', (paths.kit_root() / "pyproject.toml").read_text(encoding="utf-8"), re.M).group(1)
@@ -50,3 +50,19 @@ def test_python_dash_m_registers_every_subcommand(tmp_path):
 
 def test_the_parser_knows_every_subcommand_without_importing_commands_first():
     assert build_parser().parse_args(["check"]).command == "check"
+
+
+def test_a_prerelease_sorts_before_its_release():
+    assert versions.parse_version("codex-cli 0.163.0-alpha.2") < versions.parse_version("0.163.0")
+    assert versions.parse_version("0.163.0-alpha.2") > versions.parse_version("0.162.9")
+    assert versions.parse_version("0.163.0-alpha.2") != versions.parse_version("0.163.0")
+
+
+def test_a_release_still_equals_its_plain_tuple():
+    assert versions.parse_version("v2.102.1") == (2, 102, 1)
+    assert versions.parse_version("2.102.1 (abc)") == (2, 102, 1)
+
+
+def test_fmt_shows_the_prerelease():
+    assert versions.fmt(versions.parse_version("0.163.0-alpha.2")) == "0.163.0-alpha.2"
+    assert versions.fmt(versions.parse_version("0.163.0")) == "0.163.0"

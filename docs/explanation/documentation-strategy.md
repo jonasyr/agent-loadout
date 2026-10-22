@@ -118,7 +118,7 @@ The evidence on context files themselves is mixed, which is exactly why the kit 
 
 ## How the kit keeps it true
 
-Writing good docs once is the easy part. loadout ships three skills for keeping them right, in Claude Code and the Codex CLI (VS Code's Codex extension loads no plugins: run them from `codex` in its terminal):
+Writing good docs once is the easy part. loadout ships three skills for keeping them right, in Claude Code, the Codex CLI and VS Code's Codex extension:
 
 | Skill | When | What it does |
 |---|---|---|

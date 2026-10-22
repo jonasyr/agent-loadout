@@ -37,36 +37,93 @@ WINDOWS_CODEX = "the codex on PATH is the Windows one"
 SHARED_HOME = "CODEX_HOME points into Windows"
 NO_VERSION = "could not read codex --version"
 TOO_OLD = " is too old; loadout needs"
+CLI_OPTIONAL = "not installed (optional: VS Code's Codex extension runs its own)"
+CLI_UNUSABLE = "{why}; loadout uses VS Code's Codex extension's codex instead"
 
 
-def unavailable(allow_shared_home: bool = False) -> str | None:
-    """None when a usable codex is on PATH, or, without one, when VS Code's Codex extension on this side runs a usable
-    codex (extension mode); else the reason in one line. In WSL, a Windows codex and a CODEX_HOME that points into
-    Windows are reasons too (ADR 0029); only bootstrap --codex-side wsl allows the latter."""
+_CLI_VERSIONS: dict = {}  # (path, mtime, size) -> the `codex --version` match: one run per binary per process
+
+
+def _cli_version(found: str | None):
+    """The version match of the codex on PATH, asked once per binary that did not change (mode() runs per command)."""
+    try:
+        st = os.stat(found) if found else None
+        key = (found, st.st_mtime_ns, st.st_size) if st else None
+    except OSError:
+        key = None
+    if key is not None and key in _CLI_VERSIONS:
+        return _CLI_VERSIONS[key]
+    res = runner.run(["codex", "--version"], timeout=20)
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
+    if key is not None:
+        _CLI_VERSIONS[key] = m
+    return m
+
+
+def cli_problem() -> str | None:
+    """Why the codex on PATH cannot be used (the Windows one in WSL, no version, too old); None when it is usable or
+    there is none."""
     from . import wsl
-    cli = runner.have("codex")
-    if not cli:
-        ext, why = extension_state()  # VS Code's Codex extension alone: loadout sets Codex up for it
-        if ext is None:
-            return why or NOT_FOUND
-    found = runner.which("codex") if cli else None
+    if not runner.have("codex"):
+        return None
+    found = runner.which("codex")
     if found and wsl.detect() is not None and wsl.is_windows_program("codex"):
         # one loadout per side (ADR 0029): the Windows Codex never reads the WSL home
         return (f"{WINDOWS_CODEX} ({found}): run bootstrap with --install to install Codex in "
                 "WSL, or set loadout up on Windows (docs/how-to/wsl.md#codex)")
+    m = _cli_version(found)
+    if not m:
+        return NO_VERSION
+    if (int(m.group(1)), int(m.group(2))) < MIN_VERSION:
+        return f"codex {m.group(0)} is too old; loadout needs 0.161 or newer (update it: mise upgrade codex)"
+    return None
+
+
+def _state() -> tuple[str | None, str | None, object]:
+    """(mode, why not, the extension): "cli" for a usable codex on PATH, else "extension" when VS Code's Codex
+    extension on this side runs a usable one (also next to a CLI that cannot be used; spec decision 8), else None
+    with the reason: the CLI's first, then the extension's, then NOT_FOUND."""
+    cli = runner.have("codex")
+    problem = cli_problem() if cli else NOT_FOUND
+    if problem is None:
+        return "cli", None, None
+    ext, why = extension_state()  # VS Code's Codex extension: loadout sets Codex up for it
+    if ext is not None:
+        return "extension", None, ext
+    return None, problem if cli else (why or NOT_FOUND), None
+
+
+def no_plugin_command() -> bool:
+    """True when the codex loadout runs has no `codex plugin` (an older bundled one in VS Code's Codex extension)."""
+    res = runner.run([program(), "plugin", "list", "--json"], timeout=120)
+    return not res.ok and _NO_PLUGIN_COMMAND in res.stderr
+
+
+def has_codex() -> bool:
+    """A codex to run plugin commands with: one on PATH (its version is the `Codex` row's business), or VS Code's
+    Codex extension's own (ADR 0038)."""
+    return runner.have("codex") or mode() is not None
+
+
+def mode() -> str | None:
+    """"cli", "extension" or None (no codex loadout can use on this side)."""
+    return _state()[0]
+
+
+def unavailable(allow_shared_home: bool = False) -> str | None:
+    """None when a usable codex is on PATH, or, without one (or next to one that cannot be used), when VS Code's Codex
+    extension on this side runs a usable codex (extension mode); else the reason in one line. In WSL, a Windows codex
+    and a CODEX_HOME that points into Windows are reasons too (ADR 0029); only bootstrap --codex-side wsl allows the
+    latter."""
+    from . import wsl
+    current, why, _ = _state()
+    if current is None:
+        return why
     shared = os.environ.get("CODEX_HOME", "")
     if (not allow_shared_home and shared and wsl.detect() is not None
             and wsl._on_windows_drive(Path(shared), wsl.MOUNT)):
         return (f"{SHARED_HOME} ({shared}): both sides would read loadout's WSL commands; unset it "
                 "in WSL, or run bootstrap with --codex-side wsl to set it up anyway (docs/how-to/wsl.md#codex)")
-    if not cli:
-        return None  # extension mode: the extension's codex was checked in extension_state
-    res = runner.run(["codex", "--version"], timeout=20)
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout)
-    if not m:
-        return NO_VERSION
-    if (int(m.group(1)), int(m.group(2))) < MIN_VERSION:
-        return f"codex {m.group(0)} is too old; loadout needs 0.161 or newer (update it: mise upgrade codex)"
     return None
 
 
@@ -88,14 +145,18 @@ def unavailable_fix(problem: str) -> str:
 
 EXT_OLD = ("VS Code's Codex extension runs codex {version}; loadout needs 0.161 or newer: update the extension in "
            "VS Code (or install the Codex CLI: loadout bootstrap --install)")
-PLUGINS_EXTENSION = ("plugins: not installed: VS Code's Codex extension loads none (use the Codex CLI alongside it "
-                     "for them: loadout bootstrap --install)")
+PLUGINS_OLD = ("plugins: skipped: VS Code's Codex extension's codex has no plugin command; update the extension "
+               "in VS Code, then run loadout update")
+_NO_PLUGIN_COMMAND = "unrecognized subcommand"
 LOGIN_EXTENSION = "in VS Code's Codex extension: gear, MCP servers, Authenticate"
 EXT_NOVERSION = ("VS Code's Codex extension's own codex gives no version, so loadout does not use it: update the "
                  "extension in VS Code (or install the Codex CLI: loadout bootstrap --install)")
-HOOKS_NO_CLI = ("approve the loadout hooks once in the Codex CLI's /hooks (VS Code's Codex extension has none), and use "
-                "the CLI for plugin skills: install it with loadout bootstrap --install, then run `codex` in VS Code's "
-                "terminal and /hooks")
+HOOKS_EXTENSION = ("approve loadout's hooks in VS Code's Codex extension: the hooks icon in the prompt bar, then Allow "
+                   "all (or Settings > Hooks)")
+HOOKS_EXTENSION_CHANGED = ("approve the changed loadout hooks in VS Code's Codex extension: the hooks icon in the prompt "
+                           "bar, then Allow all (or Settings > Hooks)")
+RESTART_EXTENSION = ("reload the VS Code window (Command Palette: Developer: Reload Window) so the Codex extension loads "
+                     "the plugins")
 
 
 def extension_state():
@@ -118,12 +179,10 @@ def extension_state():
 
 
 def program() -> str:
-    """The codex for loadout's own `codex mcp` commands: the CLI, else the VS Code extension's own (extension mode).
-    Besides `mcp list` it runs one write, `mcp remove` (remove_server saves config.toml first; ADR 0033)."""
-    if runner.have("codex"):
-        return "codex"
-    ext, _ = extension_state()
-    return str(ext.binary) if ext is not None else "codex"
+    """The codex loadout runs (`mcp`, `plugin`): the CLI in CLI mode, VS Code's Codex extension's own in extension
+    mode (spec decision 1, ADR 0038), else "codex". Undo records keep "codex"; restore runs them with this one."""
+    current, _, ext = _state()
+    return str(ext.binary) if current == "extension" else "codex"
 
 
 START = "<!-- loadout:start -->"
@@ -1164,7 +1223,7 @@ def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
 
 def plugin_versions() -> dict[str, str]:
     """{plugin id: version} of the installed Codex plugins; {} when the list fails."""
-    res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
+    res = runner.run([program(), "plugin", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None
     return {p["pluginId"]: str(p.get("version", "")) for p in get_list(data if isinstance(data, dict) else {}, "installed")
             if isinstance(p, dict) and isinstance(p.get("pluginId"), str)}
@@ -1179,7 +1238,7 @@ class Installed(set):
 
 
 def installed_plugins() -> Installed | None:
-    res = runner.run(["codex", "plugin", "list", "--json"], timeout=120)
+    res = runner.run([program(), "plugin", "list", "--json"], timeout=120)
     data = _json(res.stdout) if res.ok else None
     if not isinstance(data, dict):
         return None
@@ -1194,7 +1253,7 @@ _NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}  # nobody 
 def marketplaces() -> dict[str, dict] | None:
     """{marketplace name: {"root": str, "source": str | None}} from `codex plugin marketplace list --json` (read-only).
     Codex's own output: anything unexpected gives None, and callers refresh as before."""
-    res = runner.run(["codex", "plugin", "marketplace", "list", "--json"], timeout=60)
+    res = runner.run([program(), "plugin", "marketplace", "list", "--json"], timeout=60)
     data = _json(res.stdout) if res.ok else None
     items = data.get("marketplaces") if isinstance(data, dict) else None
     if not isinstance(items, list):
@@ -1356,6 +1415,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
     """Add each marketplace and install its plugins. Returns the lines and the plugin ids installed afterwards.
     frozen: marketplaces a refresh leaves as they are (`autoUpdate: false`); missing plugins are still installed.
     skip_unchanged (with refresh): marketplaces and plugins whose upstream head did not move are left alone."""
+    exe = program()  # one codex for the whole run, asked once
     lines, installed = [], set(listed or ())
     have = {pid.split("@")[0] for pid in installed}
     planned = skips is not None and refresh
@@ -1379,7 +1439,9 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
             head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
-            res = runner.run(["codex", "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+            res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+            if not res.ok and _NO_PLUGIN_COMMAND in res.stderr:  # an extension codex from before `codex plugin`
+                return lines + [PLUGINS_OLD], installed
             info = _json(res.stdout) if res.ok else None
             if not isinstance(info, dict) or "marketplaceName" not in info:
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
@@ -1389,7 +1451,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:
-                up = runner.run(["codex", "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
+                up = runner.run([exe, "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
                 refreshed = up.ok
             elif not info.get("alreadyAdded"):
                 refreshed = True
@@ -1403,7 +1465,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
             before = _enabled_line(pid)
-            res = runner.run(["codex", "plugin", "add", pid, "--json"], timeout=600)
+            res = runner.run([exe, "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
                 continue
@@ -1427,8 +1489,8 @@ def missing_routes(installed: set[str] | None = None,
     do". A plugin entry is its full `name@market` id; while its marketplace is missing it is `name (from source)`, since
     the id is unknown until the marketplace exists. loadout's own plugin is left to the `Codex plugin` row.
     installed / listed: what installed_plugins() and marketplaces() returned, when the caller already has them.
-    ([], []) without the Codex CLI or when a listing fails."""
-    if not runner.have("codex"):
+    ([], []) without a codex or when a listing fails."""
+    if not has_codex():
         return [], []
     from .settings_merge import desired_settings
     desired = desired_settings()
@@ -1494,8 +1556,6 @@ def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False, skip_
     skip_unchanged (with refresh): leave marketplaces and plugins whose upstream head did not move as they are.
     skips: (marketplace sources, plugin ids) a plan already decided to leave (`loadout update`): used as they are,
     with no second look upstream, so the run does what the plan showed."""
-    if not runner.have("codex"):
-        return [PLUGINS_EXTENSION]  # extension mode: the extension loads no plugins, and they install through the CLI
     say = say or (lambda line: None)
     from .settings_merge import desired_settings
     desired = desired_settings()
@@ -1686,24 +1746,29 @@ LOADOUT_PLUGIN = "loadout@agent-loadout"
 
 
 def _loadout_plugin_servers(version: str | None) -> set[str]:
-    """Names of the MCP servers loadout's own Codex plugin provides, from the manifest of its active copy only
-    (plugins/cache/agent-loadout/loadout/<version>, the version `codex plugin list` names): an older copy Codex keeps
-    in its cache is not what it loads. No usable version, a broken manifest or server file: nothing."""
+    """Names of the MCP servers loadout's own Codex plugin provides (loadout_plugin_tables)."""
+    return set(loadout_plugin_tables(version))
+
+
+def loadout_plugin_tables(version: str | None) -> dict[str, dict]:
+    """The MCP servers loadout's own Codex plugin provides (name -> its table), from the manifest of its active copy
+    only (plugins/cache/agent-loadout/loadout/<version>, the version `codex plugin list` names): an older copy Codex
+    keeps in its cache is not what it loads. No usable version, a broken manifest or server file: nothing."""
     base = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
     if not isinstance(version, str) or version in ("", ".", "..") or "/" in version or "\\" in version:
-        return set()
+        return {}
     root = base / version
     if not root.is_dir() or not paths.inside(root, base):
-        return set()
+        return {}
     try:
         ref = load_json(root / ".codex-plugin" / "plugin.json").get("mcpServers")
     except Exception:
         ref = None
     mcp = root / ref if isinstance(ref, str) and paths.inside(root / ref, root) else root / ".mcp.json"
     try:
-        return {n for n in get_dict(load_json(mcp), "mcpServers") if isinstance(n, str)}
+        return {n: t for n, t in get_dict(load_json(mcp), "mcpServers").items() if isinstance(n, str) and isinstance(t, dict)}
     except Exception:
-        return set()
+        return {}
 
 
 def servers_twice(installed: set[str] | None) -> list[str]:
@@ -1773,7 +1838,7 @@ def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unc
         if not plugins:
             parts["plugins"] = []
             return parts
-        versions = plugin_versions() if changed is not None and refresh and runner.have("codex") else None
+        versions = plugin_versions() if changed is not None and refresh and has_codex() else None
         parts["plugins"] = apply_plugins(bk, refresh=refresh, say=say, auto=auto, skip_unchanged=skip_unchanged,
                                          **({"skips": skips} if skips is not None else {}))
         if versions is not None:
@@ -1827,24 +1892,29 @@ def checks() -> list:
     if problem:
         return [CheckResult("Codex", False, problem, unavailable_fix(problem), "warn")]
     results = [CheckResult("Codex", True)]
-    cli = runner.have("codex")
-    if cli:
-        installed = installed_plugins()
-        ok = installed is not None and "loadout@agent-loadout" in installed
+    if mode() == "extension":  # one row for the CLI: optional next to the extension, or unusable and passed over
+        broken = cli_problem()
+        results.append(CheckResult("Codex CLI", True, CLI_OPTIONAL) if broken is None and not runner.have("codex")
+                       else CheckResult("Codex CLI", False, CLI_UNUSABLE.format(why=broken), unavailable_fix(broken),
+                                        "warn"))
+    cli = mode() != "extension"  # the wording: the CLI's /hooks and logins, or the extension's
+    installed = installed_plugins()
+    ok = installed is not None and "loadout@agent-loadout" in installed
+    if installed is None and no_plugin_command():  # bootstrap cannot install plugins with this codex
+        results.append(CheckResult("Codex plugin", False, PLUGINS_OLD.split(": ", 2)[2],
+                                   "update the extension in VS Code, then run loadout update", "warn"))
+    else:
         results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
                                    "loadout bootstrap"))
-        lacks = missing_routes(installed) if installed is not None else ([], [])
-        if lacks[0] or lacks[1]:
-            results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
-        config = _tilde(paths.codex_home() / "config.toml")
-        results += [CheckResult(f"Codex MCP {name}", False,
-                                "defined in config.toml and by the loadout plugin; Codex starts one of them",
-                                f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
-                                "or turn the loadout plugin off in Codex", "warn")
-                    for name in servers_twice(installed)]
-    else:  # extension mode: plugins need the CLI, and the extension loads none
-        results.append(CheckResult("Codex plugin", False, PLUGINS_EXTENSION.split(": ", 1)[1],
-                                   "loadout bootstrap --install (the Codex CLI)", "warn"))
+    lacks = missing_routes(installed) if installed is not None else ([], [])
+    if lacks[0] or lacks[1]:
+        results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
+    config = _tilde(paths.codex_home() / "config.toml")
+    results += [CheckResult(f"Codex MCP {name}", False,
+                            "defined in config.toml and by the loadout plugin; Codex starts one of them",
+                            f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
+                            "or turn the loadout plugin off in Codex", "warn")
+                for name in servers_twice(installed)]
     path = paths.codex_home() / "AGENTS.md"
     current = splice(path.read_text(encoding="utf-8") if path.exists() else "", render_instructions())
     ok = path.exists() and current == path.read_text(encoding="utf-8")
@@ -1870,7 +1940,8 @@ def checks() -> list:
     if status in ("untrusted", "changed"):
         results.append(CheckResult("Codex hooks", False, "loadout's hooks are not approved yet" if status == "untrusted"
                                    else "loadout's hooks changed since you approved them",
-                                   "start codex, then run /hooks and approve them" if cli else HOOKS_NO_CLI, "warn"))
+                                   "start codex, then run /hooks and approve them" if cli
+                                   else HOOKS_EXTENSION if status == "untrusted" else HOOKS_EXTENSION_CHANGED, "warn"))
     elif status == "trusted":
         results.append(CheckResult("Codex hooks", True))
     logins = logins_needed()
@@ -1913,6 +1984,14 @@ def _hooks_record() -> Path:
     return paths.state_dir() / "codex-hooks.json"
 
 
+def _plugin_hooks_on(data: dict) -> bool:
+    """Whether the loadout plugin's hooks can run, so they need an approval: config.toml switches the plugin on
+    (`codex plugin add` writes [plugins."loadout@agent-loadout"] enabled = true, the CLI's and VS Code's Codex
+    extension's alike; ADR 0038). Read from the file only: no codex runs."""
+    entry = get_dict(get_dict(data, "plugins"), "loadout@agent-loadout")
+    return entry.get("enabled") is True
+
+
 def hooks_status(remember: bool = False) -> str | None:
     """"trusted", "untrusted" (never approved) or "changed" (the hooks changed since the user approved them);
     None when config.toml cannot be read. Codex's own hash cannot be recomputed stably, so a change is detected as:
@@ -1920,8 +1999,8 @@ def hooks_status(remember: bool = False) -> str | None:
     tl = _tomllib()
     path = paths.codex_home() / "config.toml"
     try:
-        state = tl.loads(path.read_text(encoding="utf-8")).get("hooks", {}) if path.exists() else {}
-        state = get_dict(state, "state")
+        data = tl.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        state = get_dict(get_dict(data, "hooks"), "state")
     except Exception:
         return None
     from . import codex_hooks
@@ -1930,12 +2009,13 @@ def hooks_status(remember: bool = False) -> str | None:
     current = {k: v.get("trusted_hash") for k, v in state.items()
                if (k.startswith(HOOK_PLUGIN + ":") or k.startswith(in_file)) and isinstance(v, dict)
                and v.get("trusted_hash")}
-    if not (hook_keys() | set(serena)) <= set(current):
+    plugin_on = _plugin_hooks_on(data)
+    if not (set(serena) | (hook_keys() if plugin_on else set())) <= set(current):
         return "untrusted"
     digest, seen = _hooks_digest(), load_json(_hooks_record())
     plugin_now = {k: v for k, v in current.items() if k.startswith(HOOK_PLUGIN + ":")}
     plugin_seen = {k: v for k, v in get_dict(seen, "hashes").items() if k.startswith(HOOK_PLUGIN + ":")}
-    if seen.get("digest") not in (None, digest) and plugin_seen == plugin_now:
+    if plugin_on and seen.get("digest") not in (None, digest) and plugin_seen == plugin_now:  # off: they cannot run
         return "changed"
     # a Serena key whose content changed (edited, or another hook moved onto it) is approved again only when Codex
     # stored a new hash for it; the old hash belongs to what was there before
@@ -1943,7 +2023,10 @@ def hooks_status(remember: bool = False) -> str | None:
     if any(k in seen_hashes and seen_items.get(k) != content and seen_hashes[k] == current.get(k)
            for k, content in serena.items()):
         return "changed"
-    record = {"digest": digest, "hashes": current, "serena": serena}
+    # while the plugin is off its hooks cannot run: keep the digest last approved, so a change made meanwhile is
+    # still asked about once it is on again
+    kept = digest if plugin_on or seen.get("digest") is None else seen.get("digest")
+    record = {"digest": kept, "hashes": current, "serena": serena}
     if remember and seen != record:
         _hooks_record().parent.mkdir(parents=True, exist_ok=True)
         save_json(_hooks_record(), record)
@@ -1978,18 +2061,19 @@ def open_steps() -> list[str]:
     """What the user still has to do in Codex, for "Still to do" lists; empty when nothing is open."""
     if not enabled():
         return []
-    cli = runner.have("codex")
-    if not cli and extension_state()[0] is None:
+    if not has_codex():
         return []
+    cli = mode() != "extension"  # the wording: the CLI's /hooks, or VS Code's Codex extension's hooks icon
     status = hooks_status(remember=True)
     # unknown (unreadable config): remind, since the approval cannot be confirmed
-    todo = HOOKS_TODO if cli else HOOKS_NO_CLI
-    steps = [HOOKS_CHANGED if cli else HOOKS_NO_CLI] if status == "changed" else [] if status == "trusted" else [todo]
-    if not cli:
-        return (steps + [f"log in to {name} once: {LOGIN_EXTENSION}" for name in logins_needed()]
-                + [f"optional: log in to {name} for higher limits: {LOGIN_EXTENSION}" for name in logins_optional()])
+    todo = HOOKS_TODO if cli else HOOKS_EXTENSION
+    changed = HOOKS_CHANGED if cli else HOOKS_EXTENSION_CHANGED
+    steps = [changed] if status == "changed" else [] if status == "trusted" else [todo]
     lacks = missing_routes()
     if lacks[0] or lacks[1]:
         steps.append(f"{_missing_text(lacks)}: run {MISSING_FIX}")
+    if not cli:
+        return (steps + [f"log in to {name} once: {LOGIN_EXTENSION}" for name in logins_needed()]
+                + [f"optional: log in to {name} for higher limits: {LOGIN_EXTENSION}" for name in logins_optional()])
     return (steps + [f"log in to {name} in Codex once: codex mcp login {name}" for name in logins_needed()]
             + [f"optional: log in to {name} in Codex for higher limits: codex mcp login {name}" for name in logins_optional()])

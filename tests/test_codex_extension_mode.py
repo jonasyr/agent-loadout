@@ -1,22 +1,12 @@
 """Codex set up for VS Code's Codex extension when no Codex CLI is installed (spec Part 2)."""
 import pytest
 
-from conftest import host_codex_bin
-
 from loadout import codex, runner, targets
 
 
 @pytest.fixture
-def ext_only(fake_home, fake_runner, monkeypatch):
-    monkeypatch.setattr(targets, "OVERRIDE", {"claude": False, "codex": True})
-    fake_runner.missing.add("codex")
-    folder = fake_home / ".vscode" / "extensions" / "openai.chatgpt-26.715.61943-linux-x64"
-    binary = folder / host_codex_bin()
-    binary.parent.mkdir(parents=True)
-    binary.write_text("bin")
-    binary.chmod(0o755)
-    fake_runner.responses[(str(binary), "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
-    return binary
+def ext_only(codex_ext):
+    return codex_ext
 
 
 def test_a_new_enough_extension_makes_codex_available(ext_only):
@@ -48,24 +38,23 @@ def test_mcp_list_runs_the_extensions_codex(ext_only, fake_runner):
     assert [str(ext_only), "mcp", "list", "--json"] in fake_runner.calls
 
 
-def test_plugins_are_skipped_with_one_line(ext_only, fake_runner):
-    lines = codex.apply_plugins(None)
-    assert lines == [codex.PLUGINS_EXTENSION]
-    assert not any(c[1:2] == ["plugin"] for c in fake_runner.calls)
+def test_plugins_install_with_the_extensions_codex(ext_only, fake_runner):
+    from loadout.backup import Backup
+    codex.apply_plugins(Backup(description="test"))
+    plugin_calls = [c for c in fake_runner.calls if c[1:2] == ["plugin"]]
+    assert plugin_calls and all(c[0] == str(ext_only) for c in plugin_calls)
 
 
-def test_still_to_do_names_the_cli_for_hooks(ext_only, monkeypatch):
+def test_still_to_do_names_the_extensions_hooks_icon(ext_only, monkeypatch):
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "untrusted")
     steps = codex.open_steps()
-    assert steps[0] == codex.HOOKS_NO_CLI and "Codex CLI" in steps[0] and "loadout bootstrap --install" in steps[0]
+    assert steps[0] == codex.HOOKS_EXTENSION and "Codex CLI" not in steps[0]
 
 
 
-def test_check_warns_not_fails_for_a_missing_cli_next_to_the_extension(ext_only):
+def test_a_missing_cli_next_to_the_extension_is_no_binary_row(ext_only):
     from loadout import check
-    (row,) = [r for r in check._binaries() if r.name == "binary codex"]
-    assert not row.ok and row.severity == "warn"
-    assert "extension" in row.detail and "/hooks" in row.fix
+    assert not [r for r in check._binaries() if r.name == "binary codex"]  # the `Codex CLI` row says it is optional
 
 
 def test_check_still_fails_without_cli_and_extension(fake_home, fake_runner, monkeypatch):
