@@ -74,6 +74,12 @@ def _state() -> tuple[str | None, str | None, object]:
     return None, problem if cli else (why or NOT_FOUND), None
 
 
+def has_codex() -> bool:
+    """A codex to run plugin commands with: one on PATH (its version is the `Codex` row's business), or VS Code's
+    Codex extension's own (ADR 0038)."""
+    return runner.have("codex") or mode() is not None
+
+
 def mode() -> str | None:
     """"cli", "extension" or None (no codex loadout can use on this side)."""
     return _state()[0]
@@ -114,8 +120,9 @@ def unavailable_fix(problem: str) -> str:
 
 EXT_OLD = ("VS Code's Codex extension runs codex {version}; loadout needs 0.161 or newer: update the extension in "
            "VS Code (or install the Codex CLI: loadout bootstrap --install)")
-PLUGINS_EXTENSION = ("plugins: not installed: VS Code's Codex extension loads none (use the Codex CLI alongside it "
-                     "for them: loadout bootstrap --install)")
+PLUGINS_OLD = ("plugins: not installed: VS Code's Codex extension's codex has no plugin command; update the extension "
+               "in VS Code, then run loadout update")
+_NO_PLUGIN_COMMAND = "unrecognized subcommand"
 LOGIN_EXTENSION = "in VS Code's Codex extension: gear, MCP servers, Authenticate"
 EXT_NOVERSION = ("VS Code's Codex extension's own codex gives no version, so loadout does not use it: update the "
                  "extension in VS Code (or install the Codex CLI: loadout bootstrap --install)")
@@ -1405,6 +1412,8 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             url = _src_url(src)
             head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
             res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+            if not res.ok and _NO_PLUGIN_COMMAND in res.stderr:  # an extension codex from before `codex plugin`
+                return [PLUGINS_OLD], installed
             info = _json(res.stdout) if res.ok else None
             if not isinstance(info, dict) or "marketplaceName" not in info:
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
@@ -1452,8 +1461,8 @@ def missing_routes(installed: set[str] | None = None,
     do". A plugin entry is its full `name@market` id; while its marketplace is missing it is `name (from source)`, since
     the id is unknown until the marketplace exists. loadout's own plugin is left to the `Codex plugin` row.
     installed / listed: what installed_plugins() and marketplaces() returned, when the caller already has them.
-    ([], []) without the Codex CLI or when a listing fails."""
-    if not runner.have("codex"):
+    ([], []) without a codex or when a listing fails."""
+    if not has_codex():
         return [], []
     from .settings_merge import desired_settings
     desired = desired_settings()
@@ -1519,8 +1528,6 @@ def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False, skip_
     skip_unchanged (with refresh): leave marketplaces and plugins whose upstream head did not move as they are.
     skips: (marketplace sources, plugin ids) a plan already decided to leave (`loadout update`): used as they are,
     with no second look upstream, so the run does what the plan showed."""
-    if not runner.have("codex"):
-        return [PLUGINS_EXTENSION]  # extension mode: the extension loads no plugins, and they install through the CLI
     say = say or (lambda line: None)
     from .settings_merge import desired_settings
     desired = desired_settings()
@@ -1798,7 +1805,7 @@ def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unc
         if not plugins:
             parts["plugins"] = []
             return parts
-        versions = plugin_versions() if changed is not None and refresh and runner.have("codex") else None
+        versions = plugin_versions() if changed is not None and refresh and has_codex() else None
         parts["plugins"] = apply_plugins(bk, refresh=refresh, say=say, auto=auto, skip_unchanged=skip_unchanged,
                                          **({"skips": skips} if skips is not None else {}))
         if versions is not None:
@@ -1852,24 +1859,20 @@ def checks() -> list:
     if problem:
         return [CheckResult("Codex", False, problem, unavailable_fix(problem), "warn")]
     results = [CheckResult("Codex", True)]
-    cli = runner.have("codex")
-    if cli:
-        installed = installed_plugins()
-        ok = installed is not None and "loadout@agent-loadout" in installed
-        results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
-                                   "loadout bootstrap"))
-        lacks = missing_routes(installed) if installed is not None else ([], [])
-        if lacks[0] or lacks[1]:
-            results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
-        config = _tilde(paths.codex_home() / "config.toml")
-        results += [CheckResult(f"Codex MCP {name}", False,
-                                "defined in config.toml and by the loadout plugin; Codex starts one of them",
-                                f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
-                                "or turn the loadout plugin off in Codex", "warn")
-                    for name in servers_twice(installed)]
-    else:  # extension mode: plugins need the CLI, and the extension loads none
-        results.append(CheckResult("Codex plugin", False, PLUGINS_EXTENSION.split(": ", 1)[1],
-                                   "loadout bootstrap --install (the Codex CLI)", "warn"))
+    cli = mode() != "extension"  # the wording: the CLI's /hooks and logins, or the extension's
+    installed = installed_plugins()
+    ok = installed is not None and "loadout@agent-loadout" in installed
+    results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
+                               "loadout bootstrap"))
+    lacks = missing_routes(installed) if installed is not None else ([], [])
+    if lacks[0] or lacks[1]:
+        results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
+    config = _tilde(paths.codex_home() / "config.toml")
+    results += [CheckResult(f"Codex MCP {name}", False,
+                            "defined in config.toml and by the loadout plugin; Codex starts one of them",
+                            f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
+                            "or turn the loadout plugin off in Codex", "warn")
+                for name in servers_twice(installed)]
     path = paths.codex_home() / "AGENTS.md"
     current = splice(path.read_text(encoding="utf-8") if path.exists() else "", render_instructions())
     ok = path.exists() and current == path.read_text(encoding="utf-8")

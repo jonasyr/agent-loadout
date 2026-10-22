@@ -150,15 +150,15 @@ def _codex_facts(lines: list[str]) -> set[str]:
 def _codex_summary(lines: list[str], plugins: bool = True) -> str:
     """What the Codex step set up, in plain words: plugins only when it handled them, skills only when it linked
     or copied some (live-tour fixes, spec fix 11)."""
-    from . import runner
+    from . import codex
     failed = sum(1 for line in lines if out.PROBLEM.search(line))
     if failed:
         return f"{failed} problem(s) (below)"
-    parts = ["rules"] + (["plugins"] if plugins and runner.have("codex") else []) + ["MCP servers"]
+    parts = ["rules"] + (["plugins"] if plugins else []) + ["MCP servers"]
     if any(line.startswith(("linked ", "copied ")) for line in lines):
         parts.append("skills")
     done = ", ".join(parts[:-1]) + " and " + parts[-1] + " set up"
-    return done if runner.have("codex") else done + " for VS Code's Codex extension"
+    return done + " for VS Code's Codex extension" if codex.mode() == "extension" else done
 
 
 def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say=None,
@@ -216,23 +216,20 @@ def _codex_dry(refresh_plugins: bool, auto: bool, keep: bool) -> StepResult:
     lines += [f"skill {out.printable(dest.name)}: to link" for dest, _ in skills]
     if skills:
         facts.add("codex_skills_linked")
-    if not runner.have("codex"):
-        lines.append(codex.PLUGINS_EXTENSION)
-    else:
-        from .jsonio import get_dict
-        desired = settings_merge.desired_settings()
-        routes, missing = codex.plugin_routes(desired)
-        frozen = {codex.OFFICIAL if name == "claude-plugins-official" else get_dict(cfg, "source").get("repo")
-                  for name, cfg in
-                  get_dict(desired, "extraKnownMarketplaces").items()
-                  if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False}
-        lines += [f"plugin {out.printable(pid)}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
-        have = {pid.split("@")[0] for pid in codex.installed_plugins() or ()}
-        new_plugins = [name for names in routes.values() for name in names if name not in have]
-        lines += [f"plugin {out.printable(name)}: to install" for name in new_plugins]
-        if new_plugins:
-            facts.add("codex_plugins_installed")
-        if refresh_plugins:
-            lines += [f"marketplace {out.printable(src)}: to refresh" for src in routes if src not in frozen]
+    from .jsonio import get_dict
+    desired = settings_merge.desired_settings()
+    routes, missing = codex.plugin_routes(desired)
+    frozen = {codex.OFFICIAL if name == "claude-plugins-official" else get_dict(cfg, "source").get("repo")
+              for name, cfg in
+              get_dict(desired, "extraKnownMarketplaces").items()
+              if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False}
+    lines += [f"plugin {out.printable(pid)}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
+    have = {pid.split("@")[0] for pid in codex.installed_plugins() or ()}
+    new_plugins = [name for names in routes.values() for name in names if name not in have]
+    lines += [f"plugin {out.printable(name)}: to install" for name in new_plugins]
+    if new_plugins:
+        facts.add("codex_plugins_installed")
+    if refresh_plugins:
+        lines += [f"marketplace {out.printable(src)}: to refresh" for src in routes if src not in frozen]
     summary = f"{len(facts)} part(s) to change" if facts else "up to date"
     return _finish(StepResult("Codex", summary, lines, facts), "codex")

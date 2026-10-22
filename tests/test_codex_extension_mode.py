@@ -38,10 +38,11 @@ def test_mcp_list_runs_the_extensions_codex(ext_only, fake_runner):
     assert [str(ext_only), "mcp", "list", "--json"] in fake_runner.calls
 
 
-def test_plugins_are_skipped_with_one_line(ext_only, fake_runner):
-    lines = codex.apply_plugins(None)
-    assert lines == [codex.PLUGINS_EXTENSION]
-    assert not any(c[1:2] == ["plugin"] for c in fake_runner.calls)
+def test_plugins_install_with_the_extensions_codex(ext_only, fake_runner):
+    from loadout.backup import Backup
+    codex.apply_plugins(Backup(description="test"))
+    plugin_calls = [c for c in fake_runner.calls if c[1:2] == ["plugin"]]
+    assert plugin_calls and all(c[0] == str(ext_only) for c in plugin_calls)
 
 
 def test_still_to_do_names_the_cli_for_hooks(ext_only, monkeypatch):

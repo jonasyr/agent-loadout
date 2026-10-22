@@ -134,9 +134,6 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
     return lines
 
 
-PLUGINS_EXTENSION_NOTE = "VS Code's Codex extension loads no plugins; the profile's Codex plugins are not set"
-
-
 def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     """Install the profile's plugins in Codex; one that is not on everywhere stays switched off outside its projects."""
     from . import backup
@@ -144,10 +141,8 @@ def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
     _, wanted, _ = _wanted(prof)
     if not wanted:
         return []
-    if not runner.have("codex"):
-        if codex.extension_state()[0] is not None:  # extension mode: it loads no plugins, so none is installed or switched
-            return [PLUGINS_EXTENSION_NOTE]
-        why = codex.unavailable() or codex.NOT_FOUND  # neither a CLI nor a usable extension: a failure, not a note
+    if not codex.has_codex():  # neither a CLI nor a usable extension: a failure, not a note
+        why = codex.unavailable() or codex.NOT_FOUND
         return [f"plugin {pid}: not installed ({why})" for pid in wanted]
     desired = desired_settings()
     markets = {**get_dict(desired, "extraKnownMarketplaces"), **get_dict(prof.settings, "extraKnownMarketplaces")}
@@ -212,8 +207,6 @@ def _trusted(project: Path) -> bool:
 def failed_plugins(prof: profiles.Profile, lines: list[str]) -> frozenset:
     """The profile's plugins that a line reports as not installed."""
     bad = (": failed", "not installed", "no Codex route")
-    if PLUGINS_EXTENSION_NOTE in lines:
-        return frozenset(_wanted(prof)[1])
     return frozenset(pid for pid in _wanted(prof)[1]
                      if any(l.startswith((f"plugin {pid}:", f"plugin {pid.split('@')[0]}@?:")) and any(b in l for b in bad)  # @?: all failed
                             for l in lines))

@@ -49,7 +49,7 @@ def _codex_item(items: list) -> tuple | None:
     """The Codex marketplaces and plugins to refresh, and those skipped because upstream did not move. Lists what
     runs (ADR 0011): per marketplace "refresh", "add" (new) or "skip", each plugin to add or re-add, and the commands
     in the shape codex._install_routes runs them."""
-    if codex.unavailable() is not None or not runner.have("codex"):  # unusable, or extension mode: no plugins
+    if codex.unavailable() is not None:  # no usable codex: nothing to refresh
         return
     from .settings_merge import desired_settings
     routes, _ = codex.plugin_routes(desired_settings())
@@ -151,8 +151,6 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
         step = apply.codex_step(object(), refresh_plugins=True, auto=False, keep=False, skip_unchanged=True,
                          dry=True, on=True)
         parts.append(f"Codex ({step.summary or 'rules block and config'})")
-        if not runner.have("codex"):
-            notes.append(codex.PLUGINS_EXTENSION)
         codex_skips = _codex_item(items)
     for entry, local, latest in maintenance.find_outdated():
         cmds, how = pkgmgr.update_plan(entry)
