@@ -7,7 +7,7 @@ import re
 import time
 from pathlib import Path
 
-from . import paths, targets
+from . import paths, searches, targets
 
 MAX_LINE = 1_000_000
 FAMILIES = (("serena", re.compile(r"serena", re.I)),
@@ -30,41 +30,33 @@ def family(name: str) -> str:
 
 
 def _group() -> dict:
-    return {"sessions": 0, "calls": 0, "symbol_searches": 0,
+    return {"sessions": 0, "calls": 0, "symbol_searches": 0, "serena_denials": 0,
             "families": {n: {"calls": 0, "sessions": 0} for n in NAMES}}
 
 
-def _hint_rules():
-    """The hook's own parser (plugins/loadout/hooks/tool_hint.py), so this metric and the hint use one definition
-    of a symbol search. Loaded like advisor.py's hook; None when the kit has no hook script."""
-    global _RULES
-    if _RULES is None:
-        import importlib.util
-        path = paths.kit_root() / "plugins" / "loadout" / "hooks" / "tool_hint.py"
-        if not path.is_file():
-            _RULES = False
-        else:
-            spec = importlib.util.spec_from_file_location("loadout_tool_hint_hook", path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            _RULES = module
-    return _RULES or None
+DENIALS = ("Too many consecutive grep calls", "Too many consecutive read calls",
+           "Too many consecutive non-symbolic tool calls")  # Serena 2.1.0's `remind` deny reasons (serena/hooks.py)
 
 
-_RULES = None
-
-
-def _symbol_search(text: str) -> bool:
-    rules = _hint_rules()
-    if rules is None:
-        return False
-    is_search, name, _ = rules.shell_search(text or "")
-    return is_search and name is not None
+def _symbol_searches(text: str) -> int:
+    return searches.count_symbol_searches(text or "")
 
 
 def _symbol_pattern(pattern: object) -> bool:
-    rules = _hint_rules()
-    return rules is not None and rules.symbol(pattern) is not None
+    return searches.symbol(pattern) is not None
+
+
+_HOOK_ERROR = re.compile(r"^PreToolUse:\S+ hook error: ")
+
+
+def _denial(content: object) -> bool:
+    """A tool result that is Serena's reminder (its PreToolUse deny reason, shown to the agent)."""
+    if isinstance(content, list):
+        content = " ".join(c.get("text", "") for c in content if isinstance(c, dict) and isinstance(c.get("text"), str))
+    if not isinstance(content, str):
+        return False
+    text = _HOOK_ERROR.sub("", content.lstrip(), count=1)  # Claude Code: "PreToolUse:Grep hook error: <reason>"
+    return text.startswith(DENIALS)
 
 
 SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish", "pwsh", "powershell"})
@@ -137,9 +129,10 @@ def _in_window(obj: dict, cutoff: float) -> bool:
         return True
 
 
-def _add(group: dict, calls: dict[str, int], searches: int) -> None:
+def _add(group: dict, calls: dict[str, int], found: int, denied: bool = False) -> None:
     group["sessions"] += 1
-    group["symbol_searches"] += searches
+    group["symbol_searches"] += found
+    group["serena_denials"] += denied
     for fam, n in calls.items():
         group["calls"] += n
         group["families"][fam]["calls"] += n
@@ -158,12 +151,14 @@ def _claude(cutoff: float) -> dict | None:
         except OSError:
             continue
         calls: dict[str, int] = {}
-        searches = 0
+        found, denied = 0, False
         for obj in _lines(path, skipped, cutoff):
             try:  # valid JSON of an unexpected shape is skipped and counted, never a crash
-                message = obj.get("message") if obj.get("type") == "assistant" else None
+                message = obj.get("message") if obj.get("type") in ("assistant", "user") else None
                 content = message.get("content") if isinstance(message, dict) else None
                 for item in content if isinstance(content, list) else []:
+                    if isinstance(item, dict) and item.get("type") == "tool_result" and not denied:
+                        denied = _denial(item.get("content"))
                     if not isinstance(item, dict) or item.get("type") != "tool_use":
                         continue
                     name, inp = str(item.get("name", "")), item.get("input")
@@ -171,12 +166,12 @@ def _claude(cutoff: float) -> dict | None:
                     fam = family(name)
                     calls[fam] = calls.get(fam, 0) + 1
                     if fam == "grep" and _symbol_pattern(inp.get("pattern")):
-                        searches += 1
-                    elif fam == "shell" and _symbol_search(_command_text(inp)):
-                        searches += 1
+                        found += 1
+                    elif fam == "shell":
+                        found += _symbol_searches(_command_text(inp))
             except (AttributeError, TypeError, ValueError):
                 skipped[0] += 1
-        _add(out["subagent" if "subagents" in path.parts else "main"], calls, searches)
+        _add(out["subagent" if "subagents" in path.parts else "main"], calls, found, denied)
     out["skipped_lines"] = skipped[0]
     return out
 
@@ -193,7 +188,7 @@ def _codex(cutoff: float) -> dict | None:
         except OSError:
             continue
         calls: dict[str, int] = {}
-        searches, sub, mcp_ids = 0, False, set()  # an MCP call can be logged twice: function_call and its end event
+        found, sub, mcp_ids, denied = 0, False, set(), False  # an MCP call can be logged twice: function_call and its end event
         for obj in _lines(path, skipped, cutoff):
             try:  # valid JSON of an unexpected shape is skipped and counted, never a crash
                 p = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
@@ -209,8 +204,11 @@ def _codex(cutoff: float) -> dict | None:
                     calls[fam] = calls.get(fam, 0) + 1
                     if fam not in ("shell", "other") and isinstance(p.get("call_id"), str):
                         mcp_ids.add(p["call_id"])
-                    if fam == "shell" and _symbol_search(_command_text(args)):
-                        searches += 1
+                    if fam == "shell":
+                        found += _symbol_searches(_command_text(args))
+                elif kind in ("function_call_output", "custom_tool_call_output") and not denied:
+                    out_ = p.get("output")
+                    denied = _denial(out_.get("content") if isinstance(out_, dict) else out_)
                 elif kind == "mcp_tool_call_end":
                     invocation = p.get("invocation")
                     if not isinstance(invocation, dict):
@@ -222,7 +220,7 @@ def _codex(cutoff: float) -> dict | None:
                         calls[fam] = calls.get(fam, 0) + 1
             except (AttributeError, TypeError, ValueError):
                 skipped[0] += 1
-        _add(out["subagent" if sub else "main"], calls, searches)
+        _add(out["subagent" if sub else "main"], calls, found, denied)
     out["skipped_lines"] = skipped[0]
     return out
 
@@ -267,6 +265,7 @@ def render(report: dict) -> str:
                              for n in NAMES if g["families"][n]["calls"])
             lines.append(f"  {title} {kind}: {g['sessions']} sessions, {g['calls']} tool calls; {fams or 'no tools'}")
             lines.append(f"    symbol-like searches with grep/rg: {g['symbol_searches']}")
+            lines.append(f"    sessions with a Serena reminder: {g['serena_denials']}")
         if report[agent]["skipped_lines"]:
             lines.append(f"  {title}: {report[agent]['skipped_lines']} unreadable lines skipped")
     lines.append(f"  sessions with a loadout tool hint: {report['hint_sessions']}")

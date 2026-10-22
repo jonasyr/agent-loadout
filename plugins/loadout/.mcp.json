@@ -2,10 +2,12 @@
   "mcpServers": {
     "serena": {
       "command": "serena",
-      "args": ["start-mcp-server", "--context=claude-code", "--project-from-cwd"]
+      "args": ["start-mcp-server", "--context=claude-code", "--project-from-cwd"],
+      "alwaysLoad": true
     },
     "codebase-memory-mcp": {
-      "command": "codebase-memory-mcp"
+      "command": "codebase-memory-mcp",
+      "alwaysLoad": true
     }
   }
 }

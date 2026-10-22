@@ -6,7 +6,8 @@ per-item lines (callers print them their own way) and the facts, what the step c
 - claude_plugins_step: claude_plugins_installed, claude_marketplace_added, claude_loadout_plugin (loadout's own plugin)
 - codex_step: codex_block_written, codex_config_changed, serena_hooks_added, codex_hooks_removed,
   codex_skills_linked, codex_plugins_installed, codex_plugins_updated
-- any step: failed:<step> (links, settings, claude_plugins, codex) when one of its lines has a failure in the
+- cbm_step: no facts (auto_index is the only setting)
+- any step: failed:<step> (links, settings, claude_plugins, codex, cbm) when one of its lines has a failure in the
   forms loadout prints (": failed", "failed to ") or a change it refused ("skipped <file>: …", "by hand",
   "cannot", …; not "left as is", a value the user kept; apply.refused lists them)
 - codex_step: skipped:codex when it did not run (another loadout run held the Codex lock): nothing changed, but
@@ -192,6 +193,17 @@ def codex_step(bk: Backup, *, refresh_plugins: bool, auto: bool, keep: bool, say
     if only is not None and set(only) == {"plugins"} and not any(out.PROBLEM.search(line) for line in lines):
         summary = "plugins refreshed; rules, config, hooks and skills left as they are (item 1 was left out)"
     return _finish(StepResult("Codex", summary, lines, facts), "codex")
+
+
+def cbm_step(bk: Backup, dry: bool = False) -> StepResult:
+    """codebase-memory's auto_index from the cbm_auto_index preference (cbm.apply_auto_index). Installs nothing, so
+    the daily sync runs it too. Nothing while both agents are off or codebase-memory-mcp is missing."""
+    from . import cbm, preferences
+    if not preferences.available(preferences.by_id(cbm.PREF)):
+        return StepResult("codebase-memory", "")
+    lines = cbm.apply_auto_index(bk, dry=dry)
+    return _finish(StepResult("codebase-memory", lines[0].removeprefix("codebase-memory: ") if lines else "", lines),
+                   "cbm")
 
 
 def _codex_dry(refresh_plugins: bool, auto: bool, keep: bool) -> StepResult:

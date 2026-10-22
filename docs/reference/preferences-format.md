@@ -82,6 +82,7 @@ If a setting or a `me.md` line still contradicts an answer after it was written,
 | `automode_trust` | Draft the auto mode trust environment from your git repos? | `generate`, `skip` | `generate` | `autoMode.environment` |
 | `commit_doc_language` | Language of commit messages, code comments and docs? | `english`, `project` | `english` | `me.md` |
 | `codex_serena_approval` | Should Codex approve Serena's tools automatically? | `ask` (ask each time), `approve` (approve automatically) | `ask` | `loadout.json` (`codex.serena_approval`); Codex only |
+| `cbm_auto_index` | Should codebase-memory index a new git repo by itself the first time a session opens it? | `on`, `off` | `on` | codebase-memory's own `auto_index` setting; both agents ([below](#codebase-memorys-auto_index)) |
 
 With Codex on, `effort_level` also sets `model_reasoning_effort` and `agent_push_notifications` sets `tui.notifications` in `~/.codex/config.toml`. The preferences written to `me.md` reach Codex through the `AGENTS.md` block. The other settings (`extended_thinking`, `automode_trust`) apply to Claude Code only. See [personal-layer](personal-layer.md).
 
@@ -99,6 +100,20 @@ The decision and its reasons: [ADR 0036](../adr/0036-codex-tool-approvals-and-se
 `ai_attribution: off` writes `{"commit": "", "pr": "", "sessionUrl": false}` to the `attribution` setting and a "Never add Co-Authored-By" line to `me.md`. `on` removes both and leaves Claude Code's default.
 
 In Codex the `me.md` line reaches the agent through the instruction block, but there is no `attribution` key: Codex adds `Co-authored-by: Codex` to commits when your ChatGPT account has commit attribution turned on, an account setting that loadout cannot change. See [Use loadout with Codex](../how-to/codex.md#what-stays-different).
+
+### codebase-memory's auto_index
+
+`cbm_auto_index: on` runs `codebase-memory-mcp config set auto_index true`, so codebase-memory indexes a new git repo at its first session (up to its `auto_index_limit`, 50 000 files); afterwards its watcher or [loadout's refresh](hooks.md#the-code-graph-refresh) keeps it current. It applies to both agents and needs `codebase-memory-mcp` on `PATH`; with it missing, or with both agents off, nothing happens.
+
+- loadout sets the value only from `false` to `true`. It records that in `cbm-auto-index.json` in [its state folder](state-and-sync.md), and puts the undo (`config set auto_index false`) in the backup first, so `loadout restore` replays it. Restore runs exactly these two `config set auto_index` forms and nothing else.
+- A value you set back to `false` after loadout set it `true` stays yours, for good: loadout records that (`cbm-auto-index.json` holds `yours`), `loadout check` shows `off (yours)`, and loadout never changes `auto_index` again, whatever you later set or answer. A failed `config set` leaves no undo step behind.
+- The answer `off` reverts only loadout's own change. A `true` you set yourself is left alone.
+- codebase-memory's default is `false`. A `false` you set before loadout therefore looks like the default, and loadout turns it on once (undoable).
+- If `loadout.json` cannot be read, the answer is unknown and nothing changes.
+- When it is applied: by `loadout bootstrap`, `loadout update` (again), the daily sync after a pull ([state and sync](state-and-sync.md#the-daily-sync)), and at once by `loadout configure set pref-choice cbm_auto_index on|off`.
+- The `codebase-memory auto_index` row of `loadout check` shows its state in the line: `[ok] codebase-memory auto_index: on`, `: off (yours)` or `: off (your answer)`. It warns with `off (loadout turns it on at the next update)` (fix: `loadout update`) and when `codebase-memory-mcp config get auto_index` fails; bootstrap and update then print `codebase-memory: could not read auto_index (config get failed)` and change nothing.
+
+The decision: [ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md).
 
 ### The auto mode generator
 

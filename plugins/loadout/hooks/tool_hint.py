@@ -1,11 +1,7 @@
-#!/usr/bin/env python3
-"""Tool hints (stdlib only, no network; always exit 0, silent on error; never blocks).
+"""Docs hint (stdlib only, no network; always exit 0, silent on error; never blocks).
 
-PreToolUse Grep|Glob|Bash (Claude Code) or Bash (Codex): on the SEARCHES-th symbol search since Serena or the code
-graph was last used, add one short fact naming those tools. PostToolUse on a Serena or codebase-memory tool resets
-the count. At most one hint per SPACING matched calls; never silenced for the rest of a session.
-PreToolUse WebSearch|WebFetch on library docs: one fact naming Context7 and Microsoft Learn, at most once per
-SPACING calls.
+PreToolUse WebSearch|WebFetch on library docs (Claude Code): one fact naming Context7 and Microsoft Learn, at most
+once per SPACING lookups. Code searches are Serena's own `remind` hook now (ADR 0039).
 State: <state_dir>/tool-hint/<session_id>.json. See docs/reference/hooks.md."""
 from __future__ import annotations
 
@@ -16,32 +12,12 @@ import sys
 import time
 from pathlib import Path
 
-SEARCHES = 3
 SPACING = 10
 MAX_CHARS = 300
 KEEP_DAYS = 7
 MAX_INPUT = 200_000
 
-IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,63}")
-DECL = re.compile(r"\b(?:def|class|function|fn|func|interface|struct|type|enum|trait)\s+([A-Za-z_][A-Za-z0-9_]{1,63})")
-CALL = re.compile(r"^([A-Za-z_][A-Za-z0-9_]{2,63})\\?\($")
-COMMON = frozenset("""error errors todo fixme warning warn debug info test tests true false none null import from
-return print main self this name path file data value values config http https version license readme string
-true false def class function type""".split())
-NON_CODE = (".log", ".md", ".markdown", ".rst", ".txt", ".json", ".jsonl", ".toml", ".yaml", ".yml", ".csv",
-            ".lock", ".ini", ".cfg", ".env", ".html", ".xml")
-CODE_MARKERS = ("pyproject.toml", "setup.py", "package.json", "Cargo.toml", "go.mod", "pom.xml", "build.gradle",
-                "build.gradle.kts", "Gemfile", "composer.json", "mix.exs", "CMakeLists.txt", "Makefile")
-CODE_EXT = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".kt", ".java", ".cs", ".rb", ".php", ".c", ".cc",
-            ".cpp", ".h", ".hpp", ".swift", ".scala", ".ex", ".lua", ".sh")
-SEARCH_CMDS = ("rg", "grep", "egrep")
-TAKES_VALUE = frozenset({"-g", "-t", "-T", "-m", "-A", "-B", "-C", "-f", "--glob", "--type", "--type-not",
-                         "--max-count", "--include", "--exclude", "--exclude-dir", "-d", "--max-depth"})
-OPERATORS = frozenset({"|", "||", "&&", ";", ">", ">>", "<", "2>", "&"})
-MCP = re.compile(r"^mcp__(?:plugin_loadout_)?(?:serena|codebase-memory-mcp|codebase_memory_mcp)__")
-SHELL_TOOLS = frozenset({"Bash", "shell", "local_shell", "exec_command", "shell_command"})
 SESSION = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
-FIND = ["<find of code files>"]  # shell_search's paths for a `find -name '*.py'`: a search without a symbol
 
 DOCS_HOST = re.compile(r"(^|\.)(docs|developer|learn|api|reference)\.|readthedocs\.io|docs\.rs|pkg\.go\.dev|"
                        r"pypi\.org|npmjs\.com|developer\.mozilla\.org|docs\.python\.org|learn\.microsoft\.com",
@@ -51,146 +27,12 @@ DOCS_WORDS = re.compile(r"\b(docs?|documentation|api|reference|sdk|library|packa
 DOCS_HINT = ("Library or API docs: Context7 first (`resolve-library-id`, then `query-docs`); Microsoft Learn for "
              ".NET, Azure and Windows; web search last.")
 
-SEARCH_HINT = ("`{name}` looks like a symbol. codebase-memory `search_graph` and `trace_path` give its definition "
-               "and callers; Serena `find_symbol` and `find_referencing_symbols` give the exact place to edit.")
-SEARCH_HINT_PLAIN = ("Searching code by text: codebase-memory `search_graph` and `trace_path` find definitions "
-                     "and callers; Serena `find_symbol` finds the exact place to edit.")
-
-
 def state_dir() -> Path:
     """The same rule as loadout's paths.state_dir() (this hook cannot import loadout)."""
     home = os.environ.get("HOME") or os.environ.get("USERPROFILE") or str(Path.home())
     base = os.environ.get("XDG_STATE_HOME", "")
     root = Path(base) if base and Path(base).is_absolute() else Path(home) / ".local" / "state"
     return root / "loadout" / "tool-hint"
-
-
-SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish"})
-PREFIXES = frozenset({"rtk", "xargs", "sudo", "time", "nice", "env", "command", "exec", "nohup"})
-
-
-def symbol(pattern: object) -> str | None:
-    """The symbol a search pattern looks for, or None (a common word, a phrase, a regex soup)."""
-    if not isinstance(pattern, str) or len(pattern) > 200:
-        return None
-    p = pattern.strip().strip("'\"")
-    p = re.sub(r"^\^|\$$|\\b", "", p)
-    m = DECL.search(p)
-    if m:
-        name = m.group(1)
-    else:
-        m = CALL.match(p)
-        name = m.group(1) if m else (p if IDENT.fullmatch(p) else None)
-    if not name or name.lower() in COMMON:
-        return None
-    return name
-
-
-def _words(command: object) -> list[str]:
-    """The words of a shell command: a string (Claude Code) or an argv list (Codex); `bash -lc "<script>"`
-    is unwrapped one level, so Codex's usual shell wrapper is seen."""
-    if isinstance(command, list):
-        words = [w for w in command if isinstance(w, str)][:200]
-        if len(words) >= 3 and os.path.basename(words[0]) in SHELLS and words[1] in ("-c", "-lc", "-ic"):
-            return _words(words[2])
-        return words
-    if not isinstance(command, str) or len(command) > 4000:
-        return []
-    try:
-        import shlex  # imported here: most calls never get this far
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)  # `src;rg` -> `src`, `;`, `rg`
-        lexer.whitespace_split = True
-        return list(lexer)[:200]
-    except ValueError:
-        return command.split()[:200]
-
-
-def shell_search(command: object) -> tuple[bool, str | None, list[str]]:
-    """(is a search, symbol or None, path arguments) for the first rg/grep/git grep/find that starts a command
-    (after `;`, `&&`, `rtk`, `xargs` and the like). A grep that filters another command's output (`ls | grep X`),
-    a word in a message (`echo grep X`) and a find that changes files are no search."""
-    words = _words(command)
-    for i, w in enumerate(words):
-        prev = words[i - 1] if i else ""
-        if i and prev not in OPERATORS and prev not in PREFIXES:
-            continue  # an argument, not a command
-        base = os.path.basename(w)
-        if base == "find":
-            rest = words[i + 1:]
-            if any(x in ("-delete", "-exec", "-execdir", "-ok", "-okdir") for x in rest):
-                return False, None, []
-            for j, x in enumerate(rest[:-1]):
-                if x in ("-name", "-iname") and rest[j + 1].endswith(CODE_EXT):
-                    return True, None, FIND
-            return False, None, []
-        if base == "git" and i + 1 < len(words) and words[i + 1] == "grep":
-            return _search_args(words[i + 2:])
-        if base in SEARCH_CMDS:
-            return (False, None, []) if prev == "|" else _search_args(words[i + 1:])
-    return False, None, []
-
-
-def _search_args(args: list[str]) -> tuple[bool, str | None, list[str]]:
-    pattern, paths, skip = None, [], False
-    for j, a in enumerate(args):
-        if a in OPERATORS:
-            break
-        if skip:
-            skip = False
-            continue
-        if a in ("-e", "--regexp") and j + 1 < len(args):
-            pattern, skip = args[j + 1], True
-            continue
-        if a in FILTERS and j + 1 < len(args) and doc_filter(args[j + 1]):
-            return False, None, []  # limited to docs, configs or data: a text search
-        if "=" in a and a.split("=", 1)[0] in FILTERS and doc_filter(a.split("=", 1)[1]):
-            return False, None, []
-        if a in TAKES_VALUE:
-            skip = True
-            continue
-        if a.startswith("-"):
-            continue
-        if pattern is None:
-            pattern = a
-        else:
-            paths.append(a)
-    if pattern is None:
-        return False, None, []
-    return True, symbol(pattern), paths
-
-
-def non_code(paths: list[str]) -> bool:
-    return bool(paths) and all(p.lower().endswith(NON_CODE) for p in paths)
-
-
-FILTERS = frozenset({"-t", "--type", "-g", "--glob", "--include", "--iglob"})
-DOC_TYPES = frozenset({"md", "markdown", "rst", "txt", "json", "jsonl", "yaml", "yml", "toml", "csv", "log", "html",
-                       "xml", "ini", "cfg"})
-
-
-def doc_filter(value: object) -> bool:
-    """A file type or glob that limits a search to docs, configs or data (`-t md`, `-g '*.json'`)."""
-    if not isinstance(value, str) or not value:
-        return False
-    v = value.strip("'\"").lower()
-    return v in DOC_TYPES or v.endswith(NON_CODE)
-
-
-def code_repo(cwd: object) -> bool:
-    if not isinstance(cwd, str) or not cwd:
-        return False
-    try:
-        with os.scandir(cwd) as it:
-            for n, entry in enumerate(it):
-                if n > 300:
-                    break
-                if entry.name in CODE_MARKERS or entry.name.endswith(CODE_EXT):
-                    return True
-                if entry.name == "src" and entry.is_dir():
-                    return True
-    except OSError:
-        return False
-    return False
 
 
 def _load(path: Path) -> dict:
@@ -232,71 +74,30 @@ def _emit(event: str, text: str) -> None:
     sys.stdout.write(json.dumps(out))
 
 
-def search_event(tool: str, tool_input: dict) -> tuple[bool, str | None]:
-    """(counts as a symbol search, symbol)."""
-    if tool == "Grep":
-        path = tool_input.get("path") or tool_input.get("glob") or ""
-        if isinstance(path, str) and non_code([path]):
-            return False, None
-        if doc_filter(tool_input.get("type")) or doc_filter(tool_input.get("glob")):
-            return False, None
-        name = symbol(tool_input.get("pattern"))
-        return name is not None, name
-    if tool == "Glob":
-        pattern = tool_input.get("pattern")
-        return isinstance(pattern, str) and pattern.endswith(CODE_EXT), None
-    if tool in SHELL_TOOLS:
-        command = tool_input.get("command")
-        is_search, name, paths = shell_search(command if command is not None else tool_input.get("cmd"))
-        if not is_search or non_code(paths):
-            return False, None
-        return (name is not None or paths is FIND), name  # a common word or a phrase never counts
-    return False, None
-
-
 def handle(payload: dict) -> None:
     session = payload.get("session_id")
     if not isinstance(session, str) or not SESSION.match(session):
         return
-    event = payload.get("hook_event_name") or ""
-    tool = payload.get("tool_name") or ""
+    if payload.get("hook_event_name") != "PreToolUse":
+        return
     raw_input = payload.get("tool_input")
-    tool_input: dict = raw_input if isinstance(raw_input, dict) else {}
+    if not docs_event(payload.get("tool_name") or "", raw_input if isinstance(raw_input, dict) else {}):
+        return
     folder = state_dir()
     path = folder / f"{session}.json"
     fresh = not path.exists()
     state = _load(path)
-    if event == "PostToolUse":
-        if MCP.match(tool):
-            state["searches"] = 0
-            _save(path, state)
-        return
-    if event != "PreToolUse":
-        return
-    hit, name = search_event(tool, tool_input)
-    docs = not hit and docs_event(tool, tool_input)
-    if not hit and not docs:
-        return
-    if hit and not code_repo(payload.get("cwd")):
-        return
     calls = _int(state, "calls", 0) + 1
     state["calls"] = calls
     text = None
-    if hit:
-        searches = _int(state, "searches", 0) + 1
-        state["searches"] = searches
-        if searches >= SEARCHES and calls - _int(state, "last_hint", -SPACING) >= SPACING:
-            text = SEARCH_HINT.format(name=name[:40]) if name else SEARCH_HINT_PLAIN
-            state["searches"], state["last_hint"] = 0, calls
-    elif calls - _int(state, "last_docs", -SPACING) >= SPACING:
+    if calls - _int(state, "last_docs", -SPACING) >= SPACING:
         text, state["last_docs"] = DOCS_HINT, calls
-    if text:
         state["hint_at"] = time.time()  # when the last hint was shown: `loadout usage` counts it by this
     _save(path, state)
     if fresh:
         _clean(folder)
     if text:
-        _emit(event, text)
+        _emit("PreToolUse", text)
 
 
 def docs_event(tool: str, tool_input: dict) -> bool:

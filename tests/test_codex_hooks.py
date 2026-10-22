@@ -20,8 +20,11 @@ OMITTED = {
     "reload_check.py":"compares Claude's installed_plugins.json; Codex loads plugins per session",
     "serena-hooks": "Codex gets Serena's documented hooks in ~/.codex/hooks.json (ADR 0028), never from the plugin",
 }
+# Claude events with no Codex counterpart, and why
+OMITTED_EVENTS = {"SubagentStop": "Codex refreshes codebase-memory at Stop only; a subagent's edits wait for the "
+                                  "parent's Stop (or the 20-file limit)"}
 CODEX_ARGS = {"--client=claude-code": "--client=codex", "rtk hook claude": "rtk hook codex",
-              "--agent claude": "--agent codex",
+              "--agent claude": "--agent codex", 'subagent-context.sh" claude': 'subagent-context.sh" codex',
               "mcp__plugin_loadout_serena__": "mcp__serena__", "Write|Edit|MultiEdit": "Edit|Write"}
 
 
@@ -44,7 +47,7 @@ def test_manifest_points_codex_to_its_hooks():
 def test_every_claude_hook_has_a_codex_counterpart_or_a_reason():
     codex_hooks = _commands(PLUGIN / "hooks" / "codex.json")
     for event, matcher, command in _commands(PLUGIN / "hooks" / "hooks.json"):
-        if any(key in command for key in OMITTED):
+        if any(key in command for key in OMITTED) or event in OMITTED_EVENTS:
             continue
         assert (event, _codexify(matcher), _codexify(command)) in codex_hooks, (event, matcher, command)
     assert not any("--client=claude-code" in c or "rtk hook claude" in c for _, _, c in codex_hooks)

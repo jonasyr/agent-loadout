@@ -11,10 +11,10 @@ from loadout.__main__ import main
 
 IDS = ["answer_language", "commit_style", "ai_attribution", "answer_style", "destructive_actions",
        "effort_level", "extended_thinking", "agent_push_notifications", "automode_trust", "commit_doc_language",
-       "codex_serena_approval"]
+       "codex_serena_approval", "cbm_auto_index"]
 DEFAULTS = {"answer_language": "match", "commit_style": "conventional", "ai_attribution": "off",
             "answer_style": "concise", "destructive_actions": "ask", "effort_level": "medium",
-            "extended_thinking": "yes", "agent_push_notifications": "yes", "automode_trust": "generate", "codex_serena_approval": "ask",
+            "extended_thinking": "yes", "agent_push_notifications": "yes", "automode_trust": "generate", "codex_serena_approval": "ask", "cbm_auto_index": "on",
             "commit_doc_language": "english"}
 ME_PREFS = ["answer_language", "commit_style", "ai_attribution", "answer_style", "destructive_actions", "commit_doc_language"]
 ATTRIBUTION_OFF = {"commit": "", "pr": "", "sessionUrl": False}

@@ -49,6 +49,8 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `duplicates.py` | Exact duplicates of what the loadout plugin ships: the only things `loadout update` removes without asking. |
 | `inventory.py` | Lists a machine's Claude Code setup and classifies it against the catalog (used by `adopt`, `check`, `configure`, `own` and `update`). |
 | `own.py` | Your own tools, which loadout does not manage: record them in the personal layer or a personal profile, leave them, or remove them ([Handle your own tools](../how-to/your-own-tools.md)). |
+| `searches.py` | The one parser for symbol-like searches in a tool call (`a\|b` alternations, every search of a compound command line); `usage.py` uses it. |
+| `cbm.py` | codebase-memory's `auto_index` from the `cbm_auto_index` preference: set, record, undo ([preference](preferences-format.md#codebase-memorys-auto_index)). |
 | `usage.py` | `loadout usage`: how often the agents used each tool family, counted from local transcripts; read-only. |
 | `advisor.py` | `loadout advisor-mark <plan>`: records that the execution advisor evaluated a plan. It loads the plugin's `hooks/advisor.py`, so both share one format. |
 
@@ -99,11 +101,14 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `skills/` | The plugin's skills: `configure`, `docs-audit`, `docs-sync`, `execution-advisor`, `onboard`, `usage`. |
 | `hooks/hooks.json`, `hooks/codex.json` | The hooks for Claude Code and for Codex ([Hooks](hooks.md)). |
 | `hooks/run.sh` | Runs a hook command only when its program is on `PATH`; `--soft` and `--python` as described in [Hooks](hooks.md). |
-| `hooks/tool_hint.sh`, `hooks/tool_hint.py` | The tool hints: a fast bash filter, then the Python script. |
+| `hooks/tool_hint.sh`, `hooks/tool_hint.py` | The docs hint for library-docs web lookups (Claude Code): a fast bash filter, then the Python script. Code searches are Serena's `remind` hook. |
+| `hooks/mcp_guard.py` | The guard that runs Serena's hooks for Claude Code and stays silent when Serena is absent, off for the folder, or already hooked by the user ([the guard](hooks.md#the-guard)). |
+| `hooks/cbm_project.py` | Session and subagent start: names the folder's codebase-memory project ([details](hooks.md#the-codebase-memory-project-pointer)). |
+| `hooks/refresh.py` | Re-indexes a stale codebase-memory graph in the background ([details](hooks.md#the-code-graph-refresh)). |
 | `hooks/advisor.py` | The execution advisor's `record` and `stop` hooks. |
 | `hooks/reload_check.py` | Claude Code only: says once per session to run `/reload-plugins` after a plugin update, and clears the saved `/reload-plugins` step once the session runs loadout's newly installed plugin. |
 | `hooks/typecheck.py` | Codex only: runs the language's type checker after an edit. |
-| `hooks/subagent-context.sh` | Gives a subagent the tool routing. |
+| `hooks/subagent-context.sh` | Gives a subagent the tool routing, with exact tool names. |
 | `evals/` | The skill evals: `run.sh` (the only way to run them), the cases, `bin/` stubs, `lib/`, `mocks/`, `fixtures/` ([Run the skill evals](../how-to/run-evals.md)). |
 | `evals-browser/` | The opt-in browser routing case (`run.sh --eval-dir evals-browser`). |
 

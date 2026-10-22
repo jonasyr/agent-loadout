@@ -1,6 +1,6 @@
 # 0026. Tool hints add context, never block
 
-- Status: Accepted
+- Status: Accepted; superseded for code searches by [ADR 0039](0039-serena-remind-tools-load-upfront-cbm-refresh.md) (the docs hint for web lookups stands)
 - Date: 2026-10-14
 - Source: [Design: tool use](../superpowers/specs/2026-10-14-tool-use-design.md)
 

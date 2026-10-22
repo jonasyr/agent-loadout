@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Fast gate for tool_hint.py (docs/reference/hooks.md): most tool calls are no search, a docs lookup or a Serena or
-# graph call, so Python starts only when the payload can matter. A superset is fine; tool_hint.py decides.
+# Fast gate for tool_hint.py (docs/reference/hooks.md): only a web lookup can get the docs hint, so Python starts
+# only for one. A superset is fine; tool_hint.py decides.
 here="$(cd "$(dirname "$0")" && pwd)"
 payload="$(head -c 200001)"
 case "$payload" in
-  *grep*|*Grep*|*"rg "*|*'"rg"'*|*find*|*Glob*|*'"Web'*|*mcp__*) ;;
+  *'"tool_name":"Web'*|*'"tool_name": "Web'*) ;;
   *) exit 0 ;;
 esac
 # tool_hint.py runs on any Python 3.8+: no version check needed. A python3 that fails to run (the Windows Store

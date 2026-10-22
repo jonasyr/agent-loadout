@@ -203,6 +203,13 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
         out.end_progress()
         for line in codex_lines:
             print(line)
+    if setup and (claude_on or codex_on):  # codebase-memory's auto_index (cbm_auto_index), also for a changed answer
+        from .backup import Backup
+        bk = Backup(description="configure: codebase-memory auto_index")
+        for line in apply.cbm_step(bk).lines:
+            print(line)
+        if not bk.empty:
+            print(f"(undo: loadout restore {bk.root})")
     offer_commit(ask)
     if setup:
         hints = [h for h, on in (("restart Claude Code (or run /reload-plugins)", claude_on),

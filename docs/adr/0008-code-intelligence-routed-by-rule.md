@@ -1,6 +1,6 @@
 # 0008. Code intelligence: LSP plugins, Serena and codebase-memory, routed by a rule
 
-- Status: Accepted. For Codex, see [ADR 0024](0024-codex-parity-update-model.md).
+- Status: Accepted. For Codex, see [ADR 0024](0024-codex-parity-update-model.md). The sentence "Serena's `remind` hook is dropped" is superseded by [ADR 0039](0039-serena-remind-tools-load-upfront-cbm-refresh.md).
 - Date: 2026-10-08
 - Source: [Design spec, decision D8](../superpowers/specs/2026-10-08-agent-loadout-design.md#2-decisions)
 

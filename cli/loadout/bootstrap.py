@@ -1050,6 +1050,11 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         result = apply.claude_plugins_step(say=out.progress, on=True)
         out.end_progress()
         _report(result.name, result.summary, result.lines)
+    if claude_on or chosen["codex"]:
+        result = apply.cbm_step(bk)
+        if result.lines:
+            _step("codebase-memory")
+            _report(result.name, result.summary, result.lines)
     if chosen["codex"]:
         _step("Codex")
         problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())

@@ -9,6 +9,12 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" loadout hook-session-start --agent codex",
             "shell": "bash",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/cbm_project.py\" session-start --agent codex",
+            "shell": "bash",
+            "timeout": 5
           }
         ]
       }
@@ -22,17 +28,6 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" rtk hook codex",
             "shell": "bash",
             "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.sh\"",
-            "shell": "bash",
-            "timeout": 5
           }
         ]
       }
@@ -55,11 +50,11 @@
         ]
       },
       {
-        "matcher": "mcp__serena__.*|mcp__codebase-memory-mcp__.*",
+        "matcher": "Edit|Write|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/tool_hint.sh\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh.py\" --agent codex",
             "shell": "bash",
             "timeout": 5
           }
@@ -75,6 +70,12 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/advisor.py\" stop",
             "shell": "bash",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh.py\" --agent codex",
+            "shell": "bash",
+            "timeout": 5
           }
         ]
       }
@@ -85,7 +86,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-context.sh\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-context.sh\" codex",
+            "shell": "bash",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/cbm_project.py\" subagent-start --agent codex",
             "shell": "bash",
             "timeout": 5
           }

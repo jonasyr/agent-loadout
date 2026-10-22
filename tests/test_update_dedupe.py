@@ -199,9 +199,9 @@ def test_lookalike_hook_script_file_is_kept(fake_home, fake_runner, monkeypatch)
     assert names == ["cbm-session-reminder.bak", "my-cbm-session-reminder-wrapper.sh", "my-hook.sh"]
 
 
-def _hook_item(command):
+def _hook_item(command, name="PreToolUse:"):
     from loadout.inventory import Item
-    return Item("hook", "PreToolUse:", command, "~/.claude/settings.json", {})
+    return Item("hook", name, command, "~/.claude/settings.json", {})
 
 
 def test_legacy_cbm_hook_match_is_exact(fake_home):
@@ -219,3 +219,19 @@ def test_server_with_own_env_or_type_is_not_a_duplicate(fake_home, fake_runner, 
                          "codebase-memory-mcp": {"type": "http", "command": CBM}})
     _run_update(fake_home, fake_runner, monkeypatch, side_effects=False)
     assert _removed(fake_runner) == []
+
+
+def test_guarded_plugin_hook_counts_as_duplicate(fake_home):
+    from loadout import duplicates
+    assert "serena-hooks remind --client=claude-code" in duplicates.plugin_hook_commands()
+    plugin = "PreToolUse:Bash|Read|Grep|Glob|mcp__plugin_loadout_serena__.*|mcp__serena__.*"
+    assert duplicates.is_duplicate_hook(_hook_item("serena-hooks remind --client=claude-code", plugin))
+    assert not duplicates.is_duplicate_hook(_hook_item("serena-hooks remind", plugin))  # equivalent, not exact
+
+
+def test_same_command_under_another_matcher_or_event_is_the_users(fake_home):
+    # Serena's docs set remind with matcher "": not the plugin's hook, so `loadout update` must keep it
+    from loadout import duplicates
+    assert not duplicates.is_duplicate_hook(_hook_item("serena-hooks remind --client=claude-code", "PreToolUse:"))
+    assert not duplicates.is_duplicate_hook(_hook_item("serena-hooks remind --client=claude-code", "PostToolUse:Bash"))
+    assert duplicates.is_duplicate_hook(_hook_item("rtk hook claude", "PreToolUse:Bash#2"))

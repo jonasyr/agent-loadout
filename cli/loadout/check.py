@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import shlex
 import stat
 import sys
 import time
@@ -256,6 +257,28 @@ def _binaries(cs=None) -> list[CheckResult]:
     return out
 
 
+def _cbm_auto_index() -> list[CheckResult]:
+    """The cbm_auto_index row; none without codebase-memory-mcp. An OK row carries its state in the name, since
+    `loadout check` prints details only for warnings."""
+    from . import cbm
+    now = cbm.query()
+    if now is None:
+        return []
+    name = "codebase-memory auto_index"
+    if now == cbm.UNREADABLE:
+        return [CheckResult(name, False, "could not read it (codebase-memory-mcp config get auto_index failed)",
+                            "run codebase-memory-mcp config get auto_index to see why", "warn")]
+    if now:
+        detail = "on"
+    elif cbm.answer() == "off":
+        detail = "off (your answer)"
+    elif cbm._record():  # loadout turned it on and you turned it off
+        detail = "off (yours)"
+    else:
+        return [CheckResult(name, False, "off (loadout turns it on at the next update)", "loadout update", "warn")]
+    return [CheckResult(f"{name}: {detail}", True, detail, "", "warn")]
+
+
 def _mcp_path() -> list[CheckResult]:
     """Claude Code starts the plugin's servers by name, so a new terminal's PATH must find them."""
     hidden, absent = {}, False
@@ -273,6 +296,102 @@ def _mcp_path() -> list[CheckResult]:
     dirs = sorted({str(d) for d in hidden.values()})
     return [CheckResult("MCP servers on PATH", not hidden, ", ".join(hidden),
                         f"open a new terminal, or add {', '.join(dirs)} to PATH", "warn")]
+
+
+def _is_serena_server(cfg: dict) -> bool:
+    command, args = cfg.get("command"), cfg.get("args")
+    if not isinstance(command, str):
+        return False
+    base = re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe")
+    args = [a for a in args if isinstance(a, str)] if isinstance(args, list) else []
+    return base in ("serena", "serena-agent") or (base in ("uvx", "uv") and any("serena" in a for a in args))
+
+
+def _is_cbm_server(cfg: dict) -> bool:
+    command = cfg.get("command")
+    return isinstance(command, str) and re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe") == "codebase-memory-mcp"
+
+
+def _user_servers(cwd: Path) -> list[tuple[str, dict, str, bool]]:
+    """(name, config, file, user scope) of the servers in ~/.claude.json (user and this folder's project scope)
+    and <cwd>/.mcp.json."""
+    config = load_json(paths.claude_json())
+    out = [(n, c, "~/.claude.json", True) for n, c in get_dict(config, "mcpServers").items() if isinstance(c, dict)]
+    projects = get_dict(config, "projects")
+    for folder in (cwd, *cwd.parents):
+        entry = next((projects[k] for k in (str(folder), folder.as_posix()) if k in projects), None)
+        if isinstance(entry, dict):
+            out += [(n, c, "~/.claude.json", False) for n, c in get_dict(entry, "mcpServers").items()
+                    if isinstance(c, dict)]
+            break
+    out += [(n, c, ".mcp.json", False) for n, c in get_dict(load_json(cwd / ".mcp.json"), "mcpServers").items()
+            if isinstance(c, dict)]
+    return out
+
+
+def _tool_setups() -> list[CheckResult]:
+    """Serena or codebase-memory run next to the plugin's: your own hooks, a second server. Read only; the
+    tools are never run."""
+    from . import duplicates, own
+    from .inventory import Item
+    out = []
+    try:
+        cwd = Path(os.path.abspath(Path.cwd()))
+        hooks = duplicates.equivalent_user_hooks(str(cwd))
+        if hooks:
+            files = ", ".join(dict.fromkeys(f for _, _, f in hooks))
+            out.append(CheckResult("Serena hooks", True, f"yours in {files}; the plugin's copy stays silent",
+                                   "loadout configure own", "warn"))
+        servers = _user_servers(cwd)
+        for label, test, tool in (("Serena", _is_serena_server, "serena"),
+                                  ("codebase-memory", _is_cbm_server, "codebase-memory-mcp")):
+            if duplicates.plugin_server_off(tool, str(cwd)):
+                continue  # the plugin's is off here: yours is the only one
+            mine = [(n, f) for n, c, f, user in servers if test(c) and not (
+                user and duplicates.is_duplicate_mcp(Item("mcp", n, "", f, {"config": c})))
+                and not own.is_left(Item("mcp", n, "", f, {}))]
+            if mine:
+                n, f = mine[0]
+                out.append(CheckResult(f"{label} servers", False,
+                                       f"two {label} servers: the plugin's and yours ({n} in {f})",
+                                       f"keep one: in Claude Code's /mcp, disable plugin:loadout:{tool}; or remove "
+                                       f"yours, or keep both (leave), with loadout configure own", "warn"))
+        n_cbm = [(f, 1) for ev, words, f in duplicates.user_hooks(str(cwd)) if "hook-augment" in words]
+        if n_cbm:
+            files = ", ".join(dict.fromkeys(f for f, _ in n_cbm))
+            out.append(CheckResult(
+                "codebase-memory hooks", False,
+                f"codebase-memory's own hooks ({len(n_cbm)} in {files}) add up to 2 s per call and print nothing "
+                "in codebase-memory 0.12 (upstream #2683)", "loadout configure own (remove, or leave them)", "warn"))
+    except Exception:  # an odd file shape never breaks the report
+        return out
+    return out
+
+
+def _cbm_refresh() -> list[CheckResult]:
+    """A row per repo whose last background refresh (hooks/refresh.py) failed; nothing while they succeed."""
+    out = []
+    try:
+        files = sorted((paths.state_dir() / "cbm-refresh").glob("*.json"))  # all: pruning keeps it small
+    except OSError:
+        return out
+    for f in files:
+        try:
+            data = load_json(f)
+        except (InvalidJSON, OSError):
+            continue
+        last, root = data.get("last"), data.get("root")
+        if not isinstance(last, dict) or last.get("ok") is not False or not isinstance(root, str) \
+                or not Path(root).is_dir():
+            continue  # no failure, or a repo that is gone
+        at = last.get("at")
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(at)) if isinstance(at, (int, float)) else "?"
+        error = last.get("error") if isinstance(last.get("error"), str) else ""
+        out.append(CheckResult("codebase-memory refresh", False,
+                               printable(f"{root}: the last re-index failed ({when}): {error}"),
+                               printable(f"codebase-memory-mcp cli index_repository --repo-path {shlex.quote(root)}; "
+                                         "the next change retries"), "warn"))
+    return out
 
 
 _CBM_LOG = "logs/daemon-conflicts.ndjson"
@@ -747,7 +866,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []), *_cbm_refresh(), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

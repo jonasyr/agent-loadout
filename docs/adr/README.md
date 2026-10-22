@@ -33,7 +33,7 @@ Template:
 | [0005](0005-catalog-as-source-of-tool-knowledge.md) | `catalog.json` is the source of tool knowledge | Accepted |
 | [0006](0006-secrets-in-secrets-env.md) | Secrets live in `secrets.env` and are referenced as `${VAR}` | Accepted |
 | [0007](0007-tiered-scoping-with-profiles.md) | Tiered scoping: core tools global, domain tools per project | Accepted; merge rule superseded by 0031 |
-| [0008](0008-code-intelligence-routed-by-rule.md) | Code intelligence: LSP plugins, Serena and codebase-memory, routed by a rule | Accepted |
+| [0008](0008-code-intelligence-routed-by-rule.md) | Code intelligence: LSP plugins, Serena and codebase-memory, routed by a rule | Accepted; dropping Serena's `remind` superseded by 0039 |
 | [0009](0009-design-tooling-frontend-design-and-impeccable.md) | Design tooling: frontend-design and impeccable | Accepted |
 | [0010](0010-docs-as-single-source-of-truth.md) | `docs/` is the single source of truth; AGENTS.md and memories link to it | Accepted |
 | [0011](0011-tool-binaries-notice-and-deliberate-update.md) | Tool binaries: a weekly notice and a deliberate `loadout update` | Accepted |
@@ -51,7 +51,7 @@ Template:
 | [0023](0023-python-3-11-minimum.md) | Python 3.11 minimum | Accepted |
 | [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted; amended by 0033 and 0035 |
 | [0025](0025-state-in-xdg-state-home.md) | loadout's own files live in XDG state, not in `~/.claude` | Accepted |
-| [0026](0026-tool-hints-never-block.md) | Tool hints add context, never block | Accepted |
+| [0026](0026-tool-hints-never-block.md) | Tool hints add context, never block | Accepted; superseded for code searches by 0039 |
 | [0027](0027-repo-files-follow-the-agents.md) | Repo files follow the agents that are on | Accepted; decision line superseded by 0030 |
 | [0028](0028-serena-codex-hooks-in-hooks-json.md) | Serena's Codex hooks as owned entries in hooks.json | Accepted |
 | [0029](0029-codex-on-windows-and-wsl.md) | Codex on Windows and WSL: one loadout per side | Accepted; amended by 0034 |
@@ -64,3 +64,4 @@ Template:
 | [0036](0036-codex-tool-approvals-and-serena-approval.md) | Codex tool approvals stay yours, and Codex asks once about Serena's | Accepted |
 | [0037](0037-marketplaces-only-when-a-plugin-uses-them.md) | Marketplaces only when a plugin uses them | Accepted |
 | [0038](0038-codex-extension-loads-plugins-and-reviews-hooks.md) | VS Code's Codex extension loads plugins and reviews hooks itself | Accepted |
+| [0039](0039-serena-remind-tools-load-upfront-cbm-refresh.md) | Serena's reminder, tools that load upfront, and a fresh code graph | Accepted |
