@@ -155,3 +155,23 @@ def test_codex_subagent_card_says_search_first_and_names_codex_tools():
 
 def test_claude_card_claims_loaded_tools_only_when_both_are_installed(tmp_path):
     assert "already active" not in _card(path=f"{tmp_path}:/usr/bin:/bin")
+
+
+def test_claude_card_promises_loaded_tools_only_when_the_folder_has_them(tmp_path):
+    for tool in ("serena", "codebase-memory-mcp"):
+        (tmp_path / tool).write_text("#!/bin/sh\n")
+        (tmp_path / tool).chmod(0o755)
+    home, repo = tmp_path / "home", tmp_path / "repo"
+    home.mkdir()
+    repo.mkdir()
+
+    def card():
+        env = {"PATH": f"{tmp_path}:/usr/bin:/bin", "HOME": str(home)}
+        out = subprocess.run(["/bin/bash", str(PLUGIN / "hooks/subagent-context.sh"), "claude"], env=env,
+                             input=json.dumps({"cwd": str(repo), "hook_event_name": "SubagentStart"}),
+                             capture_output=True, text=True)
+        return json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "already active" in card()
+    (home / ".claude.json").write_text(json.dumps(
+        {"projects": {str(repo): {"disabledMcpServers": ["plugin:loadout:serena"]}}}))
+    assert "already active" not in card()

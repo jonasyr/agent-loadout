@@ -125,3 +125,14 @@ def test_second_server_fix_names_ways_that_exist(fake_home, fake_runner, tmp_pat
     _my_serena(fake_home)
     [r] = rows("Serena servers")
     assert "/mcp" in r.fix and "plugin:loadout:serena" in r.fix and "loadout configure own" in r.fix
+
+
+def test_refresh_failures_beyond_64_state_files_are_reported(fake_home, fake_runner, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    folder = paths.state_dir() / "cbm-refresh"
+    folder.mkdir(parents=True)
+    for i in range(70):
+        (folder / f"0000{i:03d}.json").write_text(json.dumps({"root": str(tmp_path), "last": {"ok": True}}))
+    (folder / "ffff.json").write_text(json.dumps(
+        {"root": str(tmp_path), "last": {"ok": False, "at": 1, "error": "boom"}}))
+    assert [r for r in check.run_checks() if "refresh" in r.name.lower() and not r.ok]

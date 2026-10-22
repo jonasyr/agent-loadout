@@ -372,7 +372,7 @@ def _cbm_refresh() -> list[CheckResult]:
     """A row per repo whose last background refresh (hooks/refresh.py) failed; nothing while they succeed."""
     out = []
     try:
-        files = sorted((paths.state_dir() / "cbm-refresh").glob("*.json"))[:64]
+        files = sorted((paths.state_dir() / "cbm-refresh").glob("*.json"))  # all: pruning keeps it small
     except OSError:
         return out
     for f in files:

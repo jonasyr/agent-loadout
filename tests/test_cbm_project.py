@@ -144,6 +144,7 @@ def test_no_project_line_without_the_binary_or_with_the_server_off(tmp_path):
     assert "indexed as project" in _run_cbm(tmp_path, ["session-start", "--agent", "codex"], cwd, claude_json=off)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX default project names")
 def test_a_colliding_default_name_of_another_root_is_not_this_folder(tmp_path):
     # /x/a-b/c and /x/a/b-c both give the default name x-a-b-c: the index's own root_path decides
     cache = _cache(tmp_path)

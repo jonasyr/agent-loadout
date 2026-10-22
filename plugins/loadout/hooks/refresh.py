@@ -334,7 +334,7 @@ def handle(payload: dict) -> None:
             if root and (f == root or f.startswith(root.rstrip(os.sep) + os.sep)):
                 by_root.setdefault(root, []).append(f)
         for root, files in by_root.items():
-            state = _open(root, cwd)
+            state = _open(root, root)  # the edited repo's own switches, not the session folder's
             if state is not None:
                 _record(root, state, files, session)
     elif event in ("Stop", "SubagentStop"):

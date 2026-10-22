@@ -575,3 +575,16 @@ def test_stop_finds_this_sessions_repo_among_many_state_files(env, tmp_path):
     env["spawned"].clear()
     _stop(env)
     assert (str(other), False) in env["spawned"]
+
+
+def test_an_edit_in_another_repo_follows_that_repos_switch(env, tmp_path):
+    other = (tmp_path / "other3")
+    other.mkdir()
+    other = other.resolve()
+    (env["cache"] / f"{str(other).lstrip('/').replace('/', '-')}.db").write_bytes(b"")
+    # codebase-memory is off for the session's repo, on for the other one
+    (env["home"] / ".claude.json").write_text(json.dumps(
+        {"projects": {str(env["repo"]): {"disabledMcpServers": ["plugin:loadout:codebase-memory-mcp"]}}}))
+    _edit(env, other / "a.py")
+    files = list((env["home"] / ".local" / "state" / "loadout" / "cbm-refresh").glob("*.json"))
+    assert any(json.loads(f.read_text()).get("changed") == [str(other / "a.py")] for f in files)

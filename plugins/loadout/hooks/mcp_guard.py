@@ -173,6 +173,14 @@ def should_run(server: str, argv: list[str], payload: dict, home: Path) -> bool:
 
 
 def main(args: list[str]) -> int:
+    if args[:1] == ["--available"]:  # `--available AGENT SERVER...`: exit 0 when the agent has them all here
+        try:
+            payload = json.loads(sys.stdin.read(MAX_INPUT))
+            cwd = payload.get("cwd") if isinstance(payload, dict) and isinstance(payload.get("cwd"), str) else None
+            ok = len(args) > 2 and all(available(srv, args[1], cwd or os.getcwd(), _home()) for srv in args[2:])
+            return 0 if ok else 1
+        except Exception:
+            return 1
     try:
         if len(args) < 2:
             return 0
