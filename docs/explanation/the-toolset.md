@@ -33,6 +33,20 @@ The full workflow runs in Claude Code (CLI or the Claude Code extension), in the
 - **UI work.** **[frontend-design](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/frontend-design)** sets a distinctive direction, **[playwright-cli](https://github.com/microsoft/playwright-cli)** checks the result in a real browser at phone, tablet and desktop widths, and **[impeccable](https://github.com/pbakaus/impeccable)** audits and polishes it ([ADR 0009](../adr/0009-design-tooling-frontend-design-and-impeccable.md)). playwright-cli keeps screenshots and page snapshots on disk instead of in Claude's context, which is why it is the default over a browser MCP server ([ADR 0013](../adr/0013-playwright-cli-instead-of-browser-mcp.md)).
 - **[rtk](https://github.com/rtk-ai/rtk)** (command-line tool) rewrites shell commands through a proxy that strips noise from their output, so test runs and git logs cost fewer tokens. A plugin hook applies it automatically (in Codex, once the hooks are approved).
 
+## Keeping the code tools in use
+
+Installing Serena and codebase-memory does not make an agent use them. The maintainer's 14 days of transcripts showed Serena in 5 of 592 main sessions and 17 of 590 subagents; the numbers and causes are in [ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md). Three parts of the kit answer that.
+
+- **Serena's own reminder.** Claude Code on Linux, macOS and WSL has no Grep or Glob tool; agents search through Bash. A hint that never blocks was followed in 3 of 109 cases, so the plugin now runs Serena's documented `remind` hook. It denies the 3rd grep, the 3rd code-file read or the 4th mixed call without a Serena symbolic tool in between, once. The next call goes through. loadout's own search hint is gone; only its Context7 and Microsoft Learn hint for web lookups stays. Codex runs the same Serena hook from `~/.codex/hooks.json`. Details: [Hooks](../reference/hooks.md#serenas-reminder).
+- **Tools loaded upfront.** The plugin's two servers have `"alwaysLoad": true`. Otherwise Claude Code loads a tool's definition only after a tool search, and a subagent seldom does that (27 of 585 did). The cost is about 50 000 characters, roughly 12k to 13k tokens, in every session and subagent. The plugin's file is shared, so there is no per-user switch. Codex decides this itself, so loadout's Codex instructions still say "search first".
+- **Names in the prompt.** In 23 of 34 subagents that used the tools, the parent's prompt had named them. So the subagent context carries exact tool names, a hook names the folder's codebase-memory project, and the rules tell the parent to name the tools when it delegates.
+
+### Why the graph needs a refresh and Serena does not
+
+Serena reads the language server's view of the files, and in a check on 2026-10-22 (Serena 2.1.0, Python and TypeScript) it saw an edit made outside Serena, a new file and a deleted file at once. codebase-memory keeps an index. Its own watcher re-indexes a project it watches within a few seconds, but a repo it indexed and does not watch goes stale. For that, `hooks/refresh.py` re-indexes in the background at the end of a turn, after a git command that rewrites the tree, and after 20 changed code files; it skips a watched project. The first index of a new git repo is codebase-memory's own `auto_index`, which loadout turns on with the preference [`cbm_auto_index`](../reference/preferences-format.md#codebase-memorys-auto_index). Details: [the refresh](../reference/hooks.md#the-code-graph-refresh).
+
+codebase-memory's own `hook-augment` is not used: in 0.12.1 it misses its 2 s deadline on every call ([Hooks](../reference/hooks.md#serenas-reminder)).
+
 ## Finish
 
 - **Review.** One review pass per change: Claude Code's built-in `/code-review` (in Codex, the built-in `/review`), or superpowers' *requesting-code-review*. **[security-guidance](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance)** warns about security mistakes while code is written and reviews each commit.

@@ -76,7 +76,9 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 | `codex.lock` | Lets one Codex setup run at a time (bootstrap, configure, update, the daily sync). Same format and waiting as `maintenance.lock`. A lock not touched for an hour counts as left over from a crash. |
 | `reload-notified.json` | The sessions already told to run `/reload-plugins`. See [hooks](hooks.md#hooks-of-the-loadout-plugin). |
 | `advisor-pending.json`, `advisor-done.json` | State of the execution-advisor hook. See [hooks](hooks.md). |
-| `tool-hint/<session>.json` | The tool hints' per-session search count; files older than 7 days are removed. See [hooks](hooks.md#hooks-of-the-loadout-plugin). |
+| `tool-hint/<session>.json` | The docs hint's per-session counter; files older than 7 days are removed. See [hooks](hooks.md#hooks-of-the-loadout-plugin). |
+| `cbm-refresh/` | The code-graph refresh's per-repo state and locks. See [hooks](hooks.md#the-code-graph-refresh). |
+| `cbm-auto-index.json` | `{"set": "true"}` while loadout's change of codebase-memory's `auto_index` stands, so a value you set yourself stays yours. See [the preference](preferences-format.md#codebase-memorys-auto_index). |
 | `migrated.json`, `migrate.lock` | The move out of `~/.claude`: what was copied, with signatures of the old entry and its copy, and the lock that lets one run move at a time ([The move out of ~/.claude](state-and-sync.md#the-move-out-of-claude)). |
 | `backups/` | One `loadout-<timestamp>` folder per backup, with its manifest. See [State folders](state-and-sync.md#state-folders) and [Undo](../how-to/undo-and-restore.md). |
 
