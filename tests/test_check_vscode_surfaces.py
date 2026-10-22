@@ -55,13 +55,11 @@ def test_codex_extension_with_the_cli_is_ok(vs, fake_runner):
     assert (row.name, row.ok) == ("VS Code (Codex)", True)
 
 
-def test_codex_extension_without_the_cli_names_what_is_missing_and_the_fix(vs, fake_runner):
+def test_codex_extension_without_the_cli_is_a_full_setup(vs, fake_runner):
     _codex_ext(vs, fake_runner)
     fake_runner.missing.add("codex")
     (row,) = check._vscode_surfaces()
-    assert not row.ok and row.severity == "warn"
-    assert "plugins do not load" in row.detail and "/hooks" in row.detail
-    assert "Codex CLI alongside VS Code" in row.fix and "loadout bootstrap --install" in row.fix
+    assert (row.name, row.ok) == ("VS Code (Codex)", True)  # ADR 0038: it loads plugins and reviews hooks itself
 
 
 def test_old_bundled_codex_warns_with_the_update_fix(vs, fake_runner):

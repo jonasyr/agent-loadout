@@ -214,7 +214,7 @@ def _windows_first_note(name: str, installed: bool = False) -> str:
             "`appendWindowsPath = false` in `/etc/wsl.conf`; bootstrap does not change the order")
 
 
-RECOMMENDED_WHY = {"codex": "recommended next to VS Code's Codex extension, for /hooks and plugins",
+RECOMMENDED_WHY = {"codex": "optional next to VS Code's Codex extension, for codex in a terminal",
                    "claude": "VS Code's Claude Code extension's own runs loadout's claude commands meanwhile"}
 CLAUDE_BUNDLED = ("not on PATH: loadout runs VS Code's Claude Code extension's own ({path}) for claude plugin and "
                   "claude mcp; --install puts a claude on PATH for the terminal")
@@ -803,11 +803,10 @@ VSCODE_FLAG_HINT = "or run bootstrap again with --vscode-wsl"
 VSCODE_DONE = ("VS Code: the Codex extension now runs", "VS Code already runs Codex in WSL")
 
 
-CODEX_CLI_QUESTION = ("\nVS Code's Codex extension runs its own Codex. "
-                      "Install the Codex CLI alongside VS Code (for /hooks and plugins)? [Y/n] ")
-CODEX_CLI_WHY = "installed alongside VS Code's Codex extension, for /hooks and plugins"
-CODEX_CLI_DECLINED = ("not installed (you use VS Code's Codex extension): loadout sets Codex up for the extension; "
-                      "what only the CLI adds is listed under Still to do")
+CODEX_CLI_QUESTION = ("\nVS Code's Codex extension runs its own Codex, and loadout sets it up fully. "
+                      "Install the Codex CLI too (optional, for codex in a terminal)? [y/N] ")
+CODEX_CLI_WHY = "installed alongside VS Code's Codex extension (optional, for codex in a terminal)"
+CODEX_CLI_DECLINED = "not installed (optional): VS Code's Codex extension runs its own, and loadout set Codex up for it"
 
 
 def codex_recommended(chosen: dict, gate) -> frozenset:
@@ -829,7 +828,7 @@ def codex_cli_choice(install: bool, ask: Ask, interactive: bool, wanted: bool) -
         return CODEX_CLI_DECLINED, True
     if not install:
         return None, False  # nothing installs this run; the missing line says it is recommended
-    if interactive and ask(CODEX_CLI_QUESTION).strip().lower() not in ("", "y", "yes"):
+    if interactive and ask(CODEX_CLI_QUESTION).strip().lower() not in ("y", "yes"):  # optional: no unless asked
         return CODEX_CLI_DECLINED, True
     return CODEX_CLI_WHY, False
 
@@ -1121,7 +1120,10 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     if (extension or claude_ext) and not run:  # extension mode: the extension is where the agent runs
         names = " and ".join(n for n, on in (("Claude Code", claude_ext), ("Codex", extension)) if on)
         word = "extensions" if extension and claude_ext else "extension"
-        print(f"\nNext: open VS Code's {names} {word} (reload the window if it is open). The kit loads automatically.")
+        hooks = extension and codex.hooks_status() in ("untrusted", "changed")
+        print(f"\nNext: open VS Code's {names} {word} (reload the window if it is open)"
+              + (" and approve loadout's hooks: the hooks icon in the prompt bar, then Allow all." if hooks
+                 else ". The kit loads automatically."))
         if not personal_ok:
             print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
             return 1

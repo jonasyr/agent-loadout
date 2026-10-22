@@ -52,11 +52,9 @@ def test_still_to_do_names_the_extensions_hooks_icon(ext_only, monkeypatch):
 
 
 
-def test_check_warns_not_fails_for_a_missing_cli_next_to_the_extension(ext_only):
+def test_a_missing_cli_next_to_the_extension_is_no_binary_row(ext_only):
     from loadout import check
-    (row,) = [r for r in check._binaries() if r.name == "binary codex"]
-    assert not row.ok and row.severity == "warn"
-    assert "extension" in row.detail and "/hooks" in row.fix
+    assert not [r for r in check._binaries() if r.name == "binary codex"]  # the `Codex CLI` row says it is optional
 
 
 def test_check_still_fails_without_cli_and_extension(fake_home, fake_runner, monkeypatch):

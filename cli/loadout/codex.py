@@ -37,6 +37,7 @@ WINDOWS_CODEX = "the codex on PATH is the Windows one"
 SHARED_HOME = "CODEX_HOME points into Windows"
 NO_VERSION = "could not read codex --version"
 TOO_OLD = " is too old; loadout needs"
+CLI_OPTIONAL = "not installed (optional: VS Code's Codex extension runs its own)"
 CLI_UNUSABLE = "{why}; loadout uses VS Code's Codex extension's codex instead"
 
 
@@ -1868,6 +1869,11 @@ def checks() -> list:
     if problem:
         return [CheckResult("Codex", False, problem, unavailable_fix(problem), "warn")]
     results = [CheckResult("Codex", True)]
+    if mode() == "extension":  # one row for the CLI: optional next to the extension, or unusable and passed over
+        broken = cli_problem()
+        results.append(CheckResult("Codex CLI", True, CLI_OPTIONAL) if broken is None and not runner.have("codex")
+                       else CheckResult("Codex CLI", False, CLI_UNUSABLE.format(why=broken), unavailable_fix(broken),
+                                        "warn"))
     cli = mode() != "extension"  # the wording: the CLI's /hooks and logins, or the extension's
     installed = installed_plugins()
     ok = installed is not None and "loadout@agent-loadout" in installed

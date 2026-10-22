@@ -12,10 +12,10 @@ def ext(fake_runner, monkeypatch):
 
 
 def test_question_text_is_the_specs():
-    assert "Install the Codex CLI alongside VS Code (for /hooks and plugins)? [Y/n]" in bootstrap.CODEX_CLI_QUESTION
+    assert "Install the Codex CLI too (optional, for codex in a terminal)? [y/N]" in bootstrap.CODEX_CLI_QUESTION
 
 
-@pytest.mark.parametrize("answer,skip", [("", False), ("y", False), ("n", True), ("no", True)])
+@pytest.mark.parametrize("answer,skip", [("", True), ("y", False), ("yes", False), ("n", True), ("no", True)])
 def test_in_a_terminal_it_asks_and_respects_the_answer(ext, answer, skip):
     asked = []
     result = bootstrap.codex_cli_choice(True, lambda q: asked.append(q) or answer, interactive=True, wanted=True)
@@ -44,14 +44,14 @@ def test_no_extension_or_a_cli_already_there_no_offer(fake_runner, monkeypatch):
     assert bootstrap.codex_cli_choice(True, lambda q: pytest.fail("asked"), True, True) == (None, False)
 
 
-def test_without_install_no_question_and_the_missing_line_says_recommended(ext, fake_home, fake_runner, monkeypatch):
+def test_without_install_no_question_and_the_missing_line_says_optional(ext, fake_home, fake_runner, monkeypatch):
     from loadout import targets
     monkeypatch.setattr(targets, "OVERRIDE", {"claude": False, "codex": True})
     assert bootstrap.codex_cli_choice(False, lambda q: pytest.fail("asked"), True, True) == (None, False)
     notes = []
     bootstrap.check_prereqs(False, lambda q: "", notes=notes, recommended=frozenset({"codex"}))
     line = next(n for n in notes if "codex" in n)
-    assert "(required)" not in line and "recommended" in line
+    assert "(required)" not in line and "optional" in line
 
 
 def test_the_flag_parses(fake_home):
