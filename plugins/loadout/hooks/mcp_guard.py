@@ -19,11 +19,16 @@ from pathlib import Path
 
 MAX_INPUT = 200_000
 PLUGIN = "loadout"
-TIMEOUT = 60  # the hook's own timeout in hooks.json is shorter and wins
+# the inner command ends just before its hook's timeout in hooks.json (Serena's activate 15 s, cleanup and
+# auto-approve 10 s, everything else 5 s), so a hung command ends silently instead of as a hook timeout
+TIMEOUTS = {"activate": 14, "cleanup": 9, "auto-approve": 9}
+TIMEOUT = 4
+NOT_A_RUN = frozenset({"echo", "printf", "#"})  # `echo serena-hooks remind` mentions the command, it does not run it
 
 
 def _home() -> Path:
-    return Path(os.environ.get("HOME") or os.environ.get("USERPROFILE") or str(Path.home()))
+    order = ("USERPROFILE", "HOME") if os.name == "nt" else ("HOME", "USERPROFILE")  # Claude Code: os.homedir()
+    return Path(next((os.environ[k] for k in order if os.environ.get(k)), None) or str(Path.home()))
 
 
 def _json(path: Path) -> dict:
@@ -48,17 +53,36 @@ def binary_on_path(program: str) -> bool:
     return shutil.which(program) is not None
 
 
+def _project(config: dict, cwd: str) -> dict:
+    """The `projects` entry for cwd or its nearest parent; Claude Code keys them by path (forward slashes on
+    Windows)."""
+    projects = _dict(config, "projects")
+    path = Path(cwd)
+    for folder in (path, *path.parents):
+        for key in (str(folder), folder.as_posix()):
+            if key in projects:
+                return _dict(projects, key)
+    return {}
+
+
+def _settings_files(cwd: str, home: Path) -> tuple[Path, ...]:
+    return (home / ".claude" / "settings.json", Path(cwd) / ".claude" / "settings.json",
+            Path(cwd) / ".claude" / "settings.local.json")
+
+
 def server_available(server: str, cwd: str, home: Path) -> bool:
     """False when Claude Code has the plugin's <server> off for this folder and the user has no <server> of their
-    own that is on there (`disabledMcpServers` names plugin servers `plugin:<plugin>:<server>`)."""
+    own that is on there (`disabledMcpServers` names plugin servers `plugin:<plugin>:<server>`; a project
+    `.mcp.json` server can also be off through `disabledMcpjsonServers` in the settings)."""
     config = _json(home / ".claude.json")
-    project = _dict(_dict(config, "projects"), cwd)
+    project = _project(config, cwd)
     off = {s for s in _list(project, "disabledMcpServers") if isinstance(s, str)}
     if f"plugin:{PLUGIN}:{server}" not in off and server not in off:
         return True
-    own = server in _dict(config, "mcpServers") or server in _dict(project, "mcpServers") or \
-        server in _dict(_json(Path(cwd) / ".mcp.json"), "mcpServers")
-    return own and server not in off
+    if server in _dict(config, "mcpServers") or server in _dict(project, "mcpServers"):
+        return server not in off
+    json_off = {s for path in _settings_files(cwd, home) for s in _list(_json(path), "disabledMcpjsonServers")}
+    return server in _dict(_json(Path(cwd) / ".mcp.json"), "mcpServers") and server not in off | json_off
 
 
 def _words(hook: dict) -> list[str]:
@@ -70,14 +94,15 @@ def _words(hook: dict) -> list[str]:
 def users_hook_runs(event: str, argv: list[str], cwd: str, home: Path) -> bool:
     """A hook of the user's or the project's for <event> that runs the same program and subcommand as argv."""
     program, sub = os.path.basename(argv[0]), argv[1] if len(argv) > 1 else None
-    files = (home / ".claude" / "settings.json", Path(cwd) / ".claude" / "settings.json",
-             Path(cwd) / ".claude" / "settings.local.json")
-    for path in files:
+    for path in _settings_files(cwd, home):
         for group in _list(_dict(_json(path), "hooks"), event):
             for hook in _list(group, "hooks"):
                 words = _words(hook) if isinstance(hook, dict) else []
                 for i, w in enumerate(words):
-                    if os.path.basename(w.strip("'\"")) == program and (sub is None or words[i + 1:i + 2] == [sub]):
+                    if os.path.basename(w.strip("'\"")) != program or (i and words[i - 1] in NOT_A_RUN):
+                        continue
+                    rest = [x for x in words[i + 1:] if not x.startswith("-")]  # flags may come first
+                    if sub is None or rest[:1] == [sub]:
                         return True
     return False
 
@@ -104,8 +129,9 @@ def main(args: list[str]) -> int:
         payload = json.loads(raw)
         if not isinstance(payload, dict) or not should_run(server, argv, payload, _home()):
             return 0
-        res = subprocess.run(argv, input=raw, capture_output=True, text=True, timeout=TIMEOUT)
-        if res.returncode == 0:
+        timeout = TIMEOUTS.get(argv[1], TIMEOUT) if len(argv) > 1 else TIMEOUT
+        res = subprocess.run(argv, input=raw, capture_output=True, text=True, timeout=timeout)
+        if res.returncode == 0:  # a hook's answer is JSON on exit 0 (Serena's deny too); other exits stay silent
             sys.stdout.write(res.stdout)
     except Exception:
         pass

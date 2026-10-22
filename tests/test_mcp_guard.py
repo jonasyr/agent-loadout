@@ -112,3 +112,42 @@ def test_guard_never_fails_the_tool_call(env):
 def test_guard_passes_a_failing_command_through_silently(env):
     (env["bin"] / "serena-hooks").write_text("#!/bin/sh\necho boom >&2\nexit 3\n")
     assert _run(env, _payload(env)) is None
+
+
+def test_guard_silent_when_server_disabled_for_a_parent_folder(env):
+    sub = env["repo"] / "src" / "pkg"
+    sub.mkdir(parents=True)
+    (env["home"] / ".claude.json").write_text(json.dumps(
+        {"projects": {str(env["repo"]): {"disabledMcpServers": ["plugin:loadout:serena"]}}}))
+    payload = _payload(env)
+    payload["cwd"] = str(sub)
+    assert _run(env, payload) is None
+
+
+def test_inner_command_is_stopped_before_the_hook_timeout(env):
+    (env["bin"] / "serena-hooks").write_text("#!/bin/sh\nsleep 30\n")
+    import time
+    start = time.monotonic()
+    assert _run(env, _payload(env)) is None
+    assert time.monotonic() - start < 5.5  # remind's hook timeout is 5 s; the guard ends first, silently
+
+
+def test_a_hook_that_only_mentions_the_command_is_not_equivalent(env):
+    _settings(env["home"] / ".claude" / "settings.json", "PreToolUse", "echo serena-hooks remind")
+    assert _run(env, _payload(env))
+
+
+def test_flags_before_the_subcommand_still_match(env):
+    _settings(env["home"] / ".claude" / "settings.json", "PreToolUse", "serena-hooks --client=claude-code remind")
+    assert _run(env, _payload(env)) is None
+
+
+def test_own_mcp_json_serena_off_by_disabled_mcpjson_servers(env):
+    (env["repo"] / ".mcp.json").write_text(json.dumps({"mcpServers": {"serena": {"command": "serena"}}}))
+    _settings(env["repo"] / ".claude" / "settings.local.json", "SessionStart", "x")
+    data = json.loads((env["repo"] / ".claude" / "settings.local.json").read_text())
+    data["disabledMcpjsonServers"] = ["serena"]
+    (env["repo"] / ".claude" / "settings.local.json").write_text(json.dumps(data))
+    (env["home"] / ".claude.json").write_text(json.dumps(
+        {"projects": {str(env["repo"]): {"disabledMcpServers": ["plugin:loadout:serena"]}}}))
+    assert _run(env, _payload(env)) is None
