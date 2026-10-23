@@ -1407,6 +1407,29 @@ def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str,
 
 CLONE_TIMEOUT = 1800  # a large marketplace (pbakaus/impeccable: 400+ MB) outlasted 900 s on a real machine
 LARGE_CLONE = "large repositories can take several minutes"
+_held_lock = None  # the Codex lock apply_parts holds, renewed before each long codex call (_keep_lock)
+UPGRADE_RETRY_WAIT = 5  # seconds before the one retry of a failed `marketplace upgrade` (not after a timeout)
+
+
+def _keep_lock() -> None:
+    """Renew the held Codex lock: clones and upgrades can each take up to CLONE_TIMEOUT, and a lock older than
+    STALE_LOCK may be taken over by another run while this one still works."""
+    if _held_lock is not None:
+        _held_lock.touch()
+
+
+def _upgrade(exe: str, market: str) -> runner.Result:
+    """`codex plugin marketplace upgrade <market>`, tried once more after a short wait when it fails (a refresh can
+    lose a race with a running Codex's own auto-upgrade, or the network blips); a timeout is not tried again."""
+    cmd = [exe, "plugin", "marketplace", "upgrade", market]
+    _keep_lock()
+    res = runner.run(cmd, timeout=CLONE_TIMEOUT)
+    if res.ok or res.returncode == 124:
+        return res
+    import time
+    time.sleep(UPGRADE_RETRY_WAIT)
+    _keep_lock()
+    return runner.run(cmd, timeout=CLONE_TIMEOUT)
 
 
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
@@ -1431,7 +1454,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
         if (refresh or name not in have) and not (src in skip_m and any(p.startswith(name + "@") for p in skip_p)))
     step = 0
     for src, plugins in routes.items():
-        head, refreshed = None, False
+        head, refreshed, stale = None, False, False
         if src in skip_m:
             market = record[src]["name"]
         else:
@@ -1439,6 +1462,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
             head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
+            _keep_lock()
             res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
             if not res.ok and _NO_PLUGIN_COMMAND in res.stderr:  # an extension codex from before `codex plugin`
                 return lines + [PLUGINS_OLD], installed
@@ -1451,8 +1475,11 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:
-                up = runner.run([exe, "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
-                refreshed = up.ok
+                up = _upgrade(exe, market)
+                refreshed, stale = up.ok, not up.ok
+                if stale:  # its plugins would be added again from the old snapshot: they stay as they are
+                    lines.append(f"marketplace {market}: failed to upgrade ({_tail(up)}); its installed plugins stay "
+                                 "at the previous version")
             elif not info.get("alreadyAdded"):
                 refreshed = True
             if refreshed:
@@ -1460,11 +1487,15 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
         own = None
         for name in plugins:
             pid = f"{name}@{market}"
-            if (planned and pid in skip_p) or (pid in installed and (not refresh or market in frozen or pid in skip_p)):
+            if (planned and pid in skip_p) or (pid in installed and (not refresh or market in frozen or pid in skip_p
+                                                                     or stale)):
+                continue
+            if stale and listed is None:  # which ones are installed is unknown: the old snapshot could downgrade any
                 continue
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
             before = _enabled_line(pid)
+            _keep_lock()
             res = runner.run([exe, "plugin", "add", pid, "--json"], timeout=600)
             if not res.ok:
                 lines.append(f"plugin {pid}: failed: {_tail(res)}")
@@ -1818,6 +1849,8 @@ def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unc
     lock = _lock(0 if auto else locks.foreground_wait(), command, on_wait)
     if lock is None:
         return {"instructions": [f"skipped: {locks.busy_message(LOCK)}"], **{k: [] for k in PARTS[1:]}}
+    global _held_lock
+    _held_lock = lock
     try:
         from . import codex_hooks
         config = paths.codex_home() / "config.toml"
@@ -1847,6 +1880,7 @@ def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unc
                 changed.add("plugins_updated")
         return parts
     finally:
+        _held_lock = None
         lock.release()
 
 
