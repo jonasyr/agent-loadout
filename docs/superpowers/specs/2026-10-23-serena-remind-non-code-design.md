@@ -1,7 +1,7 @@
 # Design: Serena's reminder lets harmless searches through
 
 - Date: 2026-10-23
-- Status: Draft
+- Status: Approved (2026-10-23)
 - Builds on: [ADR 0039](../../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md) (Serena's `remind` for Claude Code), [ADR 0028](../../adr/0028-serena-codex-hooks-in-hooks-json.md) (Serena's hooks in Codex's `hooks.json`)
 
 ## Why
@@ -22,7 +22,7 @@ That is 19 denials in 9 transcripts, and about two thirds were unnecessary. Each
 What Serena counts (read from `serena/hooks.py`, 2.1.0, `PreToolUseRemindAboutSymbolicToolsHook`):
 
 - **Greps:** any shell invocation whose program is `grep`, `rg`, `ag`, `ack`, `fgrep`, `egrep`, `ugrep` or `ug`, also behind a pipe. It also counts a native `grep`/`search_for_pattern` tool. It ignores the paths. The grep counter resets after 1000 s without a grep, or when a Serena symbolic tool is used.
-- **Reads:** reads count only for files with a code suffix. Reads are therefore already fine and are not part of this design.
+- **Reads:** reads count only for files with a code suffix, wherever the file lies. Reads inside the project are therefore fine. Reads outside it are part of this design (goal 3).
 
 ## Goals
 
@@ -34,13 +34,14 @@ What Serena counts (read from `serena/hooks.py`, 2.1.0, `PreToolUseRemindAboutSy
 2. **What still reaches Serena:** everything else goes to `remind` unchanged, so code searches are still reminded:
    - a grep with a code file, a folder or no operand at all;
    - a mixed line that contains any non-harmless grep.
-3. **Both agents:** the filter applies in Claude Code and in Codex (the maintainer's choice).
-4. **An upstream issue:** a draft for oraios/serena, with the measured examples, so the filter can go once Serena filters by itself. The draft is shown to the maintainer. It is posted only after their yes.
+3. **Reads outside the project** (added at the maintainer's approval): a read of a file outside the session's project folder never reaches `remind`, whatever its suffix. This covers Claude Code's `Read` tool with a `file_path` outside the project. It also covers a shell line whose every Serena-counted read and every grep is outside the project or otherwise harmless. Serena does not index those files, so a reminder cannot help. Observed: a `.rs` file from Codex's source in a scratch folder was denied.
+4. **Both agents:** the filter applies in Claude Code and in Codex (the maintainer's choice).
+5. **An upstream issue:** a draft for oraios/serena, with the measured examples, so the filter can go once Serena filters by itself. The draft is shown to the maintainer. It is posted only after their yes.
 
 ## Non-goals
 
 - Changing Serena's thresholds, its messages, or how it counts reads.
-- Filtering `Read` calls or Serena's other hooks.
+- Filtering reads inside the project (Serena already counts only code files there), or Serena's other hooks.
 - Re-implementing `remind`. loadout only decides whether to call it.
 
 ## Anti-goals (a failure even if it technically works)
