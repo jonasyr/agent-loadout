@@ -207,6 +207,8 @@ def _bash_skips(line: str, cwd: str) -> bool:
             target = operands[0] if len(operands) == 1 else None
             ok_target = target is not None and target != "-" and "$" not in target and "`" not in target
             here = os.path.normpath(os.path.join(here, os.path.expanduser(target))) if ok_target and here else None
+            if here is not None and not os.path.isdir(here):  # a cd that fails leaves the shell where it was
+                here = None
             continue
         blocks_here = _blocks(operands, cwd, rel, here)
         if prog in GREP_CMDS:

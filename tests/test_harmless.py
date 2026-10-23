@@ -163,3 +163,9 @@ def test_an_input_redirect_names_the_file_read():
     assert not bash("cat < src/a.py | grep foo")
     assert bash("cat < notes.md | grep foo")
     assert not bash("grep foo < src/a.py")
+
+
+def test_a_cd_that_can_fail_leaves_the_folder_unknown(tmp_path):
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "loadout").write_text("#!/bin/sh\n")
+    assert not bash("cd missing || cat bin/loadout | grep main", cwd=str(tmp_path))
