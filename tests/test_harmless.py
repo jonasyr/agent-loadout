@@ -129,11 +129,6 @@ def test_a_code_read_anywhere_before_a_pipe_goes_to_serena(cmd):
     assert not bash(cmd)
 
 
-def test_after_a_cd_relative_paths_are_judged_by_suffix_only():
-    assert not bash("cd sub && grep foo ../a.py")
-    assert bash("cd sub && grep foo ../notes.md")
-    assert bash("cd sub && grep foo /tmp/x/a.py")
-
 
 def test_the_claude_project_dir_is_the_project(monkeypatch):
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/r")
@@ -151,13 +146,6 @@ def test_an_extensionless_code_file_of_the_project_goes_to_serena(tmp_path):
     assert bash("sed -n 1,80p notes.md | grep x", cwd=str(tmp_path))  # a sed script is no file
 
 
-def test_after_a_cd_extensionless_files_are_looked_up_in_the_new_folder(tmp_path):
-    (tmp_path / "sub" / "bin").mkdir(parents=True)
-    (tmp_path / "sub" / "bin" / "loadout").write_text("#!/bin/sh\n")
-    assert not bash("cd sub && cat bin/loadout | grep main", cwd=str(tmp_path))
-    assert not bash('cd "$D" && cat bin/x | grep main', cwd=str(tmp_path))  # an unknown folder: code
-    assert bash("cd sub && sed -n 1,80p notes.md | grep x", cwd=str(tmp_path))
-
 
 def test_an_input_redirect_names_the_file_read():
     assert not bash("cat < src/a.py | grep foo")
@@ -165,17 +153,6 @@ def test_an_input_redirect_names_the_file_read():
     assert not bash("grep foo < src/a.py")
 
 
-def test_a_cd_that_can_fail_leaves_the_folder_unknown(tmp_path):
-    (tmp_path / "bin").mkdir()
-    (tmp_path / "bin" / "loadout").write_text("#!/bin/sh\n")
-    assert not bash("cd missing || cat bin/loadout | grep main", cwd=str(tmp_path))
-
-
-def test_several_cds_leave_the_folder_unknown(tmp_path):
-    (tmp_path / "sub" / "bin").mkdir(parents=True)
-    (tmp_path / "sub" / "bin" / "loadout").write_text("#!/bin/sh\n")
-    assert not bash("cd sub || cd ..; cat bin/loadout | grep main", cwd=str(tmp_path))
-    assert bash("cd sub || cd ..; sed -n 1,80p notes.md | grep x", cwd=str(tmp_path))  # a sed script is no file
 
 
 def test_dash_operands_after_double_dash_are_files():
@@ -185,3 +162,34 @@ def test_dash_operands_after_double_dash_are_files():
 def test_a_piped_grep_with_its_own_path_reads_that_path():
     assert not bash("echo x | grep foo src/a.py")
     assert bash("echo x | grep foo notes.md")
+
+
+
+@pytest.mark.parametrize("cmd", ["cd sub && grep foo ../notes.md", "cd sub && sed -n 1,80p notes.md | grep x",
+                                 "false && cd sub; cat bin/loadout | grep main", "cd missing || cat x | grep y",
+                                 "for f in *.md; do grep x $f; done", "(cd sub; grep x a.md)", "{ grep x a.md; }",
+                                 "grep x $(ls docs)", "grep x `ls docs`", "diff <(grep x a.md) b.md"])
+def test_a_line_that_is_not_simple_goes_to_serena(cmd):
+    assert not bash(cmd)
+
+
+def test_a_wildcard_read_is_an_unknown_file():
+    assert not bash("cat bin/* | grep main")
+    assert bash("cat docs/*.md | grep main")
+
+
+@pytest.mark.parametrize("cmd", ["echo x | grep -efoo src/a.py", "echo x | grep -nefoo src/a.py",
+                                 "echo x | grep --regexp=foo src/a.py", "echo x | rg -e foo src/a.py"])
+def test_attached_pattern_options_are_recognised(cmd):
+    assert not bash(cmd)
+
+
+def test_an_explicit_path_is_read_whatever_the_type_filter():
+    assert not bash("rg -t md needle src/a.py")
+    assert not bash("rg -tmd needle src/a.py")
+    assert bash("rg -t md needle docs/")
+    assert bash("rg -tmd needle")
+
+
+def test_an_awk_program_is_no_file():
+    assert bash("awk '{print $1}' notes.md | grep x")

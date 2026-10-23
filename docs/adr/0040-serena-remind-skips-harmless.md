@@ -30,6 +30,7 @@ For Codex, `remind` sat in `~/.codex/hooks.json` as Serena documents it, so load
   - **Which `Bash` line is harmless:** one whose every grep-family search is behind a pipe (not fed by a code-file read), over config, doc or text files, or over files outside the session's folder. It must also read no code file of the project.
   - **Which `Read` or `Grep` tool call is harmless:** one with a non-code path or a path outside the folder.
   - **Anything else goes to Serena:** code files, folders, no path, variables, unknown suffixes, mixed lines, and lines that do not parse.
+  - **Only simple lines:** a line with a `cd`, a loop, a group, a subshell or a substitution goes to Serena whole. Codex's review found one shell edge case after another in a classifier that followed `cd`s and compound commands. A strict rule that sends those lines to Serena still covers every class measured above.
   - **How the rules are kept:** they mirror Serena's own shell parsing. Their non-code list equals `loadout usage`'s, and a test keeps the two equal.
 - **Codex gets the same filter.** The plugin's `codex.json` runs `mcp_guard.py --agent codex serena serena-hooks remind --client=codex` on `Bash`. With `--agent codex`, the guard decides by Codex's files only. Equivalent hooks count wherever Codex reads them: `hooks.json`, `[hooks]` in `config.toml`, and the project's `.codex/hooks.json`.
 - **When `remind` leaves `hooks.json`:** `codex_hooks.apply` removes loadout's own `remind` entry from `hooks.json`, with a backup. It does so only when both hold:

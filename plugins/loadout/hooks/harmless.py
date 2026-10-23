@@ -4,6 +4,10 @@ The guard (mcp_guard.py) calls `skips_remind(payload)` before it runs `serena-ho
 harmless greps (behind a pipe, in config or doc files, limited to doc types, outside the project) or reads of files
 outside the project is not counted. Anything not provably harmless goes to Serena ("when in doubt, Serena").
 
+Only simple lines can be harmless: commands joined by `&&`, `||`, `;` and pipes. A line with a `cd`, a loop, a
+group or subshell, a command substitution or a process substitution goes to Serena whole, because where it runs
+and what it reads cannot be told before the shell runs it.
+
 The shell parsing mirrors Serena 2.1.0's `PreToolUseRemindAboutSymbolicToolsHook` (`ShellCommandLine`,
 `_GREP_SHELL_COMMANDS`, `_READ_SHELL_COMMANDS`, `_is_read_invocation`), so both see the same invocations. The
 suffix lists and filter rules are a copy of cli/loadout/searches.py (hooks cannot import loadout; a test keeps
@@ -28,15 +32,18 @@ DOC_TYPES = frozenset({"md", "markdown", "rst", "txt", "json", "jsonl", "yaml", 
                        "xml", "ini", "cfg"})
 PATTERN_OPTS = frozenset({"-e", "--regexp", "-f", "--file"})
 
-_CONTROL = frozenset(("&&", "||", ";", ";;", "|", "|&", "&", "(", ")"))
+_CONTROL = frozenset(("&&", "||", ";", ";;", "|", "|&", "&"))
 _PIPES = frozenset(("|", "|&"))
 _REDIRECT = frozenset((">", ">>", ">|", ">&", "&>", "&>>", "<", "<<", "<<<", "<&", "<>"))
 _PREFIX = frozenset(("command", "env", "exec"))
 _ASSIGN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 _SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish"})
-_KEYWORDS = frozenset(("{", "}", "!", "do", "then", "else", "elif", "time"))  # before the program of a compound part
-_CD = frozenset(("cd", "pushd"))
-_FILE_LIKE = re.compile(r"[\w./~-]*[A-Za-z_][\w./~-]*")  # a path-like word: letters, digits, `_ . / ~ -` only
+# a line with any of these is not simple: Serena gets it whole
+_COMPLEX_TOKENS = frozenset(("(", ")", "{", "}"))
+_COMPLEX_PROGRAMS = frozenset(("for", "while", "until", "if", "case", "select", "function", "do", "done", "then",
+                               "else", "elif", "fi", "esac", "!", "time", "coproc", "cd", "pushd", "popd"))
+_GLOB = re.compile(r"[*?\[]")
+_VAR_WORD = re.compile(r"[\w./~${}-]+")  # a word made of path characters and `$`: a file named by a variable
 
 
 def doc_filter(value: object) -> bool:
@@ -60,10 +67,8 @@ def _project(cwd: str) -> str:
     return cwd
 
 
-def harmless_path(path: str, cwd: str, relative_outside: bool = True) -> bool:
-    """True for a config or doc file, or a path outside the project folder; false when unsure. relative_outside:
-    False after a `cd` in the same line, where a relative path's folder is unknown (only absolute and ~ paths can be
-    outside then)."""
+def harmless_path(path: str, cwd: str) -> bool:
+    """True for a config or doc file, or a path outside the project folder; false when unsure."""
     if not isinstance(path, str) or not path or "$" in path or "`" in path:
         return False
     base = os.path.basename(path)
@@ -71,48 +76,48 @@ def harmless_path(path: str, cwd: str, relative_outside: bool = True) -> bool:
         return True
     if os.path.splitext(base)[1].lower() in NON_CODE:
         return True
-    expanded = os.path.expanduser(path)
-    if not relative_outside and not os.path.isabs(expanded):
-        return False
     root = os.path.normpath(_project(cwd))
-    full = os.path.normpath(os.path.join(cwd, expanded))
+    full = os.path.normpath(os.path.join(cwd, os.path.expanduser(path)))
     return full != root and not full.startswith(root.rstrip(os.sep) + os.sep)
 
 
-def _has_suffix(path: str) -> bool:
-    return bool(os.path.splitext(os.path.basename(path))[1])
-
-
-def _code_file(operand: str, cwd: str, rel: bool, here: str | None = None) -> bool:
-    """A code file of the project: a suffix that is not harmless, or, without a suffix, an existing file (a script
-    like bin/loadout) that is not a config name. An operand that names no file (a sed script, a count) is none.
-    here: the folder relative operands resolve in after this line's `cd`s (None: unknown, so an extensionless
-    relative operand counts as code)."""
-    if harmless_path(operand, cwd, rel):
-        return False
-    if _has_suffix(operand):
+def _is_dir(path: str, cwd: str) -> bool:
+    if path in (".", "./") or path.endswith("/"):
         return True
-    path = os.path.expanduser(operand)
-    if here is None and not os.path.isabs(path):
-        return bool(_FILE_LIKE.fullmatch(operand))  # a file name in an unknown folder; `1,80p` is a sed script
     try:
-        return os.path.isfile(os.path.join(here or cwd, path))
+        return not _GLOB.search(path) and os.path.isdir(os.path.join(cwd, os.path.expanduser(path)))
+    except (OSError, ValueError):
+        return False
+
+
+def _code_file(operand: str, cwd: str) -> bool:
+    """A code file of the project, or a file that cannot be told before the shell runs: a suffix that is not
+    harmless, a wildcard (`bin/*`), a variable (`$f`), or an existing file without a suffix (`bin/loadout`) that is
+    not a config name. An operand that names no file (a sed script, an awk program, a count) is none."""
+    if harmless_path(operand, cwd):
+        return False
+    if "$" in operand or "`" in operand:
+        return bool(_VAR_WORD.fullmatch(operand))  # `"$f"`, `src/$x.py`; not `{print $1}`
+    if _GLOB.search(operand) or os.path.splitext(os.path.basename(operand))[1]:
+        return True
+    try:
+        return os.path.isfile(os.path.join(cwd, os.path.expanduser(operand)))
     except (OSError, ValueError):
         return True
 
 
-def _blocks(operands: list[str], cwd: str, rel: bool = True, here: str | None = None) -> bool:
-    """Some operand is a code file inside the project."""
-    return any(_code_file(o, cwd, rel, here) for o in operands)
-
-
 def _segments(line: str):
-    """(program, arguments, piped) per simple command; `piped` is true after `|` or `|&`. None if unparseable."""
+    """(program, arguments, piped) per simple command; `piped` is true after `|` or `|&`. None when the line is not
+    simple (see the module docstring) or does not parse."""
+    if "`" in line or "$(" in line or "<(" in line or ">(" in line:
+        return None
     lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
         tokens = list(lexer)
     except ValueError:
+        return None
+    if any(tok in _COMPLEX_TOKENS for tok in tokens):
         return None
     segs: list[tuple[list[str], bool]] = [([], False)]
     skip = False
@@ -137,8 +142,6 @@ def _segments(line: str):
         while i < len(seg):
             if _ASSIGN.match(seg[i]):
                 i += 1
-            elif seg[i] in _KEYWORDS:
-                i += 1
             elif os.path.basename(seg[i]).lower() in _PREFIX:
                 i += 1
                 while i < len(seg) and seg[i].startswith("-"):
@@ -146,40 +149,62 @@ def _segments(line: str):
             else:
                 break
         if i < len(seg):
-            out.append((os.path.basename(seg[i]).lower(), seg[i + 1:], piped))
+            prog = os.path.basename(seg[i]).lower()
+            if seg[i] in _COMPLEX_PROGRAMS or prog in _COMPLEX_PROGRAMS:
+                return None
+            out.append((prog, seg[i + 1:], piped))
     return out
 
 
-def _grep_paths(args: list[str]):
-    """(paths, limited to docs by a filter) of a grep invocation's arguments."""
+def _grep_args(args: list[str]):
+    """(paths, inclusion filter values) of a grep invocation's arguments. Long options take `=value` or the next
+    word; a short cluster (`-rne`, `-efoo`, `-tmd`) ends at its first option that takes a value, whose value is the
+    rest of the cluster or the next word."""
     paths: list[str] = []
-    have_pattern = False
     includes: list[str] = []
-    skip = False
+    have_pattern = False
+    skip = None  # the option whose value the next word is
     ended = False
-    for j, a in enumerate(args):
-        if skip:
-            skip = False
+    for a in args:
+        if skip is not None:
+            if skip in PATTERN_OPTS:
+                have_pattern = True
+            elif skip in FILTERS and not a.strip("'\"").startswith("!"):
+                includes.append(a)
+            skip = None
             continue
         if ended or not a.startswith("-") or a == "-":
             if have_pattern:
-                paths.append(a)
+                if a != "-":  # `-` is stdin
+                    paths.append(a)
             else:
                 have_pattern = True
             continue
         if a == "--":
             ended = True
             continue
-        name, eq, val = a.partition("=")
-        if name in FILTERS:
-            value = val if eq else (args[j + 1] if j + 1 < len(args) else "")
-            if not value.strip("'\"").startswith("!"):  # an exclusion limits nothing
-                includes.append(value)
-        if name in PATTERN_OPTS:
-            have_pattern = True
-        if not eq and a in TAKES_VALUE | PATTERN_OPTS:
-            skip = True
-    return paths, bool(includes) and all(doc_filter(v) for v in includes)
+        if a.startswith("--"):
+            name, eq, val = a.partition("=")
+            if name in TAKES_VALUE | PATTERN_OPTS:
+                if eq:
+                    have_pattern = have_pattern or name in PATTERN_OPTS
+                    if name in FILTERS and not val.strip("'\"").startswith("!"):
+                        includes.append(val)
+                else:
+                    skip = name
+            continue
+        for k, c in enumerate(a[1:], 1):  # a short cluster
+            opt = "-" + c
+            if opt in TAKES_VALUE | PATTERN_OPTS:
+                rest = a[k + 1:]
+                if not rest:
+                    skip = opt
+                elif opt in PATTERN_OPTS:
+                    have_pattern = True
+                elif opt in FILTERS and not rest.startswith("!"):
+                    includes.append(rest)
+                break
+    return paths, includes
 
 
 def _is_read(prog: str, args: list[str]) -> bool:
@@ -199,42 +224,31 @@ def _operands(args: list[str]) -> list[str]:
     return out
 
 
+def _grep_harmless(paths: list[str], includes: list[str], piped: bool, code_before: bool, cwd: str) -> bool:
+    limited = bool(includes) and all(doc_filter(v) for v in includes)
+    if paths:  # an explicit path is read whatever the filters say; a filter limits only a folder's walk
+        return all(harmless_path(p, cwd) or (limited and _is_dir(p, cwd)) for p in paths)
+    return (piped and not code_before) or limited
+
+
 def _bash_skips(line: str, cwd: str) -> bool:
     segs = _segments(line)
     if not segs:
         return False
     found = False
-    rel = not any(prog in _CD for prog, _, _ in segs)  # after a cd, relative paths cannot be judged as outside
-    code_before = False  # an earlier segment of the line names a code file (a loop or `{ }` can feed the pipe)
-    in_pipeline = False
-    cds = sum(1 for prog, _, _ in segs if prog in _CD)
-    here: str | None = cwd if cds <= 1 else None  # where relative operands resolve: one literal `cd` is followed;
-    # with several, `&&`/`||` decide which ran, so the folder is unknown
+    code_before = False  # an earlier command of the line names a code file
     for prog, args, piped in segs:
-        in_pipeline = piped
         operands = _operands(args)
-        if prog in _CD:
-            target = operands[0] if len(operands) == 1 else None
-            ok_target = target is not None and target != "-" and "$" not in target and "`" not in target
-            here = os.path.normpath(os.path.join(here, os.path.expanduser(target))) if ok_target and here else None
-            if cds > 1:
-                here = None
-            if here is not None and not os.path.isdir(here):  # a cd that fails leaves the shell where it was
-                here = None
-            continue
-        blocks_here = _blocks(operands, cwd, rel, here)
         if prog in GREP_CMDS:
             found = True
-            paths, limited = _grep_paths(args)
-            ok = ((in_pipeline and not code_before and not paths) or limited  # a grep with paths reads those
-                  or (bool(paths) and all(harmless_path(p, cwd, rel) for p in paths)))
-            if not ok:
+            paths, includes = _grep_args(args)
+            if not _grep_harmless(paths, includes, piped, code_before, cwd):
                 return False
         elif _is_read(prog, args):
             found = True
-            if blocks_here or any("$" in o or "`" in o for o in operands):  # a read of an unknown file
+            if any(_code_file(o, cwd) for o in operands):
                 return False
-        code_before = code_before or blocks_here
+        code_before = code_before or any(_code_file(o, cwd) for o in operands)
     return found
 
 
@@ -262,10 +276,9 @@ def skips_remind(payload: dict) -> bool:
         if tool == "Read":
             return harmless_path(ti.get("file_path"), cwd)  # the Read tool takes absolute paths
         if tool == "Grep":
-            if doc_filter(ti.get("glob")) or doc_filter(ti.get("type")):
-                return True
             p = ti.get("path")
-            return bool(p) and harmless_path(p, cwd)
+            includes = [v for v in (ti.get("glob"), ti.get("type")) if isinstance(v, str) and v]
+            return _grep_harmless([p] if isinstance(p, str) and p else [], includes, False, False, cwd)
     except (TypeError, ValueError, AttributeError):
         return False
     return False
