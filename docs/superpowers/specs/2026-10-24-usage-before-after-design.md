@@ -1,7 +1,7 @@
 # Design: `loadout usage` tells whether a change helped
 
 - Date: 2026-10-24
-- Status: Draft (waiting for approval)
+- Status: Approved (2026-10-24)
 - Builds on: [ADR 0039](../../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md) (the reference measurement), [ADR 0040](../../adr/0040-serena-remind-skips-harmless.md), `cli/loadout/usage.py`, `docs/reference/cli.md#loadout-usage`
 
 ## Why
