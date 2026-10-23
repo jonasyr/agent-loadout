@@ -561,3 +561,24 @@ def test_a_failed_upgrade_adds_nothing_when_the_installed_list_is_unreadable(fak
     codex.apply_plugins(backup.Backup(description="t"), refresh=True)
     adds = [c[3] for c in fake_runner.calls if c[:3] == ["codex", "plugin", "add"]]
     assert not [a for a in adds if a.endswith("@agent-loadout")], "any of them may be installed: the old snapshot could downgrade it"
+
+
+def test_the_codex_lock_is_renewed_before_each_long_call(fake_home, fake_runner, monkeypatch):
+    err = runner.Result(1, "", "boom")
+    _upgrade_fails(fake_runner, monkeypatch, err, err)
+    events = []
+
+    class Held:
+        def touch(self):
+            events.append("touch")
+    monkeypatch.setattr(codex, "_held_lock", Held())
+    inner = runner.run
+
+    def run(cmd, **kw):
+        events.append(" ".join(cmd[1:4]))
+        return inner(cmd, **kw)
+    monkeypatch.setattr(runner, "run", run)
+    codex.apply_plugins(backup.Backup(description="t"), refresh=True)
+    long_calls = [i for i, e in enumerate(events) if e.startswith(("plugin marketplace", "plugin add"))]
+    assert len([i for i in long_calls if events[i] == "plugin marketplace upgrade"]) == 2
+    assert all(events[i - 1] == "touch" for i in long_calls), events
