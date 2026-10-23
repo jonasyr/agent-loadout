@@ -149,3 +149,17 @@ def test_an_extensionless_code_file_of_the_project_goes_to_serena(tmp_path):
     assert not bash("cat bin/loadout", cwd=str(tmp_path))
     assert bash("cat Makefile | grep all", cwd=str(tmp_path))  # a config name stays harmless
     assert bash("sed -n 1,80p notes.md | grep x", cwd=str(tmp_path))  # a sed script is no file
+
+
+def test_after_a_cd_extensionless_files_are_looked_up_in_the_new_folder(tmp_path):
+    (tmp_path / "sub" / "bin").mkdir(parents=True)
+    (tmp_path / "sub" / "bin" / "loadout").write_text("#!/bin/sh\n")
+    assert not bash("cd sub && cat bin/loadout | grep main", cwd=str(tmp_path))
+    assert not bash('cd "$D" && cat bin/x | grep main', cwd=str(tmp_path))  # an unknown folder: code
+    assert bash("cd sub && sed -n 1,80p notes.md | grep x", cwd=str(tmp_path))
+
+
+def test_an_input_redirect_names_the_file_read():
+    assert not bash("cat < src/a.py | grep foo")
+    assert bash("cat < notes.md | grep foo")
+    assert not bash("grep foo < src/a.py")

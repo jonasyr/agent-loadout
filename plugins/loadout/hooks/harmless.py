@@ -82,22 +82,27 @@ def _has_suffix(path: str) -> bool:
     return bool(os.path.splitext(os.path.basename(path))[1])
 
 
-def _code_file(operand: str, cwd: str, rel: bool) -> bool:
+def _code_file(operand: str, cwd: str, rel: bool, here: str | None = None) -> bool:
     """A code file of the project: a suffix that is not harmless, or, without a suffix, an existing file (a script
-    like bin/loadout) that is not a config name. An operand that names no file (a sed script, a count) is none."""
+    like bin/loadout) that is not a config name. An operand that names no file (a sed script, a count) is none.
+    here: the folder relative operands resolve in after this line's `cd`s (None: unknown, so an extensionless
+    relative operand counts as code)."""
     if harmless_path(operand, cwd, rel):
         return False
     if _has_suffix(operand):
         return True
+    path = os.path.expanduser(operand)
+    if here is None and not os.path.isabs(path):
+        return True
     try:
-        return os.path.isfile(os.path.join(cwd, os.path.expanduser(operand)))
+        return os.path.isfile(os.path.join(here or cwd, path))
     except (OSError, ValueError):
         return True
 
 
-def _blocks(operands: list[str], cwd: str, rel: bool = True) -> bool:
+def _blocks(operands: list[str], cwd: str, rel: bool = True, here: str | None = None) -> bool:
     """Some operand is a code file inside the project."""
-    return any(_code_file(o, cwd, rel) for o in operands)
+    return any(_code_file(o, cwd, rel, here) for o in operands)
 
 
 def _segments(line: str):
@@ -115,6 +120,8 @@ def _segments(line: str):
             skip = False
         elif tok in _CONTROL:
             segs.append(([], tok in _PIPES))
+        elif tok in ("<", "<>"):
+            continue  # an input file is what the command reads: its target stays an operand
         elif tok in _REDIRECT:
             skip = True
         elif tok.isdigit() and i + 1 < len(tokens) and tokens[i + 1] in _REDIRECT:
@@ -192,10 +199,16 @@ def _bash_skips(line: str, cwd: str) -> bool:
     rel = not any(prog in _CD for prog, _, _ in segs)  # after a cd, relative paths cannot be judged as outside
     code_before = False  # an earlier segment of the line names a code file (a loop or `{ }` can feed the pipe)
     in_pipeline = False
+    here: str | None = cwd  # where relative operands resolve, followed through literal `cd`s
     for prog, args, piped in segs:
         in_pipeline = piped
         operands = _operands(args)
-        blocks_here = _blocks(operands, cwd, rel)
+        if prog in _CD:
+            target = operands[0] if len(operands) == 1 else None
+            ok_target = target is not None and target != "-" and "$" not in target and "`" not in target
+            here = os.path.normpath(os.path.join(here, os.path.expanduser(target))) if ok_target and here else None
+            continue
+        blocks_here = _blocks(operands, cwd, rel, here)
         if prog in GREP_CMDS:
             found = True
             paths, limited = _grep_paths(args)
