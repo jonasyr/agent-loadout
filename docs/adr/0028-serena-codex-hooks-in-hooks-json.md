@@ -1,6 +1,6 @@
 # 0028. Serena's Codex hooks as owned entries in hooks.json
 
-- Status: Accepted
+- Status: Accepted; amended by [0040](0040-serena-remind-skips-harmless.md) (`remind` moves into the plugin, behind loadout's guard, once the installed copy carries it)
 - Date: 2026-10-15
 - Source: [Design: Codex anywhere](../superpowers/specs/2026-10-15-codex-anywhere-design.md), section "PR A"
 

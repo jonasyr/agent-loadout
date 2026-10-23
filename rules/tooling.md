@@ -15,6 +15,6 @@ Pick the tool by the question, not by habit:
 
 When you delegate code work to a subagent, name the tools in its prompt (the codebase-memory project, search_graph/trace_path, Serena find_symbol): subagents use what their prompt names.
 
-Serena's reminder hook denies a code search once when Serena's symbolic tools fit better (the next call goes through), and loadout's hook adds a one-line hint for a library-docs web lookup (Claude Code only); follow them when they fit.
+Serena's reminder hook denies a code search once when Serena's symbolic tools fit better (the next call goes through); loadout lets searches in config, docs, piped output and files outside the project through without it. loadout's hook adds a one-line hint for a library-docs web lookup (Claude Code only); follow them when they fit.
 
 Before ending a task that touched UI, verify it in a browser with playwright-cli. Never claim it "looks right" without having looked. If playwright-cli is missing or fails, say so (and suggest `loadout check`) instead of launching a browser binary yourself.

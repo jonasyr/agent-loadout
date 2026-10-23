@@ -131,9 +131,202 @@ def test_codex_gets_no_serena_from_the_plugin():
     manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     servers = json.loads((PLUGIN / manifest["mcpServers"]).read_text(encoding="utf-8"))["mcpServers"]
     assert "serena" not in servers and "codebase-memory-mcp" in servers
-    assert "serena-hooks" not in (PLUGIN / "hooks" / "codex.json").read_text(encoding="utf-8")
+    # the only Serena hook in the plugin is the guarded remind (it skips harmless searches, ADR 0040)
+    text = (PLUGIN / "hooks" / "codex.json").read_text(encoding="utf-8")
+    assert text.count("serena-hooks") == 1 and "--agent codex serena serena-hooks remind --client=codex" in text
 
 
 def test_codex_session_start_passes_its_agent():
     commands = [c for e, _, c in _commands(PLUGIN / "hooks" / "codex.json") if e == "SessionStart"]
     assert any("hook-session-start --agent codex" in c for c in commands)
+
+
+# --- Serena's remind moves from ~/.codex/hooks.json into the plugin once its Codex copy carries the guarded one
+
+def _remind_hooks(fake_home, fake_runner, monkeypatch):
+    from loadout import codex_hooks, runner
+    monkeypatch.setattr(runner, "have", lambda b: b == "serena-hooks")
+    codex_hooks.path().parent.mkdir(parents=True, exist_ok=True)
+    return codex_hooks.path()
+
+
+def _plugin_copy(fake_home, *, remind=True, enabled=True):
+    """A Codex copy of loadout@agent-loadout in the plugin cache, and config.toml switching it on (or off)."""
+    hooks = json.loads((PLUGIN / "hooks" / "codex.json").read_text(encoding="utf-8"))
+    if not remind:
+        hooks["hooks"]["PreToolUse"] = [g for g in hooks["hooks"]["PreToolUse"]
+                                        if not any("serena-hooks remind" in h["command"] for h in g["hooks"])]
+    copy = fake_home / ".codex" / "plugins" / "cache" / "agent-loadout" / "loadout" / "local" / "hooks"
+    copy.mkdir(parents=True, exist_ok=True)
+    (copy / "codex.json").write_text(json.dumps(hooks, indent=2), encoding="utf-8")
+    (fake_home / ".codex" / "config.toml").write_text(
+        f'[plugins."loadout@agent-loadout"]\nenabled = {"true" if enabled else "false"}\n', encoding="utf-8")
+
+
+def _subs(p):
+    data = json.loads(p.read_text(encoding="utf-8"))["hooks"]
+    return sorted(h["command"].split()[1] for groups in data.values() for g in groups for h in g["hooks"])
+
+
+SIX = sorted(["remind", "plan-guard", "reset", "activate", "plan-context", "cleanup"])
+
+
+def test_remind_leaves_hooks_json_when_the_plugin_runs_it(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    assert _subs(p) == SIX
+    six = p.read_bytes()
+    _plugin_copy(fake_home)
+    assert codex.plugin_runs_remind()
+    bk = backup.Backup(description="t")
+    assert codex_hooks.apply(bk)
+    assert _subs(p) == sorted(s for s in SIX if s != "remind")
+    assert not any("remind" in o["group"] for o in codex.read_record().get("hooks", []))
+    assert codex_hooks.apply(backup.Backup(description="t")) == []  # done: a second run changes nothing
+    backup.restore(bk.root)  # the removal was backed up
+    assert p.read_bytes() == six
+
+
+def test_old_plugin_copy_keeps_remind_in_hooks_json(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    six = p.read_bytes()
+    _plugin_copy(fake_home, remind=False)
+    assert not codex.plugin_runs_remind()
+    assert codex_hooks.apply(backup.Backup(description="t")) == []
+    assert p.read_bytes() == six
+
+
+def test_switched_off_plugin_keeps_remind(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    six = p.read_bytes()
+    _plugin_copy(fake_home, enabled=False)
+    assert not codex.plugin_runs_remind()
+    assert codex_hooks.apply(backup.Backup(description="t")) == []
+    assert p.read_bytes() == six
+    _plugin_copy(fake_home)  # switched on: remind moves to the plugin
+    codex_hooks.apply(backup.Backup(description="t"))
+    assert "remind" not in _subs(p)
+    _plugin_copy(fake_home, enabled=False)  # switched off again: remind comes back to hooks.json
+    codex_hooks.apply(backup.Backup(description="t"))
+    assert _subs(p) == SIX
+
+
+def test_background_sync_keeps_remind(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    six = p.read_bytes()
+    _plugin_copy(fake_home)
+    assert codex.plugin_runs_remind()
+    assert codex_hooks.apply(backup.Backup(description="t"), keep=True) == []
+    assert p.read_bytes() == six
+
+
+def test_users_own_remind_stays(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    codex_hooks.paths.state_dir().joinpath("codex-config.json").unlink()  # as if the user wrote them all
+    users = p.read_bytes()
+    _plugin_copy(fake_home)
+    assert codex_hooks.apply(backup.Backup(description="t")) == []
+    assert p.read_bytes() == users
+
+
+def test_migration_finishes_in_one_run(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    assert "remind" in _subs(p)
+    monkeypatch.setattr(codex, "apply_instructions", lambda bk: "instructions up to date")
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    monkeypatch.setattr(codex, "apply_skills", lambda bk: [])
+    monkeypatch.setattr(codex, "apply_plugins", lambda bk, **kw: _plugin_copy(fake_home) or ["plugin loadout: upgraded"])
+    parts = codex.apply_parts(backup.Backup(description="t"), refresh=True, auto=False, keep=False)
+    assert "remind" not in _subs(p) and len(_subs(p)) == 5
+    assert parts["hooks"] and parts["plugins"] == ["plugin loadout: upgraded"]
+
+
+def test_background_sync_does_not_add_a_moved_remind_back(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    _plugin_copy(fake_home)
+    lines = codex_hooks.apply(backup.Backup(description="t"))
+    assert any("plugin runs it now" in l for l in lines)
+    five = p.read_bytes()
+    assert codex_hooks.apply(backup.Backup(description="t"), keep=True) == []
+    assert p.read_bytes() == five
+
+
+def test_an_unreadable_plugin_cache_keeps_remind_and_does_not_raise(fake_home, fake_runner, monkeypatch):
+    from pathlib import Path
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    _plugin_copy(fake_home)
+    real = Path.is_dir
+
+    def is_dir(self):
+        if "plugins" in self.parts and "cache" in self.parts:
+            raise PermissionError(13, "denied")
+        return real(self)
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    assert codex.loadout_copy() is None and not codex.plugin_runs_remind()
+    assert codex_hooks.apply(backup.Backup(description="t")) == []
+    assert "remind" in _subs(p)
+
+
+def test_a_moved_remind_asks_for_the_hooks_approval(fake_home, fake_runner, monkeypatch):
+    from loadout import apply, backup, codex_hooks, steps, update
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    _plugin_copy(fake_home)
+    facts = apply._codex_facts(codex_hooks.apply(backup.Backup(description="t")))
+    assert "serena_remind_moved" in facts and "serena_remind_moved" in update.FACT_LINES
+    monkeypatch.setattr("loadout.codex.hooks_status", lambda: "trusted")
+    assert any(s.id == "codex/hooks" for s in steps.derive(facts, [], False, True))
+
+
+def test_adding_and_moving_in_one_run_reports_both(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    data = json.loads(p.read_text(encoding="utf-8"))  # the user removed plan-guard meanwhile: it is added again
+    data["hooks"]["PreToolUse"] = [g for g in data["hooks"]["PreToolUse"] if "plan-guard" not in json.dumps(g)]
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    _plugin_copy(fake_home)
+    lines = codex_hooks.apply(backup.Backup(description="t"))
+    assert any("added Serena's hooks" in l for l in lines) and any("plugin runs it now" in l for l in lines)
+
+
+
+def _versions(fake_home, active):
+    """Two cached version folders, 1.0.0 without and 2.0.0 with the guarded remind; `codex plugin list` names
+    `active` (None: the list fails)."""
+    import shutil
+    from loadout import runner
+    _plugin_copy(fake_home)
+    base = fake_home / ".codex" / "plugins" / "cache" / "agent-loadout" / "loadout"
+    shutil.move(str(base / "local"), str(base / "2.0.0"))
+    (base / "1.0.0" / "hooks").mkdir(parents=True)
+    (base / "1.0.0" / "hooks" / "codex.json").write_text('{"hooks": {"PreToolUse": []}}', encoding="utf-8")
+    return runner.Result(0, json.dumps({"installed": [{"pluginId": "loadout@agent-loadout", "version": active}]}), "") \
+        if active else runner.Result(1, "", "boom")
+
+
+@pytest.mark.parametrize("active, moves", [("2.0.0", True), ("1.0.0", False), (None, False)])
+def test_the_active_cached_version_decides(fake_home, fake_runner, monkeypatch, active, moves):
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    fake_runner.responses[("codex", "plugin", "list")] = _versions(fake_home, active)
+    monkeypatch.setattr(codex, "program", lambda: "codex")
+    assert codex.plugin_runs_remind() is moves
+    codex_hooks.apply(backup.Backup(description="t"))
+    assert ("remind" not in _subs(p)) is moves

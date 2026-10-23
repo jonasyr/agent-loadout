@@ -30,6 +30,17 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" --soft --python \"${CLAUDE_PLUGIN_ROOT}/hooks/mcp_guard.py\" --agent codex serena serena-hooks remind --client=codex",
+            "shell": "bash",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [

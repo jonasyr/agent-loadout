@@ -153,15 +153,9 @@ def _claude_copies() -> list[tuple[str, Path, str]]:
 
 
 def _codex_copies() -> list[tuple[str, Path, str]]:
-    folder = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
-    fix = UPDATE + "approve the changed hooks in Codex's /hooks"
-    if (folder / "local").is_dir():
-        return [("Codex", folder / "local", fix)]  # a marketplace cloned from a repo installs as "local"
-    try:
-        dirs = [d for d in folder.iterdir() if d.is_dir()] if folder.is_dir() else []
-    except OSError:
-        return []
-    return [("Codex", max(dirs, key=lambda d: d.stat().st_mtime), fix)] if dirs else []
+    from . import codex
+    copy = codex.loadout_copy()
+    return [("Codex", copy, UPDATE + "approve the changed hooks in Codex's /hooks")] if copy is not None else []
 
 
 def _plugin_copies() -> list[CheckResult]:

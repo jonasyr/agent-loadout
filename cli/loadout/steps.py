@@ -206,7 +206,7 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
         except Exception:
             pass
         plugins = bool(facts & {"codex_plugins_installed", "codex_plugins_updated"})
-        if "serena_hooks_added" in facts or status in ("untrusted", "changed"):
+        if facts & {"serena_hooks_added", "serena_remind_moved"} or status in ("untrusted", "changed"):
             text = ((codex.HOOKS_EXTENSION_CHANGED if status == "changed" else codex.HOOKS_EXTENSION) if ext
                     else "restart Codex and approve the changed hooks in /hooks" if plugins else HOOKS_TEXT)
             out.append(Step("codex/hooks", "codex", text, "Codex runs a changed hook only after you approve it"))

@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Run an MCP tool's own hook command only when it can help (stdlib only; always exit 0; silent on error).
 
-    mcp_guard.py <server> <command...>      e.g. mcp_guard.py serena serena-hooks remind --client=claude-code
+    mcp_guard.py [--agent claude|codex] <server> <command...>
+                                            e.g. mcp_guard.py serena serena-hooks remind --client=claude-code
 
 Skips when the command's program is not on PATH, when Claude Code has <server> switched off for this folder (and
 the user has no server of that name of their own that is on), or when the user's or the project's Claude Code
 settings already run the same program and subcommand for this event (two `remind`s would share one counter and
-deny at half the threshold). Otherwise runs the command with the hook's input and passes its output on.
+deny at half the threshold). For `remind` it also skips a call that is only a harmless search (harmless.py: config
+or doc files, piped output, files outside the project). With `--agent codex` it decides by Codex's files only
+(config.toml's `[mcp_servers.<server>]` and the hooks in $CODEX_HOME/hooks.json, config.toml's `[hooks]` and
+<cwd>/.codex/hooks.json; a regex matcher is searched, not matched whole). Otherwise runs the command with the hook's input and passes its output on.
 See docs/reference/hooks.md."""
 from __future__ import annotations
 
@@ -127,48 +131,79 @@ def _words(hook: dict) -> list[str]:
     return words + [a for a in _list(hook, "args") if isinstance(a, str)]
 
 
-def _matches(matcher: object, tool: str | None) -> bool:
-    """Claude Code's matcher rule: none, "" or "*" matches every tool, else a regex over the tool name."""
+def _matches(matcher: object, tool: str | None, search: bool = False) -> bool:
+    """Claude Code's matcher rule: none, "" or "*" matches every tool, else a regex over the tool name (Codex
+    searches it, `search=True`)."""
     if tool is None or matcher in (None, "", "*"):
         return True
     if not isinstance(matcher, str):
         return False
     import re
     try:
-        return re.fullmatch(matcher, tool) is not None
+        return (re.search if search else re.fullmatch)(matcher, tool) is not None
     except re.error:
         return matcher == tool
+
+
+def _group_runs(groups: list, argv: list[str], tool: str | None, search: bool) -> bool:
+    program, sub = os.path.basename(argv[0]), argv[1] if len(argv) > 1 else None
+    for group in groups:
+        if not _matches(group.get("matcher") if isinstance(group, dict) else None, tool, search):
+            continue
+        for hook in _list(group, "hooks"):
+            words = _words(hook) if isinstance(hook, dict) else []
+            for i, w in enumerate(words):
+                if _program(w) != program or (i and words[i - 1] in NOT_A_RUN):
+                    continue
+                rest = [x for x in words[i + 1:] if not x.startswith("-")]  # flags may come first
+                if sub is None or rest[:1] == [sub]:
+                    return True
+    return False
 
 
 def users_hook_runs(event: str, argv: list[str], cwd: str, home: Path, tool: str | None = None) -> bool:
     """A hook of the user's or the project's for <event> (and, when given, a matcher that matches <tool>) that runs
     the same program and subcommand as argv."""
-    program, sub = os.path.basename(argv[0]), argv[1] if len(argv) > 1 else None
-    for path in _settings_files(cwd, home):
-        for group in _list(_dict(_json(path), "hooks"), event):
-            if not _matches(group.get("matcher") if isinstance(group, dict) else None, tool):
-                continue
-            for hook in _list(group, "hooks"):
-                words = _words(hook) if isinstance(hook, dict) else []
-                for i, w in enumerate(words):
-                    if _program(w) != program or (i and words[i - 1] in NOT_A_RUN):
-                        continue
-                    rest = [x for x in words[i + 1:] if not x.startswith("-")]  # flags may come first
-                    if sub is None or rest[:1] == [sub]:
-                        return True
-    return False
+    return any(_group_runs(_list(_dict(_json(path), "hooks"), event), argv, tool, False)
+               for path in _settings_files(cwd, home))
 
 
-def should_run(server: str, argv: list[str], payload: dict, home: Path) -> bool:
+def codex_users_hook_runs(argv: list[str], cwd: str, home: Path, tool: str | None) -> bool:
+    """The same for Codex's PreToolUse hooks: $CODEX_HOME (or ~/.codex) hooks.json, the `[hooks]` tables of its
+    config.toml and <cwd>/.codex/hooks.json; a matcher is a regex searched in the tool name. loadout's own
+    `remind` entry in hooks.json counts, so the plugin's copy and that entry never both remind."""
+    root = Path(os.environ["CODEX_HOME"]) if os.environ.get("CODEX_HOME") else home / ".codex"
+    groups = (_list(_dict(_json(root / "hooks.json"), "hooks"), "PreToolUse")
+              + _list(_dict(_json(Path(cwd) / ".codex" / "hooks.json"), "hooks"), "PreToolUse"))
+    try:
+        import tomllib
+        with open(root / "config.toml", "rb") as fh:
+            groups += _list(_dict(tomllib.load(fh), "hooks"), "PreToolUse")
+    except Exception:
+        pass
+    return _group_runs(groups, argv, tool, True)
+
+
+def should_run(server: str, argv: list[str], payload: dict, home: Path, agent: str = "claude") -> bool:
     raw_cwd = payload.get("cwd")
     cwd = raw_cwd if isinstance(raw_cwd, str) else os.getcwd()
     if not argv or not binary_on_path(argv[0]):
         return False
+    if len(argv) > 1 and argv[1] == "remind":
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        try:
+            from harmless import skips_remind  # lazily: only the reminder is filtered
+        except ImportError:  # no classifier: Serena decides, as before the filter
+            skips_remind = None
+        if skips_remind is not None and skips_remind(payload):
+            return False
+    raw_tool = payload.get("tool_name")
+    tool = raw_tool if isinstance(raw_tool, str) and raw_tool else None
+    if agent == "codex":
+        return codex_server_enabled(server, home) and not codex_users_hook_runs(argv, cwd, home, tool)
     if not server_available(server, cwd, home):
         return False
     event = payload.get("hook_event_name")
-    raw_tool = payload.get("tool_name")
-    tool = raw_tool if isinstance(raw_tool, str) and raw_tool else None
     return not (isinstance(event, str) and users_hook_runs(event, argv, cwd, home, tool))
 
 
@@ -182,6 +217,9 @@ def main(args: list[str]) -> int:
         except Exception:
             return 1
     try:
+        agent = "claude"
+        if args[:1] == ["--agent"] and len(args) > 1:
+            agent, args = args[1], args[2:]
         if len(args) < 2:
             return 0
         server, argv = args[0], args[1:]
@@ -189,7 +227,7 @@ def main(args: list[str]) -> int:
         if len(raw) > MAX_INPUT:
             return 0
         payload = json.loads(raw)
-        if not isinstance(payload, dict) or not should_run(server, argv, payload, _home()):
+        if not isinstance(payload, dict) or not should_run(server, argv, payload, _home(), agent):
             return 0
         timeout = TIMEOUTS.get(argv[1], TIMEOUT) if len(argv) > 1 else TIMEOUT
         res = subprocess.run(argv, input=raw, capture_output=True, text=True, timeout=timeout)

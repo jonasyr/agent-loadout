@@ -29,9 +29,11 @@ def _payload(env, event="PreToolUse", tool="Bash"):
             "cwd": str(env["repo"])}
 
 
-def _run(env, payload, raw=None, command=("serena-hooks", "remind", "--client=claude-code"), server="serena"):
+def _run(env, payload, raw=None, command=("serena-hooks", "remind", "--client=claude-code"), server="serena",
+         agent=None):
     e = {"HOME": str(env["home"]), "PATH": f"{env['bin']}{os.pathsep}/usr/bin:/bin"}
-    res = subprocess.run([sys.executable, str(GUARD), server, *command],
+    pre = ["--agent", agent] if agent else []
+    res = subprocess.run([sys.executable, str(GUARD), *pre, server, *command],
                          input=raw if raw is not None else json.dumps(payload), env=e, capture_output=True,
                          text=True, timeout=20)
     assert res.returncode == 0 and res.stderr == ""
@@ -188,3 +190,82 @@ def test_a_quoted_path_with_spaces_is_one_program(env):
     _settings(env["home"] / ".claude" / "settings.json", "PreToolUse",
               '"C:\\Program Files\\Serena\\serena-hooks.exe" remind --client=claude-code')
     assert _run(env, _payload(env)) is None
+
+
+def _cmd(env, command):
+    p = _payload(env)
+    p["tool_input"] = {"command": command}
+    return p
+
+
+CODEX_REMIND = ("serena-hooks", "remind", "--client=codex")
+
+
+def test_guard_skips_harmless_search(env):
+    assert _run(env, _cmd(env, "gh pr view 1 | grep x")) is None
+
+
+def test_guard_runs_remind_for_code_search(env):
+    out = _run(env, _cmd(env, "rg Foo src/"))
+    assert out["ran"] == "remind --client=claude-code"
+
+
+def test_guard_skips_only_for_remind(env):
+    out = _run(env, _cmd(env, "gh pr view 1 | grep x"), command=("serena-hooks", "auto-approve", "--client=claude-code"))
+    assert out["ran"] == "auto-approve --client=claude-code"
+
+
+def test_codex_mode_reads_codex_config(env):
+    out = _run(env, _cmd(env, "rg Foo src/"), command=CODEX_REMIND, agent="codex")
+    assert out["ran"] == "remind --client=codex"
+    (env["home"] / ".claude.json").write_text(json.dumps(
+        {"projects": {str(env["repo"]): {"disabledMcpServers": ["plugin:loadout:serena"]}}}))
+    assert _run(env, _cmd(env, "rg Foo src/"), command=CODEX_REMIND, agent="codex")  # Claude's switch is not read
+    (env["home"] / ".codex").mkdir()
+    (env["home"] / ".codex" / "config.toml").write_text("[mcp_servers.serena]\nenabled = false\n")
+    assert _run(env, _cmd(env, "rg Foo src/"), command=CODEX_REMIND, agent="codex") is None
+
+
+def _codex_hooks(path, matcher, command="serena-hooks remind --client=codex"):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": matcher, "hooks": [
+        {"type": "command", "command": command, "timeout": 5}]}]}}))
+
+
+def test_codex_equivalence_uses_regex_search(env):
+    _codex_hooks(env["home"] / ".codex" / "hooks.json", "^Bash$")
+    assert _run(env, _cmd(env, "rg Foo src/"), command=CODEX_REMIND, agent="codex") is None
+    _codex_hooks(env["home"] / ".codex" / "hooks.json", "^mcp__serena__")
+    assert _run(env, _cmd(env, "rg Foo src/"), command=CODEX_REMIND, agent="codex")
+
+
+def test_codex_equivalence_in_project_and_inline(env):
+    _codex_hooks(env["repo"] / ".codex" / "hooks.json", "Bash")
+    assert _run(env, _cmd(env, "rg Foo src/"), command=CODEX_REMIND, agent="codex") is None
+    (env["repo"] / ".codex" / "hooks.json").unlink()
+    (env["home"] / ".codex").mkdir()
+    (env["home"] / ".codex" / "config.toml").write_text(
+        '[[hooks.PreToolUse]]\nmatcher = "Bash"\n[[hooks.PreToolUse.hooks]]\ntype = "command"\n'
+        'command = "serena-hooks remind --client=codex"\n')
+    assert _run(env, _cmd(env, "rg Foo src/"), command=CODEX_REMIND, agent="codex") is None
+
+
+def test_codex_json_runs_guarded_remind():
+    data = json.loads((PLUGIN / "hooks" / "codex.json").read_text())
+    hooks = [h for g in data["hooks"]["PreToolUse"] if g["matcher"] == "Bash" for h in g["hooks"]]
+    want = ('"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" --soft --python "${CLAUDE_PLUGIN_ROOT}/hooks/mcp_guard.py" '
+            '--agent codex serena serena-hooks remind --client=codex')
+    assert any(h["command"] == want and h["timeout"] == 5 for h in hooks)
+
+
+def test_a_missing_classifier_still_runs_serena(env, tmp_path):
+    import shutil
+    lone = tmp_path / "lone"
+    lone.mkdir()
+    shutil.copy(GUARD, lone / "mcp_guard.py")  # no harmless.py beside it
+    e = {"HOME": str(env["home"]), "PATH": f"{env['bin']}{os.pathsep}/usr/bin:/bin"}
+    p = dict(_payload(env), tool_input={"command": "gh pr view 1 | grep x"})
+    res = subprocess.run([sys.executable, str(lone / "mcp_guard.py"), "serena", "serena-hooks", "remind",
+                          "--client=claude-code"], input=json.dumps(p), env=e, capture_output=True, text=True,
+                         timeout=20)
+    assert res.returncode == 0 and json.loads(res.stdout)["ran"] == "remind --client=claude-code"
