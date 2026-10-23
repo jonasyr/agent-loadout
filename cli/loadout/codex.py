@@ -2043,16 +2043,23 @@ def loadout_copy() -> Path | None:
         return None
 
 
-def _loadout_copies() -> list[Path]:
-    """Every cached Codex copy of loadout@agent-loadout: `local` alone when it exists, else each version folder.
-    Without running codex the active version is unknown, so a decision must hold for all of them."""
+def _active_copy() -> Path | None:
+    """The Codex copy of loadout@agent-loadout that Codex loads: `local` (a marketplace cloned from a repo installs
+    as "local"), else the folder named by the version `codex plugin list` reports (read-only). Old version folders
+    stay cached, so neither the newest nor all of them decide. None when it cannot be told."""
     folder = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
     try:
         if (folder / "local").is_dir():
-            return [folder / "local"]
-        return [d for d in folder.iterdir() if d.is_dir()] if folder.is_dir() else []
+            return folder / "local"
+        if not folder.is_dir():
+            return None
+        listed = installed_plugins()
+        version = listed.versions.get("loadout@agent-loadout") if listed is not None else None
+        if not isinstance(version, str) or not version or "/" in version or "\\" in version or version in (".", ".."):
+            return None
+        return folder / version if (folder / version).is_dir() else None
     except OSError:
-        return []
+        return None
 
 
 def _runs_guarded_remind(copy: Path) -> bool:
@@ -2072,13 +2079,13 @@ def _runs_guarded_remind(copy: Path) -> bool:
 
 def plugin_runs_remind() -> bool:
     """Whether Codex runs Serena's remind from loadout's plugin (guarded, so it skips harmless searches): the installed
-    copy's hooks/codex.json (every cached version's, when there is no `local` one) has a PreToolUse hook running
-    mcp_guard.py with `serena-hooks remind`, and config.toml
+    copy Codex loads (`_active_copy`) has a PreToolUse hook in hooks/codex.json running mcp_guard.py with
+    `serena-hooks remind`, and config.toml
     switches the plugin on. An old copy, a missing entry or `enabled = false` is False, so remind stays in hooks.json
-    (a wrong yes would leave Codex without a reminder). Files only: no codex runs (the CLI and VS Code's extension
-    share the plugin cache, ADR 0038)."""
-    copies = _loadout_copies()
-    if not copies or not all(_runs_guarded_remind(c) for c in copies):  # any cached version may be the active one
+    (a wrong yes would leave Codex without a reminder). Only a versioned copy asks `codex plugin list` (read-only);
+    the CLI and VS Code's extension share the plugin cache (ADR 0038)."""
+    copy = _active_copy()
+    if copy is None or not _runs_guarded_remind(copy):
         return False
     path = paths.codex_home() / "config.toml"
     try:

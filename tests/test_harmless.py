@@ -180,3 +180,8 @@ def test_several_cds_leave_the_folder_unknown(tmp_path):
 
 def test_dash_operands_after_double_dash_are_files():
     assert not bash("cat -- -script.py | grep main")
+
+
+def test_a_piped_grep_with_its_own_path_reads_that_path():
+    assert not bash("echo x | grep foo src/a.py")
+    assert bash("echo x | grep foo notes.md")

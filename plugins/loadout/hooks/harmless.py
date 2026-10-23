@@ -226,7 +226,7 @@ def _bash_skips(line: str, cwd: str) -> bool:
         if prog in GREP_CMDS:
             found = True
             paths, limited = _grep_paths(args)
-            ok = ((in_pipeline and not code_before) or limited
+            ok = ((in_pipeline and not code_before and not paths) or limited  # a grep with paths reads those
                   or (bool(paths) and all(harmless_path(p, cwd, rel) for p in paths)))
             if not ok:
                 return False

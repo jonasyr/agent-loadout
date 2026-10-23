@@ -305,18 +305,28 @@ def test_adding_and_moving_in_one_run_reports_both(fake_home, fake_runner, monke
     assert any("added Serena's hooks" in l for l in lines) and any("plugin runs it now" in l for l in lines)
 
 
-def test_every_cached_version_must_carry_the_guarded_remind(fake_home, fake_runner, monkeypatch):
-    import os
+
+def _versions(fake_home, active):
+    """Two cached version folders, 1.0.0 without and 2.0.0 with the guarded remind; `codex plugin list` names
+    `active` (None: the list fails)."""
     import shutil
+    from loadout import runner
+    _plugin_copy(fake_home)
+    base = fake_home / ".codex" / "plugins" / "cache" / "agent-loadout" / "loadout"
+    shutil.move(str(base / "local"), str(base / "2.0.0"))
+    (base / "1.0.0" / "hooks").mkdir(parents=True)
+    (base / "1.0.0" / "hooks" / "codex.json").write_text('{"hooks": {"PreToolUse": []}}', encoding="utf-8")
+    return runner.Result(0, json.dumps({"installed": [{"pluginId": "loadout@agent-loadout", "version": active}]}), "") \
+        if active else runner.Result(1, "", "boom")
+
+
+@pytest.mark.parametrize("active, moves", [("2.0.0", True), ("1.0.0", False), (None, False)])
+def test_the_active_cached_version_decides(fake_home, fake_runner, monkeypatch, active, moves):
     from loadout import backup, codex, codex_hooks
     p = _remind_hooks(fake_home, fake_runner, monkeypatch)
     codex_hooks.apply(backup.Backup(description="t"))
-    _plugin_copy(fake_home)  # writes .../loadout/local and config.toml
-    base = fake_home / ".codex" / "plugins" / "cache" / "agent-loadout" / "loadout"
-    shutil.move(str(base / "local"), str(base / "2.0.0"))
-    old = base / "1.0.0" / "hooks"
-    old.mkdir(parents=True)
-    (old / "codex.json").write_text('{"hooks": {"PreToolUse": []}}', encoding="utf-8")
-    os.utime(base / "1.0.0", (1, 1))  # older on disk, but Codex may still load it
-    assert not codex.plugin_runs_remind()
-    assert "remind" in _subs(p) and codex_hooks.apply(backup.Backup(description="t")) == []
+    fake_runner.responses[("codex", "plugin", "list")] = _versions(fake_home, active)
+    monkeypatch.setattr(codex, "program", lambda: "codex")
+    assert codex.plugin_runs_remind() is moves
+    codex_hooks.apply(backup.Backup(description="t"))
+    assert ("remind" not in _subs(p)) is moves
