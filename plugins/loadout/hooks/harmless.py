@@ -71,14 +71,16 @@ def harmless_path(path: str, cwd: str) -> bool:
     """True for a config or doc file, or a path outside the project folder; false when unsure."""
     if not isinstance(path, str) or not path or "$" in path or "`" in path:
         return False
-    base = os.path.basename(path)
-    if base in CONFIG_NAMES or base.startswith(".env"):
-        return True
-    if os.path.splitext(base)[1].lower() in NON_CODE:
-        return True
     root = os.path.normpath(_project(cwd))
     full = os.path.normpath(os.path.join(cwd, os.path.expanduser(path)))
-    return full != root and not full.startswith(root.rstrip(os.sep) + os.sep)
+    if full != root and not full.startswith(root.rstrip(os.sep) + os.sep):
+        return True  # outside the project
+    base = os.path.basename(path.rstrip("/"))
+    named = base in CONFIG_NAMES or base.startswith(".env") or os.path.splitext(base)[1].lower() in NON_CODE
+    try:
+        return named and not os.path.isdir(full)  # a folder named `docs.md` holds whatever it holds
+    except (OSError, ValueError):
+        return False
 
 
 def _is_dir(path: str, cwd: str) -> bool:

@@ -193,3 +193,10 @@ def test_an_explicit_path_is_read_whatever_the_type_filter():
 
 def test_an_awk_program_is_no_file():
     assert bash("awk '{print $1}' notes.md | grep x")
+
+
+def test_a_folder_named_like_a_doc_file_is_a_folder(tmp_path):
+    (tmp_path / "docs.md").mkdir()
+    (tmp_path / "docs.md" / "code.py").write_text("x = 1\n")
+    assert not bash("rg needle docs.md", cwd=str(tmp_path))
+    assert bash("rg -t md needle docs.md", cwd=str(tmp_path))  # a doc filter limits the folder's walk
