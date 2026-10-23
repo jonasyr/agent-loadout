@@ -493,3 +493,62 @@ def test_codex_summary_extension_mode_names_skills_only_when_linked(codex_ext):
     assert apply._codex_summary(["linked x"]) == (
         "rules, plugins, MCP servers and skills set up for VS Code's Codex extension")
     assert apply._codex_summary([]) == "rules, plugins and MCP servers set up for VS Code's Codex extension"
+
+
+def _upgrade_fails(fake_runner, monkeypatch, *results):
+    """agent-loadout is installed and already added; its `marketplace upgrade` answers with results in turn."""
+    from loadout import settings_merge
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: {
+        "enabledPlugins": {"loadout@agent-loadout": True, "fresh@agent-loadout": True},
+        "extraKnownMarketplaces": SETTINGS["extraKnownMarketplaces"]})
+    monkeypatch.setattr(codex, "UPGRADE_RETRY_WAIT", 0)
+    _fake(fake_runner, installed=["loadout@agent-loadout"])
+    fake_runner.responses[("codex", "plugin", "marketplace", "add", "jonasyr/agent-loadout")] = runner.Result(
+        0, json.dumps({"marketplaceName": "agent-loadout", "alreadyAdded": True}), "")
+    answers = list(results)
+    inner = runner.run
+
+    def run(cmd, **kw):
+        if cmd[:4] == ["codex", "plugin", "marketplace", "upgrade"] and answers:
+            inner(cmd, **kw)  # recorded in fake_runner.calls
+            return answers.pop(0)
+        return inner(cmd, **kw)
+    monkeypatch.setattr(runner, "run", run)
+
+
+def _upgrades(fake_runner):
+    return [c for c in fake_runner.calls if c[:4] == ["codex", "plugin", "marketplace", "upgrade"]]
+
+
+def test_a_failed_marketplace_upgrade_is_a_problem_line_with_codex_reason(fake_home, fake_runner, monkeypatch):
+    err = runner.Result(1, "", "Failed to upgrade marketplace `agent-loadout`: git ls-remote failed")
+    _upgrade_fails(fake_runner, monkeypatch, err, err)
+    lines = codex.apply_plugins(backup.Backup(description="t"), refresh=True)
+    problem = [l for l in lines if "agent-loadout" in l and "failed to upgrade" in l]
+    assert problem and "git ls-remote failed" in problem[0]
+    from loadout import apply
+    assert apply.refused(lines), "update lists it among the problems"
+
+
+def test_a_failed_upgrade_does_not_reinstall_from_the_old_snapshot(fake_home, fake_runner, monkeypatch):
+    err = runner.Result(1, "", "boom")
+    _upgrade_fails(fake_runner, monkeypatch, err, err)
+    codex.apply_plugins(backup.Backup(description="t"), refresh=True)
+    adds = [c[3] for c in fake_runner.calls if c[:3] == ["codex", "plugin", "add"]]
+    assert "loadout@agent-loadout" not in adds, "re-adding would install the stale copy again"
+    assert "fresh@agent-loadout" in adds, "a plugin that is missing is still installed"
+
+
+def test_a_failed_upgrade_is_tried_once_more(fake_home, fake_runner, monkeypatch):
+    _upgrade_fails(fake_runner, monkeypatch, runner.Result(1, "", "transient"), runner.Result(0, "", ""))
+    lines = codex.apply_plugins(backup.Backup(description="t"), refresh=True)
+    assert len(_upgrades(fake_runner)) == 2
+    assert not [l for l in lines if "failed to upgrade" in l]
+    assert ["codex", "plugin", "add", "loadout@agent-loadout", "--json"] in fake_runner.calls
+
+
+def test_a_timed_out_upgrade_is_not_tried_again(fake_home, fake_runner, monkeypatch):
+    _upgrade_fails(fake_runner, monkeypatch, runner.Result(124, "", "codex: timed out after 1800s"))
+    lines = codex.apply_plugins(backup.Backup(description="t"), refresh=True)
+    assert len(_upgrades(fake_runner)) == 1, "a second 30-minute wait helps nobody"
+    assert any("failed to upgrade" in l and "timed out" in l for l in lines)

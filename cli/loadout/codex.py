@@ -1407,6 +1407,19 @@ def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str,
 
 CLONE_TIMEOUT = 1800  # a large marketplace (pbakaus/impeccable: 400+ MB) outlasted 900 s on a real machine
 LARGE_CLONE = "large repositories can take several minutes"
+UPGRADE_RETRY_WAIT = 5  # seconds before the one retry of a failed `marketplace upgrade` (not after a timeout)
+
+
+def _upgrade(exe: str, market: str) -> runner.Result:
+    """`codex plugin marketplace upgrade <market>`, tried once more after a short wait when it fails (a refresh can
+    lose a race with a running Codex's own auto-upgrade, or the network blips); a timeout is not tried again."""
+    cmd = [exe, "plugin", "marketplace", "upgrade", market]
+    res = runner.run(cmd, timeout=CLONE_TIMEOUT)
+    if res.ok or res.returncode == 124:
+        return res
+    import time
+    time.sleep(UPGRADE_RETRY_WAIT)
+    return runner.run(cmd, timeout=CLONE_TIMEOUT)
 
 
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
@@ -1431,7 +1444,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
         if (refresh or name not in have) and not (src in skip_m and any(p.startswith(name + "@") for p in skip_p)))
     step = 0
     for src, plugins in routes.items():
-        head, refreshed = None, False
+        head, refreshed, stale = None, False, False
         if src in skip_m:
             market = record[src]["name"]
         else:
@@ -1451,8 +1464,11 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:
-                up = runner.run([exe, "plugin", "marketplace", "upgrade", market], timeout=CLONE_TIMEOUT)
-                refreshed = up.ok
+                up = _upgrade(exe, market)
+                refreshed, stale = up.ok, not up.ok
+                if stale:  # its plugins would be added again from the old snapshot: they stay as they are
+                    lines.append(f"marketplace {market}: failed to upgrade ({_tail(up)}); its installed plugins stay "
+                                 "at the previous version")
             elif not info.get("alreadyAdded"):
                 refreshed = True
             if refreshed:
@@ -1460,7 +1476,8 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
         own = None
         for name in plugins:
             pid = f"{name}@{market}"
-            if (planned and pid in skip_p) or (pid in installed and (not refresh or market in frozen or pid in skip_p)):
+            if (planned and pid in skip_p) or (pid in installed and (not refresh or market in frozen or pid in skip_p
+                                                                     or stale)):
                 continue
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
