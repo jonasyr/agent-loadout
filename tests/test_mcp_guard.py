@@ -256,3 +256,16 @@ def test_codex_json_runs_guarded_remind():
     want = ('"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" --soft --python "${CLAUDE_PLUGIN_ROOT}/hooks/mcp_guard.py" '
             '--agent codex serena serena-hooks remind --client=codex')
     assert any(h["command"] == want and h["timeout"] == 5 for h in hooks)
+
+
+def test_a_missing_classifier_still_runs_serena(env, tmp_path):
+    import shutil
+    lone = tmp_path / "lone"
+    lone.mkdir()
+    shutil.copy(GUARD, lone / "mcp_guard.py")  # no harmless.py beside it
+    e = {"HOME": str(env["home"]), "PATH": f"{env['bin']}{os.pathsep}/usr/bin:/bin"}
+    p = dict(_payload(env), tool_input={"command": "gh pr view 1 | grep x"})
+    res = subprocess.run([sys.executable, str(lone / "mcp_guard.py"), "serena", "serena-hooks", "remind",
+                          "--client=claude-code"], input=json.dumps(p), env=e, capture_output=True, text=True,
+                         timeout=20)
+    assert res.returncode == 0 and json.loads(res.stdout)["ran"] == "remind --client=claude-code"

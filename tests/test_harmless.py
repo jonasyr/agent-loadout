@@ -8,6 +8,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins" / "loadou
 import harmless  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def no_project_dir(monkeypatch):
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)  # set when the suite runs inside Claude Code
+
+
 def bash(cmd, cwd="/r"):
     return harmless.skips_remind({"tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": cwd})
 
@@ -104,3 +109,33 @@ def test_redirect_fd_is_not_a_path():
 def test_non_code_matches_loadout_usage():
     from loadout import searches
     assert harmless.NON_CODE == searches.NON_CODE
+
+
+@pytest.mark.parametrize("cmd", ["rg x -g '!*.lock' .", "rg x -g '!package-lock.json'", "rg -t md -t py foo src",
+                                 "grep -rn x --include=*.md --include=*.py ."])
+def test_a_filter_only_limits_when_every_inclusion_is_a_doc_type(cmd):
+    assert not bash(cmd)
+    assert bash("rg -t md -t yaml foo .")
+
+
+def test_a_negated_grep_tool_glob_is_no_doc_filter():
+    assert not harmless.skips_remind({"tool_name": "Grep", "tool_input": {"pattern": "x", "glob": "!*.md"},
+                                      "cwd": "/r"})
+
+
+@pytest.mark.parametrize("cmd", ["{ cat src/a.py; } | grep foo", "for f in src/*.py; do cat $f; done | grep def",
+                                 "cat src/a.py; gh pr view 1 | grep x"])
+def test_a_code_read_anywhere_before_a_pipe_goes_to_serena(cmd):
+    assert not bash(cmd)
+
+
+def test_after_a_cd_relative_paths_are_judged_by_suffix_only():
+    assert not bash("cd sub && grep foo ../a.py")
+    assert bash("cd sub && grep foo ../notes.md")
+    assert bash("cd sub && grep foo /tmp/x/a.py")
+
+
+def test_the_claude_project_dir_is_the_project(monkeypatch):
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/r")
+    assert not bash("grep foo ../other/a.py", cwd="/r/sub")  # a sibling folder of the project, not outside it
+    assert bash("grep foo /elsewhere/a.py", cwd="/r/sub")

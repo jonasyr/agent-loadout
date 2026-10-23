@@ -191,8 +191,11 @@ def should_run(server: str, argv: list[str], payload: dict, home: Path, agent: s
         return False
     if len(argv) > 1 and argv[1] == "remind":
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from harmless import skips_remind  # lazily: only the reminder is filtered
-        if skips_remind(payload):
+        try:
+            from harmless import skips_remind  # lazily: only the reminder is filtered
+        except ImportError:  # no classifier: Serena decides, as before the filter
+            skips_remind = None
+        if skips_remind is not None and skips_remind(payload):
             return False
     raw_tool = payload.get("tool_name")
     tool = raw_tool if isinstance(raw_tool, str) and raw_tool else None

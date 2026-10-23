@@ -34,6 +34,8 @@ _REDIRECT = frozenset((">", ">>", ">|", ">&", "&>", "&>>", "<", "<<", "<<<", "<&
 _PREFIX = frozenset(("command", "env", "exec"))
 _ASSIGN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 _SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish"})
+_KEYWORDS = frozenset(("{", "}", "!", "do", "then", "else", "elif", "time"))  # before the program of a compound part
+_CD = frozenset(("cd", "pushd"))
 
 
 def doc_filter(value: object) -> bool:
@@ -41,11 +43,26 @@ def doc_filter(value: object) -> bool:
     if not isinstance(value, str) or not value:
         return False
     v = value.strip("'\"").lower()
+    if v.startswith("!"):  # an exclusion (`-g '!*.lock'`) limits nothing
+        return False
     return v in DOC_TYPES or v.endswith(NON_CODE)
 
 
-def harmless_path(path: str, cwd: str) -> bool:
-    """True for a config or doc file, or a path outside the project folder `cwd`; false when unsure."""
+def _project(cwd: str) -> str:
+    """The project folder: Claude Code's CLAUDE_PROJECT_DIR when cwd lies in it (a `cd` in an earlier call moves
+    cwd), else cwd."""
+    root = os.environ.get("CLAUDE_PROJECT_DIR")
+    if root:
+        r, c = os.path.normpath(root), os.path.normpath(cwd)
+        if c == r or c.startswith(r.rstrip(os.sep) + os.sep):
+            return r
+    return cwd
+
+
+def harmless_path(path: str, cwd: str, relative_outside: bool = True) -> bool:
+    """True for a config or doc file, or a path outside the project folder; false when unsure. relative_outside:
+    False after a `cd` in the same line, where a relative path's folder is unknown (only absolute and ~ paths can be
+    outside then)."""
     if not isinstance(path, str) or not path or "$" in path or "`" in path:
         return False
     base = os.path.basename(path)
@@ -53,8 +70,11 @@ def harmless_path(path: str, cwd: str) -> bool:
         return True
     if os.path.splitext(base)[1].lower() in NON_CODE:
         return True
-    root = os.path.normpath(cwd)
-    full = os.path.normpath(os.path.join(root, os.path.expanduser(path)))
+    expanded = os.path.expanduser(path)
+    if not relative_outside and not os.path.isabs(expanded):
+        return False
+    root = os.path.normpath(_project(cwd))
+    full = os.path.normpath(os.path.join(cwd, expanded))
     return full != root and not full.startswith(root.rstrip(os.sep) + os.sep)
 
 
@@ -62,9 +82,9 @@ def _has_suffix(path: str) -> bool:
     return bool(os.path.splitext(os.path.basename(path))[1])
 
 
-def _blocks(operands: list[str], cwd: str) -> bool:
+def _blocks(operands: list[str], cwd: str, rel: bool = True) -> bool:
     """Some operand is a file with a suffix that is not harmless: a code file inside the project."""
-    return any(_has_suffix(o) and not harmless_path(o, cwd) for o in operands)
+    return any(_has_suffix(o) and not harmless_path(o, cwd, rel) for o in operands)
 
 
 def _segments(line: str):
@@ -96,6 +116,8 @@ def _segments(line: str):
         while i < len(seg):
             if _ASSIGN.match(seg[i]):
                 i += 1
+            elif seg[i] in _KEYWORDS:
+                i += 1
             elif os.path.basename(seg[i]).lower() in _PREFIX:
                 i += 1
                 while i < len(seg) and seg[i].startswith("-"):
@@ -111,7 +133,7 @@ def _grep_paths(args: list[str]):
     """(paths, limited to docs by a filter) of a grep invocation's arguments."""
     paths: list[str] = []
     have_pattern = False
-    limited = False
+    includes: list[str] = []
     skip = False
     ended = False
     for j, a in enumerate(args):
@@ -130,12 +152,13 @@ def _grep_paths(args: list[str]):
         name, eq, val = a.partition("=")
         if name in FILTERS:
             value = val if eq else (args[j + 1] if j + 1 < len(args) else "")
-            limited = limited or doc_filter(value)
+            if not value.strip("'\"").startswith("!"):  # an exclusion limits nothing
+                includes.append(value)
         if name in PATTERN_OPTS:
             have_pattern = True
         if not eq and a in TAKES_VALUE | PATTERN_OPTS:
             skip = True
-    return paths, limited
+    return paths, bool(includes) and all(doc_filter(v) for v in includes)
 
 
 def _is_read(prog: str, args: list[str]) -> bool:
@@ -153,26 +176,25 @@ def _bash_skips(line: str, cwd: str) -> bool:
     if not segs:
         return False
     found = False
-    pipeline_blocked = False  # an earlier segment of the current pipeline reads a code file
+    rel = not any(prog in _CD for prog, _, _ in segs)  # after a cd, relative paths cannot be judged as outside
+    code_before = False  # an earlier segment of the line names a code file (a loop or `{ }` can feed the pipe)
     in_pipeline = False
     for prog, args, piped in segs:
-        if not piped:
-            pipeline_blocked, in_pipeline = False, False
-        else:
-            in_pipeline = True
-        blocks_here = _blocks(_operands(args), cwd)
+        in_pipeline = piped
+        operands = _operands(args)
+        blocks_here = _blocks(operands, cwd, rel)
         if prog in GREP_CMDS:
             found = True
             paths, limited = _grep_paths(args)
-            ok = ((in_pipeline and not pipeline_blocked) or limited
-                  or (bool(paths) and all(harmless_path(p, cwd) for p in paths)))
+            ok = ((in_pipeline and not code_before) or limited
+                  or (bool(paths) and all(harmless_path(p, cwd, rel) for p in paths)))
             if not ok:
                 return False
         elif _is_read(prog, args):
             found = True
-            if blocks_here:
+            if blocks_here or any("$" in o or "`" in o for o in operands):  # a read of an unknown file
                 return False
-        pipeline_blocked = pipeline_blocked or blocks_here
+        code_before = code_before or blocks_here
     return found
 
 
@@ -198,7 +220,7 @@ def skips_remind(payload: dict) -> bool:
             line = _command(ti)
             return line is not None and _bash_skips(line, cwd)
         if tool == "Read":
-            return harmless_path(ti.get("file_path"), cwd)
+            return harmless_path(ti.get("file_path"), cwd)  # the Read tool takes absolute paths
         if tool == "Grep":
             if doc_filter(ti.get("glob")) or doc_filter(ti.get("type")):
                 return True
