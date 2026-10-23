@@ -1,6 +1,6 @@
 # 0039. Serena's reminder, tools that load upfront, and a fresh code graph
 
-- Status: Accepted
+- Status: Accepted; amended by [0040](0040-serena-remind-skips-harmless.md) (the guard skips harmless searches, in Claude Code and Codex)
 - Date: 2026-10-22
 - Source: [Design: Serena and codebase-memory get used, in sessions and subagents](../superpowers/specs/2026-10-22-serena-cbm-usage-design.md)
 - Supersedes: in [ADR 0008](0008-code-intelligence-routed-by-rule.md), the sentence "Serena's `remind` hook is dropped"; [ADR 0026](0026-tool-hints-never-block.md) for code searches (its docs hint for web lookups stands).

@@ -18,7 +18,7 @@ The last column says how `plugins/loadout/hooks/codex.json` differs: `same` mean
 | `SessionEnd` | all | `hooks/mcp_guard.py serena serena-hooks cleanup --client=claude-code` | 10 s | Serena's own cleanup hook, through the guard. | — (in `~/.codex/hooks.json`, see [Serena's hooks in Codex](#serenas-hooks-in-codex)) |
 | `PreToolUse` | `Bash` | `rtk hook claude` | 10 s | rtk rewrites shell commands to its token-saving form. | argument (`rtk hook codex`) |
 | `PreToolUse` | `mcp__plugin_loadout_serena__.*\|mcp__serena__.*` | `hooks/mcp_guard.py serena serena-hooks auto-approve --client=claude-code` | 10 s | Serena's own auto-approve hook, for Serena's tools only, through the guard. | — (Serena documents none for Codex) |
-| `PreToolUse` | `Bash\|Read\|Grep\|Glob\|mcp__plugin_loadout_serena__.*\|mcp__serena__.*` | `hooks/mcp_guard.py serena serena-hooks remind --client=claude-code` | 5 s | Serena's own reminder, through the guard ([what it does](#serenas-reminder)). The matcher lists the tools it counts or resets on. | — (in `~/.codex/hooks.json`: `remind` on `Bash`, see [Serena's hooks in Codex](#serenas-hooks-in-codex)) |
+| `PreToolUse` | `Bash\|Read\|Grep\|Glob\|mcp__plugin_loadout_serena__.*\|mcp__serena__.*` | `hooks/mcp_guard.py serena serena-hooks remind --client=claude-code` | 5 s | Serena's own reminder, through the guard ([what it does](#serenas-reminder)). The matcher lists the tools it counts or resets on. | argument (`--agent codex … remind --client=codex`, matcher `Bash`; it replaces the `remind` entry in `~/.codex/hooks.json` once the installed copy carries it, see [Serena's hooks in Codex](#serenas-hooks-in-codex)) |
 | `PreToolUse` | `WebSearch\|WebFetch` | `hooks/tool_hint.sh` (a bash filter; it starts `hooks/tool_hint.py` only when the call is a web tool, with `python3`, or through `run.sh --python` when `python3` is missing or does not run) | 5 s | The docs hint: a library-docs web lookup (a docs host, or a web search naming docs, an API or a library) gets one fact of at most 300 characters naming Context7 and Microsoft Learn, at most once per 10 docs lookups. Never blocks. Code searches get no loadout hint any more: Serena's `remind` covers them ([ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md)). Claude Code subagents share their parent's session, so they share its count. State: `$XDG_STATE_HOME/loadout/tool-hint/<session>.json` (`~/.local/state/loadout/tool-hint/` by default); files older than 7 days are removed when a session's first docs lookup creates its state file. | — (Codex gives hooks no web tools, so no docs hint) |
 | `PostToolUse` | `Write\|Edit\|MultiEdit` | `--soft --python hooks/advisor.py record` | 5 s | Remembers a finished implementation plan. | matcher `Edit\|Write`; in Codex it reads `apply_patch` headers (see below) |
 | `PostToolUse` | `Write\|Edit\|MultiEdit\|Bash` | `--soft --python hooks/refresh.py --agent claude` | 5 s | Notes edits and shell commands, and re-indexes the code graph in the background when it is stale ([details](#the-code-graph-refresh)). | matcher `Edit\|Write\|Bash`, argument `--agent codex` |
@@ -37,11 +37,19 @@ The plugin also declares two MCP servers in `plugins/loadout/.mcp.json`: `serena
 
 ### The guard
 
-`hooks/mcp_guard.py <server> <program> <subcommand> ...` runs Serena's hooks for Claude Code. It stays silent (no output, exit 0) when:
+`hooks/mcp_guard.py [--agent codex] <server> <program> <subcommand> ...` runs Serena's hooks: for Claude Code, and with `--agent codex` Serena's `remind` for Codex. It stays silent (no output, exit 0) when:
+
+- for `remind` only: the call is a harmless search or read that Serena's symbolic tools cannot help with (`hooks/harmless.py`, [ADR 0040](../adr/0040-serena-remind-skips-harmless.md)). A harmless call is a `Bash` line (Claude Code's tool, or Codex's shell) whose every grep-family search (`grep`, `rg`, `ag`, `ack`, `egrep`, `fgrep`, `ugrep`, `ug`) is one of these:
+  - behind a pipe, filtering another command's output, when no earlier command of that pipeline reads a code file of the project;
+  - over config, doc or text files (`.md`, `.txt`, `.json`, `.toml`, `.yaml`, `.ini`, `.env`, `.log` and the like, or names like `.gitignore`, `Makefile`, `Dockerfile`), or limited to such types (`-t md`, `--include='*.yml'`);
+  - over files outside the session's folder (`~/.codex/config.toml`, `/tmp/...`).
+
+  The line must also read no code file of the project with `cat`, `head`, `tail`, `sed`, `awk`, `less`, `more` or `bat`. A `Read` of a non-code file or of a file outside the folder is harmless too, and so is a `Grep` tool call with such a path or a doc-type filter. Anything else goes to Serena: a code file, a folder (`grep -r x .`), no path at all, a variable (`"$f"`), an unknown suffix, a mixed line, or a line that does not parse;
 
 - the program is not on `PATH`;
 - Claude Code has the server off for the folder (`~/.claude.json`, `projects[<folder or a parent>].disabledMcpServers` lists `plugin:loadout:serena` or `serena`), unless your own `serena` server is on (in `mcpServers` of `~/.claude.json`, in the project's entry, or in `<repo>/.mcp.json` and not in `disabledMcpjsonServers`);
-- your settings (`~/.claude/settings.json`, `.claude/settings.json`, `.claude/settings.local.json`) already run the same program and subcommand for that event, under a matcher that matches the current tool (a `remind` of yours on `Grep` silences the plugin's for Grep only). Flags are ignored; an `echo ...` that only mentions it does not count.
+- Claude Code: your settings (`~/.claude/settings.json`, `.claude/settings.json`, `.claude/settings.local.json`) already run the same program and subcommand for that event, under a matcher that matches the current tool (a `remind` of yours on `Grep` silences the plugin's for Grep only). Flags are ignored; an `echo ...` that only mentions it does not count;
+- Codex (`--agent codex`): `config.toml` switches the server off (`[mcp_servers.<server>] enabled = false`), or a hook in `~/.codex/hooks.json` (or `$CODEX_HOME`), in `[hooks]` of `config.toml` or in `<repo>/.codex/hooks.json` already runs the same program and subcommand under a matcher that matches the tool (Codex's matchers are regular expressions searched in the tool name). loadout's own `remind` entry in `hooks.json` counts too, so no call is reminded twice while it moves. In this mode the guard reads none of Claude Code's files.
 
 `hooks/mcp_guard.py --available AGENT SERVER...` is the guard's second mode. It reads the hook payload on stdin and exits 0 when the agent has every named server here, else 1: each binary is on `PATH`, and the server is on for the folder (Claude Code: the per-folder switch above; Codex: not `enabled = false` in `config.toml`; each agent reads only its own files). `subagent-context.sh`, `cbm_project.py` and `refresh.py` use it.
 
@@ -49,7 +57,7 @@ The program's own run ends before the hook's timeout (14 s for `activate`, 9 s f
 
 ### Serena's reminder
 
-`serena-hooks remind` is Serena's own and the only loadout-shipped hook that can deny a call. It denies the 3rd grep, the 3rd read of a code file or the 4th mixed call made without a Serena symbolic tool in between. It does so once, then stays silent for 2 minutes. The reason reads "Too many consecutive grep calls without using symbolic tools. You can continue using grep now if needed, the counter was reset." The next call goes through. It adds about 0.5 s to each matched call. Two `remind` hooks would share one counter and deny at half the threshold, which is why the guard skips a duplicate. Why loadout ships it: [ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md); what to do when it fires: [Troubleshooting](../how-to/troubleshooting.md).
+`serena-hooks remind` is Serena's own and the only loadout-shipped hook that can deny a call. It denies the 3rd grep, the 3rd read of a code file or the 4th mixed call made without a Serena symbolic tool in between. It does so once, then stays silent for 2 minutes. The reason reads "Too many consecutive grep calls without using symbolic tools. You can continue using grep now if needed, the counter was reset." The next call goes through. It adds about 0.5 s to each matched call. Two `remind` hooks would share one counter and deny at half the threshold, which is why the guard skips a duplicate. Harmless searches (config, docs, piped output, files outside the folder) never reach it ([the guard](#the-guard)). Why loadout ships it: [ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md); what to do when it fires: [Troubleshooting](../how-to/troubleshooting.md).
 
 codebase-memory's own `hook-augment` (the old `Grep|Glob` hook) is not wired. It prints nothing and only delays the call in the current codebase-memory; the reason and the upstream issues are in [ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md).
 
@@ -71,7 +79,7 @@ Serena needs no such refresh ([why](../explanation/the-toolset.md#why-the-graph-
 
 ### Serena's hooks in Codex
 
-In Codex, Serena's hooks are not in the plugin. loadout writes the six that Serena documents for Codex ([Serena: clients](https://oraios.github.io/serena/02-usage/030_clients.html)) into `~/.codex/hooks.json`, each only if no hook of that event already runs the same `serena-hooks` subcommand with `--client=codex`:
+In Codex, Serena's hooks are not in the plugin, except `remind` (below). loadout writes the six that Serena documents for Codex ([Serena: clients](https://oraios.github.io/serena/02-usage/030_clients.html)) into `~/.codex/hooks.json`, each only if no hook of that event already runs the same `serena-hooks` subcommand with `--client=codex`:
 
 | Event | Matcher | Runs | Timeout |
 |---|---|---|---|
@@ -81,6 +89,8 @@ In Codex, Serena's hooks are not in the plugin. loadout writes the six that Sere
 | `SessionStart` | `startup\|resume` | `serena-hooks activate --client=codex` | 5 s |
 | `UserPromptSubmit` | — | `serena-hooks plan-context --client=codex` | 5 s |
 | `SessionEnd` | — | `serena-hooks cleanup --client=codex` (a `cleanup` under `Stop` counts too) | 3 s |
+
+`remind` moves into the plugin, behind [the guard](#the-guard), once the installed Codex copy of `loadout@agent-loadout` (in `~/.codex/plugins/cache/agent-loadout/loadout/`) carries the guarded hook and `config.toml` has `[plugins."loadout@agent-loadout"] enabled = true`. The next foreground run (`loadout bootstrap`, `loadout update`; never the background daily sync) then removes loadout's own `remind` entry from `hooks.json`, after a backup, in the same run as the plugin upgrade. It says "removed loadout's Serena remind (loadout's plugin runs it now)", and the hooks step asks you to approve the changed hooks in `/hooks`, because the positions Codex keys its approvals on shift. With an older copy, the plugin switched off or removed, `remind` stays in, or comes back to, `hooks.json`. A `remind` entry of your own stays yours, and the plugin's copy then stays silent.
 
 When Serena changes an entry (as with the 5 s timeouts it added to `plan-guard`, `activate` and `plan-context`), the next loadout run replaces the entry loadout wrote earlier, with a backup first; Codex then asks you to approve it again in `/hooks`. An entry you changed yourself stays yours.
 
