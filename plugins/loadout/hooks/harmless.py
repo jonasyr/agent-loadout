@@ -78,7 +78,12 @@ def harmless_path(path: str, cwd: str) -> bool:
     base = os.path.basename(path.rstrip("/"))
     named = base in CONFIG_NAMES or base.startswith(".env") or os.path.splitext(base)[1].lower() in NON_CODE
     try:
-        return named and not os.path.isdir(full)  # a folder named `docs.md` holds whatever it holds
+        if not named or os.path.isdir(full):  # a folder named `docs.md` holds whatever it holds
+            return False
+        if _GLOB.search(path):  # `*.md` is what the shell expands it to: no folder may be among the matches
+            import glob
+            return not any(os.path.isdir(m) for m in glob.glob(full))
+        return True
     except (OSError, ValueError):
         return False
 
@@ -129,6 +134,8 @@ def _segments(line: str):
         elif tok in _CONTROL:
             segs.append(([], tok in _PIPES))
         elif tok in ("<", "<>"):
+            if not segs[-1][0]:
+                return None  # `< file cmd`: the redirect comes before its command, so the line is not simple
             continue  # an input file is what the command reads: its target stays an operand
         elif tok in _REDIRECT:
             skip = True

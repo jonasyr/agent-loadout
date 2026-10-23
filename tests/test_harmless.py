@@ -200,3 +200,18 @@ def test_a_folder_named_like_a_doc_file_is_a_folder(tmp_path):
     (tmp_path / "docs.md" / "code.py").write_text("x = 1\n")
     assert not bash("rg needle docs.md", cwd=str(tmp_path))
     assert bash("rg -t md needle docs.md", cwd=str(tmp_path))  # a doc filter limits the folder's walk
+
+
+def test_a_leading_redirect_makes_the_line_not_simple():
+    assert not bash("< src/a.py cat | grep foo")
+    assert not bash("cat x.md && < src/a.py cat | grep foo")
+
+
+def test_a_doc_glob_that_matches_a_folder_is_a_folder(tmp_path):
+    (tmp_path / "docs.md").mkdir()
+    (tmp_path / "docs.md" / "code.py").write_text("x = 1\n")
+    (tmp_path / "notes.md").write_text("n\n")
+    assert not bash("rg needle *.md", cwd=str(tmp_path))
+    (tmp_path / "docs.md" / "code.py").unlink()
+    (tmp_path / "docs.md").rmdir()
+    assert bash("rg needle *.md", cwd=str(tmp_path))
