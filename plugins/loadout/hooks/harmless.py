@@ -82,9 +82,22 @@ def _has_suffix(path: str) -> bool:
     return bool(os.path.splitext(os.path.basename(path))[1])
 
 
+def _code_file(operand: str, cwd: str, rel: bool) -> bool:
+    """A code file of the project: a suffix that is not harmless, or, without a suffix, an existing file (a script
+    like bin/loadout) that is not a config name. An operand that names no file (a sed script, a count) is none."""
+    if harmless_path(operand, cwd, rel):
+        return False
+    if _has_suffix(operand):
+        return True
+    try:
+        return os.path.isfile(os.path.join(cwd, os.path.expanduser(operand)))
+    except (OSError, ValueError):
+        return True
+
+
 def _blocks(operands: list[str], cwd: str, rel: bool = True) -> bool:
-    """Some operand is a file with a suffix that is not harmless: a code file inside the project."""
-    return any(_has_suffix(o) and not harmless_path(o, cwd, rel) for o in operands)
+    """Some operand is a code file inside the project."""
+    return any(_code_file(o, cwd, rel) for o in operands)
 
 
 def _segments(line: str):

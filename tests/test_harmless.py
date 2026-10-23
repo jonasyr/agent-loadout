@@ -139,3 +139,13 @@ def test_the_claude_project_dir_is_the_project(monkeypatch):
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/r")
     assert not bash("grep foo ../other/a.py", cwd="/r/sub")  # a sibling folder of the project, not outside it
     assert bash("grep foo /elsewhere/a.py", cwd="/r/sub")
+
+
+def test_an_extensionless_code_file_of_the_project_goes_to_serena(tmp_path):
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "loadout").write_text("#!/usr/bin/env python3\n")
+    (tmp_path / "Makefile").write_text("all:\n")
+    assert not bash("cat bin/loadout | grep main", cwd=str(tmp_path))
+    assert not bash("cat bin/loadout", cwd=str(tmp_path))
+    assert bash("cat Makefile | grep all", cwd=str(tmp_path))  # a config name stays harmless
+    assert bash("sed -n 1,80p notes.md | grep x", cwd=str(tmp_path))  # a sed script is no file
