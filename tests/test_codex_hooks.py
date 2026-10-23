@@ -131,7 +131,9 @@ def test_codex_gets_no_serena_from_the_plugin():
     manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     servers = json.loads((PLUGIN / manifest["mcpServers"]).read_text(encoding="utf-8"))["mcpServers"]
     assert "serena" not in servers and "codebase-memory-mcp" in servers
-    assert "serena-hooks" not in (PLUGIN / "hooks" / "codex.json").read_text(encoding="utf-8")
+    # the only Serena hook in the plugin is the guarded remind (it skips harmless searches, ADR 0040)
+    text = (PLUGIN / "hooks" / "codex.json").read_text(encoding="utf-8")
+    assert text.count("serena-hooks") == 1 and "--agent codex serena serena-hooks remind --client=codex" in text
 
 
 def test_codex_session_start_passes_its_agent():
