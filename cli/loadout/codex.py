@@ -2034,13 +2034,13 @@ def loadout_copy() -> Path | None:
     """The installed Codex copy of loadout@agent-loadout in Codex's plugin cache: `local` (a marketplace cloned from a
     repo installs as "local"), else the newest version folder; None when there is none."""
     folder = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
-    if (folder / "local").is_dir():
-        return folder / "local"
-    try:
+    try:  # an unreadable cache (EACCES) is no copy: remind then stays in hooks.json
+        if (folder / "local").is_dir():
+            return folder / "local"
         dirs = [d for d in folder.iterdir() if d.is_dir()] if folder.is_dir() else []
+        return max(dirs, key=lambda d: d.stat().st_mtime) if dirs else None
     except OSError:
         return None
-    return max(dirs, key=lambda d: d.stat().st_mtime) if dirs else None
 
 
 def plugin_runs_remind() -> bool:

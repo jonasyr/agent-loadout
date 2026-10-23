@@ -98,6 +98,7 @@ def _record() -> dict:
 INLINE_MISSING = "add these yourself to its [hooks]"  # markers of apply's lines; codex._hooks_fix keys the fix on them
 FORMAT_MISSING = "add these yourself (loadout cannot reproduce"
 OLD_LEFT = "loadout's old Serena hooks are still in it"
+MOVED = "hooks.json: removed loadout's Serena remind"  # apply._codex_facts: serena_remind_moved
 
 
 def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
@@ -188,7 +189,7 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     save_json(codex.record_path(), new_record)
     added = [s for _, _, s, _ in missing]
     remind_gone = _present({"hooks": {"PreToolUse": gone}}, "PreToolUse", "remind")
-    return [f"hooks.json: added Serena's hooks ({', '.join(added)}); approve them in Codex: /hooks"] if added else \
-           ["hooks.json: removed loadout's Serena remind (loadout's plugin runs it now); approve the changed hooks "
-            "in Codex: /hooks"] if moved and remind_gone else \
-           ["hooks.json: removed loadout's Serena hooks; if Codex asks about your other hooks, review them in /hooks"]
+    out = [f"hooks.json: added Serena's hooks ({', '.join(added)}); approve them in Codex: /hooks"] if added else []
+    if moved and remind_gone:
+        out.append(f"{MOVED} (loadout's plugin runs it now); approve the changed hooks in Codex: /hooks")
+    return out or ["hooks.json: removed loadout's Serena hooks; if Codex asks about your other hooks, review them in /hooks"]

@@ -262,3 +262,44 @@ def test_background_sync_does_not_add_a_moved_remind_back(fake_home, fake_runner
     five = p.read_bytes()
     assert codex_hooks.apply(backup.Backup(description="t"), keep=True) == []
     assert p.read_bytes() == five
+
+
+def test_an_unreadable_plugin_cache_keeps_remind_and_does_not_raise(fake_home, fake_runner, monkeypatch):
+    from pathlib import Path
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    _plugin_copy(fake_home)
+    real = Path.is_dir
+
+    def is_dir(self):
+        if "plugins" in self.parts and "cache" in self.parts:
+            raise PermissionError(13, "denied")
+        return real(self)
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    assert codex.loadout_copy() is None and not codex.plugin_runs_remind()
+    assert codex_hooks.apply(backup.Backup(description="t")) == []
+    assert "remind" in _subs(p)
+
+
+def test_a_moved_remind_asks_for_the_hooks_approval(fake_home, fake_runner, monkeypatch):
+    from loadout import apply, backup, codex_hooks, steps, update
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    _plugin_copy(fake_home)
+    facts = apply._codex_facts(codex_hooks.apply(backup.Backup(description="t")))
+    assert "serena_remind_moved" in facts and "serena_remind_moved" in update.FACT_LINES
+    monkeypatch.setattr("loadout.codex.hooks_status", lambda: "trusted")
+    assert any(s.id == "codex/hooks" for s in steps.derive(facts, [], False, True))
+
+
+def test_adding_and_moving_in_one_run_reports_both(fake_home, fake_runner, monkeypatch):
+    from loadout import backup, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    data = json.loads(p.read_text(encoding="utf-8"))  # the user removed plan-guard meanwhile: it is added again
+    data["hooks"]["PreToolUse"] = [g for g in data["hooks"]["PreToolUse"] if "plan-guard" not in json.dumps(g)]
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    _plugin_copy(fake_home)
+    lines = codex_hooks.apply(backup.Backup(description="t"))
+    assert any("added Serena's hooks" in l for l in lines) and any("plugin runs it now" in l for l in lines)

@@ -291,6 +291,7 @@ FACT_LINES = {  # one plain "What changed" line per fact a step reported
     "codex_block_written": "rules: Codex's AGENTS.md block updated",
     "codex_config_changed": "Codex: loadout's config.toml entries updated",
     "serena_hooks_added": "Codex: Serena's hooks added to hooks.json",
+    "serena_remind_moved": "Codex: Serena's reminder moved from hooks.json into loadout's plugin",
     "codex_hooks_removed": "Codex: loadout's old Serena hooks removed from hooks.json",
     "codex_skills_linked": "Codex: skill links refreshed",
     "codex_plugins_installed": "Codex: new plugins installed",

@@ -4,7 +4,7 @@ per-item lines (callers print them their own way) and the facts, what the step c
 - link_step: rules_linked
 - settings_step: settings_changed, mcp_changed
 - claude_plugins_step: claude_plugins_installed, claude_marketplace_added, claude_loadout_plugin (loadout's own plugin)
-- codex_step: codex_block_written, codex_config_changed, serena_hooks_added, codex_hooks_removed,
+- codex_step: codex_block_written, codex_config_changed, serena_hooks_added, serena_remind_moved, codex_hooks_removed,
   codex_skills_linked, codex_plugins_installed, codex_plugins_updated
 - cbm_step: no facts (auto_index is the only setting)
 - any step: failed:<step> (links, settings, claude_plugins, codex, cbm) when one of its lines has a failure in the
@@ -139,6 +139,8 @@ def _codex_facts(lines: list[str]) -> set[str]:
             facts.add("codex_block_written")
         elif line.startswith("hooks.json: added Serena's hooks"):
             facts.add("serena_hooks_added")
+        elif line.startswith("hooks.json: removed loadout's Serena remind"):
+            facts.add("serena_remind_moved")
         elif line.startswith("hooks.json: removed loadout's Serena hooks"):
             facts.add("codex_hooks_removed")
         elif line.startswith(("linked ", "copied ")):
