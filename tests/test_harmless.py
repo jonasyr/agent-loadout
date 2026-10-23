@@ -169,3 +169,14 @@ def test_a_cd_that_can_fail_leaves_the_folder_unknown(tmp_path):
     (tmp_path / "bin").mkdir()
     (tmp_path / "bin" / "loadout").write_text("#!/bin/sh\n")
     assert not bash("cd missing || cat bin/loadout | grep main", cwd=str(tmp_path))
+
+
+def test_several_cds_leave_the_folder_unknown(tmp_path):
+    (tmp_path / "sub" / "bin").mkdir(parents=True)
+    (tmp_path / "sub" / "bin" / "loadout").write_text("#!/bin/sh\n")
+    assert not bash("cd sub || cd ..; cat bin/loadout | grep main", cwd=str(tmp_path))
+    assert bash("cd sub || cd ..; sed -n 1,80p notes.md | grep x", cwd=str(tmp_path))  # a sed script is no file
+
+
+def test_dash_operands_after_double_dash_are_files():
+    assert not bash("cat -- -script.py | grep main")

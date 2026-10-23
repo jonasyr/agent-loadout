@@ -2043,24 +2043,42 @@ def loadout_copy() -> Path | None:
         return None
 
 
-def plugin_runs_remind() -> bool:
-    """Whether Codex runs Serena's remind from loadout's plugin (guarded, so it skips harmless searches): the installed
-    copy's hooks/codex.json has a PreToolUse hook running mcp_guard.py with `serena-hooks remind`, and config.toml
-    switches the plugin on. An old copy, a missing entry or `enabled = false` is False, so remind stays in hooks.json
-    (a wrong yes would leave Codex without a reminder). Files only: no codex runs (the CLI and VS Code's extension
-    share the plugin cache, ADR 0038)."""
-    copy = loadout_copy()
-    if copy is None:
-        return False
+def _loadout_copies() -> list[Path]:
+    """Every cached Codex copy of loadout@agent-loadout: `local` alone when it exists, else each version folder.
+    Without running codex the active version is unknown, so a decision must hold for all of them."""
+    folder = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
+    try:
+        if (folder / "local").is_dir():
+            return [folder / "local"]
+        return [d for d in folder.iterdir() if d.is_dir()] if folder.is_dir() else []
+    except OSError:
+        return []
+
+
+def _runs_guarded_remind(copy: Path) -> bool:
+    """The copy's hooks/codex.json has a PreToolUse hook running mcp_guard.py with `serena-hooks remind`."""
     try:
         groups = get_list(get_dict(load_json(copy / "hooks" / "codex.json"), "hooks"), "PreToolUse")
     except (InvalidJSON, OSError, AttributeError):
         return False
-    guarded = any(isinstance(h, dict) and isinstance(h.get("command"), str) and "mcp_guard.py" in h["command"]
-                  and "serena-hooks remind" in h["command"]
-                  for g in groups if isinstance(g, dict) for h in (g.get("hooks") if isinstance(g.get("hooks"), list)
-                                                                    else []))
-    if not guarded:
+    for group in groups:
+        hooks = group.get("hooks") if isinstance(group, dict) else None
+        for hook in hooks if isinstance(hooks, list) else []:
+            command = hook.get("command") if isinstance(hook, dict) else None
+            if isinstance(command, str) and "mcp_guard.py" in command and "serena-hooks remind" in command:
+                return True
+    return False
+
+
+def plugin_runs_remind() -> bool:
+    """Whether Codex runs Serena's remind from loadout's plugin (guarded, so it skips harmless searches): the installed
+    copy's hooks/codex.json (every cached version's, when there is no `local` one) has a PreToolUse hook running
+    mcp_guard.py with `serena-hooks remind`, and config.toml
+    switches the plugin on. An old copy, a missing entry or `enabled = false` is False, so remind stays in hooks.json
+    (a wrong yes would leave Codex without a reminder). Files only: no codex runs (the CLI and VS Code's extension
+    share the plugin cache, ADR 0038)."""
+    copies = _loadout_copies()
+    if not copies or not all(_runs_guarded_remind(c) for c in copies):  # any cached version may be the active one
         return False
     path = paths.codex_home() / "config.toml"
     try:

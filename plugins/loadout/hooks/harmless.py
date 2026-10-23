@@ -36,6 +36,7 @@ _ASSIGN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 _SHELLS = frozenset({"bash", "sh", "zsh", "dash", "fish"})
 _KEYWORDS = frozenset(("{", "}", "!", "do", "then", "else", "elif", "time"))  # before the program of a compound part
 _CD = frozenset(("cd", "pushd"))
+_FILE_LIKE = re.compile(r"[\w./~-]*[A-Za-z_][\w./~-]*")  # a path-like word: letters, digits, `_ . / ~ -` only
 
 
 def doc_filter(value: object) -> bool:
@@ -93,7 +94,7 @@ def _code_file(operand: str, cwd: str, rel: bool, here: str | None = None) -> bo
         return True
     path = os.path.expanduser(operand)
     if here is None and not os.path.isabs(path):
-        return True
+        return bool(_FILE_LIKE.fullmatch(operand))  # a file name in an unknown folder; `1,80p` is a sed script
     try:
         return os.path.isfile(os.path.join(here or cwd, path))
     except (OSError, ValueError):
@@ -188,7 +189,14 @@ def _is_read(prog: str, args: list[str]) -> bool:
 
 
 def _operands(args: list[str]) -> list[str]:
-    return [a for a in args if a and not a.startswith("-")]
+    """The non-option arguments; after `--` every argument (`cat -- -script.py`)."""
+    out, ended = [], False
+    for a in args:
+        if not ended and a == "--":
+            ended = True
+        elif a and (ended or not a.startswith("-")):
+            out.append(a)
+    return out
 
 
 def _bash_skips(line: str, cwd: str) -> bool:
@@ -199,7 +207,9 @@ def _bash_skips(line: str, cwd: str) -> bool:
     rel = not any(prog in _CD for prog, _, _ in segs)  # after a cd, relative paths cannot be judged as outside
     code_before = False  # an earlier segment of the line names a code file (a loop or `{ }` can feed the pipe)
     in_pipeline = False
-    here: str | None = cwd  # where relative operands resolve, followed through literal `cd`s
+    cds = sum(1 for prog, _, _ in segs if prog in _CD)
+    here: str | None = cwd if cds <= 1 else None  # where relative operands resolve: one literal `cd` is followed;
+    # with several, `&&`/`||` decide which ran, so the folder is unknown
     for prog, args, piped in segs:
         in_pipeline = piped
         operands = _operands(args)
@@ -207,6 +217,8 @@ def _bash_skips(line: str, cwd: str) -> bool:
             target = operands[0] if len(operands) == 1 else None
             ok_target = target is not None and target != "-" and "$" not in target and "`" not in target
             here = os.path.normpath(os.path.join(here, os.path.expanduser(target))) if ok_target and here else None
+            if cds > 1:
+                here = None
             if here is not None and not os.path.isdir(here):  # a cd that fails leaves the shell where it was
                 here = None
             continue

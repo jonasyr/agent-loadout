@@ -303,3 +303,20 @@ def test_adding_and_moving_in_one_run_reports_both(fake_home, fake_runner, monke
     _plugin_copy(fake_home)
     lines = codex_hooks.apply(backup.Backup(description="t"))
     assert any("added Serena's hooks" in l for l in lines) and any("plugin runs it now" in l for l in lines)
+
+
+def test_every_cached_version_must_carry_the_guarded_remind(fake_home, fake_runner, monkeypatch):
+    import os
+    import shutil
+    from loadout import backup, codex, codex_hooks
+    p = _remind_hooks(fake_home, fake_runner, monkeypatch)
+    codex_hooks.apply(backup.Backup(description="t"))
+    _plugin_copy(fake_home)  # writes .../loadout/local and config.toml
+    base = fake_home / ".codex" / "plugins" / "cache" / "agent-loadout" / "loadout"
+    shutil.move(str(base / "local"), str(base / "2.0.0"))
+    old = base / "1.0.0" / "hooks"
+    old.mkdir(parents=True)
+    (old / "codex.json").write_text('{"hooks": {"PreToolUse": []}}', encoding="utf-8")
+    os.utime(base / "1.0.0", (1, 1))  # older on disk, but Codex may still load it
+    assert not codex.plugin_runs_remind()
+    assert "remind" in _subs(p) and codex_hooks.apply(backup.Backup(description="t")) == []
