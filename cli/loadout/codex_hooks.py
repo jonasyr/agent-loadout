@@ -126,8 +126,11 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
         return []
     else:
         wanted = ()
+    moved = wanted is SERENA_HOOKS and codex.plugin_runs_remind()  # the plugin's copy runs remind, guarded
+    if moved and not keep:  # loadout's recorded remind goes (backed up below); the background sync never migrates
+        wanted = tuple(row for row in SERENA_HOOKS if row[2] != "remind")
     events = data.setdefault("hooks", {})
-    kept, changed = [], False
+    kept, changed, gone = [], False, []
     for o in owned:  # loadout's entries: drop the unwanted ones, forget the ones the user changed
         groups = events.get(o.get("event"), [])
         hit = next((g for g in groups if _canon(g) == o.get("group")), None)
@@ -135,12 +138,13 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
             continue  # changed or removed by the user: theirs now
         if not any(e == o["event"] and _canon(_group(m, s, t)) == o["group"] for e, m, s, t in wanted):
             groups.remove(hit)
+            gone.append(hit)
             changed = True
             continue
         kept.append(o)
     inline = _inline()
     both = {"hooks": {ev: [*(events.get(ev) or []), *(inline.get(ev) or [])] for ev in {*events, *inline}}}
-    missing = [(e, m, s, t) for e, m, s, t in wanted if not _present(both, e, s)]
+    missing = [(e, m, s, t) for e, m, s, t in wanted if not _present(both, e, s) and not (moved and s == "remind")]
     if missing and inline and not p.exists():  # the user keeps hooks in config.toml: a hooks.json beside it is mixed
         snippet = "; ".join(f"{e}: {json.dumps(_group(m, s, t))}" for e, m, s, t in missing)
         return [f"{paths.codex_home() / 'config.toml'}: Serena hooks missing, {INLINE_MISSING} "
@@ -183,5 +187,8 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     codex.record_path().parent.mkdir(parents=True, exist_ok=True)
     save_json(codex.record_path(), new_record)
     added = [s for _, _, s, _ in missing]
+    remind_gone = _present({"hooks": {"PreToolUse": gone}}, "PreToolUse", "remind")
     return [f"hooks.json: added Serena's hooks ({', '.join(added)}); approve them in Codex: /hooks"] if added else \
+           ["hooks.json: removed loadout's Serena remind (loadout's plugin runs it now); approve the changed hooks "
+            "in Codex: /hooks"] if moved and remind_gone else \
            ["hooks.json: removed loadout's Serena hooks; if Codex asks about your other hooks, review them in /hooks"]

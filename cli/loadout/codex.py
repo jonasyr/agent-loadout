@@ -1863,6 +1863,7 @@ def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unc
             parts["config"] = apply_config(bk)
             if changed is not None and _bytes(config) != before:
                 changed.add("config")
+        remind_before = plugin_runs_remind() if "hooks" in run and not keep else None
         if "hooks" in run:
             parts["hooks"] = codex_hooks.apply(bk, keep=keep)
         if "skills" in run:
@@ -1874,6 +1875,9 @@ def apply_parts(bk, *, refresh: bool, auto: bool, keep: bool, say=None, skip_unc
         versions = plugin_versions() if changed is not None and refresh and has_codex() else None
         parts["plugins"] = apply_plugins(bk, refresh=refresh, say=say, auto=auto, skip_unchanged=skip_unchanged,
                                          **({"skips": skips} if skips is not None else {}))
+        if remind_before is not None and plugin_runs_remind() != remind_before:
+            # this run's plugin install, upgrade or removal moved Serena's remind: one more pass finishes the move
+            parts["hooks"] += codex_hooks.apply(bk, keep=keep)
         if versions is not None:
             after = plugin_versions()
             if any(pid in versions and versions[pid] != v for pid, v in after.items()):
@@ -2024,6 +2028,46 @@ def _plugin_hooks_on(data: dict) -> bool:
     extension's alike; ADR 0038). Read from the file only: no codex runs."""
     entry = get_dict(get_dict(data, "plugins"), "loadout@agent-loadout")
     return entry.get("enabled") is True
+
+
+def loadout_copy() -> Path | None:
+    """The installed Codex copy of loadout@agent-loadout in Codex's plugin cache: `local` (a marketplace cloned from a
+    repo installs as "local"), else the newest version folder; None when there is none."""
+    folder = paths.codex_home() / "plugins" / "cache" / "agent-loadout" / "loadout"
+    if (folder / "local").is_dir():
+        return folder / "local"
+    try:
+        dirs = [d for d in folder.iterdir() if d.is_dir()] if folder.is_dir() else []
+    except OSError:
+        return None
+    return max(dirs, key=lambda d: d.stat().st_mtime) if dirs else None
+
+
+def plugin_runs_remind() -> bool:
+    """Whether Codex runs Serena's remind from loadout's plugin (guarded, so it skips harmless searches): the installed
+    copy's hooks/codex.json has a PreToolUse hook running mcp_guard.py with `serena-hooks remind`, and config.toml
+    switches the plugin on. An old copy, a missing entry or `enabled = false` is False, so remind stays in hooks.json
+    (a wrong yes would leave Codex without a reminder). Files only: no codex runs (the CLI and VS Code's extension
+    share the plugin cache, ADR 0038)."""
+    copy = loadout_copy()
+    if copy is None:
+        return False
+    try:
+        groups = get_list(get_dict(load_json(copy / "hooks" / "codex.json"), "hooks"), "PreToolUse")
+    except (InvalidJSON, OSError, AttributeError):
+        return False
+    guarded = any(isinstance(h, dict) and isinstance(h.get("command"), str) and "mcp_guard.py" in h["command"]
+                  and "serena-hooks remind" in h["command"]
+                  for g in groups if isinstance(g, dict) for h in (g.get("hooks") if isinstance(g.get("hooks"), list)
+                                                                    else []))
+    if not guarded:
+        return False
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return False
+    return _plugin_hooks_on(data)
 
 
 def hooks_status(remember: bool = False) -> str | None:
