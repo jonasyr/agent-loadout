@@ -1479,6 +1479,8 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             if (planned and pid in skip_p) or (pid in installed and (not refresh or market in frozen or pid in skip_p
                                                                      or stale)):
                 continue
+            if stale and listed is None:  # which ones are installed is unknown: the old snapshot could downgrade any
+                continue
             step += 1
             say(f"  installing plugin {pid} ({min(step, total)} of {total})…")
             before = _enabled_line(pid)

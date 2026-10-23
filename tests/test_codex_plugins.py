@@ -552,3 +552,12 @@ def test_a_timed_out_upgrade_is_not_tried_again(fake_home, fake_runner, monkeypa
     lines = codex.apply_plugins(backup.Backup(description="t"), refresh=True)
     assert len(_upgrades(fake_runner)) == 1, "a second 30-minute wait helps nobody"
     assert any("failed to upgrade" in l and "timed out" in l for l in lines)
+
+
+def test_a_failed_upgrade_adds_nothing_when_the_installed_list_is_unreadable(fake_home, fake_runner, monkeypatch):
+    err = runner.Result(1, "", "boom")
+    _upgrade_fails(fake_runner, monkeypatch, err, err)
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(1, "", "list failed")
+    codex.apply_plugins(backup.Backup(description="t"), refresh=True)
+    adds = [c[3] for c in fake_runner.calls if c[:3] == ["codex", "plugin", "add"]]
+    assert not [a for a in adds if a.endswith("@agent-loadout")], "any of them may be installed: the old snapshot could downgrade it"
