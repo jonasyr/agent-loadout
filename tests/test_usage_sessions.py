@@ -191,3 +191,20 @@ def test_codex_subagent_prompt_is_the_parents_agent_message(fake_home):
              _cagent("now use serena")], name="c3")  # an agent_message after work began is no task prompt
     got = {x.id: x.prompted for x in _crun()}
     assert got == {"c1": True, "c2": False, "c3": None}
+
+
+def test_consecutive_denials_share_the_next_lookup(fake_home):
+    _write([_deny(), _deny(), _tool(SERENA)])
+    s = _run()[0]
+    assert (s.denials, s.followed) == (2, 2)
+
+
+def test_a_lookup_as_the_very_next_call_follows(fake_home):
+    _write([_deny(), _tool(CBM)])
+    s = _run(follow=1)[0]
+    assert s.followed == 1
+
+
+def test_a_lookup_named_tool_of_another_server_is_no_lookup(fake_home):
+    _write([_tool("mcp__plugin_context7_context7__search_code"), _tool("mcp__other__find_symbol")])
+    assert _run()[0].lookups == {"serena": 0, "codebase-memory": 0}

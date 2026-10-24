@@ -6,8 +6,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from . import paths
-from .usage import (CODEX_SHELL, MAX_LINE, _command_text, _denial, _read_record, _symbol_pattern, _symbol_searches,
-                    family)
+from .usage import CODEX_SHELL, MAX_LINE, family
+from .usage import command_text as _command_text, count_symbol_searches as _symbol_searches  # public helpers
+from .usage import is_denial as _denial, read_record as _read_record, symbol_pattern as _symbol_pattern
 
 LOOKUP_TOOLS: dict[str, frozenset[str]] = {
     "serena": frozenset({"find_symbol", "get_symbols_overview", "find_referencing_symbols", "find_declaration",

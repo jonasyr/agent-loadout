@@ -380,3 +380,52 @@ def test_legacy_refuses_threshold_flags(fake_home, monkeypatch, capsys, flag):
     from loadout.__main__ import main
     assert main(["usage", "--legacy", flag, "3"]) == 2
     assert "--legacy takes only --days" in capsys.readouterr().err
+
+
+@pytest.fixture
+def new_york(monkeypatch):
+    import time as _time
+    monkeypatch.setenv("TZ", "America/New_York")
+    _time.tzset()
+    yield
+    monkeypatch.undo()
+    _time.tzset()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="time.tzset is POSIX only")
+@pytest.mark.parametrize("day, nxt, prev", [("2026-03-08", "2026-03-09", "2026-03-07"),
+                                            ("2026-11-01", "2026-11-02", "2026-10-31")])
+def test_windows_follow_local_calendar_days_across_dst(new_york, day, nxt, prev):
+    m = usage.parse_moment(day)
+    start, end, before = usage.plan_windows(1, m, None, now=m + 10 * DAY)
+    assert (start, end, before) == (m, usage.parse_moment(nxt), usage.parse_moment(prev))
+
+
+def test_top_level_days_is_the_requested_whole_number(fake_home):
+    rep = usage.report(0, 7 * DAY, None, now=3 * DAY, days=7)
+    assert rep["days"] == 7 and isinstance(rep["days"], int)
+
+
+def test_a_single_window_is_labelled_window(fake_home):
+    rep = usage.report(0, DAY, None, now=DAY)
+    first = usage.render_report(rep).splitlines()[0]
+    assert first.startswith("window ") and "after" not in first
+
+
+def test_exactly_min_sessions_shows_an_arrow():
+    before = usage.metrics([S(lookups=(0, 0), searches=10) for _ in range(20)], 5)
+    after = usage.metrics([S(lookups=(10, 0), searches=10) for _ in range(20)], 5)
+    assert usage.change(before, after, 20)["code_tool_share"] == "↑"
+
+
+def test_window_edges_are_start_inclusive_end_exclusive(fake_home):
+    import datetime as _dt
+    iso = lambda t: _dt.datetime.fromtimestamp(t, _dt.timezone.utc).isoformat()  # noqa: E731
+    at_start, at_end = _write("s", iso(10 * DAY)), _write("e", iso(11 * DAY))
+    for p in (at_start, at_end):
+        os.utime(p, (11 * DAY + 60, 11 * DAY + 60))
+    kept = []
+    usage.report(10 * DAY, 11 * DAY, None, now=12 * DAY, keep=kept)
+    inside = {s.id for s in kept if 10 * DAY <= s.start < 11 * DAY}
+    rep = usage.report(10 * DAY, 11 * DAY, None, now=12 * DAY)
+    assert inside == {"s"} and rep["claude"]["main"]["sessions"] == 1
