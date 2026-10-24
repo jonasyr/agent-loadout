@@ -26,7 +26,9 @@ def _path(monkeypatch, *folders):
 
 
 def _both(monkeypatch):
+    from loadout import codex
     monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": True})
+    monkeypatch.setattr(codex, "plugin_serves_cbm", lambda installed=None: True)  # Codex runs the plugin's server
 
 
 def _rows(name):
@@ -90,6 +92,8 @@ def test_an_exported_cache_dir_splits_claude_from_codex(fake_home, fake_runner, 
 
 def test_a_codex_table_env_matching_the_export_is_ok(fake_home, fake_runner, monkeypatch, tmp_path):
     _both(monkeypatch)
+    from loadout import codex
+    monkeypatch.setattr(codex, "plugin_serves_cbm", lambda installed=None: False)  # your table is Codex's only one
     mine = tmp_path / "mine"
     monkeypatch.setenv("CBM_CACHE_DIR", str(mine))
     (fake_home / ".codex").mkdir()
@@ -101,6 +105,8 @@ def test_a_codex_table_env_matching_the_export_is_ok(fake_home, fake_runner, mon
 
 def test_a_codex_table_passing_the_variable_through_is_ok(fake_home, fake_runner, monkeypatch, tmp_path):
     _both(monkeypatch)
+    from loadout import codex
+    monkeypatch.setattr(codex, "plugin_serves_cbm", lambda installed=None: False)  # your table is Codex's only one
     monkeypatch.setenv("CBM_CACHE_DIR", str(tmp_path / "mine"))
     (fake_home / ".codex").mkdir()
     (fake_home / ".codex/config.toml").write_text(
@@ -164,3 +170,26 @@ def test_unknown_versions_never_prove_equality(fake_home, fake_runner, monkeypat
     fake_runner.responses[(str(b), "--version")] = runner.Result(0, "no version here", "")
     [r] = _rows(BIN)
     assert not r.ok and r.detail == f"{a} ?; {b} ?"
+
+
+def test_every_active_codex_server_is_compared(fake_home, fake_runner, monkeypatch, tmp_path):
+    import json as _json
+    from loadout import codex
+    _both(monkeypatch)
+    mine = tmp_path / "mine"
+    monkeypatch.setenv("CBM_CACHE_DIR", str(mine))  # Claude Code: mine
+    monkeypatch.setattr(codex, "plugin_serves_cbm", lambda installed=None: True)  # the plugin's server: default
+    (fake_home / ".codex").mkdir()
+    (fake_home / ".codex/config.toml").write_text(
+        f'[mcp_servers.cbm]\ncommand = "codebase-memory-mcp"\n[mcp_servers.cbm.env]\nCBM_CACHE_DIR = \'{mine}\'\n')
+    [r] = _rows(CACHE)
+    assert not r.ok  # Claude's and the user table's folder agree, but the plugin's Codex server uses the default
+
+
+def test_no_codex_server_means_no_second_folder(fake_home, fake_runner, monkeypatch, tmp_path):
+    from loadout import codex
+    _both(monkeypatch)
+    monkeypatch.setattr(codex, "plugin_serves_cbm", lambda installed=None: False)
+    monkeypatch.setenv("CBM_CACHE_DIR", str(tmp_path / "mine"))
+    [r] = _rows(CACHE)
+    assert r.ok  # only Claude Code runs codebase-memory: one folder

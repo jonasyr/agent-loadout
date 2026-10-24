@@ -35,7 +35,11 @@ The maintainer asked: "we handle various cases of existing Serena setup … but 
   - an AGENTS.md block whose markers are unclosed or repeated;
   - a `hooks.json` whose style cannot be reproduced;
   - hooks kept inline in `config.toml`;
-  - a hook that only resembles the installer's.
+  - a hook that only resembles the installer's;
+  - `~/.claude/agents/codebase-memory.md`, which only its name ties to the installer;
+  - a wrapper script that a Codex hook still runs.
+
+  Claude Code's files count only while loadout's plugin is installed there (`plugins/installed_plugins.json`), not merely wanted by the settings.
 
   The new script names do not join the legacy names that `loadout update` removes without asking ([ADR 0035](0035-loadout-update-brings-a-machine-current.md)).
 - **One rule for "runs codebase-memory".** The program counts only in a command's program position: the first word, after `&&`, `;` or `|`, or after `env`/`exec`. `echo X`, `printf '%s' X` and `tool --server X` only mention it. The hook guard keeps an inlined copy of the rule, and a test keeps the two equal.

@@ -426,21 +426,23 @@ def _cbm_cache_folders() -> list[CheckResult]:
         claude = next((c["env"][key] for _, c, _, _ in _user_servers(Path(os.path.abspath(Path.cwd())))
                        if _is_cbm_server(c) and isinstance(c.get("env"), dict)
                        and isinstance(c["env"].get(key), str) and c["env"][key]), process)
-        theirs = None  # the plugin's server: Codex passes no exported variables
+        codex_dirs: list = [None] if codex.plugin_serves_cbm() else []  # the plugin's server: no exported variables
         for t in codex.user_cbm().values():
             if t.get("enabled") is False:  # switched off: it starts nothing
                 continue
             env, names = t.get("env"), t.get("env_vars")
             if isinstance(env, dict) and isinstance(env.get(key), str) and env[key]:
-                theirs = env[key]
+                codex_dirs.append(env[key])
             elif isinstance(names, list) and key in names:
-                theirs = process
-            if theirs:
-                break
+                codex_dirs.append(process)
+            else:
+                codex_dirs.append(None)
     except Exception:  # an odd file shape never breaks the report
         return []
     default = _cbm_default_cache()
-    a, b = Path(claude) if claude else default, Path(theirs) if theirs else default
+    a = Path(claude) if claude else default
+    others = [Path(d) if d else default for d in codex_dirs]
+    b = next((o for o in others if o != a), a)  # every active Codex server against Claude Code's folder
     title = "codebase-memory cache folders"
     if a == b:
         return [CheckResult(title, True, "", "", "warn")]

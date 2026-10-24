@@ -132,9 +132,15 @@ def _tilde(path: Path) -> str:
 
 
 def _claude_plugin_on() -> bool:
+    """loadout's plugin is wanted (the merged settings) and really installed in Claude Code
+    (plugins/installed_plugins.json): only then does it provide what the installer's files do."""
     from . import duplicates
+    from .jsonio import get_dict, load_json
     try:
-        return duplicates.plugin_enabled()
+        if not duplicates.plugin_enabled():
+            return False
+        installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
+        return "loadout@agent-loadout" in installed
     except Exception:
         return False
 
@@ -185,11 +191,16 @@ def _claude() -> list[Artefact]:
         path = hooks_dir / name
         if path.is_file() and name not in refs:
             # a Codex hook that still runs it (one loadout names but never removes, or one you left) keeps it
-            out.append(Artefact("claude-script", "claude", path, f"hook script {name}", name not in codex_refs, {},
-                                "project pointer" if name == NEW_SCRIPTS[0] else "hooks"))
+            used = name in codex_refs
+            out.append(Artefact("claude-script", "claude", path, f"hook script {name}", not used, {},
+                                "project pointer" if name == NEW_SCRIPTS[0] else "hooks",
+                                "remove it once no Codex hook runs it" if used else "loadout adopt"))
     agent = home / "agents" / AGENT_FILE
     if agent.is_file() or agent.is_symlink():
-        out.append(Artefact("claude-agent", "claude", agent, f"agent {AGENT_FILE}", True, {}, "routing"))
+        # by its name only, its content cannot tell the installer's from one you wrote: named, never offered
+        out.append(Artefact("claude-agent", "claude", agent, f"agent {AGENT_FILE}", False, {}, "routing",
+                            "remove it yourself if codebase-memory-mcp install wrote it (loadout cannot tell it from "
+                            "your own)"))
     return out
 
 
