@@ -82,7 +82,8 @@ def harmless_path(path: str, cwd: str) -> bool:
             return False
         if _GLOB.search(path):  # `*.md` is what the shell expands it to: no folder may be among the matches
             import glob
-            return not any(os.path.isdir(m) for m in glob.glob(full))
+            matches = glob.glob(full)  # no match: with nullglob the shell drops it and the search widens
+            return bool(matches) and not any(os.path.isdir(m) for m in matches)
         return True
     except (OSError, ValueError):
         return False
@@ -165,12 +166,18 @@ def _segments(line: str):
     return out
 
 
-def _grep_args(args: list[str]):
-    """(paths, inclusion filter values) of a grep invocation's arguments. Long options take `=value` or the next
-    word; a short cluster (`-rne`, `-efoo`, `-tmd`) ends at its first option that takes a value, whose value is the
-    rest of the cluster or the next word."""
+_FILE_OPTS = frozenset({"-f", "--file"})  # their value is a file grep reads its patterns from
+_RG_ONLY_VALUES = frozenset({"-T"})  # ripgrep's `-T TYPE`; GNU grep's `-T` (initial tab) takes no value
+
+
+def _grep_args(args: list[str], prog: str = "grep"):
+    """(paths, inclusion filter values, pattern files) of a grep invocation's arguments. Long options take
+    `=value` or the next word; a short cluster (`-rne`, `-efoo`, `-tmd`) ends at its first option that takes a
+    value, whose value is the rest of the cluster or the next word."""
+    takes = TAKES_VALUE if prog == "rg" else TAKES_VALUE - _RG_ONLY_VALUES
     paths: list[str] = []
     includes: list[str] = []
+    reads: list[str] = []
     have_pattern = False
     skip = None  # the option whose value the next word is
     ended = False
@@ -178,6 +185,8 @@ def _grep_args(args: list[str]):
         if skip is not None:
             if skip in PATTERN_OPTS:
                 have_pattern = True
+                if skip in _FILE_OPTS:
+                    reads.append(a)
             elif skip in FILTERS and not a.strip("'\"").startswith("!"):
                 includes.append(a)
             skip = None
@@ -194,9 +203,11 @@ def _grep_args(args: list[str]):
             continue
         if a.startswith("--"):
             name, eq, val = a.partition("=")
-            if name in TAKES_VALUE | PATTERN_OPTS:
+            if name in takes | PATTERN_OPTS:
                 if eq:
                     have_pattern = have_pattern or name in PATTERN_OPTS
+                    if name in _FILE_OPTS:
+                        reads.append(val)
                     if name in FILTERS and not val.strip("'\"").startswith("!"):
                         includes.append(val)
                 else:
@@ -204,16 +215,18 @@ def _grep_args(args: list[str]):
             continue
         for k, c in enumerate(a[1:], 1):  # a short cluster
             opt = "-" + c
-            if opt in TAKES_VALUE | PATTERN_OPTS:
+            if opt in takes | PATTERN_OPTS:
                 rest = a[k + 1:]
                 if not rest:
                     skip = opt
                 elif opt in PATTERN_OPTS:
                     have_pattern = True
+                    if opt in _FILE_OPTS:
+                        reads.append(rest)
                 elif opt in FILTERS and not rest.startswith("!"):
                     includes.append(rest)
                 break
-    return paths, includes
+    return paths, includes, reads
 
 
 def _is_read(prog: str, args: list[str]) -> bool:
@@ -250,7 +263,9 @@ def _bash_skips(line: str, cwd: str) -> bool:
         operands = _operands(args)
         if prog in GREP_CMDS:
             found = True
-            paths, includes = _grep_args(args)
+            paths, includes, reads = _grep_args(args, prog)
+            if any(_code_file(r, cwd) for r in reads):  # `grep -f src/a.py`: it reads that code file
+                return False
             if not _grep_harmless(paths, includes, piped, code_before, cwd):
                 return False
         elif _is_read(prog, args):
