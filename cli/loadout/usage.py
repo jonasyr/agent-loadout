@@ -246,6 +246,14 @@ def _hint_sessions(cutoff: float, until: float | None = None) -> int:
     return n
 
 
+# the transcript helpers usage_sessions shares (public names, so a rename here fails at import, not in a test)
+read_record = _read_record
+is_denial = _denial
+symbol_pattern = _symbol_pattern
+count_symbol_searches = _symbol_searches
+command_text = _command_text
+
+
 def collect(days: int, now: float | None = None) -> dict:
     cutoff = (now or time.time()) - days * 86400
     report: dict = {"days": days}
@@ -372,7 +380,7 @@ def _agent_block(after: "list[Session]", skipped: list[int], min_calls: int,
 
 
 def report(after_start: float, after_end: float, before_start: "float | None", *, min_calls: int = 5,
-           follow_within: int = 5, min_sessions: int = 20, now: "float | None" = None,
+           follow_within: int = 5, min_sessions: int = 20, now: "float | None" = None, days: "int | None" = None,
            keep: "list | None" = None) -> dict:
     """Before/after windows over per-session records; each transcript is read once. A session belongs to the
     window holding its start: after is [after_start, min(after_end, now)), before is [before_start, after_start).
@@ -385,7 +393,8 @@ def report(after_start: float, after_end: float, before_start: "float | None", *
     if before_start is not None:
         windows["before"] = {"start": before_start, "end": after_start, "partial": False,
                              "days": round((after_start - before_start) / 86400, 2)}
-    out: dict = {"days": max(0.0, round((after_end - after_start) / 86400, 2)), "windows": windows,
+    span = max(0.0, round((after_end - after_start) / 86400, 2))
+    out: dict = {"days": days if days is not None else (int(span) if span == int(span) else span), "windows": windows,
                  "thresholds": {"min_calls": min_calls, "follow_within": follow_within,
                                 "min_sessions": min_sessions},
                  }
@@ -424,14 +433,19 @@ def parse_moment(text: str) -> float:
     raise ValueError("use YYYY-MM-DD or YYYY-MM-DDTHH:MM")
 
 
+def _shift(moment: float, days: int) -> float:
+    """MOMENT moved by whole local calendar days: the same wall-clock time, also across a DST switch."""
+    from datetime import datetime, timedelta
+    return (datetime.fromtimestamp(moment) + timedelta(days=days)).timestamp()
+
+
 def plan_windows(days: int, around: "float | None", since: "float | None", now: float) -> tuple:
     """(after_start, after_end, before_start) for the flags; --around has a before window, the rest do not."""
-    span = days * 86400
     if around is not None:
-        return around, around + span, around - span
+        return around, _shift(around, days), _shift(around, -days)
     if since is not None:
         return since, now, None
-    return now - span, now, None
+    return _shift(now, -days), now, None
 
 
 def _moment(t: float) -> str:
@@ -490,7 +504,8 @@ def render_report(rep: dict) -> str:
     for key in ("before", "after"):
         if key in w:
             x = w[key]
-            lines.append(f"{key:<6} {_moment(x['start'])} to {_moment(x['end'])}  ({_days(x['days'])}"
+            label = key if "before" in w else "window"  # a single window is not "after" anything
+            lines.append(f"{label:<6} {_moment(x['start'])} to {_moment(x['end'])}  ({_days(x['days'])}"
                          + (", partial)" if x["partial"] else ")"))
     t = rep["thresholds"]
     lines.append(f"counted: sessions with at least {t['min_calls']} tool calls; arrows need {t['min_sessions']} "

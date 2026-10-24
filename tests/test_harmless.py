@@ -173,9 +173,11 @@ def test_a_line_that_is_not_simple_goes_to_serena(cmd):
     assert not bash(cmd)
 
 
-def test_a_wildcard_read_is_an_unknown_file():
+def test_a_wildcard_read_is_an_unknown_file(tmp_path):
     assert not bash("cat bin/* | grep main")
-    assert bash("cat docs/*.md | grep main")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "x.md").write_text("x\n")
+    assert bash("cat docs/*.md | grep main", cwd=str(tmp_path))  # a doc wildcard with a match stays harmless
 
 
 @pytest.mark.parametrize("cmd", ["echo x | grep -efoo src/a.py", "echo x | grep -nefoo src/a.py",
@@ -214,4 +216,22 @@ def test_a_doc_glob_that_matches_a_folder_is_a_folder(tmp_path):
     assert not bash("rg needle *.md", cwd=str(tmp_path))
     (tmp_path / "docs.md" / "code.py").unlink()
     (tmp_path / "docs.md").rmdir()
+    assert bash("rg needle *.md", cwd=str(tmp_path))
+
+
+def test_a_pattern_file_is_a_read():
+    assert not bash("printf needle | grep -f src/a.py notes.md")
+    assert not bash("grep --file=src/a.py notes.md")
+    assert bash("grep -f patterns.txt notes.md")
+
+
+def test_gnu_grep_t_is_a_flag_but_rg_t_takes_a_type():
+    assert not bash("echo needle | grep -T needle src/a.py")
+    assert bash("echo needle | grep -T needle")
+    assert bash("rg -T py needle notes.md")
+
+
+def test_an_unmatched_doc_glob_is_not_harmless(tmp_path):
+    assert not bash("rg needle *.md", cwd=str(tmp_path))  # nullglob would turn it into a search of everything
+    (tmp_path / "notes.md").write_text("n\n")
     assert bash("rg needle *.md", cwd=str(tmp_path))

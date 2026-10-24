@@ -353,7 +353,7 @@ Read-only, counts only. It reads the local transcripts of the agents that are on
 
 **Windows.**
 - `--days N` alone is one window, the last N days (default 14).
-- `--around MOMENT` compares N days before MOMENT with N days after it. When the after window is not over yet, it is marked `partial` with its actual length.
+- `--around MOMENT` compares N days before MOMENT with N days after it. Days are local calendar days, so a window keeps its wall-clock time across a daylight-saving switch. When the after window is not over yet, it is marked `partial` with its actual length.
 - `--since MOMENT` is one window, from MOMENT to now.
 - MOMENT is `YYYY-MM-DD` (local midnight) or `YYYY-MM-DDTHH:MM` (local time); the moment itself belongs to the after window.
 - A session belongs to the window that holds its first timestamped event (else the file's time), with all its calls. A session that started before the first window is not counted, because with `--around` it ran the setup from before the change. The table names how many such sessions ran in the window (`started_earlier` in the JSON); `--sessions` lists them as `outside`. A long-running session therefore shows up only in the window where it began.

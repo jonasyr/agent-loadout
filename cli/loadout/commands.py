@@ -415,7 +415,7 @@ def _register_usage(sub):
         start, end, before = usage.plan_windows(max(1, a.days), a.around, a.since, now)
         kept: list = []
         rep = usage.report(start, end, before, min_calls=a.min_calls, follow_within=a.follow_within,
-                           min_sessions=a.min_sessions, now=now, keep=kept)
+                           min_sessions=a.min_sessions, now=now, keep=kept, days=max(1, a.days))
         if "claude" not in rep and "codex" not in rep:
             print("loadout: no session history found for the agents that are on", file=_sys.stderr)
             return 1
