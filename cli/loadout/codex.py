@@ -493,7 +493,8 @@ def cbm_has_own_settings(table: dict, path_counts: bool = True) -> bool:
     setting of its own. Claude Code passes path_counts=False: codebase-memory's installer writes its binary's full
     path there, which is not a choice of the user's."""
     args, command = table.get("args"), table.get("command")
-    return bool(set(table) - {"command", "args", "enabled", "type"}
+    keys = {k for k, v in table.items() if v not in ({}, [], "", None)}  # `claude mcp add` writes "env": {} always
+    return bool(keys - {"command", "args", "enabled", "type"}
                 or args not in (None, [], ["mcp"])
                 or (path_counts and isinstance(command, str) and ("/" in command or "\\" in command)))
 

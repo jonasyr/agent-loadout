@@ -207,3 +207,10 @@ def test_claude_cbm_servers_by_command_and_own_settings(fake_home, cfg_, action)
         assert not got or got[0].entry_id != "mcp-codebase-memory"
     else:
         assert (got[0].action, got[0].entry_id) == (action, "mcp-codebase-memory")
+
+
+def test_empty_values_are_no_settings_of_their_own():
+    claude_add = {"type": "stdio", "command": "/home/x/.local/bin/codebase-memory-mcp", "args": [], "env": {}}
+    assert not codex.cbm_has_own_settings(claude_add, path_counts=False)  # the shape `claude mcp add` writes
+    assert not codex.cbm_has_own_settings({"command": "codebase-memory-mcp", "env": {}, "env_vars": [], "cwd": ""})
+    assert codex.cbm_has_own_settings({"command": "codebase-memory-mcp", "env": {"CBM_CACHE_DIR": "/x"}})
