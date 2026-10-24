@@ -155,3 +155,12 @@ def test_a_switched_off_codex_table_does_not_count_for_the_cache(fake_home, fake
         f'[mcp_servers.cbm.env]\nCBM_CACHE_DIR = \'{tmp_path / "other"}\'\n')
     [r] = _rows(CACHE)
     assert r.ok
+
+
+def test_unknown_versions_never_prove_equality(fake_home, fake_runner, monkeypatch, tmp_path):
+    a, b = _stub(tmp_path / "a"), _stub(tmp_path / "b")
+    _path(monkeypatch, tmp_path / "a", tmp_path / "b")
+    fake_runner.responses[(str(a), "--version")] = runner.Result(1, "", "boom")
+    fake_runner.responses[(str(b), "--version")] = runner.Result(0, "no version here", "")
+    [r] = _rows(BIN)
+    assert not r.ok and r.detail == f"{a} ?; {b} ?"

@@ -408,7 +408,7 @@ def _cbm_binaries() -> list[CheckResult]:
         except Exception:
             m = None
         versions.append((shown, m.group(0) if m else "?"))
-    if len({v for _, v in versions}) <= 1:
+    if len({v for _, v in versions}) <= 1 and all(v != "?" for _, v in versions):  # unknown proves nothing
         return [CheckResult(title, True, f"{len(versions)} on PATH, version {versions[0][1]}", "", "warn")]
     return [CheckResult(title, False, printable("; ".join(f"{p} {v}" for p, v in versions)),
                         printable(f"the first one runs ({versions[0][0]}); remove the others or make them the same "

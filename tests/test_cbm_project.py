@@ -225,3 +225,19 @@ def test_a_mention_in_another_command_does_not_silence_the_pointer():
         assert not mcp_guard._groups_run_any(hook(text), progs), text
     for text in ("codebase-memory-mcp hook-augment", "cd /x && codebase-memory-mcp hook-augment"):
         assert mcp_guard._groups_run_any(hook(text), progs), text
+
+
+def test_an_own_hook_silences_only_where_its_matcher_matches(tmp_path):
+    import json as _json
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins" / "loadout" / "hooks"))
+    import mcp_guard
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    (home / ".claude" / "settings.json").write_text(_json.dumps({"hooks": {"SessionStart": [
+        {"matcher": "startup", "hooks": [{"type": "command", "command": "codebase-memory-mcp hook-augment"}]}]}}))
+    progs = {"codebase-memory-mcp"}
+    assert mcp_guard.runs_program("SessionStart", progs, str(tmp_path), home, "claude", "startup")
+    assert not mcp_guard.runs_program("SessionStart", progs, str(tmp_path), home, "claude", "resume")
+    assert mcp_guard.runs_program("SessionStart", progs, str(tmp_path), home, "claude")  # no subject: as before

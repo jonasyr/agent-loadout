@@ -229,9 +229,12 @@ def _at_command(words: list, i: int) -> bool:
     return j < 0 or words[j] in _OPERATORS
 
 
-def _groups_run_any(groups: list, programs: set[str]) -> bool:
-    """Some hook in <groups> runs one of <programs>: the program in a command position (any subcommand)."""
+def _groups_run_any(groups: list, programs: set[str], subject: str | None = None, search: bool = False) -> bool:
+    """Some hook in <groups> runs one of <programs>: the program in a command position (any subcommand), in a
+    group whose matcher matches <subject> (the event's source or agent type; None: every group)."""
     for group in groups:
+        if not _matches(group.get("matcher") if isinstance(group, dict) else None, subject, search):
+            continue
         for hook in _list(group, "hooks"):
             words = _words(hook) if isinstance(hook, dict) else []
             if any(_program(w) in programs and _at_command(words, i) for i, w in enumerate(words)):
@@ -239,12 +242,14 @@ def _groups_run_any(groups: list, programs: set[str]) -> bool:
     return False
 
 
-def runs_program(event: str, programs: set[str], cwd: str, home: Path, agent: str = "claude") -> bool:
+def runs_program(event: str, programs: set[str], cwd: str, home: Path, agent: str = "claude",
+                 subject: str | None = None) -> bool:
     """The agent's own hooks (Claude Code: the settings files; Codex: its hook files) hold, for <event>, a hook
-    that runs one of <programs>, whatever the matcher and subcommand."""
+    that runs one of <programs> (any subcommand) under a matcher that matches <subject>: SessionStart's source
+    (startup, resume, clear, compact) or SubagentStart's agent type. None matches every group."""
     if agent == "codex":
-        return _groups_run_any(_codex_groups(event, cwd, home), programs)
-    return any(_groups_run_any(_list(_dict(_json(path), "hooks"), event), programs)
+        return _groups_run_any(_codex_groups(event, cwd, home), programs, subject, True)
+    return any(_groups_run_any(_list(_dict(_json(path), "hooks"), event), programs, subject)
                for path in _settings_files(cwd, home))
 
 
