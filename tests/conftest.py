@@ -35,6 +35,9 @@ class FakeRunner:
         return self.paths.get(binary)
 
 
+HARMLESS_PROGRAMS = frozenset({"git", "python", "python3", "echo", "cmd"})  # real ones tests may run (no installs)
+
+
 @pytest.fixture(autouse=True)
 def never_the_real_home(tmp_path_factory, monkeypatch):
     """Every test runs with a throwaway HOME, so one that forgets fake_home still cannot read or write the real
@@ -62,6 +65,21 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
             pytest.fail(f"a test tried to restart into the real loadout ({argv}); fake update._exec")
         return real_exec(argv, windows=windows)
     monkeypatch.setattr(update, "_exec", guarded_exec)
+    # nor can it run a real program through runner.run (AGENTS.md: no real claude/codex/installers in tests). A test
+    # that needs external commands uses fake_runner (which replaces runner.run, so this guard steps aside); a
+    # program a test put in a temporary folder (a stub) runs, and so do the harmless ones below
+    from loadout import runner
+    real_run, base = runner.run, str(tmp_path_factory.getbasetemp())
+
+    def guarded_run(cmd, *args, **kwargs):
+        exe = runner._resolve(cmd[0]) or runner._fallback(cmd[0]) if cmd else None
+        name = os.path.basename(str(cmd[0])).lower().removesuffix(".exe") if cmd else ""
+        real = exe is not None and os.path.exists(exe)  # a made-up path (a test that fakes subprocess) runs nothing
+        stub = real and os.path.realpath(exe).startswith(os.path.realpath(base))
+        if real and not stub and name not in HARMLESS_PROGRAMS:
+            pytest.fail(f"a test ran the real `{name}` ({exe}) through runner.run; use fake_runner or a stub in tmp_path")
+        return real_run(cmd, *args, **kwargs)
+    monkeypatch.setattr(runner, "run", guarded_run)
 
 
 @pytest.fixture

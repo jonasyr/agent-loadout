@@ -395,10 +395,10 @@ def test_renewing_keeps_a_long_copy_s_lock_fresh(fake_home):
     assert _time.time() - lock.stat().st_mtime < migrate.STALE
 
 
-def test_check_and_kit_path_change_nothing(fake_home):
+def test_check_and_kit_path_change_nothing(fake_home, fake_runner):
     from loadout.__main__ import main
     _legacy(fake_home)
-    main(["check"])
+    main(["check"])  # fake_runner: check's tool probes (codex, gh, codebase-memory-mcp, ...) never run for real
     main(["kit-path"])
     assert not paths.state_dir().exists(), "read-only commands neither copy nor create anything"
 
