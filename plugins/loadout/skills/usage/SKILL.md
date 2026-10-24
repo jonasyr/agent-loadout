@@ -26,8 +26,8 @@ If the command is missing or exits 1 (no transcript folder for any agent that is
   - `follow_through`, with `followed` / `denials`: after a reminder, a lookup within `follow_within` calls;
   - `family_share.<family>`, `per_session.symbol_searches`, and today's `families` and `serena_denials` counts.
 - With `--around`: `before` holds the same rows, and `change.<row>.<metric>` holds `↑`, `↓`, `=`, `new`, `—` or `too few sessions`.
-- `hint_sessions`: docs hints in the after window. The hook keeps only 7 days, so treat it as a sign.
-- `skipped_lines`: mention it only when it is large next to the calls.
+- `hint_sessions`: sessions whose last docs hint (Context7 and Microsoft Learn for web lookups) was shown in the after window, one total for both agents and kinds. The hook keeps its state for 7 days, so it is capped at about 7 days: use it as a sign, not a denominator.
+- `claude.skipped_lines` (and `codex.skipped_lines`): that agent's unreadable transcript lines. Mention them only when they are large next to that agent's calls.
 
 ## 3. Report
 
@@ -46,7 +46,7 @@ Then:
 - **The verdict:** did the change help, in one sentence per kind, from the arrows. `too few sessions` means "not measurable yet", never "no effect". Say when the after window is partial.
 - **Not prompted subagents** show default behaviour. Prompted ones show what naming the tools in a prompt does. Say which one moved.
 - **Follow-through:** a low share means agents repeat the grep after a reminder instead of switching tools.
-- **Against the reference** (only with `--legacy`): compare `claude.main` with ADR 0039's Context. It is a reference measured on one setup, not a target. Codex has none.
+- **Against the reference** (only with `--legacy`): ADR 0026 (`docs/adr/0026-tool-hints-never-block.md`) and ADR 0039 (`docs/adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md`), section "Context". Compare only `claude.main` with them, and say whether use went up, stayed or went down. They were measured on one setup: a reference, not a target. There is no reference for Codex: report its shares without an up or down.
 - **One next step**, if the numbers call for one: wait and re-run `--around` once the after window has 20 sessions, or, if use stays low, the next lever in ADR 0039 (a system-prompt override).
 
 Do not change settings, hooks or thresholds from here; for that the user asks the `loadout:configure` skill or opens a change in the kit.
