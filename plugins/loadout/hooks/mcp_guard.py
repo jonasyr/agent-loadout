@@ -194,20 +194,44 @@ def users_hook_runs(event: str, argv: list[str], cwd: str, home: Path, tool: str
                for path in _settings_files(cwd, home))
 
 
-def codex_users_hook_runs(argv: list[str], cwd: str, home: Path, tool: str | None) -> bool:
-    """The same for Codex's PreToolUse hooks: $CODEX_HOME (or ~/.codex) hooks.json, the `[hooks]` tables of its
-    config.toml and <cwd>/.codex/hooks.json; a matcher is a regex searched in the tool name. loadout's own
-    `remind` entry in hooks.json counts, so the plugin's copy and that entry never both remind."""
+def _codex_groups(event: str, cwd: str, home: Path) -> list:
+    """Codex's hook groups for <event>: $CODEX_HOME (or ~/.codex) hooks.json, <cwd>/.codex/hooks.json and the
+    `[hooks]` tables of its config.toml."""
     root = Path(os.environ["CODEX_HOME"]) if os.environ.get("CODEX_HOME") else home / ".codex"
-    groups = (_list(_dict(_json(root / "hooks.json"), "hooks"), "PreToolUse")
-              + _list(_dict(_json(Path(cwd) / ".codex" / "hooks.json"), "hooks"), "PreToolUse"))
+    groups = (_list(_dict(_json(root / "hooks.json"), "hooks"), event)
+              + _list(_dict(_json(Path(cwd) / ".codex" / "hooks.json"), "hooks"), event))
     try:
         import tomllib
         with open(root / "config.toml", "rb") as fh:
-            groups += _list(_dict(tomllib.load(fh), "hooks"), "PreToolUse")
+            groups += _list(_dict(tomllib.load(fh), "hooks"), event)
     except Exception:
         pass
-    return _group_runs(groups, argv, tool, True)
+    return groups
+
+
+def codex_users_hook_runs(argv: list[str], cwd: str, home: Path, tool: str | None) -> bool:
+    """The same for Codex's PreToolUse hooks: a matcher is a regex searched in the tool name. loadout's own
+    `remind` entry in hooks.json counts, so the plugin's copy and that entry never both remind."""
+    return _group_runs(_codex_groups("PreToolUse", cwd, home), argv, tool, True)
+
+
+def _groups_run_any(groups: list, programs: set[str]) -> bool:
+    """Some hook in <groups> runs one of <programs> (any subcommand; not right after echo/printf/#)."""
+    for group in groups:
+        for hook in _list(group, "hooks"):
+            words = _words(hook) if isinstance(hook, dict) else []
+            if any(_program(w) in programs and not (i and words[i - 1] in NOT_A_RUN) for i, w in enumerate(words)):
+                return True
+    return False
+
+
+def runs_program(event: str, programs: set[str], cwd: str, home: Path, agent: str = "claude") -> bool:
+    """The agent's own hooks (Claude Code: the settings files; Codex: its hook files) hold, for <event>, a hook
+    that runs one of <programs>, whatever the matcher and subcommand."""
+    if agent == "codex":
+        return _groups_run_any(_codex_groups(event, cwd, home), programs)
+    return any(_groups_run_any(_list(_dict(_json(path), "hooks"), event), programs)
+               for path in _settings_files(cwd, home))
 
 
 def should_run(server: str, argv: list[str], payload: dict, home: Path, agent: str = "claude") -> bool:
