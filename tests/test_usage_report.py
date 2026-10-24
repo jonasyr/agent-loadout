@@ -364,3 +364,12 @@ def test_the_prompted_split_needs_every_subagent_classified():
 def test_a_future_since_never_gives_a_negative_duration(fake_home):
     now = 1_800_000_000.0
     assert usage.report(now + 86400, now, None, now=now)["days"] == 0
+
+
+def test_activity_is_compared_to_the_second():
+    from loadout import usage_sessions
+    s = S()
+    s.active = [1000]
+    assert not usage_sessions.active_between(s, 1030, 2000)  # same minute, but before the start
+    s.active = [1990]
+    assert usage_sessions.active_between(s, 1000, 1995)

@@ -31,13 +31,12 @@ class Session:
     denials: int = 0
     followed: int = 0
     prompted: bool | None = None
-    active: list = field(default_factory=set)  # the minutes (epoch // 60) with an event (a set while parsing)
+    active: list = field(default_factory=set)  # the seconds (int epoch) with an event (a set while parsing)
 
 
 def active_between(s: Session, start: float, end: float) -> bool:
-    """Whether the session had an event in [start, end), to the minute."""
-    lo, hi = int(start // 60), int(end // 60)
-    return any(lo <= m < hi for m in s.active)
+    """Whether the session had an event in [start, end), to the second."""
+    return any(start <= t < end for t in s.active)
 
 
 def lookup_family(name: str) -> str | None:
@@ -96,7 +95,7 @@ def _claude_session(path, follow_within: int, skipped: list[int], mtime: float) 
                 if t is not None and (first is None or t < first):
                     first = t
                 if t is not None:
-                    s.active.add(int(t // 60))
+                    s.active.add(int(t))
                 try:
                     kind = obj.get("type")
                     message = obj.get("message") if kind in ("assistant", "user") else None
@@ -217,7 +216,7 @@ def _codex_session(path, follow_within: int, skipped: list[int], mtime: float) -
                 if t is not None and (first is None or t < first):
                     first = t
                 if t is not None:
-                    s.active.add(int(t // 60))
+                    s.active.add(int(t))
                 try:
                     p = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
                     if obj.get("type") == "session_meta":
