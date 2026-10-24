@@ -31,6 +31,13 @@ class Session:
     denials: int = 0
     followed: int = 0
     prompted: bool | None = None
+    active: list = field(default_factory=set)  # the minutes (epoch // 60) with an event (a set while parsing)
+
+
+def active_between(s: Session, start: float, end: float) -> bool:
+    """Whether the session had an event in [start, end), to the minute."""
+    lo, hi = int(start // 60), int(end // 60)
+    return any(lo <= m < hi for m in s.active)
 
 
 def lookup_family(name: str) -> str | None:
@@ -88,6 +95,8 @@ def _claude_session(path, follow_within: int, skipped: list[int], mtime: float) 
                 t = _stamp(obj)
                 if t is not None and (first is None or t < first):
                     first = t
+                if t is not None:
+                    s.active.add(int(t // 60))
                 try:
                     kind = obj.get("type")
                     message = obj.get("message") if kind in ("assistant", "user") else None
@@ -127,6 +136,7 @@ def _claude_session(path, follow_within: int, skipped: list[int], mtime: float) 
     except OSError:
         skipped[0] += 1
     s.start = first if first is not None else mtime
+    s.active = sorted(s.active)  # a plain list, so the record stays JSON-serialisable
     return s
 
 
@@ -157,7 +167,7 @@ _CODEX_CONTEXT = ("<environment_context", "# agents.md instructions", "<user_ins
 def _codex_user_text(obj: dict, p: dict) -> str | None:
     if obj.get("type") == "event_msg" and p.get("type") == "user_message":
         m = p.get("message")
-        return m if isinstance(m, str) else None
+        return m if isinstance(m, str) and not m.lstrip().lower().startswith(_CODEX_CONTEXT) else None
     if obj.get("type") == "response_item" and p.get("type") == "message" and p.get("role") == "user":
         parts = [i["text"] for i in p.get("content") or [] if isinstance(i, dict)
                  and i.get("type") in ("input_text", "text") and isinstance(i.get("text"), str)]
@@ -206,6 +216,8 @@ def _codex_session(path, follow_within: int, skipped: list[int], mtime: float) -
                 t = _stamp(obj)
                 if t is not None and (first is None or t < first):
                     first = t
+                if t is not None:
+                    s.active.add(int(t // 60))
                 try:
                     p = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
                     if obj.get("type") == "session_meta":
@@ -256,6 +268,7 @@ def _codex_session(path, follow_within: int, skipped: list[int], mtime: float) -
     except OSError:
         skipped[0] += 1
     s.start = first if first is not None else mtime
+    s.active = sorted(s.active)  # a plain list, so the record stays JSON-serialisable
     return s
 
 

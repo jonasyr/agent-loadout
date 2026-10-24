@@ -400,7 +400,8 @@ def report(after_start: float, after_end: float, before_start: "float | None", *
         bef = [s for s in found if before_start <= s.start < after_start] if before_start is not None else None
         out[name] = _agent_block(aft, skipped, min_calls, bef, min_sessions)
         first = earliest  # sessions that started before the first window but ran in it: not counted, but named
-        out[name]["started_earlier"] = {k: sum(1 for s in found if s.start < first and s.kind == k)
+        out[name]["started_earlier"] = {k: sum(1 for s in found if s.start < first and s.kind == k
+                                               and usage_sessions.active_between(s, first, end))
                                         for k in ("main", "subagent")}
     out["hint_sessions"] = _hint_sessions(after_start, end)  # [after_start, end): the after window only
     return out

@@ -323,3 +323,31 @@ def test_hint_sessions_stop_at_the_after_window_end(fake_home):
     (folder / "later.json").write_text(json.dumps({"hint_at": now - 3600}))
     rep = usage.report(now - 6 * 86400, now - 4 * 86400, None, now=now)
     assert rep["hint_sessions"] == 1
+
+
+def test_started_earlier_needs_activity_in_the_windows(fake_home):
+    import datetime as _dt
+    now = 1_800_000_000.0
+    iso = lambda t: _dt.datetime.fromtimestamp(t, _dt.timezone.utc).isoformat()  # noqa: E731
+    path = _write("resumed", iso(now - 30 * 86400))  # an old session, resumed only after the compared windows
+    with path.open("a") as fh:
+        fh.write(json.dumps({"type": "assistant", "timestamp": iso(now - 3600), "message": {"content": [
+            {"type": "tool_use", "name": "Read", "input": {}}]}}) + "\n")
+    os.utime(path, (now - 60, now - 60))  # read, since the file changed after the first window began
+    rep = usage.report(now - 10 * 86400, now - 5 * 86400, now - 15 * 86400, now=now)
+    assert rep["claude"]["started_earlier"] == {"main": 0, "subagent": 0}
+
+
+def test_codex_injected_context_in_a_user_message_event_is_not_the_prompt():
+    from loadout import usage_sessions
+    ctx = {"type": "event_msg"}
+    assert usage_sessions._codex_user_text(ctx, {"type": "user_message", "message": "<environment_context>x"}) is None
+    assert usage_sessions._codex_user_text(ctx, {"type": "user_message", "message": "fix it"}) == "fix it"
+
+
+@pytest.mark.parametrize("flag", ["--follow-within", "--min-calls", "--min-sessions"])
+def test_thresholds_must_be_positive(fake_home, monkeypatch, flag):
+    from loadout.__main__ import main
+    with pytest.raises(SystemExit) as exc:
+        main(["usage", flag, "0"])
+    assert exc.value.code == 2

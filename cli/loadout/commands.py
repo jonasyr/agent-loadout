@@ -372,10 +372,17 @@ def _register_usage(sub):
     when.add_argument("--around", type=moment, metavar="MOMENT",
                       help="compare the days before MOMENT with the days after it (YYYY-MM-DD or YYYY-MM-DDTHH:MM)")
     when.add_argument("--since", type=moment, metavar="MOMENT", help="only the window from MOMENT until now")
-    p.add_argument("--min-calls", type=int, default=5, help="sessions with fewer tool calls are left out (default 5)")
-    p.add_argument("--follow-within", type=int, default=5,
+    def positive(text):
+        import argparse
+        n = int(text)
+        if n < 1:
+            raise argparse.ArgumentTypeError("must be 1 or more")
+        return n
+
+    p.add_argument("--min-calls", type=positive, default=5, help="sessions with fewer tool calls are left out (default 5)")
+    p.add_argument("--follow-within", type=positive, default=5,
                    help="tool calls after a Serena reminder that count as following it (default 5)")
-    p.add_argument("--min-sessions", type=int, default=20,
+    p.add_argument("--min-sessions", type=positive, default=20,
                    help="fewest sessions on each side before an arrow is shown (default 20)")
     p.add_argument("--sessions", action="store_true", help="one line per session (ids and counts only)")
     p.add_argument("--legacy", action="store_true", help="the old single-window counts; only --days applies")
