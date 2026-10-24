@@ -321,8 +321,8 @@ def _arrow_share(b: float, a: float) -> str:
 def _arrow_rate(b: float, a: float) -> str:
     if b == 0:
         return "new" if a > 0 else "="
-    r = round(a / b, 9)
-    return "↑" if r >= 1 + RATE_RATIO else "↓" if r < 1 - RATE_RATIO else "="
+    r = round(a / b, 9)  # symmetric: a change of at least RATE_RATIO either way counts
+    return "↑" if r >= 1 + RATE_RATIO else "↓" if r <= 1 - RATE_RATIO else "="
 
 
 def change(before: dict, after: dict, min_sessions: int) -> dict:
@@ -373,7 +373,7 @@ def report(after_start: float, after_end: float, before_start: "float | None", *
     window holding its start: after is [after_start, min(after_end, now)), before is [before_start, after_start)."""
     from . import usage_sessions
     now = time.time() if now is None else now
-    end = min(after_end, now)
+    end = max(after_start, min(after_end, now))  # a start in the future is an empty window, never a negative one
     windows: dict = {"after": {"start": after_start, "end": end, "days": round((end - after_start) / 86400, 2),
                                "partial": end < after_end}}
     if before_start is not None:

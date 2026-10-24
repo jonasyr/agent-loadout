@@ -122,3 +122,15 @@ def test_prompted_split_rows(fake_home):
     # Codex main sessions carry no prompt: the split stays empty
     sess = [S(kind="subagent", agent="codex"), S(kind="main", agent="codex")]
     assert usage._agent_block(sess, [0], 5, None)["prompted_known"] is False
+
+
+def test_the_rate_rule_is_symmetric_at_exactly_20_percent():
+    assert usage._arrow_rate(10, 12) == "↑" and usage._arrow_rate(10, 8) == "↓"
+    assert usage._arrow_rate(10, 11.9) == "=" and usage._arrow_rate(10, 8.1) == "="
+    assert usage._arrow_share(0.10, 0.15) == "↑" and usage._arrow_share(0.15, 0.10) == "↓"
+
+
+def test_an_after_start_in_the_future_gives_an_empty_window(fake_home):
+    now = 1_800_000_000.0
+    rep = usage.report(now + 86400, now + 8 * 86400, None, now=now)
+    assert rep["windows"]["after"]["days"] == 0 and rep["windows"]["after"]["end"] >= rep["windows"]["after"]["start"]
