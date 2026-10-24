@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 
 EVENTS = {"session-start": "SessionStart", "subagent-start": "SubagentStart"}
+# cli/loadout/cbm_installer.NEW_SCRIPTS (a hook cannot import loadout; a test keeps the two equal)
+WRAPPER_SCRIPTS = ("codebase-memory-session.sh", "codebase-memory-coverage.sh")
 SKIP = {"_config.db", "activity.db"}
 MAX_DBS = 64
 
@@ -80,17 +82,31 @@ def _available(agent: str, cwd: str) -> bool:
     return mcp_guard.available("codebase-memory-mcp", agent, cwd, mcp_guard._home())
 
 
+def _own_hook(event: str, agent: str, cwd: str, subject: str | None = None) -> bool:
+    """The agent's own hooks already run codebase-memory-mcp or a wrapper script for this event (and, given, this
+    source or agent type: a `startup`-only hook leaves the pointer on at `resume`)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import mcp_guard
+    return mcp_guard.runs_program(event, {"codebase-memory-mcp", *WRAPPER_SCRIPTS}, cwd, mcp_guard._home(), agent,
+                                  subject)
+
+
 def main(argv: list[str]) -> None:
     event = EVENTS.get(argv[1]) if len(argv) > 1 else None
     if not event:
         return
     try:
-        cwd = json.loads(sys.stdin.read()).get("cwd")
+        payload = json.loads(sys.stdin.read())
+        cwd = payload.get("cwd")
+        raw = payload.get("source" if event == "SessionStart" else "agent_type")
+        subject = raw if isinstance(raw, str) and raw else None
     except Exception:
         return
     agent = argv[argv.index("--agent") + 1] if "--agent" in argv[:-1] else "claude"
     if not isinstance(cwd, str) or not cwd or not _available(agent, cwd):
         return  # never point to a tool the agent does not have
+    if _own_hook(event, agent, cwd, subject):
+        return  # the user's own hook already does this job
     name = project_for(cwd)
     if not name:
         return

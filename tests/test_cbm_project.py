@@ -156,3 +156,88 @@ def test_a_colliding_default_name_of_another_root_is_not_this_folder(tmp_path):
     _db(cache / f"{name}.db", name, other)
     assert _run(tmp_path, mine) is None
     assert "indexed as project" in _run(tmp_path, other)["hookSpecificOutput"]["additionalContext"]
+
+
+def _hook_groups(command, event):
+    return {"hooks": {event: [{"hooks": [{"type": "command", "command": command}]}]}}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a shell-script stub and a POSIX default project name")
+def test_own_cbm_session_hook_silences_the_pointer(tmp_path):
+    cwd = tmp_path / "proj"
+    cwd.mkdir()
+    cache = _cache(tmp_path)
+    name = str(cwd).lstrip("/").replace("/", "-")
+    _db(cache / f"{name}.db", name, cwd)
+    assert _run(tmp_path, cwd) is not None
+    settings = tmp_path / "home" / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps(_hook_groups("codebase-memory-mcp hook-augment", "SessionStart")))
+    assert _run(tmp_path, cwd) is None
+    assert _run(tmp_path, cwd, event="subagent-start") is not None  # another event: not silenced
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a shell-script stub and a POSIX default project name")
+def test_own_wrapper_script_silences_the_subagent_pointer(tmp_path):
+    cwd = tmp_path / "proj"
+    cwd.mkdir()
+    args = ["subagent-start", "--agent", "codex"]
+    assert "indexed as project" in _run_cbm(tmp_path, args, cwd)
+    hooks = tmp_path / "h" / ".codex" / "hooks.json"
+    hooks.parent.mkdir(parents=True)
+    hooks.write_text(json.dumps(_hook_groups("~/.claude/hooks/codebase-memory-session.sh", "SubagentStart")))
+    assert _run_cbm(tmp_path, args, cwd) == ""
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a shell-script stub and a POSIX default project name")
+def test_an_echo_hook_does_not_silence_the_pointer(tmp_path):
+    cwd = tmp_path / "proj"
+    cwd.mkdir()
+    cache = _cache(tmp_path)
+    name = str(cwd).lstrip("/").replace("/", "-")
+    _db(cache / f"{name}.db", name, cwd)
+    settings = tmp_path / "home" / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    for command in ("echo codebase-memory-mcp is great", "printf codebase-memory-mcp", "# codebase-memory-mcp x"):
+        settings.write_text(json.dumps(_hook_groups(command, "SessionStart")))
+        assert _run(tmp_path, cwd) is not None, command
+
+
+def test_inlined_wrapper_names_match_the_installer():
+    import importlib.util
+    sys.path.insert(0, str(PLUGIN.parents[1] / "cli"))
+    from loadout import cbm_installer
+    spec = importlib.util.spec_from_file_location("cbm_project_n", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert tuple(mod.WRAPPER_SCRIPTS) == cbm_installer.NEW_SCRIPTS
+
+
+def test_a_mention_in_another_command_does_not_silence_the_pointer():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins" / "loadout" / "hooks"))
+    import mcp_guard
+    progs = {"codebase-memory-mcp"}
+    hook = lambda c: [{"hooks": [{"type": "command", "command": c}]}]  # noqa: E731
+    for text in ("echo Use codebase-memory-mcp tools", "printf '%s' codebase-memory-mcp",
+                 "tool --server codebase-memory-mcp"):
+        assert not mcp_guard._groups_run_any(hook(text), progs), text
+    for text in ("codebase-memory-mcp hook-augment", "cd /x && codebase-memory-mcp hook-augment"):
+        assert mcp_guard._groups_run_any(hook(text), progs), text
+
+
+def test_an_own_hook_silences_only_where_its_matcher_matches(tmp_path):
+    import json as _json
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins" / "loadout" / "hooks"))
+    import mcp_guard
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    (home / ".claude" / "settings.json").write_text(_json.dumps({"hooks": {"SessionStart": [
+        {"matcher": "startup", "hooks": [{"type": "command", "command": "codebase-memory-mcp hook-augment"}]}]}}))
+    progs = {"codebase-memory-mcp"}
+    assert mcp_guard.runs_program("SessionStart", progs, str(tmp_path), home, "claude", "startup")
+    assert not mcp_guard.runs_program("SessionStart", progs, str(tmp_path), home, "claude", "resume")
+    assert mcp_guard.runs_program("SessionStart", progs, str(tmp_path), home, "claude")  # no subject: as before

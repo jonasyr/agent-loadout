@@ -465,6 +465,37 @@ def user_serena(data: dict, owned: set[str]) -> str | None:
     return None
 
 
+CBM_PROGRAMS = ("npx", "bunx", "uvx", "uv")
+CBM_NAME = "codebase-memory-mcp"
+
+
+def is_cbm(table: dict) -> bool:
+    """A Codex server table that starts codebase-memory's MCP server, whatever its name: the program itself, a full
+    path to it, or npx/bunx/uvx/uv naming it. (plugins/loadout/hooks/mcp_guard.py inlines this rule; a test keeps
+    them equal.)"""
+    command, args = table.get("command"), table.get("args")
+    if not isinstance(command, str):
+        return False
+    base = re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe")
+    if base == CBM_NAME:
+        return True
+    return base in CBM_PROGRAMS and isinstance(args, list) and any(isinstance(a, str) and CBM_NAME in a for a in args)
+
+
+def user_cbm() -> dict[str, dict]:
+    """The user's Codex tables (not loadout's) that start codebase-memory, by name."""
+    return {n: t for n, t in user_servers().items() if is_cbm(t)}
+
+
+def cbm_has_own_settings(table: dict) -> bool:
+    """True when a cbm table is more than the plugin's own server (`command = "codebase-memory-mcp"`, no args or
+    `mcp`): any other key (env, cwd, timeouts, tool lists, other args) or a path command is a setting of its own."""
+    args, command = table.get("args"), table.get("command")
+    return bool(set(table) - {"command", "args", "enabled", "type"}
+                or args not in (None, [], ["mcp"])
+                or (isinstance(command, str) and ("/" in command or "\\" in command)))
+
+
 SERENA_KEPT = "Serena: your own server in config.toml kept"
 
 
@@ -1724,7 +1755,7 @@ def drift() -> list[str]:
     personal = set(get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers"))
     owned = set(read_record()["tables"])
     in_claude = set(get_dict(load_json(paths.claude_json()), "mcpServers"))
-    accounted = left | personal | owned | _codex_serenas()  # a Serena is the kit's tool, never one to adopt
+    accounted = left | personal | owned | _codex_serenas() | _codex_cbms()  # a Serena is the kit's tool, never one to adopt
     out = [f'MCP server "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
            for n in sorted(in_claude - in_codex - accounted)]
     out += [f'MCP server "{n}" only in Codex (record it with loadout adopt, then both get it)'
@@ -1736,6 +1767,12 @@ def drift() -> list[str]:
     out += [f'skill "{n}" only in Codex (record it with loadout adopt, then both get it)'
             for n in sorted(codex_skills - claude_skills - personal_skills - left)]
     return out
+
+
+def _codex_cbms() -> set[str]:
+    """Names of the config.toml tables that start codebase-memory under a name other than the plugin's (check names
+    those; the same-name table keeps its usual handling)."""
+    return set(user_cbm()) - {CBM_NAME}
 
 
 def _codex_serenas() -> set[str]:
@@ -1815,6 +1852,30 @@ def servers_twice(installed: set[str] | None) -> list[str]:
         return []
     version = getattr(installed, "versions", {}).get(LOADOUT_PLUGIN)  # from the list checks() already fetched
     return sorted(set(user_servers()) & _loadout_plugin_servers(version))
+
+
+def plugin_serves_cbm(installed: set[str] | None = None) -> bool:
+    """Whether loadout's Codex plugin starts codebase-memory here: installed (the plugin list when given, else its
+    cached copy), not switched off, and its server name not switched off (`[mcp_servers.codebase-memory-mcp]
+    enabled = false`). The one rule for "a table of yours is a second server"."""
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return False
+    if get_dict(get_dict(data, "plugins"), LOADOUT_PLUGIN).get("enabled") is False:
+        return False
+    if get_dict(get_dict(data, "mcp_servers"), CBM_NAME).get("enabled") is False:
+        return False
+    return LOADOUT_PLUGIN in installed if installed is not None else loadout_copy() is not None
+
+
+def cbm_twice(installed: set[str] | None) -> list[str]:
+    """The names of the user's config.toml tables that start codebase-memory under a name other than the plugin's
+    and are on, while the loadout plugin starts its own: Codex runs both."""
+    if installed is None or not plugin_serves_cbm(installed):
+        return []
+    return sorted(n for n, t in user_cbm().items() if n != CBM_NAME and t.get("enabled") is not False)
 
 
 HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex`, then run /hooks"
@@ -1953,6 +2014,11 @@ def checks() -> list:
                             f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
                             "or turn the loadout plugin off in Codex", "warn")
                 for name in servers_twice(installed)]
+    results += [CheckResult(f"Codex MCP {name}", False,
+                            "runs codebase-memory-mcp next to the loadout plugin's; Codex starts two",
+                            f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
+                            "or turn the loadout plugin off in Codex", "warn")
+                for name in cbm_twice(installed)]
     path = paths.codex_home() / "AGENTS.md"
     current = splice(path.read_text(encoding="utf-8") if path.exists() else "", render_instructions())
     ok = path.exists() and current == path.read_text(encoding="utf-8")

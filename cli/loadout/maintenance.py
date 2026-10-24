@@ -431,7 +431,7 @@ def _stray_hook_scripts(bk: Backup) -> list[str]:
 
 def undo_reregistered(bk: Backup) -> tuple[list[str], list[str]]:
     """(removed, reported). Removes only exact duplicates of MCP servers/hooks the enabled loadout plugin ships."""
-    from . import adopt, duplicates, inventory, own
+    from . import adopt, cbm_installer, duplicates, inventory, own
     try:  # Claude Code's entries only: a Codex server is never a duplicate of the Claude plugin
         items = [i for i in inventory.collect(with_versions=False) if i.kind in ("mcp", "hook") and not own.is_codex(i)]
         enabled = duplicates.plugin_enabled()
@@ -447,7 +447,8 @@ def undo_reregistered(bk: Backup) -> tuple[list[str], list[str]]:
                             "review with `loadout adopt`")
         elif exact:
             dupes.append(inventory.Verdict(item, "migrate", "exact duplicate of the loadout plugin"))
-        elif verdicts.get((item.kind, item.name, item.location, item.detail)) == "migrate":
+        elif verdicts.get((item.kind, item.name, item.location, item.detail)) == "migrate" and not (
+                item.kind == "hook" and cbm_installer.runs_new_script(item.detail)):  # adopt's, after a yes
             reported.append(f"{item.kind} {item.name}: resembles a kit item but is not an exact duplicate of the "
                             "enabled loadout plugin; left alone (review with `loadout adopt`)")
     removed = adopt.apply(dupes, bk) if dupes else []

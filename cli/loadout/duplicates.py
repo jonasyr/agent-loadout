@@ -21,6 +21,19 @@ _RUN_SH = re.compile(r'^"?\$\{CLAUDE_PLUGIN_ROOT\}/hooks/run\.sh"?\s+(?:--soft\s
                      r'(?:--python\s+"?\$\{CLAUDE_PLUGIN_ROOT\}/hooks/mcp_guard\.py"?\s+\S+\s+)?')  # the guard's server
 
 
+_OPERATORS = frozenset({"&&", "||", ";", "|", "&"})
+_PREFIXES = frozenset({"exec", "env", "command", "nohup", "time", "sudo"})
+
+
+def at_command(words: list, i: int) -> bool:
+    """Whether words[i] is in a command's program position: the first word, after a shell operator, or after a
+    prefix such as `env`/`exec` (and `VAR=value` assignments). A word anywhere else is an argument: `echo X`,
+    `printf '%s' X` and `tool --server X` mention X, they do not run it."""
+    j = i - 1
+    while j >= 0 and ("=" in words[j] and not words[j].startswith("-") or words[j] in _PREFIXES):
+        j -= 1
+    return j < 0 or words[j] in _OPERATORS
+
 def _plugin_dir():
     return paths.kit_root() / "plugins" / "loadout"
 

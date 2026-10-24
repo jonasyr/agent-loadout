@@ -10,7 +10,7 @@ from .jsonio import get_dict, load_json
 
 @dataclass(frozen=True)
 class Item:
-    kind: str          # mcp | plugin | marketplace | skill | hook | binary | claude-md
+    kind: str          # mcp | plugin | marketplace | skill | hook | binary | claude-md | installer
     name: str
     detail: str = ""
     location: str = ""
@@ -127,7 +127,7 @@ def _codex_items() -> list[Item]:
     claude = get_dict(load_json(paths.claude_json()), "mcpServers") if targets.claude_enabled() else {}
     skip = codex._plugin_servers() | set(claude)
     for name, table in codex.user_servers().items():
-        if name in skip or codex.is_serena(table):  # Serena is the kit's tool, however it was set up
+        if name in skip or codex.is_serena(table) or (name != codex.CBM_NAME and codex.is_cbm(table)):  # the kit's tools, however set up (cbm: classify)
             continue
         try:
             cfg, problem = codex.to_claude(name, table), ""
@@ -142,17 +142,25 @@ def _codex_items() -> list[Item]:
     return items
 
 
+def _installer_items() -> list[Item]:
+    """The removable files codebase-memory-mcp's installer wrote (cbm_installer.find gates each agent). Its Claude
+    Code settings hooks are hook items already (the catalog's hook-codebase-memory), so they are not repeated."""
+    from . import cbm_installer
+    return [cbm_installer.adopt_item(a) for a in cbm_installer.find() if a.removable and a.kind != "claude-hook"]
+
+
 def collect(with_versions: bool = True) -> list[Item]:
     from . import targets
     claude = [*_mcp_items(), *_plugin_items(), *_marketplace_items(), *_skill_items(), *_hook_items(),
               *_claude_md_items()] if targets.claude_enabled() else []  # Codex only: Claude Code's files stay as they are
-    return [*claude, *_codex_items(), *_binary_items(with_versions)]
+    return [*claude, *_codex_items(), *_installer_items(), *_binary_items(with_versions)]
 
 
 def _why(entry: dict) -> str:
     return entry["reason"] + (f" Replacement: {entry['by']}." if entry.get("by") else "")
 
 
+INSTALLER_REASON = "Written by codebase-memory-mcp install; loadout's plugin provides the same."
 BUNDLED_CLAUDE = ("a claude on PATH for the terminal (VS Code's Claude Code extension's claude runs loadout's "
                   "commands now)")
 
@@ -181,6 +189,10 @@ def classify(items: list[Item]) -> list[Verdict]:
             else:
                 out.append(Verdict(item, "keep", entry["reason"], entry["id"]))
             continue
+        if item.kind == "installer":
+            out.append(Verdict(item, "keep", own.LEFT_REASON) if own.decided(left, item) == "leave"
+                       else Verdict(item, "migrate", INSTALLER_REASON, "mcp-codebase-memory"))
+            continue
         if item.kind == "claude-md":
             out.append(Verdict(item, "review", "Global CLAUDE.md content can move into your personal layer (rules/personal/me.md)."))
             continue
@@ -201,6 +213,9 @@ def classify(items: list[Item]) -> list[Verdict]:
             out.append(Verdict(item, "own", own.own_reason(item)))
             continue
         entry = catalog.match(item.kind, item.name, item.detail)
+        if item.kind == "hook" and entry is None:
+            from . import cbm_installer  # the installer's hooks by what they run (`.exe`, quoted, its script path)
+            entry = catalog.by_id("hook-codebase-memory") if cbm_installer.is_installer_hook(item) else None
         if entry is None:
             out.append(Verdict(item, "own", own.own_reason(item)))
             continue
@@ -217,4 +232,38 @@ def classify(items: list[Item]) -> list[Verdict]:
         else:
             action, reason = "keep", _why(entry)
         out.append(Verdict(item, action, reason, entry["id"]))
+    return out + _codex_cbm_verdicts(left)
+
+
+CBM_PROVIDED = "Provided by loadout's Codex plugin; this table starts a second codebase-memory server."
+CBM_ONLY = ("Codex's only codebase-memory server here: loadout's plugin does not serve it (not installed, or "
+            "switched off); keep it, or turn the plugin on first.")
+CBM_OWN = ("It starts codebase-memory with settings of its own (env, args or a fixed path); remove it yourself if "
+           "loadout's plugin should serve it.")
+
+
+def _codex_cbm_verdicts(left: dict) -> list[Verdict]:
+    """A user's Codex table that starts codebase-memory under another name: never offered for Claude Code (so no
+    item in collect), but adopt may remove it, after a yes, unless it carries settings of its own."""
+    from . import codex, own, targets
+    if not targets.codex_enabled():
+        return []
+    out = []
+    claude = get_dict(load_json(paths.claude_json()), "mcpServers") if targets.claude_enabled() else {}
+    served = codex.plugin_serves_cbm()
+    for name, table in codex.user_cbm().items():
+        if name == codex.CBM_NAME or name in claude:  # the plugin's name keeps its usual handling; Claude's copy rules
+            continue
+        if table.get("enabled") is False:  # switched off: it starts nothing, so it is no second server
+            continue
+        item = Item("mcp", name, " ".join([str(table.get("command") or ""), *map(str, table.get("args") or [])]).strip(),
+                    codex.CONFIG_LOCATION, {"config": None, "problem": "", "cbm": True})
+        if own.decided(left, item) == "leave":
+            out.append(Verdict(item, "keep", own.LEFT_REASON))
+        elif not served:  # removing it would leave Codex without codebase-memory
+            out.append(Verdict(item, "keep", CBM_ONLY, "mcp-codebase-memory"))
+        elif codex.cbm_has_own_settings(table):
+            out.append(Verdict(item, "keep", CBM_OWN, "mcp-codebase-memory"))
+        else:
+            out.append(Verdict(item, "migrate", CBM_PROVIDED, "mcp-codebase-memory"))
     return out

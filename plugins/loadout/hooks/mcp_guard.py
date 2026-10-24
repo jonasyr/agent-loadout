@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -89,8 +90,27 @@ def server_available(server: str, cwd: str, home: Path) -> bool:
     return server in _dict(_json(Path(cwd) / ".mcp.json"), "mcpServers") and server not in off | json_off
 
 
+CBM = "codebase-memory-mcp"
+LOADOUT_PLUGIN = "loadout@agent-loadout"
+
+
+def is_cbm(table: dict) -> bool:
+    """Same rule as loadout's codex.is_cbm (a test keeps them equal; hooks cannot import loadout)."""
+    command, args = table.get("command"), table.get("args")
+    if not isinstance(command, str):
+        return False
+    base = re.split(r"[\\/]", command)[-1].lower()
+    base = base[:-4] if base.endswith(".exe") else base
+    if base == CBM:
+        return True
+    return base in ("npx", "bunx", "uvx", "uv") and isinstance(args, list) and any(
+        isinstance(a, str) and CBM in a for a in args)
+
+
 def codex_server_enabled(server: str, home: Path) -> bool:
-    """False only when Codex's config.toml switches <server> off (`[mcp_servers.<server>] enabled = false`)."""
+    """False only when Codex's config.toml switches <server> off (`[mcp_servers.<server>] enabled = false`).
+    codebase-memory is also on when the loadout plugin is off but a table of yours (any name) starts it, and when
+    your table of the plugin's name is off but another of yours runs it."""
     root = Path(os.environ["CODEX_HOME"]) if os.environ.get("CODEX_HOME") else home / ".codex"
     try:
         import tomllib
@@ -98,7 +118,13 @@ def codex_server_enabled(server: str, home: Path) -> bool:
             data = tomllib.load(fh)
     except Exception:
         return True
-    table = _dict(_dict(data, "mcp_servers"), server)
+    servers = _dict(data, "mcp_servers")
+    table = _dict(servers, server)
+    if server == CBM:
+        plugin_on = _dict(_dict(data, "plugins"), LOADOUT_PLUGIN).get("enabled") is not False
+        if plugin_on and table.get("enabled") is not False:
+            return True
+        return any(isinstance(t, dict) and is_cbm(t) and t.get("enabled") is not False for t in servers.values())
     return table.get("enabled") is not False
 
 
@@ -168,20 +194,63 @@ def users_hook_runs(event: str, argv: list[str], cwd: str, home: Path, tool: str
                for path in _settings_files(cwd, home))
 
 
-def codex_users_hook_runs(argv: list[str], cwd: str, home: Path, tool: str | None) -> bool:
-    """The same for Codex's PreToolUse hooks: $CODEX_HOME (or ~/.codex) hooks.json, the `[hooks]` tables of its
-    config.toml and <cwd>/.codex/hooks.json; a matcher is a regex searched in the tool name. loadout's own
-    `remind` entry in hooks.json counts, so the plugin's copy and that entry never both remind."""
+def _codex_groups(event: str, cwd: str, home: Path) -> list:
+    """Codex's hook groups for <event>: $CODEX_HOME (or ~/.codex) hooks.json, <cwd>/.codex/hooks.json and the
+    `[hooks]` tables of its config.toml."""
     root = Path(os.environ["CODEX_HOME"]) if os.environ.get("CODEX_HOME") else home / ".codex"
-    groups = (_list(_dict(_json(root / "hooks.json"), "hooks"), "PreToolUse")
-              + _list(_dict(_json(Path(cwd) / ".codex" / "hooks.json"), "hooks"), "PreToolUse"))
+    groups = (_list(_dict(_json(root / "hooks.json"), "hooks"), event)
+              + _list(_dict(_json(Path(cwd) / ".codex" / "hooks.json"), "hooks"), event))
     try:
         import tomllib
         with open(root / "config.toml", "rb") as fh:
-            groups += _list(_dict(tomllib.load(fh), "hooks"), "PreToolUse")
+            groups += _list(_dict(tomllib.load(fh), "hooks"), event)
     except Exception:
         pass
-    return _group_runs(groups, argv, tool, True)
+    return groups
+
+
+def codex_users_hook_runs(argv: list[str], cwd: str, home: Path, tool: str | None) -> bool:
+    """The same for Codex's PreToolUse hooks: a matcher is a regex searched in the tool name. loadout's own
+    `remind` entry in hooks.json counts, so the plugin's copy and that entry never both remind."""
+    return _group_runs(_codex_groups("PreToolUse", cwd, home), argv, tool, True)
+
+
+_OPERATORS = frozenset({"&&", "||", ";", "|", "&"})
+_PREFIXES = frozenset({"exec", "env", "command", "nohup", "time", "sudo"})
+
+
+def _at_command(words: list, i: int) -> bool:
+    """Whether words[i] is in a command's program position: the first word, after a shell operator, or after a
+    prefix such as `env`/`exec` (and `VAR=value` assignments). A word anywhere else is an argument: `echo X`,
+    `printf '%s' X` and `tool --server X` mention X, they do not run it."""
+    j = i - 1
+    while j >= 0 and ("=" in words[j] and not words[j].startswith("-") or words[j] in _PREFIXES):
+        j -= 1
+    return j < 0 or words[j] in _OPERATORS
+
+
+def _groups_run_any(groups: list, programs: set[str], subject: str | None = None, search: bool = False) -> bool:
+    """Some hook in <groups> runs one of <programs>: the program in a command position (any subcommand), in a
+    group whose matcher matches <subject> (the event's source or agent type; None: every group)."""
+    for group in groups:
+        if not _matches(group.get("matcher") if isinstance(group, dict) else None, subject, search):
+            continue
+        for hook in _list(group, "hooks"):
+            words = _words(hook) if isinstance(hook, dict) else []
+            if any(_program(w) in programs and _at_command(words, i) for i, w in enumerate(words)):
+                return True
+    return False
+
+
+def runs_program(event: str, programs: set[str], cwd: str, home: Path, agent: str = "claude",
+                 subject: str | None = None) -> bool:
+    """The agent's own hooks (Claude Code: the settings files; Codex: its hook files) hold, for <event>, a hook
+    that runs one of <programs> (any subcommand) under a matcher that matches <subject>: SessionStart's source
+    (startup, resume, clear, compact) or SubagentStart's agent type. None matches every group."""
+    if agent == "codex":
+        return _groups_run_any(_codex_groups(event, cwd, home), programs, subject, True)
+    return any(_groups_run_any(_list(_dict(_json(path), "hooks"), event), programs, subject)
+               for path in _settings_files(cwd, home))
 
 
 def should_run(server: str, argv: list[str], payload: dict, home: Path, agent: str = "claude") -> bool:

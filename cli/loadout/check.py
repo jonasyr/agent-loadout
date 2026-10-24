@@ -302,8 +302,8 @@ def _is_serena_server(cfg: dict) -> bool:
 
 
 def _is_cbm_server(cfg: dict) -> bool:
-    command = cfg.get("command")
-    return isinstance(command, str) and re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe") == "codebase-memory-mcp"
+    from . import codex
+    return codex.is_cbm(cfg)
 
 
 def _user_servers(cwd: Path) -> list[tuple[str, dict, str, bool]]:
@@ -360,6 +360,94 @@ def _tool_setups() -> list[CheckResult]:
     except Exception:  # an odd file shape never breaks the report
         return out
     return out
+
+
+def _cbm_installer() -> list[CheckResult]:
+    """The files codebase-memory-mcp's installer wrote next to loadout's plugin, one row each: the path and why it
+    doubles loadout's, never the file's content. Read only; adopt removes the removable ones after a yes."""
+    from . import cbm_installer, own
+    try:
+        found = [a for a in cbm_installer.find()
+                 if not (a.kind == "claude-hook" and a.where.get("augment"))  # _tool_setups names it: one row
+                 and not own.is_left(cbm_installer.adopt_item(a))]  # left in adopt: the user's choice, no warning
+    except Exception:  # an odd file shape never breaks the report
+        return []
+    return [CheckResult("codebase-memory installer", False,
+                        printable(f"{a.label} ({cbm_installer._tilde(a.path)}): doubles loadout's {a.doubles}"),
+                        a.fix if not a.removable else "loadout adopt", "warn") for a in found]
+
+
+def _cbm_default_cache() -> Path:
+    """codebase-memory's default cache folder; hooks/cbm_project.py:cache_dir mirrors it (a test keeps them equal)."""
+    return paths.home() / ".cache" / "codebase-memory-mcp"
+
+
+def _cbm_binaries() -> list[CheckResult]:
+    """Every distinct codebase-memory-mcp on PATH with its version; the first one is what runs."""
+    from . import targets
+    if not (targets.claude_enabled() or targets.codex_enabled()):
+        return []
+    name = "codebase-memory-mcp" + (".exe" if os.name == "nt" else "")
+    found: dict[str, str] = {}
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        if not folder or not os.path.isabs(folder):
+            continue
+        f = os.path.join(folder, name)
+        if os.path.isfile(f) and (os.name == "nt" or os.access(f, os.X_OK)):
+            found.setdefault(os.path.realpath(f), f)
+    if not found:
+        return []
+    title = "codebase-memory-mcp binaries"
+    if len(found) == 1:  # one binary: nothing to compare, so no version run
+        return [CheckResult(title, True, "1 on PATH", "", "warn")]
+    versions = []
+    for real, shown in found.items():
+        try:
+            res = runner.run([shown, "--version"], timeout=10)
+            m = re.search(r"\d+\.\d+\.\d+", res.stdout + " " + res.stderr) if res.ok else None
+        except Exception:
+            m = None
+        versions.append((shown, m.group(0) if m else "?"))
+    if len({v for _, v in versions}) <= 1 and all(v != "?" for _, v in versions):  # unknown proves nothing
+        return [CheckResult(title, True, f"{len(versions)} on PATH, version {versions[0][1]}", "", "warn")]
+    return [CheckResult(title, False, printable("; ".join(f"{p} {v}" for p, v in versions)),
+                        printable(f"the first one runs ({versions[0][0]}); remove the others or make them the same "
+                                  "version"), "warn")]
+
+
+def _cbm_cache_folders() -> list[CheckResult]:
+    """The cache folder Claude Code's and Codex's codebase-memory servers use; two folders mean two indexes. Only
+    with both agents on (an agent that is off is not read)."""
+    from . import codex, targets
+    if not (targets.claude_enabled() and targets.codex_enabled()):
+        return []
+    key, process = "CBM_CACHE_DIR", os.environ.get("CBM_CACHE_DIR") or None
+    try:
+        claude = next((c["env"][key] for _, c, _, _ in _user_servers(Path(os.path.abspath(Path.cwd())))
+                       if _is_cbm_server(c) and isinstance(c.get("env"), dict)
+                       and isinstance(c["env"].get(key), str) and c["env"][key]), process)
+        theirs = None  # the plugin's server: Codex passes no exported variables
+        for t in codex.user_cbm().values():
+            if t.get("enabled") is False:  # switched off: it starts nothing
+                continue
+            env, names = t.get("env"), t.get("env_vars")
+            if isinstance(env, dict) and isinstance(env.get(key), str) and env[key]:
+                theirs = env[key]
+            elif isinstance(names, list) and key in names:
+                theirs = process
+            if theirs:
+                break
+    except Exception:  # an odd file shape never breaks the report
+        return []
+    default = _cbm_default_cache()
+    a, b = Path(claude) if claude else default, Path(theirs) if theirs else default
+    title = "codebase-memory cache folders"
+    if a == b:
+        return [CheckResult(title, True, "", "", "warn")]
+    return [CheckResult(title, False, printable(
+        f"two cache folders: {a} (Claude Code) and {b} (Codex); the servers and the project pointer see different "
+        "indexes"), "leave CBM_CACHE_DIR unset everywhere, or set the same folder for both "
+        "(Codex: env in your [mcp_servers] table)", "warn")]
 
 
 def _cbm_refresh() -> list[CheckResult]:
@@ -860,7 +948,8 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []), *_cbm_refresh(), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []),
+            *(_without_codex(_cbm_installer) if _windows_only(cs) else _cbm_installer()), *_cbm_refresh(), *_cbm_conflict(), *_cbm_binaries(), *_cbm_cache_folders(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
