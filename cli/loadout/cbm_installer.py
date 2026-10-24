@@ -90,6 +90,31 @@ def runs_new_script(command) -> bool:
     return isinstance(command, str) and _script(_split(command), paths.claude_home() / "hooks") is not None
 
 
+def claude_hook_words(words: list[str]) -> bool:
+    """A Claude Code settings hook the installer wrote: it runs `codebase-memory-mcp hook…` or one of the
+    NEW_SCRIPTS from ~/.claude/hooks (never a same-named script elsewhere, never a name inside echo text)."""
+    return _runs(words, "hook") or _script(words, paths.claude_home() / "hooks") is not None
+
+
+def is_installer_hook(item) -> bool:
+    """inventory's hook item (~/.claude/settings.json) for such a hook: classify offers it as the kit's."""
+    from .duplicates import _hook_words
+    hook = {"command": item.detail, **({"args": item.extra["args"]} if "args" in item.extra else {})}
+    return item.kind == "hook" and claude_hook_words(_hook_words(hook))
+
+
+def adopt_item(a: Artefact):
+    """The inventory item adopt shows for an artefact (its leave decision is keyed on it): a claude-hook is
+    inventory's hook item, any other an `installer` item."""
+    from .inventory import Item
+    if a.kind == "claude-hook":
+        w = a.where
+        extra = {"event": w["event"], "group": w["group"], "hook": w["hook"],
+                 **({"args": w["args"]} if "args" in w else {})}
+        return Item("hook", f"{w['event']}:{w['matcher']}", w["command"], "~/.claude/settings.json", extra)
+    return Item("installer", a.label, a.kind, str(a.path), {"artefact": a})
+
+
 def _echo(words: list[str], command: str) -> bool:
     return bool(words) and _program(words[0]) in ("echo", "printf") and PROGRAM in command
 
@@ -146,10 +171,13 @@ def _claude() -> list[Artefact]:
                 if not isinstance(hook, dict) or not isinstance(group, dict):
                     continue
                 words = _words(hook)
-                script = _script(words, hooks_dir)
-                if _runs(words, "hook") or script:
+                if claude_hook_words(words):
+                    where = {"event": event, "group": gi, "hook": hi, "matcher": matcher_of(group),
+                             "command": hook.get("command", ""), "augment": "hook-augment" in words}
+                    if "args" in hook:
+                        where["args"] = hook["args"]
                     out.append(Artefact("claude-hook", "claude", settings, f"{event}:{matcher_of(group)} hook", True,
-                                        {"event": event, "group": gi, "hook": hi}, _doubles(event)))
+                                        where, _doubles(event)))
     from .maintenance import _hook_references
     refs = _hook_references()
     for name in NEW_SCRIPTS:
@@ -303,6 +331,8 @@ def _remove_hook(a: Artefact, bk) -> str:
     if style is None:
         raise ValueError(f"{_tilde(a.path)}: its layout changed; loadout cannot rewrite it byte for byte")
     data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"{_tilde(a.path)}: it is no longer a JSON object")
     event, canon = a.where["event"], a.where["canon"]
     groups = data.get("hooks", {}).get(event) if isinstance(data.get("hooks"), dict) else None
     spots = [(gi, hi) for ev, gi, hi, _, hook in _hook_groups({event: groups})

@@ -1124,9 +1124,7 @@
           "cbm-code-discovery-gate",
           "cbm-session-reminder",
           "cbm-subagent-reminder",
-          "codebase-memory-mcp hook",
-          "codebase-memory-session.sh",
-          "codebase-memory-coverage.sh"
+          "codebase-memory-mcp hook"
         ]
       },
       "reason": "loadout provides the codebase-memory hooks (with rule-aligned wording).",

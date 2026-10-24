@@ -365,9 +365,11 @@ def _tool_setups() -> list[CheckResult]:
 def _cbm_installer() -> list[CheckResult]:
     """The files codebase-memory-mcp's installer wrote next to loadout's plugin, one row each: the path and why it
     doubles loadout's, never the file's content. Read only; adopt removes the removable ones after a yes."""
-    from . import cbm_installer
+    from . import cbm_installer, own
     try:
-        found = cbm_installer.find()
+        found = [a for a in cbm_installer.find()
+                 if not (a.kind == "claude-hook" and a.where.get("augment"))  # _tool_setups names it: one row
+                 and not own.is_left(cbm_installer.adopt_item(a))]  # left in adopt: the user's choice, no warning
     except Exception:  # an odd file shape never breaks the report
         return []
     return [CheckResult("codebase-memory installer", False,

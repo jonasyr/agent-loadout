@@ -191,3 +191,78 @@ def test_update_leaves_the_installers_new_scripts_alone(machine):
     assert (machine / ".claude/hooks/codebase-memory-session.sh").exists()
     assert (machine / ".claude/hooks/codebase-memory-coverage.sh").exists()
     assert not set(cbm_installer.NEW_SCRIPTS) & {s + ".sh" for s in duplicates.LEGACY_SCRIPTS}
+
+
+# --- fix round 1
+
+
+def _hook_settings(home, *commands):
+    _w(home / ".claude/settings.json", {"hooks": {"SessionStart": [{"hooks": [
+        {"type": "command", "command": c} for c in commands]}]}})
+
+
+def _installer_rows():
+    return [r for r in check.run_checks() if r.name == "codebase-memory installer"]
+
+
+def test_a_hook_augment_hook_gets_one_row(machine, monkeypatch):
+    monkeypatch.setattr(codex, "checks", lambda: [])
+    _w(machine / ".claude/settings.json", {"hooks": {"PreToolUse": [{"matcher": "Grep", "hooks": [
+        {"type": "command", "command": "codebase-memory-mcp hook-augment"}]}]}})
+    rows = [r for r in check.run_checks() if not r.ok and "codebase-memory" in r.name and "hook" in r.detail]
+    assert [r.name for r in rows] == ["codebase-memory hooks"]
+
+
+def test_a_left_artefact_gets_no_row(machine, monkeypatch):
+    from loadout import own
+    monkeypatch.setattr(codex, "checks", lambda: [])
+    _w(machine / ".claude/agents/codebase-memory.md", "x\n")
+    _hook_settings(machine, "~/.claude/hooks/codebase-memory-session.sh")
+    assert len(_installer_rows()) == 2
+    for a in cbm_installer.find():
+        own.remember_leave(cbm_installer.adopt_item(a))
+    assert _installer_rows() == []
+    assert {v.action for v in inventory.classify(inventory.collect(with_versions=False))
+            if v.item.kind == "installer" or "codebase-memory-session" in str(v.item.detail)} == {"keep"}
+
+
+def test_only_the_installers_script_path_is_offered(machine):
+    home = str(machine)
+    offered = [f"~/.claude/hooks/codebase-memory-session.sh", f"$HOME/.claude/hooks/codebase-memory-coverage.sh",
+               f"{home}/.claude/hooks/codebase-memory-session.sh"]
+    others = ["/opt/other/codebase-memory-session.sh", "echo codebase-memory-session.sh",
+              'echo "run ~/.claude/hooks/codebase-memory-coverage.sh"']
+    _hook_settings(machine, *offered, *others)
+    verdicts = {v.item.detail: v.action for v in inventory.classify(inventory.collect(with_versions=False))
+                if v.item.kind == "hook"}
+    assert {c: verdicts[c] for c in offered} == {c: "migrate" for c in offered}
+    assert all(verdicts[c] != "migrate" for c in others), verdicts
+    assert len([a for a in cbm_installer.find() if a.kind == "claude-hook"]) == len(offered)
+
+
+def test_a_hooks_file_that_changed_shape_is_not_done(machine):
+    path = paths.codex_home() / "hooks.json"
+    for broken in ("[]", None, '{"hooks": []}'):
+        _w(path, ECHO)
+        (item,) = [i for i in inventory.collect(with_versions=False) if i.detail == "codex-hook"]
+        if broken is None:
+            path.unlink()
+        else:
+            _w(path, broken)
+        verdict = inventory.Verdict(item, "migrate", inventory.INSTALLER_REASON, "mcp-codebase-memory")
+        not_done = []
+        (line,) = adopt.apply([verdict], backup.Backup(description="t"), not_done=not_done)
+        assert isinstance(line, adopt.NotDone) and not_done == [item]
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("# Mine\n\n" + START + "\nx\n" + END + "\n\nafter\n", "# Mine\n\n\nafter\n"),  # LF only
+    ("# Mine\r\n" + START + "\r\nx\r\n" + END, "# Mine\r\n"),                       # the block ends the file
+    (START + "\nx\n" + END, ""),
+])
+def test_the_block_is_cut_exactly_in_other_shapes(machine, text, expected):
+    path = paths.codex_home() / "AGENTS.md"
+    _w(path, text)
+    (a,) = [a for a in cbm_installer.find() if a.kind == "codex-agents-block"]
+    cbm_installer.remove(a, backup.Backup(description="t"))
+    assert path.read_bytes() == expected.encode()

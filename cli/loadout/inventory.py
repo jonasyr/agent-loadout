@@ -146,8 +146,7 @@ def _installer_items() -> list[Item]:
     """The removable files codebase-memory-mcp's installer wrote (cbm_installer.find gates each agent). Its Claude
     Code settings hooks are hook items already (the catalog's hook-codebase-memory), so they are not repeated."""
     from . import cbm_installer
-    return [Item("installer", a.label, a.kind, str(a.path), {"artefact": a})
-            for a in cbm_installer.find() if a.removable and a.kind != "claude-hook"]
+    return [cbm_installer.adopt_item(a) for a in cbm_installer.find() if a.removable and a.kind != "claude-hook"]
 
 
 def collect(with_versions: bool = True) -> list[Item]:
@@ -214,6 +213,9 @@ def classify(items: list[Item]) -> list[Verdict]:
             out.append(Verdict(item, "own", own.own_reason(item)))
             continue
         entry = catalog.match(item.kind, item.name, item.detail)
+        if item.kind == "hook" and entry is None:
+            from . import cbm_installer  # the installer's hooks by what they run (`.exe`, quoted, its script path)
+            entry = catalog.by_id("hook-codebase-memory") if cbm_installer.is_installer_hook(item) else None
         if entry is None:
             out.append(Verdict(item, "own", own.own_reason(item)))
             continue
