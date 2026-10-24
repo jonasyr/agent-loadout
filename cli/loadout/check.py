@@ -302,8 +302,8 @@ def _is_serena_server(cfg: dict) -> bool:
 
 
 def _is_cbm_server(cfg: dict) -> bool:
-    command = cfg.get("command")
-    return isinstance(command, str) and re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe") == "codebase-memory-mcp"
+    from . import codex
+    return codex.is_cbm(cfg)
 
 
 def _user_servers(cwd: Path) -> list[tuple[str, dict, str, bool]]:

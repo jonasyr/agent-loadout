@@ -465,6 +465,38 @@ def user_serena(data: dict, owned: set[str]) -> str | None:
     return None
 
 
+CBM_PROGRAMS = ("npx", "bunx", "uvx", "uv")
+CBM_NAME = "codebase-memory-mcp"
+
+
+def is_cbm(table: dict) -> bool:
+    """A Codex server table that starts codebase-memory's MCP server, whatever its name: the program itself, a full
+    path to it, or npx/bunx/uvx/uv naming it. (plugins/loadout/hooks/mcp_guard.py inlines this rule; a test keeps
+    them equal.)"""
+    command, args = table.get("command"), table.get("args")
+    if not isinstance(command, str):
+        return False
+    base = re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe")
+    if base == CBM_NAME:
+        return True
+    return base in CBM_PROGRAMS and isinstance(args, list) and any(isinstance(a, str) and CBM_NAME in a for a in args)
+
+
+def user_cbm() -> dict[str, dict]:
+    """The user's Codex tables (not loadout's) that start codebase-memory, by name."""
+    return {n: t for n, t in user_servers().items() if is_cbm(t)}
+
+
+def cbm_has_own_settings(table: dict) -> bool:
+    """True when a cbm table is more than the plugin's own server (`command = "codebase-memory-mcp"`, no args or
+    `mcp`): it sets env, other args or a fixed path, so removing it would lose those."""
+    args = table.get("args")
+    command = table.get("command")
+    return bool(table.get("env") or table.get("env_vars")
+                or (args not in (None, [], ["mcp"]))
+                or (isinstance(command, str) and ("/" in command or "\\" in command)))
+
+
 SERENA_KEPT = "Serena: your own server in config.toml kept"
 
 
@@ -1817,6 +1849,21 @@ def servers_twice(installed: set[str] | None) -> list[str]:
     return sorted(set(user_servers()) & _loadout_plugin_servers(version))
 
 
+def cbm_twice(installed: set[str] | None) -> list[str]:
+    """The names of the user's config.toml tables that start codebase-memory under a name other than the plugin's,
+    while the loadout plugin (installed, not switched off) starts its own: Codex runs both."""
+    if installed is None or LOADOUT_PLUGIN not in installed:
+        return []
+    path = paths.codex_home() / "config.toml"
+    try:
+        data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        return []
+    if get_dict(get_dict(data, "plugins"), LOADOUT_PLUGIN).get("enabled") is False:
+        return []
+    return sorted(n for n in user_cbm() if n != CBM_NAME)
+
+
 HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex`, then run /hooks"
 
 
@@ -1953,6 +2000,11 @@ def checks() -> list:
                             f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
                             "or turn the loadout plugin off in Codex", "warn")
                 for name in servers_twice(installed)]
+    results += [CheckResult(f"Codex MCP {name}", False,
+                            "runs codebase-memory-mcp next to the loadout plugin's; Codex starts two",
+                            f"remove your [mcp_servers.{toml_key(name)}] from {config} (the plugin provides it), "
+                            "or turn the loadout plugin off in Codex", "warn")
+                for name in cbm_twice(installed)]
     path = paths.codex_home() / "AGENTS.md"
     current = splice(path.read_text(encoding="utf-8") if path.exists() else "", render_instructions())
     ok = path.exists() and current == path.read_text(encoding="utf-8")

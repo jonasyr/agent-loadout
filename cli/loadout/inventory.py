@@ -127,7 +127,7 @@ def _codex_items() -> list[Item]:
     claude = get_dict(load_json(paths.claude_json()), "mcpServers") if targets.claude_enabled() else {}
     skip = codex._plugin_servers() | set(claude)
     for name, table in codex.user_servers().items():
-        if name in skip or codex.is_serena(table):  # Serena is the kit's tool, however it was set up
+        if name in skip or codex.is_serena(table) or codex.is_cbm(table):  # the kit's tools, however set up (cbm: classify)
             continue
         try:
             cfg, problem = codex.to_claude(name, table), ""
@@ -217,4 +217,30 @@ def classify(items: list[Item]) -> list[Verdict]:
         else:
             action, reason = "keep", _why(entry)
         out.append(Verdict(item, action, reason, entry["id"]))
+    return out + _codex_cbm_verdicts(left)
+
+
+CBM_PROVIDED = "Provided by loadout's Codex plugin; this table starts a second codebase-memory server."
+CBM_OWN = ("It starts codebase-memory with settings of its own (env, args or a fixed path); remove it yourself if "
+           "loadout's plugin should serve it.")
+
+
+def _codex_cbm_verdicts(left: dict) -> list[Verdict]:
+    """A user's Codex table that starts codebase-memory under another name: never offered for Claude Code (so no
+    item in collect), but adopt may remove it, after a yes, unless it carries settings of its own."""
+    from . import codex, own, targets
+    if not targets.codex_enabled():
+        return []
+    out = []
+    for name, table in codex.user_cbm().items():
+        if name in codex._plugin_servers():  # the plugin's own name: check names that one
+            continue
+        item = Item("mcp", name, " ".join([str(table.get("command") or ""), *map(str, table.get("args") or [])]).strip(),
+                    codex.CONFIG_LOCATION, {"config": None, "problem": "", "cbm": True})
+        if own.decided(left, item) == "leave":
+            out.append(Verdict(item, "keep", own.LEFT_REASON))
+        elif codex.cbm_has_own_settings(table):
+            out.append(Verdict(item, "keep", CBM_OWN, "mcp-codebase-memory"))
+        else:
+            out.append(Verdict(item, "migrate", CBM_PROVIDED, "mcp-codebase-memory"))
     return out

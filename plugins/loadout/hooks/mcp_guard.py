@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -89,8 +90,27 @@ def server_available(server: str, cwd: str, home: Path) -> bool:
     return server in _dict(_json(Path(cwd) / ".mcp.json"), "mcpServers") and server not in off | json_off
 
 
+CBM = "codebase-memory-mcp"
+LOADOUT_PLUGIN = "loadout@agent-loadout"
+
+
+def is_cbm(table: dict) -> bool:
+    """Same rule as loadout's codex.is_cbm (a test keeps them equal; hooks cannot import loadout)."""
+    command, args = table.get("command"), table.get("args")
+    if not isinstance(command, str):
+        return False
+    base = re.split(r"[\\/]", command)[-1].lower()
+    base = base[:-4] if base.endswith(".exe") else base
+    if base == CBM:
+        return True
+    return base in ("npx", "bunx", "uvx", "uv") and isinstance(args, list) and any(
+        isinstance(a, str) and CBM in a for a in args)
+
+
 def codex_server_enabled(server: str, home: Path) -> bool:
-    """False only when Codex's config.toml switches <server> off (`[mcp_servers.<server>] enabled = false`)."""
+    """False only when Codex's config.toml switches <server> off (`[mcp_servers.<server>] enabled = false`).
+    codebase-memory is also on when the loadout plugin is off but a table of yours (any name) starts it, and when
+    your table of the plugin's name is off but another of yours runs it."""
     root = Path(os.environ["CODEX_HOME"]) if os.environ.get("CODEX_HOME") else home / ".codex"
     try:
         import tomllib
@@ -98,7 +118,13 @@ def codex_server_enabled(server: str, home: Path) -> bool:
             data = tomllib.load(fh)
     except Exception:
         return True
-    table = _dict(_dict(data, "mcp_servers"), server)
+    servers = _dict(data, "mcp_servers")
+    table = _dict(servers, server)
+    if server == CBM:
+        plugin_on = _dict(_dict(data, "plugins"), LOADOUT_PLUGIN).get("enabled") is not False
+        if plugin_on and table.get("enabled") is not False:
+            return True
+        return any(isinstance(t, dict) and is_cbm(t) and t.get("enabled") is not False for t in servers.values())
     return table.get("enabled") is not False
 
 
