@@ -10,7 +10,7 @@ from .jsonio import get_dict, load_json
 
 @dataclass(frozen=True)
 class Item:
-    kind: str          # mcp | plugin | marketplace | skill | hook | binary | claude-md
+    kind: str          # mcp | plugin | marketplace | skill | hook | binary | claude-md | installer
     name: str
     detail: str = ""
     location: str = ""
@@ -142,17 +142,26 @@ def _codex_items() -> list[Item]:
     return items
 
 
+def _installer_items() -> list[Item]:
+    """The removable files codebase-memory-mcp's installer wrote (cbm_installer.find gates each agent). Its Claude
+    Code settings hooks are hook items already (the catalog's hook-codebase-memory), so they are not repeated."""
+    from . import cbm_installer
+    return [Item("installer", a.label, a.kind, str(a.path), {"artefact": a})
+            for a in cbm_installer.find() if a.removable and a.kind != "claude-hook"]
+
+
 def collect(with_versions: bool = True) -> list[Item]:
     from . import targets
     claude = [*_mcp_items(), *_plugin_items(), *_marketplace_items(), *_skill_items(), *_hook_items(),
               *_claude_md_items()] if targets.claude_enabled() else []  # Codex only: Claude Code's files stay as they are
-    return [*claude, *_codex_items(), *_binary_items(with_versions)]
+    return [*claude, *_codex_items(), *_installer_items(), *_binary_items(with_versions)]
 
 
 def _why(entry: dict) -> str:
     return entry["reason"] + (f" Replacement: {entry['by']}." if entry.get("by") else "")
 
 
+INSTALLER_REASON = "Written by codebase-memory-mcp install; loadout's plugin provides the same."
 BUNDLED_CLAUDE = ("a claude on PATH for the terminal (VS Code's Claude Code extension's claude runs loadout's "
                   "commands now)")
 
@@ -180,6 +189,10 @@ def classify(items: list[Item]) -> list[Verdict]:
                 out.append(Verdict(item, "update", entry["reason"], entry["id"]))
             else:
                 out.append(Verdict(item, "keep", entry["reason"], entry["id"]))
+            continue
+        if item.kind == "installer":
+            out.append(Verdict(item, "keep", own.LEFT_REASON) if own.decided(left, item) == "leave"
+                       else Verdict(item, "migrate", INSTALLER_REASON, "mcp-codebase-memory"))
             continue
         if item.kind == "claude-md":
             out.append(Verdict(item, "review", "Global CLAUDE.md content can move into your personal layer (rules/personal/me.md)."))

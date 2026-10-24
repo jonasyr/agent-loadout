@@ -47,7 +47,8 @@ CALM = {
 }
 DONE = {"remove": "Removed", "migrate": "Removed your copy", "scope-down": "Disabled globally",
         "update": "Updated", "install": "Installed", "review": "Removed"}
-KIND_LABEL = {"mcp": "MCP", "plugin": "plugin", "marketplace": "marketplace", "skill": "skill", "hook": "hook"}
+KIND_LABEL = {"mcp": "MCP", "plugin": "plugin", "marketplace": "marketplace", "skill": "skill", "hook": "hook",
+              "installer": "file from codebase-memory-mcp install"}
 UNDO_LINE = "Undo any time: loadout restore --list"
 LAST_BACKUP: Path | None = None  # the backup of the last run(); bootstrap prints one undo line for both
 
@@ -125,6 +126,8 @@ def _calm_name(v: Verdict) -> str:
 def _calm_reason(v: Verdict) -> str:
     if v.item.kind == "claude-md":
         return "its content moves into your personal layer (not deleted)"
+    if v.item.kind == "installer":
+        return "loadout's plugin provides the same"
     entry = catalog.by_id(v.entry_id) if v.entry_id else None
     if entry and entry.get("short"):
         reason = entry["short"]
@@ -326,6 +329,15 @@ def _apply_skill(v: Verdict, bk: Backup) -> str:
     return f"skill {v.item.name} moved to backup"
 
 
+def _apply_installer(v: Verdict, bk: Backup) -> str:
+    """One file codebase-memory-mcp's installer wrote: removed with a backup first (cbm_installer.remove)."""
+    from . import cbm_installer
+    try:
+        return cbm_installer.remove(v.item.extra["artefact"], bk)
+    except (ValueError, OSError) as exc:
+        return NotDone(f"installer {v.item.name}: not removed ({exc})")
+
+
 def _apply_hooks(hook_verdicts: list[Verdict], bk: Backup) -> list[str]:
     if not hook_verdicts:
         return []
@@ -470,6 +482,8 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
             out.append(_apply_binary(v, ask, confirm_cmds))
         elif kind == "claude-md":
             out += migrate_claude_md(bk)
+        elif kind == "installer":
+            out.append(_apply_installer(v, bk))
         if not_done is not None and any(isinstance(line, NotDone) for line in out[n:]):
             not_done.append(v.item)
         entry = catalog.by_id(v.entry_id) if v.action == "scope-down" else None

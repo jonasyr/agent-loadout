@@ -362,6 +362,19 @@ def _tool_setups() -> list[CheckResult]:
     return out
 
 
+def _cbm_installer() -> list[CheckResult]:
+    """The files codebase-memory-mcp's installer wrote next to loadout's plugin, one row each: the path and why it
+    doubles loadout's, never the file's content. Read only; adopt removes the removable ones after a yes."""
+    from . import cbm_installer
+    try:
+        found = cbm_installer.find()
+    except Exception:  # an odd file shape never breaks the report
+        return []
+    return [CheckResult("codebase-memory installer", False,
+                        printable(f"{a.label} ({cbm_installer._tilde(a.path)}): doubles loadout's {a.doubles}"),
+                        a.fix if not a.removable else "loadout adopt", "warn") for a in found]
+
+
 def _cbm_refresh() -> list[CheckResult]:
     """A row per repo whose last background refresh (hooks/refresh.py) failed; nothing while they succeed."""
     out = []
@@ -860,7 +873,8 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []), *_cbm_refresh(), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []),
+            *(_without_codex(_cbm_installer) if _windows_only(cs) else _cbm_installer()), *_cbm_refresh(), *_cbm_conflict(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
