@@ -343,19 +343,50 @@ Exit codes: 0 when nothing failed (warnings do not count); 1 when at least one `
 ## loadout usage
 
 ```
-loadout usage [--days N] [--json]
+loadout usage [--days N] [--around MOMENT | --since MOMENT] [--min-calls N] [--follow-within N]
+              [--min-sessions N] [--sessions] [--legacy] [--json]
 ```
 
-To get the numbers read out, ask your agent, or run `/loadout:usage` (Codex: `$loadout:usage`): the skill runs `loadout usage --json` and compares the shares with the measurement in [ADR 0026](../adr/0026-tool-hints-never-block.md) and [ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md).
+To get the numbers read out, ask your agent, or run `/loadout:usage` (Codex: `$loadout:usage`). The skill runs `loadout usage --json`; for "did X help?" it runs `--around`.
 
-Read-only. Counts, per agent and for main sessions and subagents separately, how often each tool family was used in the last N days (default 14): Serena, codebase-memory, Context7, Microsoft Learn, Grep, Glob, Read, the shell, other. It also counts symbol-like searches (the Grep tool, or shell `rg`, `grep`, `egrep` and `git grep`; `find` does not count). The parser (`cli/loadout/searches.py`) reads `a\|b` alternations and every search in a compound command line. Per agent and group it prints `sessions with a Serena reminder: N`, counted from tool results that start with one of Serena's denial reasons ([Serena's reminder](hooks.md#serenas-reminder)). As one total for both agents it prints the sessions in which loadout's docs hint (Context7 and Microsoft Learn for web lookups) appeared; loadout no longer hints on code searches, and the hook keeps its state for 7 days, so a longer window counts only about the last week. It reads the local transcripts of the agents that are on (`~/.claude/projects`, `$CODEX_HOME/sessions`) and prints counts only, never their content. Unreadable lines are skipped and counted.
+Read-only, counts only. It reads the local transcripts of the agents that are on (`~/.claude/projects`, `$CODEX_HOME/sessions`) once and never prints a prompt, command or path from them. It measures whether agents pick Serena and codebase-memory over grep when they look up code ([ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md)), and whether a change helped: with `--around`, every metric shows *before → after* and an arrow.
+
+**Windows.**
+- `--days N` alone is one window, the last N days (default 14).
+- `--around MOMENT` compares N days before MOMENT with N days after it. When the after window is not over yet, it is marked `partial` with its actual length.
+- `--since MOMENT` is one window, from MOMENT to now.
+- MOMENT is `YYYY-MM-DD` (local midnight) or `YYYY-MM-DDTHH:MM` (local time); the moment itself belongs to the after window.
+- A session belongs to the window that holds its first timestamped event (else the file's time), with all its calls. A session that started before the first window is not counted.
+
+**Rows.** For each agent there is one row for main sessions and one for subagents. When the subagents' task prompts can be read, two more rows split them into *prompted* (the prompt names `serena`, `codebase-memory`, `find_symbol`, `search_graph`, `trace_path` or `get_code_snippet`) and *not prompted*. loadout's own SubagentStart context does not count as the prompt.
+
+**Metrics, per row.** Only sessions with at least `--min-calls` tool calls (default 5) are counted. The rest are shown as `+N tiny`.
+- **Code-tool share:** lookup calls ÷ (lookup calls + symbol-like searches). Lookup calls are Serena's `find_symbol`, `get_symbols_overview`, `find_referencing_symbols`, `find_declaration` and `find_implementations`, and codebase-memory's `search_graph`, `trace_path`, `get_code_snippet`, `query_graph`, `search_code`, `get_file_outline` and `get_architecture`. Housekeeping such as `initial_instructions`, memories or `index_status` does not count. Symbol-like searches are the Grep tool, or shell `rg`, `grep`, `egrep` and `git grep` looking for a symbol, as parsed by `cli/loadout/searches.py`.
+- **Follow-through:** of the denials by Serena's reminder (tool results that start with one of its deny reasons, also behind Claude Code's `PreToolUse:<Tool> hook error:` prefix), the share followed by a lookup call within the next `--follow-within` tool calls (default 5).
+- **Sessions with** Serena, codebase-memory, Context7 or Microsoft Learn, as a share of counted sessions.
+- **Symbol searches per counted session.**
+
+**Arrows.**
+- Shares move at 5 percentage points, and rates at 20 % either way. `new` means a rate rose from 0.
+- `too few sessions` replaces the arrow when either window of a row has fewer than `--min-sessions` counted sessions (default 20).
+- `—` marks a metric that has no value on one side.
+
+**`--sessions`** prints one line per session: the transcript's file name, agent, kind, `counted` or `tiny`, the window, its lookup calls, symbol searches, share, denials and how many were followed, and whether it was prompted. Use it to spot-check the counts by opening a few sessions yourself.
+
+**`--legacy`** prints the counts the way loadout counted before 2026-10-24: one `--days` window, line by line (a resumed old session contributes its new calls), tiny sessions included. [ADR 0026](../adr/0026-tool-hints-never-block.md) and ADR 0039 were measured that way, so compare with their numbers through `--legacy`. That old count:
+
+Counts, per agent and for main sessions and subagents separately, how often each tool family was used in the last N days (default 14): Serena, codebase-memory, Context7, Microsoft Learn, Grep, Glob, Read, the shell, other. It also counts symbol-like searches (the Grep tool, or shell `rg`, `grep`, `egrep` and `git grep`; `find` does not count). The parser (`cli/loadout/searches.py`) reads `a\|b` alternations and every search in a compound command line. Per agent and group it prints `sessions with a Serena reminder: N`, counted from tool results that start with one of Serena's denial reasons ([Serena's reminder](hooks.md#serenas-reminder)). As one total for both agents it prints the sessions in which loadout's docs hint (Context7 and Microsoft Learn for web lookups) appeared; loadout no longer hints on code searches, and the hook keeps its state for 7 days, so a longer window counts only about the last week. It reads the local transcripts of the agents that are on (`~/.claude/projects`, `$CODEX_HOME/sessions`) and prints counts only, never their content. Unreadable lines are skipped and counted.
 
 | Flag | Meaning |
 |---|---|
-| `--days N` | Look back N days (default 14; values below 1 count as 1). |
-| `--json` | Print the counts as JSON: `days`, `hint_sessions`, and per agent (`claude`, `codex`) `main` and `subagent` with `sessions`, `calls`, `symbol_searches`, `serena_denials` (sessions with a Serena reminder) and `families.<name>.calls`/`.sessions`, plus `skipped_lines`. An agent without a transcript folder is left out. |
+| `--days N` | Window length in days (default 14; values below 1 count as 1). |
+| `--around MOMENT` / `--since MOMENT` | Before and after around MOMENT, or only after it (see Windows). They cannot be combined. |
+| `--min-calls N`, `--follow-within N`, `--min-sessions N` | The thresholds above (defaults 5, 5, 20). |
+| `--sessions` | One line per session (ids and counts only); not with `--json`. |
+| `--legacy` | The old single-window count; only `--days` applies. |
+| `--json` | Print the numbers as JSON. The top level holds `days`, `windows` (`after`, with `--around` also `before`: `start`, `end`, `days`, `partial`), `thresholds` and `hint_sessions` (docs hints in the after window; the hook keeps 7 days). Per agent (`claude`, `codex`) there are the rows `main`, `subagent`, `subagent_prompted` and `subagent_unprompted`. Each row holds today's keys (`sessions`, `calls`, `symbol_searches`, `serena_denials`, `families.<name>.calls`/`.sessions`, counted sessions only) plus `tiny`, `lookups`, `code_tool_share`, `denials`, `followed`, `follow_through`, `per_session` and `family_share`. Each agent also has `prompted_known` and `skipped_lines`, and with `--around` `before` (the same rows) and `change` (arrows per row). `--legacy --json` prints the old shape. An agent without a transcript folder is left out. |
 
-Exit codes: 0 done (an empty transcript folder prints zero counts); 1 when no agent that is on has a transcript folder (`~/.claude/projects`, `$CODEX_HOME/sessions`).
+Exit codes: 0 done (an empty transcript folder prints zero counts); 1 when no agent that is on has a transcript folder; 2 for flags that cannot be combined or a MOMENT in another form.
 
 ## loadout apply-settings
 

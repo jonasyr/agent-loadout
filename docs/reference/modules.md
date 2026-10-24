@@ -51,7 +51,8 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `own.py` | Your own tools, which loadout does not manage: record them in the personal layer or a personal profile, leave them, or remove them ([Handle your own tools](../how-to/your-own-tools.md)). |
 | `searches.py` | The one parser for symbol-like searches in a tool call (`a\|b` alternations, every search of a compound command line); `usage.py` uses it. |
 | `cbm.py` | codebase-memory's `auto_index` from the `cbm_auto_index` preference: set, record, undo ([preference](preferences-format.md#codebase-memorys-auto_index)). |
-| `usage.py` | `loadout usage`: how often the agents used each tool family, counted from local transcripts; read-only. |
+| `usage.py` | `loadout usage`: before/after windows, the code-tool share, reminder follow-through and the prompted split, plus the old single-window count (`--legacy`); read-only. |
+| `usage_sessions.py` | Reads each Claude Code and Codex transcript once into a per-session record of counts (lookup calls, symbol searches, denials and follow-through, prompted or not), never content; `usage.py` uses it. |
 | `advisor.py` | `loadout advisor-mark <plan>`: records that the execution advisor evaluated a plan. It loads the plugin's `hooks/advisor.py`, so both share one format. |
 
 ### Preferences and agents
