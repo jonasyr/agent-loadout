@@ -35,7 +35,19 @@ class FakeRunner:
         return self.paths.get(binary)
 
 
-HARMLESS_PROGRAMS = frozenset({"git", "python", "python3", "echo", "cmd"})  # real ones tests may run (no installs)
+# real programs tests may run, each only in the form that starts nothing else: a general interpreter (python,
+# cmd) would otherwise let a test reach pip, claude or codex behind the guard's back
+_STARTS_SOMETHING = ("subprocess", "os.system", "os.exec", "os.spawn", "popen", "pip", "runpy", "importlib")
+
+
+def _harmless_python(args):
+    code = args[1] if len(args) > 1 and args[0] == "-c" else None
+    return isinstance(code, str) and not any(word in code.lower() for word in _STARTS_SOMETHING)
+
+
+HARMLESS_PROGRAMS = {"git": lambda args: True, "echo": lambda args: True,
+                     "python": _harmless_python, "python3": _harmless_python,
+                     "cmd": lambda args: [a.lower() for a in args[:2]] == ["/c", "echo"]}
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +88,8 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
         name = os.path.basename(str(cmd[0])).lower().removesuffix(".exe") if cmd else ""
         real = exe is not None and os.path.exists(exe)  # a made-up path (a test that fakes subprocess) runs nothing
         stub = real and os.path.realpath(exe).startswith(os.path.realpath(base))
-        if real and not stub and name not in HARMLESS_PROGRAMS:
+        harmless = name in HARMLESS_PROGRAMS and HARMLESS_PROGRAMS[name]([str(a) for a in cmd[1:]])
+        if real and not stub and not harmless:
             pytest.fail(f"a test ran the real `{name}` ({exe}) through runner.run; use fake_runner or a stub in tmp_path")
         return real_run(cmd, *args, **kwargs)
     monkeypatch.setattr(runner, "run", guarded_run)

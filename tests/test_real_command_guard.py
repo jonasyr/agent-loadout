@@ -46,3 +46,21 @@ def test_harmless_programs_run():
 
 def test_fake_runner_steps_the_guard_aside(fake_runner):
     assert runner.run(["codex", "plugin", "list"]).ok and fake_runner.calls == [["codex", "plugin", "list"]]
+
+
+@pytest.mark.parametrize("cmd", [["python", "-m", "pip", "install", "x"], ["python", "tool.py"],
+                                 ["python", "-c", "import subprocess; subprocess.run(['claude'])"],
+                                 ["python", "-c", "import os; os.system('codex')"]])
+def test_python_may_only_run_inline_code_that_starts_nothing(cmd):
+    with pytest.raises(pytest.fail.Exception, match="ran the real `python`"):
+        runner.run(cmd)
+
+
+def test_python_inline_code_runs():
+    assert runner.run(["python", "-c", "print('ok')"]).stdout.strip() == "ok"
+
+
+def test_cmd_may_only_echo(monkeypatch):
+    monkeypatch.setattr(runner, "_resolve", lambda binary: shutil.which("sh"))  # a real program named cmd
+    with pytest.raises(pytest.fail.Exception, match="ran the real `cmd`"):
+        runner.run(["cmd", "/c", "claude", "plugin", "list"])
