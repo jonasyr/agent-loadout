@@ -173,3 +173,21 @@ def test_codex_prompted(fake_home):
     _cwrite([_meta("cli"), _cuser("serena")], name="c3")
     got = {x.id: x.prompted for x in _crun()}
     assert got == {"c1": True, "c2": False, "c3": None}
+
+
+def _cagent(text, author="parent", recipient="child"):
+    return {"type": "response_item", "payload": {"type": "agent_message", "author": author, "recipient": recipient,
+                                                 "content": [{"type": "text", "text": text}]}}
+
+
+def test_codex_subagent_prompt_is_the_parents_agent_message(fake_home):
+    # the real shape (2026-10, keys only): injected `<...>` context as user messages, then the parent's task as
+    # an agent_message before any tool call
+    _cwrite([_meta({"subagent": {}}), _cuser("<other_tag>context</other_tag>"),
+             _cuser("<environment_context>x</environment_context>"), _cagent("Use find_symbol for X")])
+    _cwrite([_meta({"subagent": {}}), _cuser("<other_tag>serena</other_tag>"), _cagent("fix the README")],
+            name="c2")
+    _cwrite([_meta({"subagent": {}}), _cuser("<tag>x</tag>"), _fcall("exec_command", "k1"),
+             _cagent("now use serena")], name="c3")  # an agent_message after work began is no task prompt
+    got = {x.id: x.prompted for x in _crun()}
+    assert got == {"c1": True, "c2": False, "c3": None}
