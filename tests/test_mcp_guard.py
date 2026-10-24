@@ -269,3 +269,51 @@ def test_a_missing_classifier_still_runs_serena(env, tmp_path):
                           "--client=claude-code"], input=json.dumps(p), env=e, capture_output=True, text=True,
                          timeout=20)
     assert res.returncode == 0 and json.loads(res.stdout)["ran"] == "remind --client=claude-code"
+
+
+# --- codebase-memory under Codex: your table counts, whatever its name ---------------------------------------------
+
+CBM_TABLES = [
+    {"command": "codebase-memory-mcp"},
+    {"command": "/home/u/.local/bin/codebase-memory-mcp"},
+    {"command": "C:\\x\\codebase-memory-mcp.exe"},
+    {"command": "npx", "args": ["-y", "codebase-memory-mcp"]},
+    {"command": "uvx", "args": ["serena"]},
+    {"command": "serena"},
+    {"command": "cbm-other"},
+    {"command": "npx"},
+    {"args": ["codebase-memory-mcp"]},
+    {"command": 3},
+]
+
+
+def test_guard_cbm_rule_matches_codex_is_cbm():
+    from loadout import codex
+    mod = _guard_module()
+    assert [mod.is_cbm(t) for t in CBM_TABLES] == [codex.is_cbm(t) for t in CBM_TABLES]
+    assert [codex.is_cbm(t) for t in CBM_TABLES][:4] == [True] * 4
+
+
+PLUGIN_OFF = '[plugins."loadout@agent-loadout"]\nenabled = false\n'
+USER_CBM = '[mcp_servers.cbm]\ncommand = "codebase-memory-mcp"\n'
+USER_CBM_OFF = USER_CBM + "enabled = false\n"
+
+
+@pytest.mark.parametrize("config, available", [
+    (PLUGIN_OFF + USER_CBM, True),
+    (USER_CBM_OFF, True),  # the plugin on: its own server is there
+    (PLUGIN_OFF, False),
+    (PLUGIN_OFF + USER_CBM_OFF, False),
+    ('[mcp_servers.codebase-memory-mcp]\nenabled = false\n' + USER_CBM_OFF, False),
+    ('[mcp_servers.codebase-memory-mcp]\nenabled = false\n', False),
+    ('[mcp_servers.codebase-memory-mcp]\nenabled = false\n' + USER_CBM, True),
+])
+def test_codex_cbm_availability(env, monkeypatch, config, available):
+    mod = _guard_module()
+    monkeypatch.setenv("PATH", f"{env['bin']}{os.pathsep}/usr/bin:/bin")
+    (env["bin"] / "codebase-memory-mcp").write_text("#!/bin/sh\n")
+    (env["bin"] / "codebase-memory-mcp").chmod(0o755)
+    monkeypatch.setenv("CODEX_HOME", str(env["home"] / ".codex"))
+    (env["home"] / ".codex").mkdir()
+    (env["home"] / ".codex" / "config.toml").write_text(config)
+    assert mod.available("codebase-memory-mcp", "codex", str(env["repo"]), env["home"]) is available

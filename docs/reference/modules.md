@@ -53,6 +53,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `cbm.py` | codebase-memory's `auto_index` from the `cbm_auto_index` preference: set, record, undo ([preference](preferences-format.md#codebase-memorys-auto_index)). |
 | `usage.py` | `loadout usage`: before/after windows, the code-tool share, reminder follow-through and the prompted split, plus the old single-window count (`--legacy`); read-only. |
 | `usage_sessions.py` | Reads each Claude Code and Codex transcript once into a per-session record of counts (lookup calls, symbol searches, denials and follow-through, prompted or not), never content; `usage.py` uses it. |
+| `cbm_installer.py` | Finds what `codebase-memory-mcp install` wrote (hooks, wrapper scripts, the agent file, its `~/.codex/AGENTS.md` block, Codex hooks) and removes one on a yes in `loadout adopt`, with a backup ([ADR 0041](../adr/0041-own-codebase-memory-by-command.md)). |
 | `advisor.py` | `loadout advisor-mark <plan>`: records that the execution advisor evaluated a plan. It loads the plugin's `hooks/advisor.py`, so both share one format. |
 
 ### Preferences and agents
