@@ -398,6 +398,9 @@ def report(after_start: float, after_end: float, before_start: "float | None", *
         aft = [s for s in found if after_start <= s.start < end]
         bef = [s for s in found if before_start <= s.start < after_start] if before_start is not None else None
         out[name] = _agent_block(aft, skipped, min_calls, bef, min_sessions)
+        first = earliest  # sessions that started before the first window but ran in it: not counted, but named
+        out[name]["started_earlier"] = {k: sum(1 for s in found if s.start < first and s.kind == k)
+                                        for k in ("main", "subagent")}
     out["hint_sessions"] = _hint_sessions(after_start)
     return out
 
@@ -508,6 +511,11 @@ def render_report(rep: dict) -> str:
                         text += f"  {blk['change'][row][ckey]}"
                 lines.append(f"  {label:<26}{text}")
     lines.append("")
+    for agent, title in (("claude", "Claude Code"), ("codex", "Codex")):
+        early = rep.get(agent, {}).get("started_earlier") or {}
+        if any(early.values()):
+            lines.append(f"{title}: {early['main']} main, {early['subagent']} subagent sessions started before "
+                         "the window, not counted (see --sessions)")
     lines.append(f"sessions with a loadout tool hint (after window): {rep['hint_sessions']}")
     for agent, title in (("claude", "Claude Code"), ("codex", "Codex")):
         if agent in rep and rep[agent]["skipped_lines"]:

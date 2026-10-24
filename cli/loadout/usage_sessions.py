@@ -34,7 +34,7 @@ class Session:
 
 
 def lookup_family(name: str) -> str | None:
-    tool = name.rsplit("__", 1)[-1] if name.startswith("mcp__") else name
+    tool = name.rsplit("__", 1)[-1]  # `mcp__serena__find_symbol`, Codex's `serena__find_symbol`, or a bare name
     for fam, tools in LOOKUP_TOOLS.items():
         if tool in tools and family(name) == fam:
             return fam
@@ -42,7 +42,8 @@ def lookup_family(name: str) -> str | None:
 
 
 def _stamp(obj: dict) -> float | None:
-    value = obj.get("timestamp")
+    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+    value = obj.get("timestamp") or payload.get("timestamp")  # Codex keeps some stamps in its payload
     if not isinstance(value, str):
         return None
     try:

@@ -26,6 +26,7 @@ If the command is missing or exits 1 (no transcript folder for any agent that is
   - `follow_through`, with `followed` / `denials`: after a reminder, a lookup within `follow_within` calls;
   - `family_share.<family>`, `per_session.symbol_searches`, and today's `families` and `serena_denials` counts.
 - With `--around`: `before` holds the same rows, and `change.<row>.<metric>` holds `↑`, `↓`, `=`, `new`, `—` or `too few sessions`.
+- `started_earlier`: sessions that began before the first window but ran in it; they are not counted. Mention them when they are many next to the counted sessions, since a long main session counts only where it began.
 - `hint_sessions`: sessions whose last docs hint (Context7 and Microsoft Learn for web lookups) was shown in the after window, one total for both agents and kinds. The hook keeps its state for 7 days, so it is capped at about 7 days: use it as a sign, not a denominator.
 - `claude.skipped_lines` (and `codex.skipped_lines`): that agent's unreadable transcript lines. Mention them only when they are large next to that agent's calls.
 

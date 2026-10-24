@@ -275,3 +275,41 @@ def test_the_codex_note_needs_codex_subagents(fake_home):
            "thresholds": {"min_calls": 5, "follow_within": 5, "min_sessions": 20}, "hint_sessions": 0,
            "codex": {r: usage.metrics([], 5) for r in usage.ROWS} | {"prompted_known": False, "skipped_lines": 0}}
     assert "not split" not in usage.render_report(rep)
+
+
+def test_sessions_that_started_before_the_window_are_named(fake_home):
+    import datetime as _dt
+    now = 1_800_000_000.0
+    iso = lambda t: _dt.datetime.fromtimestamp(t, _dt.timezone.utc).isoformat()  # noqa: E731
+    path = _write("long", iso(now - 3 * 86400))
+    with path.open("a") as fh:  # the same session, still running in the last hour
+        for _ in range(30):
+            fh.write(json.dumps({"type": "assistant", "timestamp": iso(now - 3600), "message": {"content": [
+                {"type": "tool_use", "name": "Read", "input": {}}]}}) + "\n")
+    os.utime(path, (now - 60, now - 60))
+    rep = usage.report(now - 86400, now, None, now=now)
+    assert rep["claude"]["started_earlier"] == {"main": 1, "subagent": 0}
+    text = usage.render_report(rep)
+    assert "started before" in text and max(len(line) for line in text.splitlines()) <= 100
+
+
+def test_a_codex_lookup_without_the_mcp_prefix_counts():
+    from loadout import usage_sessions
+    assert usage_sessions.lookup_family("serena__find_symbol") == "serena"
+    assert usage_sessions.lookup_family("mcp__codebase-memory-mcp__search_graph") == "codebase-memory"
+
+
+def test_a_payload_timestamp_dates_the_record():
+    from loadout import usage_sessions
+    assert usage_sessions._stamp({"payload": {"timestamp": "2026-10-22T12:00:00Z"}}) is not None
+
+
+def test_an_agent_that_is_off_is_not_read(fake_home, monkeypatch):
+    from loadout import usage_sessions
+    monkeypatch.setattr(targets, "codex_enabled", lambda: False)
+    (paths.codex_home() / "sessions").mkdir(parents=True)
+
+    def boom(*a, **k):
+        raise AssertionError("Codex transcripts were read with Codex off")
+    monkeypatch.setattr(usage_sessions, "codex_sessions", boom)
+    assert "codex" not in usage.report(0, 86400, None, now=86400)
