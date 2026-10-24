@@ -35,19 +35,26 @@ class FakeRunner:
         return self.paths.get(binary)
 
 
-# real programs tests may run, each only in the form that starts nothing else: a general interpreter (python,
-# cmd) would otherwise let a test reach pip, claude or codex behind the guard's back
-_STARTS_SOMETHING = ("subprocess", "os.system", "os.exec", "os.spawn", "popen", "pip", "runpy", "importlib")
+# the exact real command lines tests may run (argument for argument): any other real program, or these programs
+# with other arguments, fails the test. A pattern cannot prove that an interpreter (python -c, cmd /c, a git alias)
+# starts nothing else, so only lines that were read and judged harmless are listed
+HARMLESS_COMMANDS = frozenset({
+    ("echo", "x"),
+    ("git", "--version"),
+    ("python", "-c", "print('ok')"),
+    ("python", "-c", "import os; print(os.environ['LOADOUT_T'])"),
+    ("python", "-c", "import os; print(os.environ.get('LOADOUT_UPDATE_PULLED'))"),
+    ("python", "-c", "import sys; sys.stdout.buffer.write('\u23fa ok '.encode('utf-8') + b'\\xff')"),
+})
+# `git -C <a test's own folder> ls-files ...`: a read-only built-in (aliases cannot replace built-ins)
+_GIT_LS_FILES = ("ls-files", "-s", "-z", "--", ".claude/skills", ".agents/skills")
 
 
-def _harmless_python(args):
-    code = args[1] if len(args) > 1 and args[0] == "-c" else None
-    return isinstance(code, str) and not any(word in code.lower() for word in _STARTS_SOMETHING)
-
-
-HARMLESS_PROGRAMS = {"git": lambda args: True, "echo": lambda args: True,
-                     "python": _harmless_python, "python3": _harmless_python,
-                     "cmd": lambda args: [a.lower() for a in args[:2]] == ["/c", "echo"]}
+def _harmless(line, base):
+    if line in HARMLESS_COMMANDS:
+        return True
+    return (len(line) == 3 + len(_GIT_LS_FILES) and line[:2] == ("git", "-C") and line[3:] == _GIT_LS_FILES
+            and os.path.realpath(line[2]).startswith(os.path.realpath(base)))
 
 
 @pytest.fixture(autouse=True)
@@ -81,16 +88,18 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
     # that needs external commands uses fake_runner (which replaces runner.run, so this guard steps aside); a
     # program a test put in a temporary folder (a stub) runs, and so do the harmless ones below
     from loadout import runner
-    real_run, base = runner.run, str(tmp_path_factory.getbasetemp())
+    real_run, base, real_subprocess_run = runner.run, str(tmp_path_factory.getbasetemp()), subprocess.run
 
     def guarded_run(cmd, *args, **kwargs):
         exe = runner._resolve(cmd[0]) or runner._fallback(cmd[0]) if cmd else None
         name = os.path.basename(str(cmd[0])).lower().removesuffix(".exe") if cmd else ""
         real = exe is not None and os.path.exists(exe)  # a made-up path (a test that fakes subprocess) runs nothing
         stub = real and os.path.realpath(exe).startswith(os.path.realpath(base))
-        harmless = name in HARMLESS_PROGRAMS and HARMLESS_PROGRAMS[name]([str(a) for a in cmd[1:]])
-        if real and not stub and not harmless:
-            pytest.fail(f"a test ran the real `{name}` ({exe}) through runner.run; use fake_runner or a stub in tmp_path")
+        line = (name, *(str(a) for a in cmd[1:]))
+        faked = runner.subprocess.run is not real_subprocess_run  # the test replaced subprocess: nothing starts
+        if real and not stub and not faked and not _harmless(line, base):
+            pytest.fail(f"a test ran the real `{name}` ({exe}) through runner.run: {line!r}; use fake_runner or a "
+                        "stub in tmp_path")
         return real_run(cmd, *args, **kwargs)
     monkeypatch.setattr(runner, "run", guarded_run)
 

@@ -50,8 +50,8 @@ def test_fake_runner_steps_the_guard_aside(fake_runner):
 
 @pytest.mark.parametrize("cmd", [["python", "-m", "pip", "install", "x"], ["python", "tool.py"],
                                  ["python", "-c", "import subprocess; subprocess.run(['claude'])"],
-                                 ["python", "-c", "import os; os.system('codex')"]])
-def test_python_may_only_run_inline_code_that_starts_nothing(cmd):
+                                 ["python", "-c", "__import__('sub'+'process').run(['claude'])"]])
+def test_python_runs_only_the_listed_lines(cmd):
     with pytest.raises(pytest.fail.Exception, match="ran the real `python`"):
         runner.run(cmd)
 
@@ -60,7 +60,20 @@ def test_python_inline_code_runs():
     assert runner.run(["python", "-c", "print('ok')"]).stdout.strip() == "ok"
 
 
-def test_cmd_may_only_echo(monkeypatch):
+@pytest.mark.parametrize("cmd", [["cmd", "/c", "claude", "plugin", "list"], ["cmd", "/c", "echo", "&", "claude"]])
+def test_cmd_lines_are_not_listed(monkeypatch, cmd):
     monkeypatch.setattr(runner, "_resolve", lambda binary: shutil.which("sh"))  # a real program named cmd
     with pytest.raises(pytest.fail.Exception, match="ran the real `cmd`"):
-        runner.run(["cmd", "/c", "claude", "plugin", "list"])
+        runner.run(cmd)
+
+
+def test_a_git_alias_cannot_slip_through():
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    with pytest.raises(pytest.fail.Exception, match="ran the real `git`"):
+        runner.run(["git", "-c", "alias.x=!claude", "x"])
+
+
+def test_a_test_that_fakes_subprocess_runs_nothing(monkeypatch):
+    monkeypatch.setattr(runner.subprocess, "run", lambda cmd, **kw: runner.subprocess.CompletedProcess(cmd, 0, "", ""))
+    assert runner.run([shutil.which("sh") or "/bin/sh", "-c", "claude"]).ok
