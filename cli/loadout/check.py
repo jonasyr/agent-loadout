@@ -949,7 +949,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
             *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []),
-            *(_without_codex(_cbm_installer) if _windows_only(cs) else _cbm_installer()), *_cbm_refresh(), *_cbm_conflict(), *_cbm_binaries(), *_cbm_cache_folders(), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+            *(_without_codex(_cbm_installer) if _windows_only(cs) else _cbm_installer()), *_cbm_refresh(), *_cbm_conflict(), *_cbm_binaries(), *(_without_codex(_cbm_cache_folders) if _windows_only(cs) else _cbm_cache_folders()), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:

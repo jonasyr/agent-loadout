@@ -700,9 +700,6 @@
         "names": [
           "codebase-memory-mcp",
           "codebase-memory"
-        ],
-        "contains": [
-          "codebase-memory-mcp"
         ]
       },
       "reason": "loadout provides the codebase-memory MCP server; a user-level copy duplicates it.",

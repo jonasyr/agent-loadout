@@ -296,3 +296,18 @@ def test_the_guard_and_loadout_agree_on_command_positions():
         words = line.split()
         for i in range(len(words)):
             assert mcp_guard._at_command(words, i) == duplicates.at_command(words, i), (line, i)
+
+
+def test_a_script_a_codex_hook_still_runs_is_not_removable(fake_home, monkeypatch):
+    from loadout import cbm_installer, targets
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": True})
+    monkeypatch.setattr(cbm_installer, "_claude_plugin_on", lambda: True)
+    hooks = fake_home / ".claude" / "hooks"
+    hooks.mkdir(parents=True)
+    (hooks / "codebase-memory-session.sh").write_text("#!/bin/sh\n")
+    (fake_home / ".codex").mkdir()
+    (fake_home / ".codex" / "config.toml").write_text(
+        '[[hooks.SessionStart]]\n[[hooks.SessionStart.hooks]]\ntype = "command"\n'
+        f'command = "{hooks / "codebase-memory-session.sh"}"\n')
+    scripts = [a for a in cbm_installer.find() if a.kind == "claude-script"]
+    assert all(not a.removable for a in scripts)

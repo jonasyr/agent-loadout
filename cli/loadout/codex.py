@@ -487,13 +487,15 @@ def user_cbm() -> dict[str, dict]:
     return {n: t for n, t in user_servers().items() if is_cbm(t)}
 
 
-def cbm_has_own_settings(table: dict) -> bool:
+def cbm_has_own_settings(table: dict, path_counts: bool = True) -> bool:
     """True when a cbm table is more than the plugin's own server (`command = "codebase-memory-mcp"`, no args or
-    `mcp`): any other key (env, cwd, timeouts, tool lists, other args) or a path command is a setting of its own."""
+    `mcp`): any other key (env, cwd, timeouts, tool lists, other args), or (path_counts) a path command, is a
+    setting of its own. Claude Code passes path_counts=False: codebase-memory's installer writes its binary's full
+    path there, which is not a choice of the user's."""
     args, command = table.get("args"), table.get("command")
     return bool(set(table) - {"command", "args", "enabled", "type"}
                 or args not in (None, [], ["mcp"])
-                or (isinstance(command, str) and ("/" in command or "\\" in command)))
+                or (path_counts and isinstance(command, str) and ("/" in command or "\\" in command)))
 
 
 SERENA_KEPT = "Serena: your own server in config.toml kept"
@@ -1867,7 +1869,9 @@ def plugin_serves_cbm(installed: set[str] | None = None) -> bool:
         return False
     if get_dict(get_dict(data, "mcp_servers"), CBM_NAME).get("enabled") is False:
         return False
-    return LOADOUT_PLUGIN in installed if installed is not None else loadout_copy() is not None
+    if installed is None:  # the plugin list, not the cache: Codex keeps cached copies after an uninstall
+        installed = installed_plugins()
+    return installed is not None and LOADOUT_PLUGIN in installed
 
 
 def cbm_twice(installed: set[str] | None) -> list[str]:

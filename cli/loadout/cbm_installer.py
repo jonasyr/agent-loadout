@@ -180,10 +180,12 @@ def _claude() -> list[Artefact]:
                                         where, _doubles(event)))
     from .maintenance import _hook_references
     refs = _hook_references()
+    codex_refs = _codex_hook_text()
     for name in NEW_SCRIPTS:
         path = hooks_dir / name
         if path.is_file() and name not in refs:
-            out.append(Artefact("claude-script", "claude", path, f"hook script {name}", True, {},
+            # a Codex hook that still runs it (one loadout names but never removes, or one you left) keeps it
+            out.append(Artefact("claude-script", "claude", path, f"hook script {name}", name not in codex_refs, {},
                                 "project pointer" if name == NEW_SCRIPTS[0] else "hooks"))
     agent = home / "agents" / AGENT_FILE
     if agent.is_file() or agent.is_symlink():
@@ -296,6 +298,21 @@ def _numbered(found: list[Artefact]) -> list[Artefact]:
         if seen[key] > 1:
             a.label = f"{a.label} #{seen[key]}"
     return found
+
+
+def _codex_hook_text() -> str:
+    """The text of Codex's hook files (hooks.json, config.toml), read only with Codex on: what may still run a
+    wrapper script."""
+    from . import targets
+    if not targets.codex_enabled():
+        return ""
+    parts = []
+    for path in (paths.codex_home() / "hooks.json", paths.codex_home() / "config.toml"):
+        try:
+            parts.append(path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "")
+        except OSError:
+            parts.append("")
+    return "\n".join(parts)
 
 
 def find() -> list[Artefact]:

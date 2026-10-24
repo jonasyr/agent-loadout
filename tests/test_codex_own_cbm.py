@@ -18,6 +18,10 @@ REASON_KEEP = ("It starts codebase-memory with settings of its own (env, args or
 def cfg(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
     monkeypatch.setattr(targets, "claude_enabled", lambda: False)
+    import json as _json
+    from loadout import runner as _runner
+    fake_runner.responses[("codex", "plugin", "list")] = _runner.Result(  # Codex lists loadout's plugin as installed
+        0, _json.dumps({"installed": [{"pluginId": "loadout@agent-loadout"}]}), "")
     path = paths.codex_home() / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -156,9 +160,13 @@ REASON_ONLY = ("Codex's only codebase-memory server here: loadout's plugin does 
 @pytest.mark.parametrize("extra, plugin", [("", False),
                                            ('\n[plugins."loadout@agent-loadout"]\nenabled = false\n', True),
                                            ('\n[mcp_servers.codebase-memory-mcp]\nenabled = false\n', True)])
-def test_no_removal_offer_when_the_plugin_does_not_serve_cbm(cfg, extra, plugin):
+def test_no_removal_offer_when_the_plugin_does_not_serve_cbm(cfg, fake_runner, extra, plugin):
+    import json as _json
+    from loadout import runner as _runner
     if plugin:
         _plugin()
+    else:  # not installed: Codex lists no loadout plugin
+        fake_runner.responses[("codex", "plugin", "list")] = _runner.Result(0, _json.dumps({"installed": []}), "")
     cfg(PLAIN + extra)
     (v,) = [v for v in inventory.classify([]) if v.item.name == "cbm"]
     assert (v.action, v.reason) == ("keep", REASON_ONLY)
@@ -175,3 +183,27 @@ def test_cbm_twice_needs_the_plugins_server_on(cfg):
     _plugin()
     cfg(PLAIN + '\n[mcp_servers.codebase-memory-mcp]\nenabled = false\n')
     assert codex.cbm_twice(INSTALLED) == []
+
+
+def test_a_stale_plugin_cache_is_not_an_installed_plugin(cfg, fake_runner):
+    import json as _json
+    from loadout import runner
+    _plugin()  # the cache stays after an uninstall
+    cfg(PLAIN)
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(0, _json.dumps({"installed": []}), "")
+    (v,) = [v for v in inventory.classify([]) if v.item.name == "cbm"]
+    assert (v.action, v.reason) == ("keep", REASON_ONLY)
+
+
+@pytest.mark.parametrize("cfg_, action", [({"command": "codebase-memory-mcp"}, "migrate"),
+                                          ({"command": "/opt/cbm/codebase-memory-mcp"}, "migrate"),  # the installer's form
+                                          ({"command": "codebase-memory-mcp", "env": {"CBM_CACHE_DIR": "/x"}}, "keep"),
+                                          ({"command": "tool", "args": ["--server", "codebase-memory-mcp"]}, None)])
+def test_claude_cbm_servers_by_command_and_own_settings(fake_home, cfg_, action):
+    from loadout.jsonio import save_json
+    save_json(paths.claude_json(), {"mcpServers": {"my-index": cfg_}})
+    got = [v for v in inventory.classify(inventory.collect(with_versions=False)) if v.item.name == "my-index"]
+    if action is None:
+        assert not got or got[0].entry_id != "mcp-codebase-memory"
+    else:
+        assert (got[0].action, got[0].entry_id) == (action, "mcp-codebase-memory")
