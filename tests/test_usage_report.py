@@ -351,3 +351,16 @@ def test_thresholds_must_be_positive(fake_home, monkeypatch, flag):
     with pytest.raises(SystemExit) as exc:
         main(["usage", flag, "0"])
     assert exc.value.code == 2
+
+
+def test_the_prompted_split_needs_every_subagent_classified():
+    mixed = [S(kind="subagent", prompted=True), S(kind="subagent", prompted=None)]
+    assert usage._agent_block(mixed, [0], 5)["prompted_known"] is False
+    known = [S(kind="subagent", prompted=True), S(kind="subagent", prompted=False)]
+    assert usage._agent_block(known, [0], 5)["prompted_known"] is True
+    assert usage._agent_block(known, [0], 5, before=mixed)["prompted_known"] is False
+
+
+def test_a_future_since_never_gives_a_negative_duration(fake_home):
+    now = 1_800_000_000.0
+    assert usage.report(now + 86400, now, None, now=now)["days"] == 0

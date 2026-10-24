@@ -351,19 +351,22 @@ def _rows(sessions: "list[Session]", min_calls: int) -> tuple[dict, bool]:
     groups = {"main": [s for s in sessions if s.kind == "main"], "subagent": sub,
               "subagent_prompted": [s for s in sub if s.prompted is True],
               "subagent_unprompted": [s for s in sub if s.prompted is False]}
-    return {k: metrics(v, min_calls) for k, v in groups.items()}, any(s.prompted is not None for s in sub)
+    # True: every subagent's prompt was read; False: at least one was not; None: no subagents to split
+    known = (all(s.prompted is not None for s in sub)) if sub else None
+    return {k: metrics(v, min_calls) for k, v in groups.items()}, known
 
 
 def _agent_block(after: "list[Session]", skipped: list[int], min_calls: int,
                  before: "list[Session] | None" = None, min_sessions: int = 20) -> dict:
     rows, known = _rows(after, min_calls)
     block: dict = dict(rows)
+    states = [known]
     if before is not None:
         brows, bknown = _rows(before, min_calls)
-        known = known or bknown
+        states.append(bknown)
         block["before"] = brows
         block["change"] = {k: change(brows[k], rows[k], min_sessions) for k in ROWS}
-    block["prompted_known"] = known
+    block["prompted_known"] = True in states and False not in states  # split only when every subagent is classified
     block["skipped_lines"] = skipped[0]
     return block
 
@@ -382,7 +385,7 @@ def report(after_start: float, after_end: float, before_start: "float | None", *
     if before_start is not None:
         windows["before"] = {"start": before_start, "end": after_start, "partial": False,
                              "days": round((after_start - before_start) / 86400, 2)}
-    out: dict = {"days": round((after_end - after_start) / 86400, 2), "windows": windows,
+    out: dict = {"days": max(0.0, round((after_end - after_start) / 86400, 2)), "windows": windows,
                  "thresholds": {"min_calls": min_calls, "follow_within": follow_within,
                                 "min_sessions": min_sessions},
                  }
