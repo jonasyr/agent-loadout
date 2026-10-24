@@ -6,8 +6,12 @@ import json
 import re
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import paths, searches, targets
+
+if TYPE_CHECKING:
+    from .usage_sessions import Session
 
 MAX_LINE = 1_000_000
 FAMILIES = (("serena", re.compile(r"serena", re.I)),
@@ -270,3 +274,125 @@ def render(report: dict) -> str:
             lines.append(f"  {title}: {report[agent]['skipped_lines']} unreadable lines skipped")
     lines.append(f"  sessions with a loadout tool hint: {report['hint_sessions']}")
     return "\n".join(lines)
+
+
+SHARE_POINTS = 0.05
+RATE_RATIO = 0.20
+SHARE_FAMILIES = ("serena", "codebase-memory", "context7", "microsoft-learn")
+
+
+def metrics(sessions: "list[Session]", min_calls: int) -> dict:
+    """Sums over the counted sessions (those with at least `min_calls` calls); the rest are `tiny`."""
+    counted = [s for s in sessions if s.total_calls >= min_calls]
+    out = _group()
+    out["tiny"] = len(sessions) - len(counted)
+    out["sessions"] = len(counted)
+    lookups = {"serena": 0, "codebase-memory": 0}
+    denials = followed = 0
+    for s in counted:
+        out["calls"] += s.total_calls
+        out["symbol_searches"] += s.symbol_searches
+        out["serena_denials"] += 1 if s.denials else 0
+        denials += s.denials
+        followed += s.followed
+        for k in lookups:
+            lookups[k] += s.lookups.get(k, 0)
+        for n in NAMES:
+            if s.calls.get(n, 0):
+                out["families"][n]["calls"] += s.calls[n]
+                out["families"][n]["sessions"] += 1
+    n = len(counted)
+    found = sum(lookups.values())
+    out["lookups"] = lookups
+    out["code_tool_share"] = found / (found + out["symbol_searches"]) if found + out["symbol_searches"] else None
+    out["denials"], out["followed"] = denials, followed
+    out["follow_through"] = followed / denials if denials else None
+    out["per_session"] = {"symbol_searches": out["symbol_searches"] / n if n else 0.0,
+                          "calls": out["calls"] / n if n else 0.0}
+    out["family_share"] = {k: (v["sessions"] / n if n else 0.0) for k, v in out["families"].items()}
+    return out
+
+
+def _arrow_share(b: float, a: float) -> str:
+    d = round(a - b, 9)
+    return "↑" if d >= SHARE_POINTS else "↓" if d <= -SHARE_POINTS else "="
+
+
+def _arrow_rate(b: float, a: float) -> str:
+    if b == 0:
+        return "new" if a > 0 else "="
+    r = round(a / b, 9)
+    return "↑" if r >= 1 + RATE_RATIO else "↓" if r < 1 - RATE_RATIO else "="
+
+
+def change(before: dict, after: dict, min_sessions: int) -> dict:
+    """One arrow per compared metric; every metric reads "too few sessions" when either side is small."""
+    pairs = [("code_tool_share", before.get("code_tool_share"), after.get("code_tool_share"), _arrow_share),
+             ("follow_through", before.get("follow_through"), after.get("follow_through"), _arrow_share)]
+    for fam in SHARE_FAMILIES:
+        pairs.append((f"family_share.{fam}", before.get("family_share", {}).get(fam, 0.0),
+                      after.get("family_share", {}).get(fam, 0.0), _arrow_share))
+    for key in ("symbol_searches", "calls"):
+        pairs.append((f"per_session.{key}", before.get("per_session", {}).get(key, 0.0),
+                      after.get("per_session", {}).get(key, 0.0), _arrow_rate))
+    few = before.get("sessions", 0) < min_sessions or after.get("sessions", 0) < min_sessions
+    out = {}
+    for name, b, a, fn in pairs:
+        out[name] = "too few sessions" if few else "—" if b is None or a is None else fn(b, a)
+    return out
+
+
+ROWS = ("main", "subagent", "subagent_prompted", "subagent_unprompted")
+
+
+def _rows(sessions: "list[Session]", min_calls: int) -> tuple[dict, bool]:
+    sub = [s for s in sessions if s.kind == "subagent"]
+    groups = {"main": [s for s in sessions if s.kind == "main"], "subagent": sub,
+              "subagent_prompted": [s for s in sub if s.prompted is True],
+              "subagent_unprompted": [s for s in sub if s.prompted is False]}
+    return {k: metrics(v, min_calls) for k, v in groups.items()}, any(s.prompted is not None for s in sub)
+
+
+def _agent_block(after: "list[Session]", skipped: list[int], min_calls: int,
+                 before: "list[Session] | None" = None, min_sessions: int = 20) -> dict:
+    rows, known = _rows(after, min_calls)
+    block: dict = dict(rows)
+    if before is not None:
+        brows, bknown = _rows(before, min_calls)
+        known = known or bknown
+        block["before"] = brows
+        block["change"] = {k: change(brows[k], rows[k], min_sessions) for k in ROWS}
+    block["prompted_known"] = known
+    block["skipped_lines"] = skipped[0]
+    return block
+
+
+def report(after_start: float, after_end: float, before_start: "float | None", *, min_calls: int = 5,
+           follow_within: int = 5, min_sessions: int = 20, now: "float | None" = None) -> dict:
+    """Before/after windows over per-session records; each transcript is read once. A session belongs to the
+    window holding its start: after is [after_start, min(after_end, now)), before is [before_start, after_start)."""
+    from . import usage_sessions
+    now = time.time() if now is None else now
+    end = min(after_end, now)
+    windows: dict = {"after": {"start": after_start, "end": end, "days": round((end - after_start) / 86400, 2),
+                               "partial": end < after_end}}
+    if before_start is not None:
+        windows["before"] = {"start": before_start, "end": after_start, "partial": False,
+                             "days": round((after_start - before_start) / 86400, 2)}
+    out: dict = {"days": round((after_end - after_start) / 86400, 2), "windows": windows,
+                 "thresholds": {"min_calls": min_calls, "follow_within": follow_within,
+                                "min_sessions": min_sessions},
+                 }
+    earliest = before_start if before_start is not None else after_start
+    readers = (("claude", targets.claude_enabled, usage_sessions.claude_sessions, paths.claude_home() / "projects"),
+               ("codex", targets.codex_enabled, usage_sessions.codex_sessions, paths.codex_home() / "sessions"))
+    for name, enabled, read, root in readers:
+        if not enabled() or not root.is_dir():
+            continue
+        skipped = [0]
+        found = read(earliest, follow_within, skipped)
+        aft = [s for s in found if after_start <= s.start < end]
+        bef = [s for s in found if before_start <= s.start < after_start] if before_start is not None else None
+        out[name] = _agent_block(aft, skipped, min_calls, bef, min_sessions)
+    out["hint_sessions"] = _hint_sessions(after_start)
+    return out
