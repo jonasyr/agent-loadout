@@ -193,3 +193,15 @@ def test_no_codex_server_means_no_second_folder(fake_home, fake_runner, monkeypa
     monkeypatch.setenv("CBM_CACHE_DIR", str(tmp_path / "mine"))
     [r] = _rows(CACHE)
     assert r.ok  # only Claude Code runs codebase-memory: one folder
+
+
+def test_a_same_name_table_counts_once(fake_home, fake_runner, monkeypatch, tmp_path):
+    _both(monkeypatch)  # the plugin serves cbm too, under the same name: Codex starts one of the two
+    mine = tmp_path / "mine"
+    monkeypatch.setenv("CBM_CACHE_DIR", str(mine))
+    (fake_home / ".codex").mkdir()
+    (fake_home / ".codex/config.toml").write_text(
+        '[mcp_servers.codebase-memory-mcp]\ncommand = "codebase-memory-mcp"\n'
+        f'[mcp_servers.codebase-memory-mcp.env]\nCBM_CACHE_DIR = \'{mine}\'\n')
+    [r] = _rows(CACHE)
+    assert r.ok  # the collision is the `Codex MCP codebase-memory-mcp` row's business, not a cache split

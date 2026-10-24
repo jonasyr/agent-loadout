@@ -426,8 +426,12 @@ def _cbm_cache_folders() -> list[CheckResult]:
         claude = next((c["env"][key] for _, c, _, _ in _user_servers(Path(os.path.abspath(Path.cwd())))
                        if _is_cbm_server(c) and isinstance(c.get("env"), dict)
                        and isinstance(c["env"].get(key), str) and c["env"][key]), process)
-        codex_dirs: list = [None] if codex.plugin_serves_cbm() else []  # the plugin's server: no exported variables
-        for t in codex.user_cbm().values():
+        tables = codex.user_cbm()
+        same_name = tables.get(codex.CBM_NAME, {}).get("enabled") is not False and codex.CBM_NAME in tables
+        # the plugin's server (no exported variables), unless a table of yours has its name: Codex then starts one
+        # of the two, and the `Codex MCP codebase-memory-mcp` row names that collision
+        codex_dirs: list = [None] if codex.plugin_serves_cbm() and not same_name else []
+        for t in tables.values():
             if t.get("enabled") is False:  # switched off: it starts nothing
                 continue
             env, names = t.get("env"), t.get("env_vars")
