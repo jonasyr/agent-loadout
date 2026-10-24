@@ -8,7 +8,9 @@ from loadout.__main__ import main
 
 
 @pytest.fixture(autouse=True)
-def quiet(fake_home, monkeypatch):
+def quiet(fake_home, fake_runner, monkeypatch):
+    # a usable Codex CLI without running the real one (codex.mode asks `codex --version`)
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.163.0\n", "")
     monkeypatch.setattr(m, "_spawn_background", lambda: None)
     monkeypatch.setattr(codex, "refresh_instructions", lambda: None)
     monkeypatch.setattr(steps, "_plugin_copy_differs", lambda: False)
