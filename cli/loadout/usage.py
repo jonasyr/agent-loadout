@@ -229,7 +229,7 @@ def _codex(cutoff: float) -> dict | None:
     return out
 
 
-def _hint_sessions(cutoff: float) -> int:
+def _hint_sessions(cutoff: float, until: float | None = None) -> int:
     """Sessions whose last docs hint was shown inside the window (`hint_at`, written by the hook). The
     hook keeps its state files for 7 days, so a longer window still counts only about the last week."""
     folder = paths.state_dir() / "tool-hint"
@@ -240,7 +240,8 @@ def _hint_sessions(cutoff: float) -> int:
         except (OSError, ValueError):
             continue
         shown = data.get("hint_at") if isinstance(data, dict) else None
-        if isinstance(shown, (int, float)) and not isinstance(shown, bool) and shown >= cutoff:
+        if isinstance(shown, (int, float)) and not isinstance(shown, bool) and shown >= cutoff \
+                and (until is None or shown < until):
             n += 1
     return n
 
@@ -401,7 +402,7 @@ def report(after_start: float, after_end: float, before_start: "float | None", *
         first = earliest  # sessions that started before the first window but ran in it: not counted, but named
         out[name]["started_earlier"] = {k: sum(1 for s in found if s.start < first and s.kind == k)
                                         for k in ("main", "subagent")}
-    out["hint_sessions"] = _hint_sessions(after_start)
+    out["hint_sessions"] = _hint_sessions(after_start, end)  # [after_start, end): the after window only
     return out
 
 

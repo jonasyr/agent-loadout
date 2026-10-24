@@ -313,3 +313,13 @@ def test_an_agent_that_is_off_is_not_read(fake_home, monkeypatch):
         raise AssertionError("Codex transcripts were read with Codex off")
     monkeypatch.setattr(usage_sessions, "codex_sessions", boom)
     assert "codex" not in usage.report(0, 86400, None, now=86400)
+
+
+def test_hint_sessions_stop_at_the_after_window_end(fake_home):
+    folder = paths.state_dir() / "tool-hint"
+    folder.mkdir(parents=True)
+    now = 1_800_000_000.0
+    (folder / "in.json").write_text(json.dumps({"hint_at": now - 5 * 86400}))
+    (folder / "later.json").write_text(json.dumps({"hint_at": now - 3600}))
+    rep = usage.report(now - 6 * 86400, now - 4 * 86400, None, now=now)
+    assert rep["hint_sessions"] == 1
