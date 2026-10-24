@@ -373,3 +373,10 @@ def test_activity_is_compared_to_the_second():
     assert not usage_sessions.active_between(s, 1030, 2000)  # same minute, but before the start
     s.active = [1990]
     assert usage_sessions.active_between(s, 1000, 1995)
+
+
+@pytest.mark.parametrize("flag", ["--min-calls", "--follow-within", "--min-sessions"])
+def test_legacy_refuses_threshold_flags(fake_home, monkeypatch, capsys, flag):
+    from loadout.__main__ import main
+    assert main(["usage", "--legacy", flag, "3"]) == 2
+    assert "--legacy takes only --days" in capsys.readouterr().err

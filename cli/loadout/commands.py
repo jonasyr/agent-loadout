@@ -379,10 +379,10 @@ def _register_usage(sub):
             raise argparse.ArgumentTypeError("must be 1 or more")
         return n
 
-    p.add_argument("--min-calls", type=positive, default=5, help="sessions with fewer tool calls are left out (default 5)")
-    p.add_argument("--follow-within", type=positive, default=5,
+    p.add_argument("--min-calls", type=positive, default=None, help="sessions with fewer tool calls are left out (default 5)")
+    p.add_argument("--follow-within", type=positive, default=None,
                    help="tool calls after a Serena reminder that count as following it (default 5)")
-    p.add_argument("--min-sessions", type=positive, default=20,
+    p.add_argument("--min-sessions", type=positive, default=None,
                    help="fewest sessions on each side before an arrow is shown (default 20)")
     p.add_argument("--sessions", action="store_true", help="one line per session (ids and counts only)")
     p.add_argument("--legacy", action="store_true", help="the old single-window counts; only --days applies")
@@ -393,9 +393,11 @@ def _register_usage(sub):
         import sys as _sys
         import time as _time
         from . import usage
+        thresholds = (a.min_calls, a.follow_within, a.min_sessions)  # None: not given (defaults below)
         if a.legacy:
-            if a.around is not None or a.since is not None or a.sessions:
-                print("loadout: --legacy takes only --days (not --around, --since or --sessions)", file=_sys.stderr)
+            if a.around is not None or a.since is not None or a.sessions or any(t is not None for t in thresholds):
+                print("loadout: --legacy takes only --days (not --around, --since, --sessions or the thresholds)",
+                      file=_sys.stderr)
                 return 2
             report = usage.collect(max(1, a.days))
             if "claude" not in report and "codex" not in report:
@@ -403,6 +405,9 @@ def _register_usage(sub):
                 return 1
             print(_json.dumps(report, indent=2) if a.json else usage.render(report))
             return 0
+        a.min_calls = 5 if a.min_calls is None else a.min_calls
+        a.follow_within = 5 if a.follow_within is None else a.follow_within
+        a.min_sessions = 20 if a.min_sessions is None else a.min_sessions
         if a.sessions and a.json:
             print("loadout: --sessions prints text lines; leave out --json", file=_sys.stderr)
             return 2
