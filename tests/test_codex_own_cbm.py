@@ -90,3 +90,57 @@ def test_claude_server_named_cbm_migrates(fake_home):
     save_json(paths.claude_json(), {"mcpServers": {"cbm": {"command": "codebase-memory-mcp"}}})
     (v,) = [v for v in inventory.classify(inventory.collect(with_versions=False)) if v.item.name == "cbm"]
     assert (v.action, v.entry_id) == ("migrate", "mcp-codebase-memory")
+
+
+# --- fix round 1 ---------------------------------------------------------------------------------------------------
+
+SAME = '[mcp_servers.codebase-memory-mcp]\ncommand = "codebase-memory-mcp"\n'
+
+
+def test_the_same_name_table_keeps_todays_handling_without_the_plugin(cfg):
+    cfg(SAME)
+    assert [i.name for i in inventory._codex_items()] == ["codebase-memory-mcp"]
+    (item,) = inventory._codex_items()
+    assert item.extra["config"] == {"type": "stdio", "command": "codebase-memory-mcp"}
+    (v,) = [v for v in inventory.classify([item]) if v.item.name == "codebase-memory-mcp"]
+    assert v.action == "own"  # as before: no new verdict, no cbm reason
+    assert v.reason != REASON_MIGRATE
+
+
+def test_a_name_in_claude_json_gets_no_codex_verdict(cfg, monkeypatch):
+    from loadout.jsonio import save_json
+    monkeypatch.setattr(targets, "claude_enabled", lambda: True)
+    save_json(paths.claude_json(), {"mcpServers": {"cbm": {"command": "codebase-memory-mcp"}}})
+    cfg(PLAIN)
+    assert [v for v in inventory.classify([]) if v.item.location == codex.CONFIG_LOCATION] == []
+
+
+def test_drift_does_not_offer_a_cbm_table_under_another_name(cfg, monkeypatch):
+    monkeypatch.setattr(targets, "claude_enabled", lambda: True)
+    cfg(PLAIN)
+    monkeypatch.setattr(codex, "mcp_names", lambda: {"cbm"})
+    assert not [line for line in codex.drift() if '"cbm"' in line]
+
+
+def test_other_table_keys_count_as_own_settings():
+    base = {"command": "codebase-memory-mcp"}
+    for key, value in (("startup_timeout_sec", 30), ("cwd", "/x"), ("tool_timeout_sec", 5),
+                       ("enabled_tools", ["a"]), ("disabled_tools", ["b"])):
+        assert codex.cbm_has_own_settings({**base, key: value}), key
+    assert not codex.cbm_has_own_settings({**base, "enabled": True, "type": "stdio"})
+
+
+def test_a_leave_decision_keeps_the_cbm_table(cfg):
+    from loadout import own
+    cfg(PLAIN)
+    (v,) = [v for v in inventory.classify([]) if v.item.name == "cbm"]
+    left = {own.decision_key(v.item): "leave"}
+    (w,) = inventory._codex_cbm_verdicts(left)
+    assert (w.action, w.reason) == ("keep", own.LEFT_REASON)
+
+
+def test_with_codex_off_there_are_no_cbm_verdicts_and_nothing_is_read(cfg, monkeypatch):
+    cfg(PLAIN)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: False)
+    monkeypatch.setattr(codex, "user_servers", lambda *a, **k: pytest.fail("read ~/.codex"))
+    assert inventory.classify([]) == []

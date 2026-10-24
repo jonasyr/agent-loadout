@@ -127,7 +127,7 @@ def _codex_items() -> list[Item]:
     claude = get_dict(load_json(paths.claude_json()), "mcpServers") if targets.claude_enabled() else {}
     skip = codex._plugin_servers() | set(claude)
     for name, table in codex.user_servers().items():
-        if name in skip or codex.is_serena(table) or codex.is_cbm(table):  # the kit's tools, however set up (cbm: classify)
+        if name in skip or codex.is_serena(table) or (name != codex.CBM_NAME and codex.is_cbm(table)):  # the kit's tools, however set up (cbm: classify)
             continue
         try:
             cfg, problem = codex.to_claude(name, table), ""
@@ -232,8 +232,9 @@ def _codex_cbm_verdicts(left: dict) -> list[Verdict]:
     if not targets.codex_enabled():
         return []
     out = []
+    claude = get_dict(load_json(paths.claude_json()), "mcpServers") if targets.claude_enabled() else {}
     for name, table in codex.user_cbm().items():
-        if name in codex._plugin_servers():  # the plugin's own name: check names that one
+        if name == codex.CBM_NAME or name in claude:  # the plugin's name keeps its usual handling; Claude's copy rules
             continue
         item = Item("mcp", name, " ".join([str(table.get("command") or ""), *map(str, table.get("args") or [])]).strip(),
                     codex.CONFIG_LOCATION, {"config": None, "problem": "", "cbm": True})

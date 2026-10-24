@@ -489,11 +489,10 @@ def user_cbm() -> dict[str, dict]:
 
 def cbm_has_own_settings(table: dict) -> bool:
     """True when a cbm table is more than the plugin's own server (`command = "codebase-memory-mcp"`, no args or
-    `mcp`): it sets env, other args or a fixed path, so removing it would lose those."""
-    args = table.get("args")
-    command = table.get("command")
-    return bool(table.get("env") or table.get("env_vars")
-                or (args not in (None, [], ["mcp"]))
+    `mcp`): any other key (env, cwd, timeouts, tool lists, other args) or a path command is a setting of its own."""
+    args, command = table.get("args"), table.get("command")
+    return bool(set(table) - {"command", "args", "enabled", "type"}
+                or args not in (None, [], ["mcp"])
                 or (isinstance(command, str) and ("/" in command or "\\" in command)))
 
 
@@ -1756,7 +1755,7 @@ def drift() -> list[str]:
     personal = set(get_dict(load_json(paths.personal_root() / "mcp.json"), "mcpServers"))
     owned = set(read_record()["tables"])
     in_claude = set(get_dict(load_json(paths.claude_json()), "mcpServers"))
-    accounted = left | personal | owned | _codex_serenas()  # a Serena is the kit's tool, never one to adopt
+    accounted = left | personal | owned | _codex_serenas() | _codex_cbms()  # a Serena is the kit's tool, never one to adopt
     out = [f'MCP server "{n}" only in Claude Code (record it with loadout adopt, then both get it)'
            for n in sorted(in_claude - in_codex - accounted)]
     out += [f'MCP server "{n}" only in Codex (record it with loadout adopt, then both get it)'
@@ -1768,6 +1767,12 @@ def drift() -> list[str]:
     out += [f'skill "{n}" only in Codex (record it with loadout adopt, then both get it)'
             for n in sorted(codex_skills - claude_skills - personal_skills - left)]
     return out
+
+
+def _codex_cbms() -> set[str]:
+    """Names of the config.toml tables that start codebase-memory under a name other than the plugin's (check names
+    those; the same-name table keeps its usual handling)."""
+    return set(user_cbm()) - {CBM_NAME}
 
 
 def _codex_serenas() -> set[str]:
