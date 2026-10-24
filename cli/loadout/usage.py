@@ -446,6 +446,8 @@ def _cell(g: dict, metric: str) -> str:
         return f"{_pct(g['code_tool_share'])} ({found}/{found + g['symbol_searches']})"
     if metric == "follow":
         return f"{_pct(g['follow_through'])} ({g['followed']}/{g['denials']})"
+    if not g["sessions"]:  # nothing counted: no share and no rate
+        return "—" if metric == "symbol" else "— (0/0)"
     if metric == "symbol":
         return f"{g['per_session']['symbol_searches']:.1f}"
     fam = metric
@@ -466,6 +468,12 @@ METRIC_ROWS = (("sessions", "sessions counted", None),
                ("context7", "sessions with Context7", "family_share.context7"),
                ("microsoft-learn", "sessions with MS Learn", "family_share.microsoft-learn"),
                ("symbol", "symbol searches/session", "per_session.symbol_searches"))
+
+
+def _has_subagents(block: dict) -> bool:
+    """Whether an agent's block holds any subagent session (counted or tiny) in either window."""
+    rows = [block.get("subagent"), (block.get("before") or {}).get("subagent")]
+    return any(r and r["sessions"] + r["tiny"] for r in rows)
 
 
 def render_report(rep: dict) -> str:
@@ -504,7 +512,7 @@ def render_report(rep: dict) -> str:
     for agent, title in (("claude", "Claude Code"), ("codex", "Codex")):
         if agent in rep and rep[agent]["skipped_lines"]:
             lines.append(f"{title}: {rep[agent]['skipped_lines']} unreadable lines skipped")
-    if "codex" in rep and not rep["codex"]["prompted_known"]:
+    if "codex" in rep and not rep["codex"]["prompted_known"] and _has_subagents(rep["codex"]):
         lines.append("Codex subagents are not split: their prompt is not in the session file")
     return "\n".join(lines)
 

@@ -263,3 +263,15 @@ def test_legacy_refuses_window_flags(fake_home, monkeypatch, capsys):
 def test_bad_moment_is_rejected(fake_home):
     with pytest.raises(SystemExit):
         main(["usage", "--around", "yesterday"])
+
+
+def test_a_row_without_counted_sessions_shows_dashes():
+    empty = usage.metrics([S(calls=2)], min_calls=5)
+    assert usage._cell(empty, "serena").startswith("—") and usage._cell(empty, "symbol") == "—"
+
+
+def test_the_codex_note_needs_codex_subagents(fake_home):
+    rep = {"windows": {"after": {"start": 0, "end": 86400, "days": 1, "partial": False}},
+           "thresholds": {"min_calls": 5, "follow_within": 5, "min_sessions": 20}, "hint_sessions": 0,
+           "codex": {r: usage.metrics([], 5) for r in usage.ROWS} | {"prompted_known": False, "skipped_lines": 0}}
+    assert "not split" not in usage.render_report(rep)
