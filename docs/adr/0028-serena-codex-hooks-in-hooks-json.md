@@ -1,6 +1,6 @@
 # 0028. Serena's Codex hooks as owned entries in hooks.json
 
-- Status: Accepted; amended by [0040](0040-serena-remind-skips-harmless.md) (`remind` moves into the plugin, behind loadout's guard, once the installed copy carries it)
+- Status: Accepted; amended by [0040](0040-serena-remind-skips-harmless.md) (`remind` moves into the plugin, behind loadout's guard, once the installed copy carries it) and [0041](0041-own-codebase-memory-by-command.md) (codebase-memory set up by you is recognised and offered for removal the same way)
 - Date: 2026-10-15
 - Source: [Design: Codex anywhere](../superpowers/specs/2026-10-15-codex-anywhere-design.md), section "PR A"
 
