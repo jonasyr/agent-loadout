@@ -101,7 +101,9 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
             pytest.fail(f"a test ran the real `{name}` ({exe}) through runner.run: {line!r}; use fake_runner or a "
                         "stub in tmp_path")
         if real and not stub and not faked and name in ("python", "python3"):
-            cmd = [cmd[0], "-I", *cmd[1:]]  # isolated: no PYTHON* variables, no user site, no sitecustomize hooks
+            cmd = [cmd[0], "-I", "-S", *cmd[1:]]  # isolated, and no `site` at all: no sitecustomize, user or system
+        elif real and not stub and not faked and name == "git":
+            cmd = [cmd[0], "-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}", *cmd[1:]]  # no hooks
         return real_run(cmd, *args, **kwargs)
     monkeypatch.setattr(runner, "run", guarded_run)
 

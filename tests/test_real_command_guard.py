@@ -84,3 +84,18 @@ def test_a_listed_python_line_ignores_startup_hooks(tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", str(tmp_path))
     out = runner.run(["python", "-c", "print('ok')"]).stdout
     assert out.strip() == "ok" and "HOOK RAN" not in out
+
+
+def test_a_listed_git_line_cannot_run_an_fsmonitor(tmp_path):
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    marker = tmp_path / "ran"
+    hook = _stub(str(tmp_path), "monitor")
+    with open(hook, "w") as fh:
+        fh.write(f"#!/bin/sh\ntouch {marker}\n")
+    repo = tmp_path / "repo"
+    import subprocess
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "core.fsmonitor", hook], check=True)
+    runner.run(["git", "-C", str(repo), "ls-files", "-s", "-z", "--", ".claude/skills", ".agents/skills"])
+    assert not marker.exists()
