@@ -29,6 +29,8 @@ def machine(fake_home, fake_runner, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     targets.set_agents({"claude": True, "codex": True})
     monkeypatch.setattr(duplicates, "plugin_enabled", lambda: True)
+    _w(fake_home / ".claude/plugins/installed_plugins.json",  # installed in Claude Code, not only wanted
+       {"plugins": {"loadout@agent-loadout": [{"scope": "user", "version": "1"}]}})
     _w(paths.codex_home() / "config.toml", PLUGIN_ON)
     return fake_home
 
@@ -52,7 +54,7 @@ def test_find_lists_each_artefact(machine):
                      "codex-inline-hook"]
     (script,) = [a for a in found if a.kind == "claude-script"]
     assert script.path.name == "codebase-memory-coverage.sh"  # the session script is run by a hook: not stray
-    assert {a.kind for a in found if not a.removable} == {"codex-inline-hook"}
+    assert {a.kind for a in found if not a.removable} == {"codex-inline-hook", "claude-agent"}  # the agent: by name
     assert {a.agent for a in found if a.kind.startswith("codex")} == {"codex"}
 
 
@@ -154,14 +156,14 @@ def test_check_names_each_artefact_without_content(machine, monkeypatch):
         assert row.detail.startswith(f"{a.label} (") and a.path.name in row.detail
         assert row.detail.split(": doubles loadout's ")[1] in ("routing", "project pointer", "hooks")
         assert SECRET not in row.detail + row.fix
-        assert row.fix == ("loadout adopt" if a.removable else "remove it from config.toml by hand")
+        assert row.fix == ("loadout adopt" if a.removable else a.fix) and (a.removable or a.fix != "loadout adopt")
 
 
 def test_adopt_offers_and_removes_with_a_yes_only(machine, capsys):
     _everything(machine)
     before = {p: p.read_bytes() for p in machine.rglob("*") if p.is_file() and "loadout" not in p.parts}
     items = [i for i in inventory.collect(with_versions=False) if i.kind == "installer"]
-    assert sorted(i.detail for i in items) == ["claude-agent", "claude-script", "codex-agents-block", "codex-hook"]
+    assert sorted(i.detail for i in items) == ["claude-script", "codex-agents-block", "codex-hook"]  # not the agent
     verdicts = [v for v in inventory.classify(items)]
     assert {(v.action, v.entry_id, v.reason) for v in verdicts} == {
         ("migrate", "mcp-codebase-memory", "Written by codebase-memory-mcp install; loadout's plugin provides the same.")}
@@ -170,13 +172,13 @@ def test_adopt_offers_and_removes_with_a_yes_only(machine, capsys):
     capsys.readouterr()
     assert adopt.run(True, {"migrate"}, set(), False, lambda q: "", with_versions=False, interactive=False) == 0
     assert SECRET not in capsys.readouterr().out
-    assert not (machine / ".claude/agents/codebase-memory.md").exists()
+    assert (machine / ".claude/agents/codebase-memory.md").exists()  # named by its file name only: never removed
     assert not (machine / ".claude/hooks/codebase-memory-coverage.sh").exists()
     assert (paths.codex_home() / "AGENTS.md").read_bytes() == (BEFORE + AFTER[2:]).encode()
     assert "SessionStart" not in json.loads((paths.codex_home() / "hooks.json").read_text())["hooks"]
     assert "hooks" not in json.loads((machine / ".claude/settings.json").read_text())  # the Claude hook: migrate too
     assert (paths.codex_home() / "config.toml").read_text() == PLUGIN_ON + INLINE  # inline: named only
-    assert [a.kind for a in cbm_installer.find()] == ["claude-script", "codex-inline-hook"]  # the session script, now stray
+    assert [a.kind for a in cbm_installer.find()] == ["claude-script", "claude-agent", "codex-inline-hook"]  # the session script, now stray
 
 
 def test_update_leaves_the_installers_new_scripts_alone(machine):
@@ -311,3 +313,28 @@ def test_a_script_a_codex_hook_still_runs_is_not_removable(fake_home, monkeypatc
         f'command = "{hooks / "codebase-memory-session.sh"}"\n')
     scripts = [a for a in cbm_installer.find() if a.kind == "claude-script"]
     assert all(not a.removable for a in scripts)
+
+
+def test_no_claude_artefacts_while_the_plugin_is_not_installed(fake_home, monkeypatch):
+    import json as _json
+    from loadout import cbm_installer, duplicates, targets
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": False})
+    monkeypatch.setattr(duplicates, "plugin_enabled", lambda: True)  # wanted by the kit's settings...
+    (fake_home / ".claude" / "agents").mkdir(parents=True)
+    (fake_home / ".claude" / "agents" / "codebase-memory.md").write_text("x\n")
+    assert not cbm_installer._claude_plugin_on()  # ...but not installed
+    plugins = fake_home / ".claude" / "plugins"
+    plugins.mkdir(parents=True)
+    (plugins / "installed_plugins.json").write_text(_json.dumps(
+        {"plugins": {"loadout@agent-loadout": [{"scope": "user", "version": "1"}]}}))
+    assert cbm_installer._claude_plugin_on()
+
+
+def test_the_agent_file_is_named_never_removable(fake_home, monkeypatch):
+    from loadout import cbm_installer, targets
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": False})
+    monkeypatch.setattr(cbm_installer, "_claude_plugin_on", lambda: True)
+    (fake_home / ".claude" / "agents").mkdir(parents=True)
+    (fake_home / ".claude" / "agents" / "codebase-memory.md").write_text("my own agent\n")
+    (agent,) = [a for a in cbm_installer.find() if a.kind == "claude-agent"]
+    assert not agent.removable
