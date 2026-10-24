@@ -61,9 +61,9 @@ def _words(hook: dict) -> list[str]:
 def _runs(words: list[str], sub_prefix: str | None = None) -> bool:
     """A word whose program is codebase-memory-mcp (not right after echo/printf/#), with the first non-flag word
     after it starting with sub_prefix when given."""
-    from .duplicates import NOT_A_RUN
+    from .duplicates import at_command
     for i, w in enumerate(words):
-        if _program(w) != PROGRAM or (i and words[i - 1] in NOT_A_RUN):
+        if _program(w) != PROGRAM or not at_command(words, i):
             continue
         rest = [x for x in words[i + 1:] if not x.startswith("-")]
         if sub_prefix is None or (rest and rest[0].startswith(sub_prefix)):
@@ -74,10 +74,10 @@ def _runs(words: list[str], sub_prefix: str | None = None) -> bool:
 def _script(words: list[str], hooks_dir: Path | None = None) -> str | None:
     """The NEW_SCRIPTS name a hook runs (in hooks_dir when given), not right after echo/printf/#."""
     import os
-    from .duplicates import NOT_A_RUN
+    from .duplicates import at_command
     for i, w in enumerate(words):
         name = w.strip("'\"").replace("\\", "/").rsplit("/", 1)[-1]
-        if name not in NEW_SCRIPTS or (i and words[i - 1] in NOT_A_RUN):
+        if name not in NEW_SCRIPTS or not at_command(words, i):
             continue
         if hooks_dir is None or os.path.normpath(os.path.dirname(_expand(w.strip("'\"")))) == os.path.normpath(str(hooks_dir)):
             return name
@@ -239,8 +239,9 @@ def _owned(event: str, group) -> bool:
 def _is_cbm_hook(hook) -> bool:
     if not isinstance(hook, dict) or not isinstance(hook.get("command"), str):
         return False
-    words = _words(hook)
-    return _runs(words) or _script(words) is not None or _echo(words, hook["command"])
+    words = _words(hook)  # the installer's forms only: `codebase-memory-mcp hook…`, its scripts, its echo reminder
+    scripts = paths.home() / ".claude" / "hooks"  # a path to compare with, not Claude Code's files: Codex stays apart
+    return _runs(words, "hook") or _script(words, scripts) is not None or _echo(words, hook["command"])
 
 
 def _hook_groups(events) -> list[tuple[str, int, int, dict, dict]]:

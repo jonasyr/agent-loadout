@@ -211,3 +211,17 @@ def test_inlined_wrapper_names_match_the_installer():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert tuple(mod.WRAPPER_SCRIPTS) == cbm_installer.NEW_SCRIPTS
+
+
+def test_a_mention_in_another_command_does_not_silence_the_pointer():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins" / "loadout" / "hooks"))
+    import mcp_guard
+    progs = {"codebase-memory-mcp"}
+    hook = lambda c: [{"hooks": [{"type": "command", "command": c}]}]  # noqa: E731
+    for text in ("echo Use codebase-memory-mcp tools", "printf '%s' codebase-memory-mcp",
+                 "tool --server codebase-memory-mcp"):
+        assert not mcp_guard._groups_run_any(hook(text), progs), text
+    for text in ("codebase-memory-mcp hook-augment", "cd /x && codebase-memory-mcp hook-augment"):
+        assert mcp_guard._groups_run_any(hook(text), progs), text

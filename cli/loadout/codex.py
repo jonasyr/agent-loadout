@@ -1854,19 +1854,28 @@ def servers_twice(installed: set[str] | None) -> list[str]:
     return sorted(set(user_servers()) & _loadout_plugin_servers(version))
 
 
-def cbm_twice(installed: set[str] | None) -> list[str]:
-    """The names of the user's config.toml tables that start codebase-memory under a name other than the plugin's,
-    while the loadout plugin (installed, not switched off) starts its own: Codex runs both."""
-    if installed is None or LOADOUT_PLUGIN not in installed:
-        return []
+def plugin_serves_cbm(installed: set[str] | None = None) -> bool:
+    """Whether loadout's Codex plugin starts codebase-memory here: installed (the plugin list when given, else its
+    cached copy), not switched off, and its server name not switched off (`[mcp_servers.codebase-memory-mcp]
+    enabled = false`). The one rule for "a table of yours is a second server"."""
     path = paths.codex_home() / "config.toml"
     try:
         data = _tomllib().loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception:
-        return []
+        return False
     if get_dict(get_dict(data, "plugins"), LOADOUT_PLUGIN).get("enabled") is False:
+        return False
+    if get_dict(get_dict(data, "mcp_servers"), CBM_NAME).get("enabled") is False:
+        return False
+    return LOADOUT_PLUGIN in installed if installed is not None else loadout_copy() is not None
+
+
+def cbm_twice(installed: set[str] | None) -> list[str]:
+    """The names of the user's config.toml tables that start codebase-memory under a name other than the plugin's
+    and are on, while the loadout plugin starts its own: Codex runs both."""
+    if installed is None or not plugin_serves_cbm(installed):
         return []
-    return sorted(n for n in user_cbm() if n != CBM_NAME)
+    return sorted(n for n, t in user_cbm().items() if n != CBM_NAME and t.get("enabled") is not False)
 
 
 HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex`, then run /hooks"

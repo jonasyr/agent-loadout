@@ -215,12 +215,26 @@ def codex_users_hook_runs(argv: list[str], cwd: str, home: Path, tool: str | Non
     return _group_runs(_codex_groups("PreToolUse", cwd, home), argv, tool, True)
 
 
+_OPERATORS = frozenset({"&&", "||", ";", "|", "&"})
+_PREFIXES = frozenset({"exec", "env", "command", "nohup", "time", "sudo"})
+
+
+def _at_command(words: list, i: int) -> bool:
+    """Whether words[i] is in a command's program position: the first word, after a shell operator, or after a
+    prefix such as `env`/`exec` (and `VAR=value` assignments). A word anywhere else is an argument: `echo X`,
+    `printf '%s' X` and `tool --server X` mention X, they do not run it."""
+    j = i - 1
+    while j >= 0 and ("=" in words[j] and not words[j].startswith("-") or words[j] in _PREFIXES):
+        j -= 1
+    return j < 0 or words[j] in _OPERATORS
+
+
 def _groups_run_any(groups: list, programs: set[str]) -> bool:
-    """Some hook in <groups> runs one of <programs> (any subcommand; not right after echo/printf/#)."""
+    """Some hook in <groups> runs one of <programs>: the program in a command position (any subcommand)."""
     for group in groups:
         for hook in _list(group, "hooks"):
             words = _words(hook) if isinstance(hook, dict) else []
-            if any(_program(w) in programs and not (i and words[i - 1] in NOT_A_RUN) for i, w in enumerate(words)):
+            if any(_program(w) in programs and _at_command(words, i) for i, w in enumerate(words)):
                 return True
     return False
 

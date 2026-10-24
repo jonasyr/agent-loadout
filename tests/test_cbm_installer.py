@@ -266,3 +266,33 @@ def test_the_block_is_cut_exactly_in_other_shapes(machine, text, expected):
     (a,) = [a for a in cbm_installer.find() if a.kind == "codex-agents-block"]
     cbm_installer.remove(a, backup.Backup(description="t"))
     assert path.read_bytes() == expected.encode()
+
+
+@pytest.mark.parametrize("command, runs", [
+    ("codebase-memory-mcp hook-augment", True), ("cd /x && codebase-memory-mcp hook-augment", True),
+    ("env A=1 codebase-memory-mcp hook-augment", True),
+    ("echo see codebase-memory-mcp hooks", False), ("echo Use codebase-memory-mcp tools", False),
+    ("printf '%s' codebase-memory-mcp", False), ("tool --server codebase-memory-mcp hook-augment", False)])
+def test_only_a_command_word_runs_codebase_memory(command, runs):
+    from loadout import cbm_installer
+    from loadout.duplicates import _split
+    assert cbm_installer.claude_hook_words(_split(command)) is runs
+
+
+def test_a_users_own_cbm_cli_hook_in_codex_is_not_the_installers():
+    from loadout import cbm_installer
+    assert not cbm_installer._is_cbm_hook({"type": "command",
+                                           "command": "codebase-memory-mcp cli index_repository --repo-path ."})
+    assert cbm_installer._is_cbm_hook({"type": "command", "command": "codebase-memory-mcp hook-augment"})
+
+
+def test_the_guard_and_loadout_agree_on_command_positions():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugins" / "loadout" / "hooks"))
+    import mcp_guard
+    from loadout import duplicates
+    for line in ("a b", "cd x && a", "env A=1 a", "echo a", "x --y a", "A=1 a", "exec a", "a | b"):
+        words = line.split()
+        for i in range(len(words)):
+            assert mcp_guard._at_command(words, i) == duplicates.at_command(words, i), (line, i)

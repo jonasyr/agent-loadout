@@ -236,6 +236,8 @@ def classify(items: list[Item]) -> list[Verdict]:
 
 
 CBM_PROVIDED = "Provided by loadout's Codex plugin; this table starts a second codebase-memory server."
+CBM_ONLY = ("Codex's only codebase-memory server here: loadout's plugin does not serve it (not installed, or "
+            "switched off); keep it, or turn the plugin on first.")
 CBM_OWN = ("It starts codebase-memory with settings of its own (env, args or a fixed path); remove it yourself if "
            "loadout's plugin should serve it.")
 
@@ -248,13 +250,18 @@ def _codex_cbm_verdicts(left: dict) -> list[Verdict]:
         return []
     out = []
     claude = get_dict(load_json(paths.claude_json()), "mcpServers") if targets.claude_enabled() else {}
+    served = codex.plugin_serves_cbm()
     for name, table in codex.user_cbm().items():
         if name == codex.CBM_NAME or name in claude:  # the plugin's name keeps its usual handling; Claude's copy rules
+            continue
+        if table.get("enabled") is False:  # switched off: it starts nothing, so it is no second server
             continue
         item = Item("mcp", name, " ".join([str(table.get("command") or ""), *map(str, table.get("args") or [])]).strip(),
                     codex.CONFIG_LOCATION, {"config": None, "problem": "", "cbm": True})
         if own.decided(left, item) == "leave":
             out.append(Verdict(item, "keep", own.LEFT_REASON))
+        elif not served:  # removing it would leave Codex without codebase-memory
+            out.append(Verdict(item, "keep", CBM_ONLY, "mcp-codebase-memory"))
         elif codex.cbm_has_own_settings(table):
             out.append(Verdict(item, "keep", CBM_OWN, "mcp-codebase-memory"))
         else:

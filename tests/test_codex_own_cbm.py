@@ -63,6 +63,7 @@ def test_a_cbm_table_under_another_name_is_named_twice(cfg, monkeypatch):
 
 
 def test_a_cbm_table_is_never_offered_for_claude_code(cfg):
+    _plugin()  # the plugin serves codebase-memory, so the table is a second server
     cfg(PLAIN)
     assert [i for i in inventory._codex_items() if i.name == "cbm"] == []
     (v,) = [v for v in inventory.classify([]) if v.item.name == "cbm"]
@@ -70,12 +71,14 @@ def test_a_cbm_table_is_never_offered_for_claude_code(cfg):
 
 
 def test_a_cbm_table_with_its_own_settings_is_only_named(cfg):
+    _plugin()
     cfg(OWN)
     (v,) = [v for v in inventory.classify([]) if v.item.name == "cbm"]
     assert (v.action, v.reason) == ("keep", REASON_KEEP)
 
 
 def test_adopt_removes_a_cbm_table_with_a_backup(cfg, fake_runner):
+    _plugin()
     cfg(PLAIN)
     (v,) = [v for v in inventory.classify([]) if v.item.name == "cbm"]
     bk = backup.Backup(description="t")
@@ -144,3 +147,31 @@ def test_with_codex_off_there_are_no_cbm_verdicts_and_nothing_is_read(cfg, monke
     monkeypatch.setattr(targets, "codex_enabled", lambda: False)
     monkeypatch.setattr(codex, "user_servers", lambda *a, **k: pytest.fail("read ~/.codex"))
     assert inventory.classify([]) == []
+
+
+REASON_ONLY = ("Codex's only codebase-memory server here: loadout's plugin does not serve it (not installed, or "
+               "switched off); keep it, or turn the plugin on first.")
+
+
+@pytest.mark.parametrize("extra, plugin", [("", False),
+                                           ('\n[plugins."loadout@agent-loadout"]\nenabled = false\n', True),
+                                           ('\n[mcp_servers.codebase-memory-mcp]\nenabled = false\n', True)])
+def test_no_removal_offer_when_the_plugin_does_not_serve_cbm(cfg, extra, plugin):
+    if plugin:
+        _plugin()
+    cfg(PLAIN + extra)
+    (v,) = [v for v in inventory.classify([]) if v.item.name == "cbm"]
+    assert (v.action, v.reason) == ("keep", REASON_ONLY)
+
+
+def test_a_switched_off_table_is_neither_named_twice_nor_offered(cfg):
+    _plugin()
+    cfg(PLAIN + "enabled = false\n")
+    assert [v for v in inventory.classify([]) if v.item.name == "cbm"] == []
+    assert codex.cbm_twice(INSTALLED) == []
+
+
+def test_cbm_twice_needs_the_plugins_server_on(cfg):
+    _plugin()
+    cfg(PLAIN + '\n[mcp_servers.codebase-memory-mcp]\nenabled = false\n')
+    assert codex.cbm_twice(INSTALLED) == []

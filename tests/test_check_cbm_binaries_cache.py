@@ -36,9 +36,9 @@ def _rows(name):
 def test_one_binary_is_ok(fake_home, fake_runner, monkeypatch, tmp_path):
     a = _stub(tmp_path / "a")
     _path(monkeypatch, tmp_path / "a")
-    fake_runner.responses[(str(a), "--version")] = runner.Result(0, "codebase-memory-mcp 0.12.1\n", "")
     [r] = _rows(BIN)
-    assert (r.ok, r.detail) == (True, "1 on PATH, version 0.12.1")
+    assert (r.ok, r.detail) == (True, "1 on PATH")
+    assert not [c for c in fake_runner.calls if c[0] == str(a)], "one binary: nothing to compare, no --version run"
 
 
 def test_two_binaries_with_different_versions_warn(fake_home, fake_runner, monkeypatch, tmp_path):
@@ -145,3 +145,13 @@ def test_default_folder_agrees_with_the_hook(fake_home):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert Path(mod.cache_dir()) == check._cbm_default_cache() == paths.home() / ".cache/codebase-memory-mcp"
+
+
+def test_a_switched_off_codex_table_does_not_count_for_the_cache(fake_home, fake_runner, monkeypatch, tmp_path):
+    _both(monkeypatch)
+    (fake_home / ".codex").mkdir()
+    (fake_home / ".codex/config.toml").write_text(
+        '[mcp_servers.cbm]\ncommand = "codebase-memory-mcp"\nenabled = false\n'
+        f'[mcp_servers.cbm.env]\nCBM_CACHE_DIR = "{tmp_path / 'other'}"\n')
+    [r] = _rows(CACHE)
+    assert r.ok

@@ -397,6 +397,9 @@ def _cbm_binaries() -> list[CheckResult]:
             found.setdefault(os.path.realpath(f), f)
     if not found:
         return []
+    title = "codebase-memory-mcp binaries"
+    if len(found) == 1:  # one binary: nothing to compare, so no version run
+        return [CheckResult(title, True, "1 on PATH", "", "warn")]
     versions = []
     for real, shown in found.items():
         try:
@@ -405,7 +408,6 @@ def _cbm_binaries() -> list[CheckResult]:
         except Exception:
             m = None
         versions.append((shown, m.group(0) if m else "?"))
-    title = "codebase-memory-mcp binaries"
     if len({v for _, v in versions}) <= 1:
         return [CheckResult(title, True, f"{len(versions)} on PATH, version {versions[0][1]}", "", "warn")]
     return [CheckResult(title, False, printable("; ".join(f"{p} {v}" for p, v in versions)),
@@ -426,6 +428,8 @@ def _cbm_cache_folders() -> list[CheckResult]:
                        and isinstance(c["env"].get(key), str) and c["env"][key]), process)
         theirs = None  # the plugin's server: Codex passes no exported variables
         for t in codex.user_cbm().values():
+            if t.get("enabled") is False:  # switched off: it starts nothing
+                continue
             env, names = t.get("env"), t.get("env_vars")
             if isinstance(env, dict) and isinstance(env.get(key), str) and env[key]:
                 theirs = env[key]

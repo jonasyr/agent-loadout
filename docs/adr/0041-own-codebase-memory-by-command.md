@@ -30,7 +30,7 @@ The maintainer asked: "we handle various cases of existing Serena setup … but 
   - `drift`;
   - Claude Code's "second server" row;
   - the Codex hook guard: codebase-memory is available when the plugin's server is on, or when any table of yours that starts it is on.
-- **The plugin provides the server, so yours is the second one.** In Codex the plugin's server comes from the plugin, and loadout cannot leave it out the way it leaves out Serena. `adopt` therefore offers "use the kit's", which removes your table with a backup. A table with settings of its own is only named: `env`, `env_vars`, extra `args`, timeouts, `cwd`, tool lists or a fixed path. Removing it could change which index you use.
+- **The plugin provides the server, so yours is the second one.** In Codex the plugin's server comes from the plugin, and loadout cannot leave it out the way it leaves out Serena. `adopt` therefore offers "use the kit's", which removes your table with a backup. It does so only while the plugin really serves codebase-memory: installed, and neither the plugin nor its server name switched off. Otherwise your table is Codex's only codebase-memory server and stays. A table you switched off is neither named nor offered. A table with settings of its own is only named: `env`, `env_vars`, extra `args`, timeouts, `cwd`, tool lists or a fixed path. Removing it could change which index you use.
 - **The installer's files are named, and removed only on a yes.** `cli/loadout/cbm_installer.py` finds them for each agent that is on and has the plugin on. `check` names each one. `adopt` offers to remove it with a backup, so `loadout restore` puts it back. Some cases are only named, never removed:
   - an AGENTS.md block whose markers are unclosed or repeated;
   - a `hooks.json` whose style cannot be reproduced;
@@ -38,6 +38,7 @@ The maintainer asked: "we handle various cases of existing Serena setup … but 
   - a hook that only resembles the installer's.
 
   The new script names do not join the legacy names that `loadout update` removes without asking ([ADR 0035](0035-loadout-update-brings-a-machine-current.md)).
+- **One rule for "runs codebase-memory".** The program counts only in a command's program position: the first word, after `&&`, `;` or `|`, or after `env`/`exec`. `echo X`, `printf '%s' X` and `tool --server X` only mention it. The hook guard keeps an inlined copy of the rule, and a test keeps the two equal.
 - **Your own hooks silence the pointer.** A `SessionStart` or `SubagentStart` hook of yours that *runs* codebase-memory-mcp or one of the wrapper scripts keeps `cbm_project.py` quiet for that event. An `echo` that only names the program does not count: it says nothing about your project.
 - **Binaries and cache folders are compared before the daemon trips.** `codebase-memory-mcp binaries` lists the versions on `PATH` when they differ. `codebase-memory cache folders` compares the `CBM_CACHE_DIR` each agent's server actually gets. Codex passes no exported variables to the plugin's server.
 
@@ -55,6 +56,6 @@ The maintainer asked: "we handle various cases of existing Serena setup … but 
 
 ## In the code
 
-- `cli/loadout/codex.py` (`is_cbm`, `user_cbm`, `cbm_has_own_settings`, `servers_twice`, `drift`)
+- `cli/loadout/codex.py` (`is_cbm`, `user_cbm`, `cbm_has_own_settings`, `plugin_serves_cbm`, `cbm_twice`, `drift`)
 - `cli/loadout/inventory.py`, `cli/loadout/adopt.py`, `cli/loadout/cbm_installer.py`, `cli/loadout/check.py`
 - `plugins/loadout/hooks/mcp_guard.py`, `plugins/loadout/hooks/cbm_project.py`
