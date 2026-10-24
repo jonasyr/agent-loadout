@@ -94,7 +94,7 @@ def test_a_codex_table_env_matching_the_export_is_ok(fake_home, fake_runner, mon
     monkeypatch.setenv("CBM_CACHE_DIR", str(mine))
     (fake_home / ".codex").mkdir()
     (fake_home / ".codex/config.toml").write_text(
-        f'[mcp_servers.cbm]\ncommand = "codebase-memory-mcp"\n[mcp_servers.cbm.env]\nCBM_CACHE_DIR = "{mine}"\n')
+        f'[mcp_servers.cbm]\ncommand = "codebase-memory-mcp"\n[mcp_servers.cbm.env]\nCBM_CACHE_DIR = \'{mine}\'\n')
     [r] = _rows(CACHE)
     assert r.ok
 
@@ -152,6 +152,6 @@ def test_a_switched_off_codex_table_does_not_count_for_the_cache(fake_home, fake
     (fake_home / ".codex").mkdir()
     (fake_home / ".codex/config.toml").write_text(
         '[mcp_servers.cbm]\ncommand = "codebase-memory-mcp"\nenabled = false\n'
-        f'[mcp_servers.cbm.env]\nCBM_CACHE_DIR = "{tmp_path / 'other'}"\n')
+        f'[mcp_servers.cbm.env]\nCBM_CACHE_DIR = \'{tmp_path / "other"}\'\n')
     [r] = _rows(CACHE)
     assert r.ok
