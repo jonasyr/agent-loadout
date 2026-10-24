@@ -134,3 +134,132 @@ def test_an_after_start_in_the_future_gives_an_empty_window(fake_home):
     now = 1_800_000_000.0
     rep = usage.report(now + 86400, now + 8 * 86400, None, now=now)
     assert rep["windows"]["after"]["days"] == 0 and rep["windows"]["after"]["end"] >= rep["windows"]["after"]["start"]
+
+
+# ---- CLI ----
+
+import pytest
+from datetime import datetime
+
+from loadout.__main__ import main
+
+
+def _on(monkeypatch, claude=True, codex=False):
+    monkeypatch.setattr(targets, "claude_enabled", lambda: claude)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: codex)
+
+
+def _day(offset_days):
+    """An ISO timestamp (UTC) a number of days from now, plus the epoch for os.utime."""
+    import time
+    t = time.time() + offset_days * DAY
+    return datetime.fromtimestamp(t, tz=__import__("datetime").timezone.utc).isoformat(), t
+
+
+def _seed(name, offset, **kw):
+    ts, t = _day(offset)
+    p = _write(name, ts, **kw)
+    os.utime(p, (t, t))
+    return p
+
+
+def _local_date(offset):
+    import time
+    return datetime.fromtimestamp(time.time() + offset * DAY).strftime("%Y-%m-%d")
+
+
+def test_parse_moment():
+    assert usage.parse_moment("2026-10-15") == datetime(2026, 10, 15).timestamp()
+    assert usage.parse_moment("2026-10-15T13:30") == datetime(2026, 10, 15, 13, 30).timestamp()
+    with pytest.raises(ValueError, match="use YYYY-MM-DD or YYYY-MM-DDTHH:MM"):
+        usage.parse_moment("15.10.2026")
+
+
+def test_cli_around_shows_both_windows_and_arrows(fake_home, monkeypatch, capsys):
+    _on(monkeypatch)
+    for i in range(2):
+        _seed(f"b{i}", -9 - i)  # plain Read calls before
+        _seed(f"a{i}", -2 - i)
+    ts, t = _day(-1)
+    p = paths.claude_home() / "projects" / "-repo" / "serena.jsonl"
+    recs = [{"type": "assistant", "timestamp": ts, "message": {"content": [
+        {"type": "tool_use", "name": "mcp__serena__find_symbol", "input": {}}]}} for _ in range(6)]
+    p.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    os.utime(p, (t, t))
+    around, before_start = _local_date(-5), _local_date(-10)
+    assert main(["usage", "--around", around, "--days", "5", "--min-sessions", "1"]) == 0
+    out = capsys.readouterr().out
+    assert before_start in out and around in out and "↑" in out and "→" in out
+
+
+def test_cli_since_shows_one_window(fake_home, monkeypatch, capsys):
+    _on(monkeypatch)
+    _seed("a", -1)
+    assert main(["usage", "--since", _local_date(-3)]) == 0
+    out = capsys.readouterr().out
+    assert "after" in out and "before" not in out and "→" not in out
+
+
+def test_cli_legacy_matches_collect(fake_home, monkeypatch, capsys):
+    _on(monkeypatch)
+    _seed("a", -1)
+    assert main(["usage", "--legacy", "--json", "--days", "7"]) == 0
+    got = json.loads(capsys.readouterr().out)
+    want = usage.collect(7)
+    assert got["claude"] == want["claude"] and got["days"] == 7 and got["hint_sessions"] == want["hint_sessions"]
+
+
+def test_cli_sessions_lists_ids_and_numbers_only(fake_home, monkeypatch, capsys):
+    _on(monkeypatch)
+    _seed("sess-one", -1, prompt="SECRET-PROMPT")
+    _seed("sess-sub", -1, sub=True, prompt="SECRET-PROMPT use serena")
+    assert main(["usage", "--sessions"]) == 0
+    out = capsys.readouterr().out
+    assert "SECRET-PROMPT" not in out and "sess-one" in out
+    line = next(l for l in out.splitlines() if l.startswith("sess-one"))
+    assert line.split("  ")[1:6] == ["claude", "main", "counted", "after", "lookups=0/0"]
+    assert "prompted=—" in line and "share=—" in line
+    assert "prompted=yes" in out
+
+
+def test_json_keeps_todays_keys(fake_home, monkeypatch, capsys):
+    _on(monkeypatch)
+    _seed("a", -1)
+    assert main(["usage", "--json"]) == 0
+    c = json.loads(capsys.readouterr().out)["claude"]["main"]
+    for key in ("sessions", "calls", "symbol_searches", "serena_denials"):
+        assert isinstance(c[key], int)
+    assert set(c["families"]) == set(usage.NAMES)
+    assert all(set(v) == {"calls", "sessions"} for v in c["families"].values())
+
+
+def test_table_fits_100_columns(fake_home, monkeypatch, capsys):
+    _on(monkeypatch, codex=True)
+    for i in range(3):
+        _seed(f"b{i}", -9 - i)
+        _seed(f"a{i}", -2 - i)
+        _seed(f"sb{i}", -2 - i, sub=True, prompt="use serena")
+    cx = paths.codex_home() / "sessions" / "2026" / "10" / "14" / "r.jsonl"
+    cx.parent.mkdir(parents=True, exist_ok=True)
+    cx.write_text(json.dumps({"type": "session_meta", "payload": {"timestamp": _day(-2)[0]}}) + "\n")
+    for args in (["--around", _local_date(-5), "--days", "5"], ["--days", "5"]):
+        assert main(["usage", *args]) == 0
+        out = capsys.readouterr().out
+        assert out.strip() and max(len(l) for l in out.splitlines()) <= 100
+
+
+def test_around_and_since_are_exclusive(fake_home, monkeypatch):
+    with pytest.raises(SystemExit):
+        main(["usage", "--around", "2026-10-01", "--since", "2026-10-02"])
+
+
+def test_legacy_refuses_window_flags(fake_home, monkeypatch, capsys):
+    _on(monkeypatch)
+    for extra in (["--around", "2026-10-01"], ["--since", "2026-10-01"], ["--sessions"]):
+        assert main(["usage", "--legacy", *extra]) == 2
+        assert "--legacy" in capsys.readouterr().err
+
+
+def test_bad_moment_is_rejected(fake_home):
+    with pytest.raises(SystemExit):
+        main(["usage", "--around", "yesterday"])

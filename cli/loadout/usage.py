@@ -368,9 +368,11 @@ def _agent_block(after: "list[Session]", skipped: list[int], min_calls: int,
 
 
 def report(after_start: float, after_end: float, before_start: "float | None", *, min_calls: int = 5,
-           follow_within: int = 5, min_sessions: int = 20, now: "float | None" = None) -> dict:
+           follow_within: int = 5, min_sessions: int = 20, now: "float | None" = None,
+           keep: "list | None" = None) -> dict:
     """Before/after windows over per-session records; each transcript is read once. A session belongs to the
-    window holding its start: after is [after_start, min(after_end, now)), before is [before_start, after_start)."""
+    window holding its start: after is [after_start, min(after_end, now)), before is [before_start, after_start).
+    `keep`, when given, receives every session read (one read per run, also for `--sessions`)."""
     from . import usage_sessions
     now = time.time() if now is None else now
     end = max(after_start, min(after_end, now))  # a start in the future is an empty window, never a negative one
@@ -391,8 +393,137 @@ def report(after_start: float, after_end: float, before_start: "float | None", *
             continue
         skipped = [0]
         found = read(earliest, follow_within, skipped)
+        if keep is not None:
+            keep.extend(found)
         aft = [s for s in found if after_start <= s.start < end]
         bef = [s for s in found if before_start <= s.start < after_start] if before_start is not None else None
         out[name] = _agent_block(aft, skipped, min_calls, bef, min_sessions)
     out["hint_sessions"] = _hint_sessions(after_start)
     return out
+
+
+MOMENT_FORMS = ("%Y-%m-%d", "%Y-%m-%dT%H:%M")
+
+
+def parse_moment(text: str) -> float:
+    """`YYYY-MM-DD` is local midnight, `YYYY-MM-DDTHH:MM` local time."""
+    from datetime import datetime
+    for form in MOMENT_FORMS:
+        try:
+            return datetime.strptime(text, form).timestamp()
+        except ValueError:
+            continue
+    raise ValueError("use YYYY-MM-DD or YYYY-MM-DDTHH:MM")
+
+
+def plan_windows(days: int, around: "float | None", since: "float | None", now: float) -> tuple:
+    """(after_start, after_end, before_start) for the flags; --around has a before window, the rest do not."""
+    span = days * 86400
+    if around is not None:
+        return around, around + span, around - span
+    if since is not None:
+        return since, now, None
+    return now - span, now, None
+
+
+def _moment(t: float) -> str:
+    from datetime import datetime
+    d = datetime.fromtimestamp(t)
+    return d.strftime("%Y-%m-%d") if (d.hour, d.minute) == (0, 0) else d.strftime("%Y-%m-%d %H:%M")
+
+
+def _days(n: float) -> str:
+    return f"{n:g} day" + ("" if n == 1 else "s")
+
+
+def _pct(v: "float | None") -> str:
+    return "—" if v is None else f"{round(v * 100)}%"
+
+
+def _cell(g: dict, metric: str) -> str:
+    if metric == "code":
+        found = sum(g["lookups"].values())
+        return f"{_pct(g['code_tool_share'])} ({found}/{found + g['symbol_searches']})"
+    if metric == "follow":
+        return f"{_pct(g['follow_through'])} ({g['followed']}/{g['denials']})"
+    if metric == "symbol":
+        return f"{g['per_session']['symbol_searches']:.1f}"
+    fam = metric
+    return f"{_pct(g['family_share'][fam])} ({g['families'][fam]['sessions']}/{g['sessions']})"
+
+
+def _sessions_cell(g: dict) -> str:
+    return f"{g['sessions']}" + (f" (+{g['tiny']} tiny)" if g["tiny"] else "")
+
+
+ROW_TITLES = {"main": "main", "subagent": "subagent", "subagent_prompted": "subagent prompted",
+              "subagent_unprompted": "subagent not prompted"}
+METRIC_ROWS = (("sessions", "sessions counted", None),
+               ("code", "code-tool share", "code_tool_share"),
+               ("follow", "follow-through", "follow_through"),
+               ("serena", "sessions with Serena", "family_share.serena"),
+               ("codebase-memory", "sessions with cbm", "family_share.codebase-memory"),
+               ("context7", "sessions with Context7", "family_share.context7"),
+               ("microsoft-learn", "sessions with MS Learn", "family_share.microsoft-learn"),
+               ("symbol", "symbol searches/session", "per_session.symbol_searches"))
+
+
+def render_report(rep: dict) -> str:
+    w = rep["windows"]
+    lines = []
+    for key in ("before", "after"):
+        if key in w:
+            x = w[key]
+            lines.append(f"{key:<6} {_moment(x['start'])} to {_moment(x['end'])}  ({_days(x['days'])}"
+                         + (", partial)" if x["partial"] else ")"))
+    t = rep["thresholds"]
+    lines.append(f"counted: sessions with at least {t['min_calls']} tool calls; arrows need {t['min_sessions']} "
+                 f"sessions on each side")
+    for agent, title in (("claude", "Claude Code"), ("codex", "Codex")):
+        if agent not in rep:
+            continue
+        blk = rep[agent]
+        for row in ROWS:
+            if row in ("subagent_prompted", "subagent_unprompted") and not blk["prompted_known"]:
+                continue
+            after, before = blk[row], blk.get("before", {}).get(row)
+            if not (after["sessions"] + after["tiny"] or (before and before["sessions"] + before["tiny"])):
+                continue
+            lines.append("")
+            lines.append(f"{title} {ROW_TITLES[row]}")
+            for metric, label, ckey in METRIC_ROWS:
+                fn = _sessions_cell if metric == "sessions" else (lambda g, m=metric: _cell(g, m))
+                text = fn(after)
+                if before is not None:
+                    text = f"{fn(before)} → {text}"
+                    if ckey:
+                        text += f"  {blk['change'][row][ckey]}"
+                lines.append(f"  {label:<26}{text}")
+    lines.append("")
+    lines.append(f"sessions with a loadout tool hint (after window): {rep['hint_sessions']}")
+    for agent, title in (("claude", "Claude Code"), ("codex", "Codex")):
+        if agent in rep and rep[agent]["skipped_lines"]:
+            lines.append(f"{title}: {rep[agent]['skipped_lines']} unreadable lines skipped")
+    if "codex" in rep and not rep["codex"]["prompted_known"]:
+        lines.append("Codex subagents are not split: their prompt is not in the session file")
+    return "\n".join(lines)
+
+
+def render_sessions(sessions: "list[Session]", windows: dict, min_calls: int) -> str:
+    def where(s) -> str:
+        for key in ("before", "after"):
+            x = windows.get(key)
+            if x and x["start"] <= s.start < x["end"]:
+                return key
+        return "outside"
+    lines = []
+    for s in sorted(sessions, key=lambda s: (s.start, s.id)):
+        found = sum(s.lookups.values())
+        share = f"{round(100 * found / (found + s.symbol_searches))}%" if found + s.symbol_searches else "—"
+        prompted = "—" if s.prompted is None else "yes" if s.prompted else "no"
+        lines.append("  ".join([
+            s.id, s.agent, s.kind, "counted" if s.total_calls >= min_calls else "tiny", where(s),
+            f"lookups={s.lookups.get('serena', 0)}/{s.lookups.get('codebase-memory', 0)}",
+            f"symbol={s.symbol_searches}", f"share={share}", f"denials={s.denials} followed={s.followed}",
+            f"prompted={prompted}"]))
+    return "\n".join(lines)

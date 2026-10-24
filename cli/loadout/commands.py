@@ -356,19 +356,61 @@ EXTRA_COMMANDS.append(_register_advisor)
 
 
 def _register_usage(sub):
-    p = sub.add_parser("usage", help="how often the agents used each tool family (local transcripts, counts only)")
-    p.add_argument("--days", type=int, default=14, help="look back this many days (default 14)")
+    import argparse
+
+    def moment(text):
+        from . import usage
+        try:
+            return usage.parse_moment(text)
+        except ValueError as e:
+            raise argparse.ArgumentTypeError(str(e))
+
+    p = sub.add_parser("usage", help="how often the agents used each tool family, before and after a change "
+                                     "(local transcripts, counts only)")
+    p.add_argument("--days", type=int, default=14, help="window length in days (default 14)")
+    when = p.add_mutually_exclusive_group()
+    when.add_argument("--around", type=moment, metavar="MOMENT",
+                      help="compare the days before MOMENT with the days after it (YYYY-MM-DD or YYYY-MM-DDTHH:MM)")
+    when.add_argument("--since", type=moment, metavar="MOMENT", help="only the window from MOMENT until now")
+    p.add_argument("--min-calls", type=int, default=5, help="sessions with fewer tool calls are left out (default 5)")
+    p.add_argument("--follow-within", type=int, default=5,
+                   help="tool calls after a Serena reminder that count as following it (default 5)")
+    p.add_argument("--min-sessions", type=int, default=20,
+                   help="fewest sessions on each side before an arrow is shown (default 20)")
+    p.add_argument("--sessions", action="store_true", help="one line per session (ids and counts only)")
+    p.add_argument("--legacy", action="store_true", help="the old single-window counts; only --days applies")
     p.add_argument("--json", action="store_true", help="print the counts as JSON")
 
     def run(a):
         import json as _json
         import sys as _sys
+        import time as _time
         from . import usage
-        report = usage.collect(max(1, a.days))
-        if "claude" not in report and "codex" not in report:
+        if a.legacy:
+            if a.around is not None or a.since is not None or a.sessions:
+                print("loadout: --legacy takes only --days (not --around, --since or --sessions)", file=_sys.stderr)
+                return 2
+            report = usage.collect(max(1, a.days))
+            if "claude" not in report and "codex" not in report:
+                print("loadout: no session history found for the agents that are on", file=_sys.stderr)
+                return 1
+            print(_json.dumps(report, indent=2) if a.json else usage.render(report))
+            return 0
+        if a.sessions and a.json:
+            print("loadout: --sessions prints text lines; leave out --json", file=_sys.stderr)
+            return 2
+        now = _time.time()
+        start, end, before = usage.plan_windows(max(1, a.days), a.around, a.since, now)
+        kept: list = []
+        rep = usage.report(start, end, before, min_calls=a.min_calls, follow_within=a.follow_within,
+                           min_sessions=a.min_sessions, now=now, keep=kept)
+        if "claude" not in rep and "codex" not in rep:
             print("loadout: no session history found for the agents that are on", file=_sys.stderr)
             return 1
-        print(_json.dumps(report, indent=2) if a.json else usage.render(report))
+        if a.sessions:
+            print(usage.render_sessions(kept, rep["windows"], a.min_calls))
+        else:
+            print(_json.dumps(rep, indent=2) if a.json else usage.render_report(rep))
         return 0
 
     p.set_defaults(func=run)

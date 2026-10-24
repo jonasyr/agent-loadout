@@ -209,12 +209,12 @@ def test_hint_sessions_come_from_the_hint_state(fake_home, monkeypatch):
     assert usage.collect(14)["hint_sessions"] == 1
 
 
-def test_cli_prints_a_table_and_json(fake_home, monkeypatch, capsys):
+def test_cli_legacy_prints_a_table_and_json(fake_home, monkeypatch, capsys):
     _on(monkeypatch, codex=False)
     _claude([_tool("mcp__plugin_loadout_serena__find_symbol")])
-    assert main(["usage"]) == 0
+    assert main(["usage", "--legacy"]) == 0
     assert "Serena" in capsys.readouterr().out
-    assert main(["usage", "--days", "7", "--json"]) == 0
+    assert main(["usage", "--legacy", "--days", "7", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["days"] == 7
 
 
