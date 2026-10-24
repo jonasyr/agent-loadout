@@ -77,3 +77,10 @@ def test_a_git_alias_cannot_slip_through():
 def test_a_test_that_fakes_subprocess_runs_nothing(monkeypatch):
     monkeypatch.setattr(runner.subprocess, "run", lambda cmd, **kw: runner.subprocess.CompletedProcess(cmd, 0, "", ""))
     assert runner.run([shutil.which("sh") or "/bin/sh", "-c", "claude"]).ok
+
+
+def test_a_listed_python_line_ignores_startup_hooks(tmp_path, monkeypatch):
+    (tmp_path / "sitecustomize.py").write_text("print('HOOK RAN')\n")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    out = runner.run(["python", "-c", "print('ok')"]).stdout
+    assert out.strip() == "ok" and "HOOK RAN" not in out

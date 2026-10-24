@@ -100,6 +100,8 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
         if real and not stub and not faked and not _harmless(line, base):
             pytest.fail(f"a test ran the real `{name}` ({exe}) through runner.run: {line!r}; use fake_runner or a "
                         "stub in tmp_path")
+        if real and not stub and not faked and name in ("python", "python3"):
+            cmd = [cmd[0], "-I", *cmd[1:]]  # isolated: no PYTHON* variables, no user site, no sitecustomize hooks
         return real_run(cmd, *args, **kwargs)
     monkeypatch.setattr(runner, "run", guarded_run)
 
