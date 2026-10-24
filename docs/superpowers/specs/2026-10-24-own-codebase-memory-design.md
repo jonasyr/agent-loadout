@@ -1,7 +1,7 @@
 # Design: your own codebase-memory setups, at Serena's level
 
 - Date: 2026-10-24
-- Status: Draft
+- Status: Approved (2026-10-24)
 - Builds on:
   - [ADR 0028](../../adr/0028-serena-codex-hooks-in-hooks-json.md) and [ADR 0036](../../adr/0036-codex-tool-approvals-and-serena-approval.md) (Serena already set up);
   - [ADR 0035](../../adr/0035-loadout-update-brings-a-machine-current.md) (exact duplicates removed by update);
