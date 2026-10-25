@@ -1544,6 +1544,72 @@ def _table_blockers(market: str, src: str) -> list[str]:
     return sorted(out)
 
 
+_CODEX_TABLE_KEYS = ("last_updated", "last_revision")  # what `marketplace add` refreshes in an unchanged table
+
+
+def _keep_user_text(cfg: Path, saved: bytes, market: str) -> None:
+    """After a re-add: put the user's config.toml back byte for byte, with only the values Codex refreshed
+    (last_updated, last_revision) set in the marketplace's table. Codex's own file stays unless the result parses
+    to exactly what Codex wrote."""
+    import tomllib
+    from .jsonio import write_atomic_bytes
+    try:
+        now = tomllib.loads(cfg.read_text(encoding="utf-8"))
+        text = saved.decode("utf-8")
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return
+    fresh = get_dict(get_dict(now, "marketplaces"), market)
+    name = re.escape(market)
+    headers = list(re.finditer(rf"""^[ \t]*\[[ \t]*marketplaces[ \t]*\.[ \t]*(?:{name}|"{name}"|'{name}')[ \t]*\]"""
+                               r"[ \t]*(?:#[^\n]*)?$", text, re.M))
+    if len(headers) != 1:
+        return
+    start = headers[0].end()
+    nxt = re.compile(r"^[ \t]*\[", re.M).search(text, start)
+    end = nxt.start() if nxt else len(text)
+    region = text[start:end]
+    for key in _CODEX_TABLE_KEYS:
+        value = fresh.get(key)
+        if not isinstance(value, str):
+            continue
+        pat = re.compile(rf"""^([ \t]*{key}[ \t]*=[ \t]*)("(?:[^"\\\n]|\\.)*"|'[^'\n]*')""", re.M)
+        if pat.search(region):
+            region = pat.sub(lambda m: m.group(1) + json.dumps(value), region, count=1)
+        else:
+            body = region.rstrip("\n")  # a new key goes after the table's last line, before its blank lines
+            region = f"{body}\n{key} = {json.dumps(value)}" + region[len(body):]
+    new = text[:start] + region + text[end:]
+    try:
+        if tomllib.loads(new) != now:
+            return
+    except tomllib.TOMLDecodeError:
+        return
+    write_atomic_bytes(cfg, new.encode("utf-8"))
+
+
+def _drop_older_snapshot_copies(market: str, keep: Path) -> None:
+    """Keep only the newest backed-up snapshot of `market`: copies in older backups go (their restore step then
+    reports nothing left), so the backups hold at most one stale clone per marketplace."""
+    import shutil
+    from . import backup
+    label = f"codex marketplace snapshot {market}"
+    for b in backup.backups():
+        if b.path == keep:
+            continue
+        for step in b.steps:
+            undo = step.get("undo")
+            src = undo.get("move", [None])[0] if isinstance(undo, dict) and step.get("label") == label else None
+            if not isinstance(src, str):
+                continue
+            copy = Path(src)
+            try:
+                inside = copy.resolve().is_relative_to((b.path / "files").resolve())
+            except (OSError, RuntimeError):
+                inside = False
+            if inside and copy.is_dir() and not copy.is_symlink():
+                shutil.rmtree(copy, ignore_errors=True)
+
+
 def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
     """Remove the marketplace and add it again (`add` clones with no time limit), after a backup of config.toml and
     with the snapshot moved aside; any failure puts both back. Returns (ok, the failure's detail)."""
@@ -1565,8 +1631,10 @@ def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
         res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
         info = _json(res.stdout) if res.ok else None
         if isinstance(info, dict) and "marketplaceName" in info:
+            if saved is not None:
+                _keep_user_text(cfg, saved, market)
             if moved is not None:
-                shutil.rmtree(moved, ignore_errors=True)  # a stale clone of a few hundred MB: not kept per run
+                _drop_older_snapshot_copies(market, bk.root)
             return True, ""
     why = _tail(res)
     if saved is not None and _market_table(market) is None:  # a running Codex may have written it again: keep that

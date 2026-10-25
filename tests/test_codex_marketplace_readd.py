@@ -75,7 +75,7 @@ def test_codex_timeout_readds_and_reinstalls(setup, fake_runner):
     assert not any("failed to upgrade" in l for l in lines)
     assert any("restore-file" in s["undo"] and s["undo"]["restore-file"][1] == str(cfg) for s in bk.steps)
     moves = [s["undo"]["move"][0] for s in bk.steps if "move" in s["undo"]]
-    assert moves and all(not __import__("os").path.exists(m) for m in moves), "the stale snapshot is not kept"
+    assert moves and all(__import__("os").path.exists(m) for m in moves), "restore can put the old snapshot back"
 
 
 def test_no_readd_while_codex_runs(setup, fake_runner, monkeypatch):
@@ -227,3 +227,57 @@ def test_a_failing_config_write_back_does_not_abort_the_update(setup, fake_runne
     assert (snap / "x").read_text() == "old", "the snapshot still comes back"
     assert any("re-adding it failed too (boom; your config.toml stays in the backup (loadout restore puts it back)"
                in l for l in lines)
+
+
+USER_CFG = ('model = "x"  # mine\n\n# my marketplaces\n[marketplaces.impeccable]  # big one\n'
+            'source_type = "git"\nsource = "https://github.com/pbakaus/impeccable.git"\n'
+            'last_updated = "2026-01-01T00:00:00Z"   # old\n\n[other]\nkeep = 1\n')
+
+
+def _codex_like_add(monkeypatch, fake_runner, cfg, extra=""):
+    """Play Codex: remove drops the table (and the comments), add writes a fresh one."""
+    def run(cmd, cwd=None, timeout=300, env=None):
+        if list(cmd[:4]) == ["codex", "plugin", "marketplace", "remove"]:
+            cfg.write_text('model = "x"\n\n[other]\nkeep = 1\n')
+        res = fake_runner(cmd, cwd=cwd, timeout=timeout, env=env)
+        if list(cmd[:4]) == ["codex", "plugin", "marketplace", "add"] and "--json" in cmd and res.ok and len(
+                _calls(fake_runner, *ADD)) >= 2:
+            cfg.write_text('model = "x"\n\n[other]\nkeep = 1\n\n[marketplaces.impeccable]\nsource_type = "git"\n'
+                           'source = "https://github.com/pbakaus/impeccable.git"\n'
+                           'last_updated = "2026-10-25T10:00:00Z"\nlast_revision = "abc123"\n' + extra)
+        return res
+    monkeypatch.setattr(runner, "run", run)
+
+
+def test_success_keeps_the_users_text_byte_for_byte(setup, fake_runner, monkeypatch):
+    cfg, _ = setup
+    cfg.write_text(USER_CFG)
+    _codex_like_add(monkeypatch, fake_runner, cfg)
+    lines, _ = _run()
+    assert OK_LINE in lines
+    assert cfg.read_text() == USER_CFG.replace('"2026-01-01T00:00:00Z"', '"2026-10-25T10:00:00Z"').replace(
+        'last_updated = "2026-10-25T10:00:00Z"   # old\n', 'last_updated = "2026-10-25T10:00:00Z"   # old\n'
+        'last_revision = "abc123"\n')
+
+
+def test_success_keeps_codexs_file_when_it_wrote_more(setup, fake_runner, monkeypatch):
+    cfg, _ = setup
+    cfg.write_text(USER_CFG)
+    _codex_like_add(monkeypatch, fake_runner, cfg, extra='new_key = "v"\n')
+    _run()
+    assert 'new_key = "v"' in cfg.read_text(), "the file Codex wrote stays when the user's text cannot carry it"
+
+
+def test_only_the_newest_snapshot_copy_is_kept(setup, fake_runner, monkeypatch):
+    import os
+    _, snap = setup
+    _, first = _run()
+    old = [s["undo"]["move"][0] for s in first.steps if "move" in s["undo"]]
+    assert old and all(os.path.exists(m) for m in old)
+    snap.mkdir(parents=True, exist_ok=True)
+    (snap / "x").write_text("second")
+    fake_runner.responses[ADD] = ADDED
+    _, second = _run()
+    new = [s["undo"]["move"][0] for s in second.steps if "move" in s["undo"]]
+    assert new and all(os.path.exists(m) for m in new)
+    assert not any(os.path.exists(m) for m in old), "the previous run's copy of the same marketplace is dropped"

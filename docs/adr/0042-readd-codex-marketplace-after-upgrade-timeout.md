@@ -32,7 +32,10 @@ Codex's source shows a way around it:
   1. A copy of `config.toml` goes into the run's backup.
   2. The snapshot is moved aside into the backup.
   3. Then remove, then add.
-  4. On success, the moved-aside snapshot is deleted. It is a stale clone of a few hundred MB, and keeping one per run would fill the backups. The config copy stays, so `loadout restore` can put the old table back.
+  4. On success:
+     - loadout writes your `config.toml` back byte for byte. Only the values Codex refreshed in the marketplace's table (`last_updated`, `last_revision`) are set, and only when the result parses to exactly what Codex wrote; otherwise Codex's file stays. Comments and formatting in the table survive this way.
+     - The moved-aside snapshot stays in this run's backup, so `loadout restore` can put the old snapshot and the old config back together.
+     - The maintainer chose "keep only the newest": copies of the same marketplace in older backups are deleted. A snapshot of a few hundred MB per run would otherwise fill the backups while the upstream limit stands.
   5. On failure:
      - the config bytes go back first, and only when the table is missing (a running Codex may have written it again, and that version is kept);
      - then the snapshot goes back. If moving it back fails, the line says the snapshot stays in the backup.
@@ -48,7 +51,7 @@ Codex's source shows a way around it:
 ## Consequences
 
 - A large loadout marketplace stays current despite the 30 s limit. Each `loadout update` re-clones it in full while the upstream limit stands.
-- `loadout restore` of such a run puts the old `config.toml` back. Its snapshot step reports "already restored", because the stale clone was deleted on purpose.
+- `loadout restore` of the newest such run puts the old `config.toml` and snapshot back. An older run's snapshot step reports that nothing is left, because its copy was dropped on purpose; its config still comes back.
 - Once Codex makes the limit configurable or removes it, the trigger no longer fires, and the code can go.
 
 ## In the code
