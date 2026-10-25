@@ -281,3 +281,30 @@ def test_only_the_newest_snapshot_copy_is_kept(setup, fake_runner, monkeypatch):
     new = [s["undo"]["move"][0] for s in second.steps if "move" in s["undo"]]
     assert new and all(os.path.exists(m) for m in new)
     assert not any(os.path.exists(m) for m in old), "the previous run's copy of the same marketplace is dropped"
+
+
+def test_success_keeps_a_crlf_users_text(setup, fake_runner, monkeypatch):
+    cfg, _ = setup
+    crlf = USER_CFG.replace("\n", "\r\n")
+    cfg.write_bytes(crlf.encode())
+    _codex_like_add(monkeypatch, fake_runner, cfg)
+    _run()
+    assert cfg.read_bytes() == crlf.replace('"2026-01-01T00:00:00Z"   # old\r\n',
+                                            '"2026-10-25T10:00:00Z"   # old\r\nlast_revision = "abc123"\r\n').encode()
+
+
+def test_a_failing_text_write_after_success_does_not_abort(setup, fake_runner, monkeypatch):
+    from loadout import jsonio
+    cfg, _ = setup
+    cfg.write_text(USER_CFG)
+    _codex_like_add(monkeypatch, fake_runner, cfg)
+    real = jsonio.write_atomic_bytes
+
+    def fail(path, *a, **k):
+        if path == cfg:
+            raise PermissionError("held by an editor")
+        return real(path, *a, **k)
+    monkeypatch.setattr(jsonio, "write_atomic_bytes", fail)
+    lines, _ = _run()
+    assert any(l.startswith(OK_LINE) for l in lines)
+    assert "last_revision" in cfg.read_text(), "Codex's own file stays"

@@ -1561,13 +1561,14 @@ def _keep_user_text(cfg: Path, saved: bytes, market: str) -> None:
     fresh = get_dict(get_dict(now, "marketplaces"), market)
     name = re.escape(market)
     headers = list(re.finditer(rf"""^[ \t]*\[[ \t]*marketplaces[ \t]*\.[ \t]*(?:{name}|"{name}"|'{name}')[ \t]*\]"""
-                               r"[ \t]*(?:#[^\n]*)?$", text, re.M))
+                               r"[ \t]*(?:#[^\r\n]*)?\r?$", text, re.M))
     if len(headers) != 1:
         return
     start = headers[0].end()
     nxt = re.compile(r"^[ \t]*\[", re.M).search(text, start)
     end = nxt.start() if nxt else len(text)
     region = text[start:end]
+    nl = "\r\n" if "\r\n" in text else "\n"
     for key in _CODEX_TABLE_KEYS:
         value = fresh.get(key)
         if not isinstance(value, str):
@@ -1576,15 +1577,18 @@ def _keep_user_text(cfg: Path, saved: bytes, market: str) -> None:
         if pat.search(region):
             region = pat.sub(lambda m: m.group(1) + json.dumps(value), region, count=1)
         else:
-            body = region.rstrip("\n")  # a new key goes after the table's last line, before its blank lines
-            region = f"{body}\n{key} = {json.dumps(value)}" + region[len(body):]
+            body = region.rstrip("\r\n")  # a new key goes after the table's last line, before its blank lines
+            region = f"{body}{nl}{key} = {json.dumps(value)}" + region[len(body):]
     new = text[:start] + region + text[end:]
     try:
         if tomllib.loads(new) != now:
             return
     except tomllib.TOMLDecodeError:
         return
-    write_atomic_bytes(cfg, new.encode("utf-8"))
+    try:
+        write_atomic_bytes(cfg, new.encode("utf-8"))
+    except OSError:
+        pass  # Codex's own file is valid and stays; the user's original is in the run's backup
 
 
 def _drop_older_snapshot_copies(market: str, keep: Path) -> None:
