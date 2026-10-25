@@ -208,3 +208,22 @@ def test_a_failing_snapshot_move_back_still_restores_the_config(setup, fake_runn
     lines, _ = _run()
     assert cfg.read_bytes() == before, "the user's table comes back even when the snapshot cannot"
     assert any("re-adding it failed too (boom; the old snapshot stays in the backup" in l for l in lines)
+
+
+def test_a_failing_config_write_back_does_not_abort_the_update(setup, fake_runner, monkeypatch):
+    cfg, snap = setup
+    fake_runner.responses[ADD] = [ADDED, runner.Result(1, "", "boom")]
+    _remove_table_on_remove(monkeypatch, fake_runner, cfg)
+    from loadout import jsonio
+
+    real = jsonio.write_atomic_bytes
+
+    def fail(path, *a, **k):
+        if path == cfg:
+            raise OSError("read-only")
+        return real(path, *a, **k)
+    monkeypatch.setattr(jsonio, "write_atomic_bytes", fail)
+    lines, _ = _run()
+    assert (snap / "x").read_text() == "old", "the snapshot still comes back"
+    assert any("re-adding it failed too (boom; your config.toml stays in the backup (loadout restore puts it back)"
+               in l for l in lines)

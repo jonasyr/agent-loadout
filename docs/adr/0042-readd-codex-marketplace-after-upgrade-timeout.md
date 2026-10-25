@@ -27,7 +27,7 @@ Codex's source shows a way around it:
   - macOS: `ps`;
   - Windows: `tasklist`.
 
-  If Codex runs, or the check cannot tell, nothing is removed, and the line asks you to quit Codex and run `loadout update` again.
+  In WSL with a Codex home on the Windows drive, a Windows Codex sharing that home is invisible to `/proc`, so the check cannot tell. If Codex runs, or the check cannot tell, nothing is removed, and the line asks you to quit Codex and run `loadout update` again.
 - **Backup and rollback:**
   1. A copy of `config.toml` goes into the run's backup.
   2. The snapshot is moved aside into the backup.

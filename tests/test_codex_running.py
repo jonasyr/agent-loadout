@@ -1,4 +1,6 @@
 """codex.codex_running(): whether a Codex process runs on this OS (read-only; never the real /proc in tests)."""
+from pathlib import Path
+
 from loadout import codex, runner
 
 
@@ -50,3 +52,13 @@ def test_mac_and_windows_use_runner(fake_runner):
 def test_fake_runner_list_responses_are_consumed_in_order(fake_runner):
     fake_runner.responses[("x",)] = [runner.Result(1, "", "a"), runner.Result(0, "b", "")]
     assert [runner.run(["x"]).returncode for _ in range(3)] == [1, 0, 0]
+
+
+def test_wsl_with_a_codex_home_on_windows_cannot_tell(monkeypatch, tmp_path, fake_runner):
+    from loadout import paths, wsl
+    _proc(monkeypatch, tmp_path, {1: ("bash", b"bash\x00")})
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(paths, "codex_home", lambda: Path("/mnt/c/Users/u/.codex"))
+    assert codex.codex_running("linux") is None, "a Windows Codex sharing this home is invisible from WSL"
+    monkeypatch.setattr(paths, "codex_home", lambda: Path("/home/u/.codex"))
+    assert codex.codex_running("linux") is False

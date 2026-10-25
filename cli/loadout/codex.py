@@ -200,6 +200,9 @@ def codex_running(platform: str | None = None) -> bool | None:
     import sys
     platform = platform or sys.platform
     if platform.startswith("linux"):
+        from . import wsl
+        if wsl.detect() and wsl._on_windows_drive(paths.codex_home(), wsl.MOUNT):
+            return None  # a Windows Codex sharing this home runs where WSL's /proc cannot see it
         try:
             entries = [p for p in PROC.iterdir() if p.name.isdigit()]
         except OSError:
@@ -1567,7 +1570,10 @@ def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
             return True, ""
     why = _tail(res)
     if saved is not None and _market_table(market) is None:  # a running Codex may have written it again: keep that
-        write_atomic_bytes(cfg, saved)  # the user's file first: it must come back even if the snapshot cannot
+        try:  # the user's file first: it must come back even if the snapshot cannot
+            write_atomic_bytes(cfg, saved)
+        except OSError:
+            why += "; your config.toml stays in the backup (loadout restore puts it back)"
     if moved is not None and not snap.exists():
         try:
             shutil.move(str(moved), str(snap))
