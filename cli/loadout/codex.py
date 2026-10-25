@@ -1595,7 +1595,8 @@ def _keep_user_text(cfg: Path, saved: bytes, market: str) -> None:
         value = fresh.get(key)
         if not isinstance(value, str):
             continue
-        pat = re.compile(rf"""^([ \t]*{key}[ \t]*=[ \t]*)("(?:[^"\\\n]|\\.)*"|'[^'\n]*')""", re.M)
+        pat = re.compile(rf"""^([ \t]*(?:{key}|"{key}"|'{key}')[ \t]*=[ \t]*)("(?:[^"\\\n]|\\.)*"|'[^'\n]*')""",
+                         re.M)
         if pat.search(region):
             region = pat.sub(lambda m: m.group(1) + json.dumps(value), region, count=1)
         else:

@@ -1,6 +1,7 @@
 """`loadout update` re-adds one of loadout's Codex marketplaces whose upgrade hit Codex's fixed 30 s clone timeout
 (openai/codex#38770): backed up, rolled back on failure, never while Codex runs."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -201,7 +202,7 @@ def test_a_failing_snapshot_move_back_still_restores_the_config(setup, fake_runn
     real = shutil.move
 
     def move(src, dst, *a, **kw):
-        if str(dst).endswith("marketplaces/impeccable"):  # the move back, not the backup's move aside
+        if Path(dst).parts[-2:] == ("marketplaces", "impeccable"):  # the move back, not the backup's move aside
             raise OSError("disk full")
         return real(src, dst, *a, **kw)
     monkeypatch.setattr(shutil, "move", move)
@@ -351,3 +352,14 @@ def test_a_table_whose_text_cannot_be_kept_is_not_readded(setup, fake_runner, cf
     assert cfg.read_text() == cfg_text
     assert any(l.endswith("; loadout did not re-add it because it could not keep your table's text "
                           "(write it as [marketplaces.impeccable])") for l in lines)
+
+
+@pytest.mark.parametrize("spelling", ['"last_updated"', "'last_updated'"])
+def test_quoted_timestamp_keys_keep_the_users_text(setup, fake_runner, monkeypatch, spelling):
+    cfg, _ = setup
+    text = USER_CFG.replace("last_updated = ", f"{spelling} = ")
+    cfg.write_text(text)
+    _codex_like_add(monkeypatch, fake_runner, cfg)
+    _run()
+    assert cfg.read_text().startswith('model = "x"  # mine\n\n# my marketplaces\n')
+    assert f'{spelling} = "2026-10-25T10:00:00Z"   # old' in cfg.read_text()

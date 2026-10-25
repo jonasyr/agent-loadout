@@ -58,6 +58,7 @@ def test_wsl_with_a_codex_home_on_windows_cannot_tell(monkeypatch, tmp_path, fak
     from loadout import paths, wsl
     _proc(monkeypatch, tmp_path, {1: ("bash", b"bash\x00")})
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "_real", Path)  # WSL paths, also when the suite runs on Windows
     monkeypatch.setattr(paths, "codex_home", lambda: Path("/mnt/c/Users/u/.codex"))
     assert codex.codex_running("linux") is None, "a Windows Codex sharing this home is invisible from WSL"
     monkeypatch.setattr(paths, "codex_home", lambda: Path("/home/u/.codex"))
