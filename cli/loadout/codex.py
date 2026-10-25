@@ -185,6 +185,46 @@ def program() -> str:
     return str(ext.binary) if current == "extension" else "codex"
 
 
+PROC = Path("/proc")
+_CODEX_NAMES = {"codex", "codex.exe"}
+
+
+def _is_codex(program_path: str) -> bool:
+    name = program_path.strip().replace("\\", "/").rsplit("/", 1)[-1]
+    return name.lower() in _CODEX_NAMES
+
+
+def codex_running(platform: str | None = None) -> bool | None:
+    """Whether a Codex process (CLI, app, VS Code extension's binary) runs on this OS; None: cannot tell.
+    Linux reads /proc without running anything; macOS and Windows ask `ps` / `tasklist`."""
+    import sys
+    platform = platform or sys.platform
+    if platform.startswith("linux"):
+        try:
+            entries = [p for p in PROC.iterdir() if p.name.isdigit()]
+        except OSError:
+            return None
+        for pid in entries:
+            try:
+                if _is_codex(pid.joinpath("comm").read_text(encoding="utf-8", errors="replace")):
+                    return True
+                first = pid.joinpath("cmdline").read_bytes().split(b"\x00", 1)[0]
+                if first and _is_codex(first.decode("utf-8", "replace")):
+                    return True
+            except OSError:
+                continue
+        return False
+    if platform == "darwin":
+        res = runner.run(["ps", "-A", "-o", "comm="], timeout=10)
+        return any(_is_codex(line) for line in res.stdout.splitlines()) if res.ok else None
+    if platform == "win32":
+        res = runner.run(["tasklist", "/FO", "CSV", "/NH"], timeout=10)
+        if not res.ok:
+            return None
+        return any(_is_codex(line.split(",", 1)[0].strip('"')) for line in res.stdout.splitlines() if line.strip())
+    return None
+
+
 START = "<!-- loadout:start -->"
 END = "<!-- loadout:end -->"
 
