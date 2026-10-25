@@ -943,6 +943,53 @@ def _legacy_state() -> list[CheckResult]:
                         f"compare with {paths.state_dir()} and delete them by hand", "warn")]
 
 
+STAGING_WARN_BYTES = 1 << 30
+
+
+def _dir_size_capped(root: Path, cap: int) -> tuple[int, bool]:
+    """Bytes of the files under root, counted until cap (so a 500 GB folder stays quick); symlinks are not
+    followed and unreadable entries are skipped. Returns (bytes counted, cap reached)."""
+    total, stack = 0, [root]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for entry in it:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(Path(entry.path))
+                        elif entry.is_file(follow_symlinks=False):
+                            total += entry.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        continue
+                    if total >= cap:
+                        return total, True
+        except OSError:
+            continue
+    return total, False
+
+
+def _codex_staging() -> list[CheckResult]:
+    """Codex's marketplace staging folder: failed upgrades leave their clones there (openai/codex#39421)."""
+    from . import codex
+    if not codex.enabled():
+        return []
+    root = paths.codex_home() / ".tmp" / "marketplaces" / ".staging"
+    shown = "~/.codex/.tmp/marketplaces/.staging"
+    try:
+        folders = sum(1 for _ in root.iterdir())
+    except OSError:
+        folders = 0
+    if not folders:
+        return [CheckResult("Codex marketplace staging", True, "empty")]
+    total, over = _dir_size_capped(root, STAGING_WARN_BYTES)
+    if not over:
+        return [CheckResult("Codex marketplace staging", True, f"{total / 1e6:.1f} MB in {folders} folders")]
+    return [CheckResult("Codex marketplace staging", False,
+                        f"over {STAGING_WARN_BYTES / (1 << 30):g} GB in {folders} folders in {shown}",
+                        "quit Codex, then empty that folder (abandoned clones of failed marketplace upgrades, "
+                        "openai/codex#39421)", severity="warn")]
+
+
 def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     """codex_windows: bootstrap chose the Windows side for Codex in this run, whatever the detection says."""
     from . import targets
@@ -953,7 +1000,7 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
         cs = replace(cs, side="windows", shared_home=False)
     return [*_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
-            *_codex(cs), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
+            *_codex(cs), *(_without_codex(_codex_staging) if _windows_only(cs) else _codex_staging()), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
             *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []),
             *(_without_codex(_cbm_installer) if _windows_only(cs) else _cbm_installer()), *_cbm_refresh(), *_cbm_conflict(), *_cbm_binaries(), *(_without_codex(_cbm_cache_folders) if _windows_only(cs) else _cbm_cache_folders()), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
 
