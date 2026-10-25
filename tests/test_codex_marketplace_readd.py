@@ -308,3 +308,46 @@ def test_a_failing_text_write_after_success_does_not_abort(setup, fake_runner, m
     lines, _ = _run()
     assert any(l.startswith(OK_LINE) for l in lines)
     assert "last_revision" in cfg.read_text(), "Codex's own file stays"
+
+
+def test_restore_after_a_readd_puts_the_old_snapshot_back(setup, fake_runner, monkeypatch):
+    cfg, snap = setup
+    before = cfg.read_bytes()
+
+    def run(cmd, cwd=None, timeout=300, env=None):  # Codex's add clones a new snapshot
+        res = fake_runner(cmd, cwd=cwd, timeout=timeout, env=env)
+        if list(cmd[:4]) == ["codex", "plugin", "marketplace", "add"] and len(_calls(fake_runner, *ADD)) >= 2:
+            snap.mkdir(parents=True, exist_ok=True)
+            (snap / "x").write_text("new")
+        return res
+    monkeypatch.setattr(runner, "run", run)
+    _, bk = _run()
+    assert (snap / "x").read_text() == "new"
+    backup.restore(bk.root)
+    assert (snap / "x").read_text() == "old", "the old snapshot comes back with the old config"
+    assert cfg.read_bytes() == before
+
+
+@pytest.mark.parametrize("header", ['["marketplaces".impeccable]', "[ 'marketplaces' . \"impeccable\" ]"])
+def test_quoted_table_headers_keep_the_users_text(setup, fake_runner, monkeypatch, header):
+    cfg, _ = setup
+    text = USER_CFG.replace("[marketplaces.impeccable]", header)
+    cfg.write_text(text)
+    _codex_like_add(monkeypatch, fake_runner, cfg)
+    _run()
+    assert cfg.read_text().startswith('model = "x"  # mine\n\n# my marketplaces\n' + header + "  # big one\n")
+
+
+@pytest.mark.parametrize("cfg_text", [
+    'model = "x"\n[marketplaces]\nimpeccable = { source_type = "git", source = "https://github.com/pbakaus/impeccable.git" }\n',
+    'model = "x"\nmarketplaces.impeccable.source_type = "git"  # mine\n'
+    'marketplaces.impeccable.source = "https://github.com/pbakaus/impeccable.git"\n',
+])
+def test_a_table_whose_text_cannot_be_kept_is_not_readded(setup, fake_runner, cfg_text):
+    cfg, _ = setup
+    cfg.write_text(cfg_text)
+    lines, _ = _run()
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+    assert cfg.read_text() == cfg_text
+    assert any(l.endswith("; loadout did not re-add it because it could not keep your table's text "
+                          "(write it as [marketplaces.impeccable])") for l in lines)

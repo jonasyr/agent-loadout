@@ -1544,6 +1544,32 @@ def _table_blockers(market: str, src: str) -> list[str]:
     return sorted(out)
 
 
+def _table_span(text: str, market: str) -> tuple[int, int] | None:
+    """Where the body of the one `[marketplaces.<market>]` header table sits in text (any quoting of the two
+    segments); None when there is no such header, or more than one."""
+    def seg(word: str) -> str:
+        w = re.escape(word)
+        return rf"""(?:{w}|"{w}"|'{w}')"""
+    headers = list(re.finditer(rf"^[ \t]*\[[ \t]*{seg('marketplaces')}[ \t]*\.[ \t]*{seg(market)}[ \t]*\]"
+                               r"[ \t]*(?:#[^\r\n]*)?\r?$", text, re.M))
+    if len(headers) != 1:
+        return None
+    start = headers[0].end()
+    nxt = re.compile(r"^[ \t]*\[", re.M).search(text, start)
+    return start, nxt.start() if nxt else len(text)
+
+
+def _table_text_kept(market: str) -> bool:
+    """A re-add can put the user's table text back: the table is a plain header table (or there is none)."""
+    if _market_table(market) is None:
+        return True
+    try:
+        text = (paths.codex_home() / "config.toml").read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return _table_span(text, market) is not None
+
+
 _CODEX_TABLE_KEYS = ("last_updated", "last_revision")  # what `marketplace add` refreshes in an unchanged table
 
 
@@ -1559,14 +1585,10 @@ def _keep_user_text(cfg: Path, saved: bytes, market: str) -> None:
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
         return
     fresh = get_dict(get_dict(now, "marketplaces"), market)
-    name = re.escape(market)
-    headers = list(re.finditer(rf"""^[ \t]*\[[ \t]*marketplaces[ \t]*\.[ \t]*(?:{name}|"{name}"|'{name}')[ \t]*\]"""
-                               r"[ \t]*(?:#[^\r\n]*)?\r?$", text, re.M))
-    if len(headers) != 1:
+    span = _table_span(text, market)
+    if span is None:
         return
-    start = headers[0].end()
-    nxt = re.compile(r"^[ \t]*\[", re.M).search(text, start)
-    end = nxt.start() if nxt else len(text)
+    start, end = span
     region = text[start:end]
     nl = "\r\n" if "\r\n" in text else "\n"
     for key in _CODEX_TABLE_KEYS:
@@ -1625,7 +1647,7 @@ def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
     if saved is not None:
         bk.save_copy(cfg, f"codex config before re-adding {market}")
     try:
-        moved = bk.move(snap, f"codex marketplace snapshot {market}") if snap.exists() else None
+        moved = bk.move(snap, f"codex marketplace snapshot {market}", replace=True) if snap.exists() else None
     except OSError as err:  # nothing removed yet: the marketplace stays as it is
         return False, f"could not move its snapshot aside: {err}"
     _keep_lock()
@@ -1704,10 +1726,13 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                             "at the previous version")
                     if _codex_timed_out(up):  # Codex's fixed 30 s clone limit: `add` has none (ADR 0042)
                         blockers, running = _table_blockers(market, src), None
-                        if not blockers:
+                        if not blockers and _table_text_kept(market):
                             running = codex_running()
                         if blockers:
                             line += f"; loadout did not re-add it because your table sets {', '.join(blockers)}"
+                        elif not _table_text_kept(market):
+                            line += ("; loadout did not re-add it because it could not keep your table's text "
+                                     f"(write it as [marketplaces.{market}])")
                         elif running is not False:
                             unsure = "could not tell whether Codex runs; " if running is None else ""
                             line = (f"marketplace {market}: Codex's upgrade timed out after 30s; {unsure}quit Codex "
