@@ -181,3 +181,30 @@ def test_codex_timed_out_and_table_blockers_units(fake_home):
     assert codex._table_blockers("impeccable", "pbakaus/impeccable") == []
     cfg.write_text("not = [toml")
     assert codex._table_blockers("impeccable", "pbakaus/impeccable") == []
+
+
+def test_failed_remove_moves_snapshot_back(setup, fake_runner):
+    cfg, snap = setup
+    before = cfg.read_bytes()
+    fake_runner.responses[("codex", "plugin", "marketplace", "remove")] = runner.Result(1, "", "x")
+    lines, _ = _run()
+    assert cfg.read_bytes() == before and (snap / "x").read_text() == "old"
+    assert any(l.endswith("; re-adding it failed too (x)") for l in lines)
+
+
+def test_a_failing_snapshot_move_back_still_restores_the_config(setup, fake_runner, monkeypatch):
+    import shutil
+    cfg, _ = setup
+    before = cfg.read_bytes()
+    fake_runner.responses[ADD] = [ADDED, runner.Result(1, "", "boom")]
+    _remove_table_on_remove(monkeypatch, fake_runner, cfg)
+    real = shutil.move
+
+    def move(src, dst, *a, **kw):
+        if str(dst).endswith("marketplaces/impeccable"):  # the move back, not the backup's move aside
+            raise OSError("disk full")
+        return real(src, dst, *a, **kw)
+    monkeypatch.setattr(shutil, "move", move)
+    lines, _ = _run()
+    assert cfg.read_bytes() == before, "the user's table comes back even when the snapshot cannot"
+    assert any("re-adding it failed too (boom; the old snapshot stays in the backup" in l for l in lines)

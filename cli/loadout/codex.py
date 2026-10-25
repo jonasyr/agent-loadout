@@ -1551,7 +1551,10 @@ def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
     saved = cfg.read_bytes() if cfg.is_file() else None
     if saved is not None:
         bk.save_copy(cfg, f"codex config before re-adding {market}")
-    moved = bk.move(snap, f"codex marketplace snapshot {market}") if snap.exists() else None
+    try:
+        moved = bk.move(snap, f"codex marketplace snapshot {market}") if snap.exists() else None
+    except OSError as err:  # nothing removed yet: the marketplace stays as it is
+        return False, f"could not move its snapshot aside: {err}"
     _keep_lock()
     res = runner.run([exe, "plugin", "marketplace", "remove", market], timeout=120)
     if res.ok:
@@ -1562,11 +1565,15 @@ def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
             if moved is not None:
                 shutil.rmtree(moved, ignore_errors=True)  # a stale clone of a few hundred MB: not kept per run
             return True, ""
-    if moved is not None and not snap.exists():
-        shutil.move(str(moved), str(snap))
+    why = _tail(res)
     if saved is not None and _market_table(market) is None:  # a running Codex may have written it again: keep that
-        write_atomic_bytes(cfg, saved)
-    return False, _tail(res)
+        write_atomic_bytes(cfg, saved)  # the user's file first: it must come back even if the snapshot cannot
+    if moved is not None and not snap.exists():
+        try:
+            shutil.move(str(moved), str(snap))
+        except OSError:
+            why += "; the old snapshot stays in the backup (loadout restore puts it back)"
+    return False, why
 
 
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
