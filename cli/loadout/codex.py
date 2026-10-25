@@ -1494,16 +1494,79 @@ def _keep_lock() -> None:
 
 def _upgrade(exe: str, market: str) -> runner.Result:
     """`codex plugin marketplace upgrade <market>`, tried once more after a short wait when it fails (a refresh can
-    lose a race with a running Codex's own auto-upgrade, or the network blips); a timeout is not tried again."""
+    lose a race with a running Codex's own auto-upgrade, or the network blips); a timeout, loadout's or Codex's own,
+    is not tried again (each failed Codex try leaves one more clone in its staging folder)."""
     cmd = [exe, "plugin", "marketplace", "upgrade", market]
     _keep_lock()
     res = runner.run(cmd, timeout=CLONE_TIMEOUT)
-    if res.ok or res.returncode == 124:
+    if res.ok or res.returncode == 124 or _codex_timed_out(res):
         return res
     import time
     time.sleep(UPGRADE_RETRY_WAIT)
     _keep_lock()
     return runner.run(cmd, timeout=CLONE_TIMEOUT)
+
+
+TIMEOUT_ISSUE = "openai/codex#38770"
+
+
+def _codex_timed_out(res: runner.Result) -> bool:
+    """Codex's own fixed 30 s clone limit of `marketplace upgrade` hit (not loadout's runner timeout, exit 124)."""
+    if res.ok or res.returncode == 124:
+        return False
+    text = (res.stderr + res.stdout).lower()
+    return "timed out after" in text and ("git clone" in text or "marketplace" in text)
+
+
+def _market_table(market: str) -> dict | None:
+    """The user's `[marketplaces.<market>]` table in Codex's config.toml; None when missing or unreadable."""
+    import tomllib
+    try:
+        data = tomllib.loads((paths.codex_home() / "config.toml").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return None
+    table = get_dict(get_dict(data, "marketplaces"), market)
+    return table if market in get_dict(data, "marketplaces") else None
+
+
+def _table_blockers(market: str, src: str) -> list[str]:
+    """The keys of the user's table that `marketplace add <src>` would not write again (sorted)."""
+    table = _market_table(market) or {}
+    out = []
+    ref = table.get("ref_name")
+    if ref and not src.endswith(f"@{ref}"):
+        out.append("ref_name")
+    if table.get("sparse_paths"):
+        out.append("sparse_paths")
+    return sorted(out)
+
+
+def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
+    """Remove the marketplace and add it again (`add` clones with no time limit), after a backup of config.toml and
+    with the snapshot moved aside; any failure puts both back. Returns (ok, the failure's detail)."""
+    import shutil
+    from .jsonio import write_atomic_bytes
+    cfg = paths.codex_home() / "config.toml"
+    snap = paths.codex_home() / ".tmp" / "marketplaces" / market
+    saved = cfg.read_bytes() if cfg.is_file() else None
+    if saved is not None:
+        bk.save_copy(cfg, f"codex config before re-adding {market}")
+    moved = bk.move(snap, f"codex marketplace snapshot {market}") if snap.exists() else None
+    _keep_lock()
+    res = runner.run([exe, "plugin", "marketplace", "remove", market], timeout=120)
+    if res.ok:
+        _keep_lock()
+        res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+        info = _json(res.stdout) if res.ok else None
+        if isinstance(info, dict) and "marketplaceName" in info:
+            if moved is not None:
+                shutil.rmtree(moved, ignore_errors=True)  # a stale clone of a few hundred MB: not kept per run
+            return True, ""
+    if moved is not None and not snap.exists():
+        shutil.move(str(moved), str(snap))
+    if saved is not None and _market_table(market) is None:  # a running Codex may have written it again: keep that
+        write_atomic_bytes(cfg, saved)
+    return False, _tail(res)
 
 
 def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed: set[str] | None,
@@ -1552,8 +1615,27 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 up = _upgrade(exe, market)
                 refreshed, stale = up.ok, not up.ok
                 if stale:  # its plugins would be added again from the old snapshot: they stay as they are
-                    lines.append(f"marketplace {market}: failed to upgrade ({_tail(up)}); its installed plugins stay "
-                                 "at the previous version")
+                    line = (f"marketplace {market}: failed to upgrade ({_tail(up)}); its installed plugins stay "
+                            "at the previous version")
+                    if _codex_timed_out(up):  # Codex's fixed 30 s clone limit: `add` has none (ADR 0042)
+                        blockers, running = _table_blockers(market, src), None
+                        if not blockers:
+                            running = codex_running()
+                        if blockers:
+                            line += f"; loadout did not re-add it because your table sets {', '.join(blockers)}"
+                        elif running is not False:
+                            unsure = "could not tell whether Codex runs; " if running is None else ""
+                            line = (f"marketplace {market}: Codex's upgrade timed out after 30s; {unsure}quit Codex "
+                                    f"and run loadout update again to re-add it ({TIMEOUT_ISSUE})")
+                        else:
+                            ok, why = _readd(exe, src, market, bk)
+                            if ok:
+                                refreshed, stale = True, False
+                                line = (f"marketplace {market}: Codex's upgrade timed out after 30s; removed and "
+                                        f"added it again ({TIMEOUT_ISSUE})")
+                            else:
+                                line += f"; re-adding it failed too ({why})"
+                    lines.append(line)
             elif not info.get("alreadyAdded"):
                 refreshed = True
             if refreshed:

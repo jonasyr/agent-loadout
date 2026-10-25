@@ -1,0 +1,183 @@
+"""`loadout update` re-adds one of loadout's Codex marketplaces whose upgrade hit Codex's fixed 30 s clone timeout
+(openai/codex#38770): backed up, rolled back on failure, never while Codex runs."""
+import json
+
+import pytest
+
+from loadout import backup, codex, runner
+
+SETTINGS = {
+    "enabledPlugins": {"impeccable@impeccable": True},
+    "extraKnownMarketplaces": {"impeccable": {"source": {"source": "github", "repo": "pbakaus/impeccable"}}},
+}
+TIMEOUT = runner.Result(1, "", "Error: Failed to upgrade marketplace `impeccable`: git clone marketplace source "
+                               "timed out after 30s")
+TABLE = '[marketplaces.impeccable]\nsource_type = "git"\nsource = "https://github.com/pbakaus/impeccable.git"\n'
+ADD = ("codex", "plugin", "marketplace", "add", "pbakaus/impeccable")
+ADDED = runner.Result(0, json.dumps({"marketplaceName": "impeccable", "alreadyAdded": True}), "")
+OK_LINE = ("marketplace impeccable: Codex's upgrade timed out after 30s; removed and added it again "
+           "(openai/codex#38770)")
+RUNNING_LINE = ("marketplace impeccable: Codex's upgrade timed out after 30s; quit Codex and run loadout update "
+                "again to re-add it (openai/codex#38770)")
+
+
+@pytest.fixture
+def setup(fake_home, fake_runner, monkeypatch):
+    from loadout import settings_merge
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: SETTINGS)
+    monkeypatch.setattr(codex, "codex_running", lambda platform=None: False)
+    fake_runner.responses[ADD] = ADDED
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(
+        0, json.dumps({"installed": [{"pluginId": "impeccable@impeccable"}], "available": []}), "")
+    fake_runner.responses[("codex", "plugin", "marketplace", "upgrade")] = TIMEOUT
+    cfg = fake_home / ".codex/config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text('model = "x"\n\n' + TABLE)
+    snap = fake_home / ".codex/.tmp/marketplaces/impeccable"
+    snap.mkdir(parents=True)
+    (snap / "x").write_text("old")
+    return cfg, snap
+
+
+def _run(**kw):
+    bk = backup.Backup(description="t")
+    return codex.apply_plugins(bk, refresh=kw.pop("refresh", True), **kw), bk
+
+
+def _calls(fake_runner, *head):
+    return [c for c in fake_runner.calls if tuple(c[:len(head)]) == head]
+
+
+def _remove_table_on_remove(monkeypatch, fake_runner, cfg, put_back: str | None = None):
+    """Play Codex's `marketplace remove`: the table goes; put_back: a running Codex writes the table again."""
+    def run(cmd, cwd=None, timeout=300, env=None):
+        if list(cmd[:4]) == ["codex", "plugin", "marketplace", "remove"]:
+            cfg.write_text('model = "x"\n')
+        if list(cmd[:4]) == ["codex", "plugin", "marketplace", "add"] and put_back and len(
+                _calls(fake_runner, *ADD)) >= 1:
+            cfg.write_text(put_back)
+        return fake_runner(cmd, cwd=cwd, timeout=timeout, env=env)
+    monkeypatch.setattr(runner, "run", run)
+
+
+def test_codex_timeout_readds_and_reinstalls(setup, fake_runner):
+    cfg, snap = setup
+    lines, bk = _run()
+    upgrades = _calls(fake_runner, "codex", "plugin", "marketplace", "upgrade")
+    assert len(upgrades) == 1, "no retry after Codex's timeout"
+    order = [c[:4] for c in fake_runner.calls if c[:3] == ["codex", "plugin", "marketplace"]]
+    i = order.index(["codex", "plugin", "marketplace", "upgrade"])
+    assert order[i + 1] == ["codex", "plugin", "marketplace", "remove"]
+    assert order[i + 2] == ["codex", "plugin", "marketplace", "add"]
+    assert ["codex", "plugin", "marketplace", "add", "pbakaus/impeccable", "--json"] in fake_runner.calls
+    assert ["codex", "plugin", "add", "impeccable@impeccable", "--json"] in fake_runner.calls
+    assert OK_LINE in lines
+    assert not any("failed to upgrade" in l for l in lines)
+    assert any("restore-file" in s["undo"] and s["undo"]["restore-file"][1] == str(cfg) for s in bk.steps)
+    moves = [s["undo"]["move"][0] for s in bk.steps if "move" in s["undo"]]
+    assert moves and all(not __import__("os").path.exists(m) for m in moves), "the stale snapshot is not kept"
+
+
+def test_no_readd_while_codex_runs(setup, fake_runner, monkeypatch):
+    monkeypatch.setattr(codex, "codex_running", lambda platform=None: True)
+    lines, _ = _run()
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+    assert RUNNING_LINE in lines
+    assert ["codex", "plugin", "add", "impeccable@impeccable", "--json"] not in fake_runner.calls
+    assert (setup[1] / "x").exists()
+
+
+def test_cannot_tell_counts_as_running(setup, fake_runner, monkeypatch):
+    monkeypatch.setattr(codex, "codex_running", lambda platform=None: None)
+    lines, _ = _run()
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+    assert any("could not tell whether Codex runs; quit Codex" in l for l in lines)
+
+
+def test_table_with_sparse_paths_is_not_readded(setup, fake_runner):
+    cfg, _ = setup
+    cfg.write_text(cfg.read_text() + 'sparse_paths = ["plugins"]\n')
+    lines, _ = _run()
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+    assert any(l.startswith("marketplace impeccable: failed to upgrade (")
+               and l.endswith("; loadout did not re-add it because your table sets sparse_paths") for l in lines)
+
+
+def test_failed_readd_rolls_back(setup, fake_runner, monkeypatch):
+    cfg, snap = setup
+    before = cfg.read_bytes()
+    fake_runner.responses[ADD] = [ADDED, runner.Result(1, "", "boom")]
+    _remove_table_on_remove(monkeypatch, fake_runner, cfg)
+    lines, _ = _run()
+    assert _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+    assert cfg.read_bytes() == before
+    assert (snap / "x").read_text() == "old"
+    assert any(l.startswith("marketplace impeccable: failed to upgrade (")
+               and l.endswith("; re-adding it failed too (boom)") for l in lines)
+    assert ["codex", "plugin", "add", "impeccable@impeccable", "--json"] not in fake_runner.calls
+
+
+def test_rollback_leaves_a_config_that_has_the_table_again(setup, fake_runner, monkeypatch):
+    cfg, _ = setup
+    other = 'model = "y"\n' + TABLE + 'last_updated = "2026-10-25"\n'
+    fake_runner.responses[ADD] = [ADDED, runner.Result(1, "", "boom")]
+    _remove_table_on_remove(monkeypatch, fake_runner, cfg, put_back=other)
+    _run()
+    assert cfg.read_text() == other
+
+
+def test_readd_without_a_snapshot_folder(setup, fake_runner):
+    _, snap = setup
+    import shutil
+    shutil.rmtree(snap)
+    lines, bk = _run()
+    assert OK_LINE in lines
+    assert not [s for s in bk.steps if "move" in s["undo"]]
+
+
+def test_loadout_runner_timeout_is_not_codex_timeout(setup, fake_runner):
+    fake_runner.responses[("codex", "plugin", "marketplace", "upgrade")] = runner.Result(
+        124, "", "codex: timed out after 1800s")
+    lines, _ = _run()
+    assert len(_calls(fake_runner, "codex", "plugin", "marketplace", "upgrade")) == 1
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+    assert any(l.startswith("marketplace impeccable: failed to upgrade (") and
+               l.endswith("its installed plugins stay at the previous version") for l in lines)
+
+
+def test_other_upgrade_failure_keeps_todays_behaviour(setup, fake_runner, monkeypatch):
+    monkeypatch.setattr(codex, "UPGRADE_RETRY_WAIT", 0)
+    fake_runner.responses[("codex", "plugin", "marketplace", "upgrade")] = runner.Result(1, "", "network down")
+    lines, _ = _run()
+    assert len(_calls(fake_runner, "codex", "plugin", "marketplace", "upgrade")) == 2
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+    assert any(l.endswith("its installed plugins stay at the previous version") for l in lines)
+
+
+def test_frozen_marketplace_is_never_readded(setup, fake_runner, monkeypatch):
+    from loadout import settings_merge
+    frozen = json.loads(json.dumps(SETTINGS))
+    frozen["extraKnownMarketplaces"]["impeccable"]["autoUpdate"] = False
+    monkeypatch.setattr(settings_merge, "desired_settings", lambda: frozen)
+    _run(auto=True)
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "upgrade")
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+
+
+def test_codex_timed_out_and_table_blockers_units(fake_home):
+    assert codex._codex_timed_out(TIMEOUT)
+    assert not codex._codex_timed_out(runner.Result(124, "", "codex: timed out after 1800s"))
+    assert not codex._codex_timed_out(runner.Result(0, "timed out after 30s marketplace", ""))
+    assert not codex._codex_timed_out(runner.Result(1, "", "network down"))
+    cfg = fake_home / ".codex/config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == []  # no file
+    cfg.write_text(TABLE + 'ref_name = "v2"\n')
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == ["ref_name"]
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable@v2") == []
+    cfg.write_text(TABLE + 'ref_name = "v2"\nsparse_paths = ["a"]\n')
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == ["ref_name", "sparse_paths"]
+    cfg.write_text(TABLE + "sparse_paths = []\n")
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == []
+    cfg.write_text("not = [toml")
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == []
