@@ -189,7 +189,7 @@ def apply(bk, dry_run: bool = False, keep: bool = False) -> list[str]:
     save_json(codex.record_path(), new_record)
     added = [s for _, _, s, _ in missing]
     remind_gone = _present({"hooks": {"PreToolUse": gone}}, "PreToolUse", "remind")
-    out = [f"hooks.json: added Serena's hooks ({', '.join(added)}); approve them in Codex: /hooks"] if added else []
+    out = [f"hooks.json: added Serena's hooks ({', '.join(added)}); approve them when Codex asks at start (or in /hooks)"] if added else []
     if moved and remind_gone:
-        out.append(f"{MOVED} (loadout's plugin runs it now); approve the changed hooks in Codex: /hooks")
+        out.append(f"{MOVED} (loadout's plugin runs it now); approve the changed hooks when Codex asks at start (or in /hooks)")
     return out or ["hooks.json: removed loadout's Serena hooks; if Codex asks about your other hooks, review them in /hooks"]

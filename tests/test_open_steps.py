@@ -62,7 +62,7 @@ def test_codex_plugin_changes_name_the_hooks_when_they_are_not_approved(monkeypa
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
     found = steps.derive({"codex_plugins_updated"}, [], False, True)
     assert _ids(found) == ["codex/hooks"]
-    assert found[0].text == "restart Codex and approve the changed hooks in /hooks"
+    assert found[0].text == "restart Codex and trust the changed hooks when it asks (or review them in /hooks)"
 
 
 def test_unapproved_or_changed_codex_hooks_give_the_hooks_step(monkeypatch):
@@ -299,7 +299,7 @@ def test_the_hooks_step_replaces_the_restart_step(monkeypatch, tmp_path):
     assert [(s.id, s.text) for s in found] == [("codex/hooks", steps.HOOKS_TEXT)]
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "changed")
     found = steps.derive({"codex_plugins_updated"}, ["serena"], False, True)
-    assert [(s.id, s.text) for s in found] == [("codex/hooks", "restart Codex and approve the changed hooks in /hooks")]
+    assert [(s.id, s.text) for s in found] == [("codex/hooks", "restart Codex and trust the changed hooks when it asks (or review them in /hooks)")]
 
 
 def test_derive_never_returns_the_same_id_twice(monkeypatch, tmp_path):
@@ -356,3 +356,10 @@ def test_settle_keeps_a_restart_step_when_the_saved_hooks_step_is_approved():
     steps.save([steps.Step("codex/restart", "codex", "restart Codex", "x")])
     steps.settle(False, True)
     assert _ids(steps.pending("codex")) == ["codex/restart"]
+
+
+def test_hook_texts_say_codex_asks_at_start():
+    """Codex asks about new or changed hooks when it starts; /hooks is the way to review them."""
+    from loadout import codex
+    for text in (steps.HOOKS_TEXT, codex.HOOKS_TODO, codex.HOOKS_CHANGED):
+        assert "when it asks" in text and "/hooks" in text, text

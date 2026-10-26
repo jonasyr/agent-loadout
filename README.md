@@ -91,7 +91,7 @@ Open a new terminal (bootstrap added `~/.local/bin` to your shell profile), then
 
 ```bash
 claude                                  # log in to Claude Code, then quit it
-codex                                   # log in to Codex, if you chose it; then run /hooks and approve loadout's hooks
+codex                                   # log in to Codex, if you chose it; trust loadout's hooks when it asks
 gh auth login && gh auth setup-git      # log in to GitHub
 ```
 

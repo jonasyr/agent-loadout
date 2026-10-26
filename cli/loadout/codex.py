@@ -2116,7 +2116,7 @@ def cbm_twice(installed: set[str] | None) -> list[str]:
     return sorted(n for n, t in user_cbm().items() if n != CBM_NAME and t.get("enabled") is not False)
 
 
-HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex`, then run /hooks"
+HOOKS_TODO = "approve the loadout hooks in Codex once: start `codex` and trust them when it asks (or review them in /hooks)"
 
 
 LOCK = "codex.lock"
@@ -2282,7 +2282,7 @@ def checks() -> list:
     if status in ("untrusted", "changed"):
         results.append(CheckResult("Codex hooks", False, "loadout's hooks are not approved yet" if status == "untrusted"
                                    else "loadout's hooks changed since you approved them",
-                                   "start codex, then run /hooks and approve them" if cli
+                                   "start codex and trust them when it asks (or review them in /hooks)" if cli
                                    else HOOKS_EXTENSION if status == "untrusted" else HOOKS_EXTENSION_CHANGED, "warn"))
     elif status == "trusted":
         results.append(CheckResult("Codex hooks", True))
@@ -2299,7 +2299,7 @@ def checks() -> list:
 # --- open steps the user has to take in Codex, named where they work (bootstrap, configure, check)
 
 HOOK_PLUGIN = "loadout@agent-loadout:hooks/codex.json"
-HOOKS_CHANGED = "approve the changed loadout hooks in Codex: start `codex`, then run /hooks"
+HOOKS_CHANGED = "approve the changed loadout hooks in Codex: start `codex` and trust them when it asks (or review them in /hooks)"
 
 
 def _codex_hooks_file() -> Path:

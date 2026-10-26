@@ -11,7 +11,7 @@ For each platform, agent choice and surface, the bootstrap flags and the steps a
 - **`--codex-side wsl|windows`** (WSL) picks the side bootstrap sets Codex up for, without asking ([which side](../how-to/wsl.md#when-your-only-codex-is-the-windows-one)).
 - **`--vscode-wsl`** (WSL) switches VS Code's Codex extension to the Codex in WSL, with a backup ([Windows and WSL](../how-to/vscode.md#windows-and-wsl)).
 - **`--vscode-path`** (WSL) adds loadout's tool folders to the PATH of VS Code's Remote-WSL server ([MCP servers in a Remote-WSL window](../how-to/vscode.md#mcp-servers-in-a-remote-wsl-window)).
-- **Approve the hooks** means: in the Codex CLI, start `codex` and run `/hooks`; in VS Code's Codex extension, the hooks icon in the prompt bar, then Allow all ([Codex in VS Code without the CLI](../how-to/vscode.md#codex-in-vs-code-without-the-cli)). Do it once, and again after loadout's hooks change.
+- **Approve the hooks** means: in the Codex CLI, start `codex` and trust them when it asks (or review them in `/hooks`); in VS Code's Codex extension, the hooks icon in the prompt bar, then Allow all ([Codex in VS Code without the CLI](../how-to/vscode.md#codex-in-vs-code-without-the-cli)). Do it once, and again after loadout's hooks change.
 
 ## Linux and macOS
 

@@ -21,7 +21,7 @@ One agent must stay on. Switching an agent off uninstalls nothing; loadout just 
 
 The first run clones each plugin marketplace into Codex, which can take a few minutes on a slow connection; a progress line names each step (with `--verbose`, or without a terminal, one line each). Ctrl+C is safe: run the command again and it continues where it stopped. Only one loadout run sets up Codex at a time.
 
-Then approve loadout's hooks once in the Codex CLI: start `codex` and run `/hooks` (in VS Code's Codex extension, approve them there; see [Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). Codex runs plugin hooks, and the Serena hooks loadout puts into `~/.codex/hooks.json`, only after you approve them, and again after they change ([which hooks](../reference/hooks.md), [Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)).
+Then approve loadout's hooks once in the Codex CLI: start `codex` and trust them when it asks about new or changed hooks, or review them first in `/hooks` (in VS Code's Codex extension, approve them there; see [Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). Codex runs plugin hooks, and the Serena hooks loadout puts into `~/.codex/hooks.json`, only after you approve them, and again after they change ([which hooks](../reference/hooks.md), [Serena's hooks in Codex](../reference/hooks.md#serenas-hooks-in-codex)).
 
 ## What Codex gets
 
@@ -29,7 +29,7 @@ The same kit and personal layer reach Codex. Where each part goes (the instructi
 
 ## What stays different
 
-- **Hooks need your approval once** in `/hooks` (see above).
+- **Hooks need your approval once**, when Codex asks at start or in `/hooks` (see above).
 - **Commit attribution.** Codex adds `Co-authored-by: Codex` to commits when your ChatGPT account has commit attribution turned on. That is an account setting, not a config key: turn it off in your ChatGPT account settings. loadout's rule against AI attribution reaches Codex through the instruction block, but cannot remove the trailer.
 - **Context7 without a login.** The plugin's Context7 address asks Codex for an OAuth login; loadout sets the plain address for Codex instead, which works without one. Anonymous use has Context7's lower rate limit, so loadout lists an optional `codex mcp login context7` until you log in.
 - **Logins and approvals are named where you work.** Bootstrap's "Still to do", `loadout configure set target codex on` and `loadout check` list what is still open in Codex: the hook approval in `/hooks` or, in the extension, the hooks icon and Allow all (until you approved them, and again after loadout's hooks change) any MCP server that waits for a login (`codex mcp login NAME`), and any marketplace or plugin Codex still lacks, for example after a large clone timed out (`loadout update` retries them). With only VS Code's Codex extension, the login is in the extension (gear, MCP servers, Authenticate), and the hooks are approved there too ([Codex in VS Code without the CLI](vscode.md#codex-in-vs-code-without-the-cli)). loadout does not approve hooks for you: that approval is Codex's safety gate.

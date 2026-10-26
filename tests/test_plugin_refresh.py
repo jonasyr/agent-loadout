@@ -126,7 +126,7 @@ def test_codex_plugin_update_names_the_hooks_when_not_approved(fake_home, fake_r
     monkeypatch.setattr(codex, "hooks_status", lambda remember=False: "untrusted")
     monkeypatch.setattr(runner, "run", _codex_versions(fake_runner, monkeypatch, {"x@m": "1"}, {"x@m": "2"}))
     _run(True)
-    assert "Codex: restart Codex and approve the changed hooks in /hooks" in capsys.readouterr().out
+    assert "Codex: restart Codex and trust the changed hooks when it asks (or review them in /hooks)" in capsys.readouterr().out
 
 
 def test_an_unusable_codex_gets_no_plugin_commands(fake_home, fake_runner, monkeypatch, capsys):
