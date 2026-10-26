@@ -101,6 +101,8 @@ def apply(bk, dry_run: bool = False) -> list[str]:
     if cfg.is_symlink():  # a dotfiles link, dangling or not: write and record its target, the link stays
         cfg = Path(os.path.realpath(cfg))
     rec = _record()
+    if cfg.is_symlink():  # a cyclic link resolves to a link: nothing to write through
+        return _unplaceable(bk, dry_run, rec)
     owned = rec.get("line") if isinstance(rec.get("line"), str) else None
     if owned is not None and rec.get("path", str(cfg)) != str(cfg):  # rtk's config moved: loadout owns nothing here
         rec = {"said": rec.get("said", [])}

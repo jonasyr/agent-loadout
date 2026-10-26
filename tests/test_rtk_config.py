@@ -295,3 +295,13 @@ def test_moved_config_location_leaves_users_line_alone(fake_home, fake_runner, m
     _wanted(monkeypatch, fake_runner, on=False)
     _run()
     assert p.read_text() == mine, "a line loadout did not write at this path is the user's"
+
+
+def test_cyclic_symlink_is_left_and_said_once(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    link = _cfg(fake_home)
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(link.name)  # points at itself
+    bk, first = _run()
+    _, second = _run()
+    assert link.is_symlink() and len(first) == 1 and "by hand" in first[0] and second == []
