@@ -213,9 +213,10 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
     if setup:  # rtk's config line, also with Claude Code off (it removes loadout's line)
         from .backup import Backup
         bk = Backup(description="configure: rtk config")
-        for line in apply.rtk_step(bk).lines:
+        lines = apply.rtk_step(bk).lines
+        for line in lines:
             print(line)
-        if not bk.empty:
+        if lines and not bk.empty:  # a record-only write changed no rtk file
             print(f"(undo: loadout restore {bk.root})")
     offer_commit(ask)
     if setup:

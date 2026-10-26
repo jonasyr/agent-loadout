@@ -256,3 +256,15 @@ def test_record_written_after_config(fake_home, fake_runner, monkeypatch):
     except OSError:
         pass
     assert not rtk_config.record_path().exists()
+
+
+def test_unparseable_said_once_and_again_after_it_parsed(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    p = _put(fake_home, "[hooks\nbroken")
+    _, first = _run()
+    _, second = _run()
+    assert first and second == [], "a file that stays broken is said once, not on every run"
+    p.write_text("[hooks]\nsuppress_hook_warning = true\n")
+    assert _run()[1] == []
+    p.write_text("[hooks\nbroken again")
+    assert _run()[1] == ["skipped rtk config.toml: it does not parse now; left as is"]

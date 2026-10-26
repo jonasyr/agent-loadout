@@ -67,3 +67,27 @@ def test_bootstrap_runs_rtk_step(fake_home, fake_runner, monkeypatch):
     _wanted(monkeypatch, fake_runner)
     bootstrap.bootstrap(install=False, yes=True, plugins=False, adopt_step=False, ask=lambda q: "", interactive=False)
     assert LINE in _cfg(fake_home).read_text()
+
+
+def test_daily_sync_is_silent_when_only_the_record_changed(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(m, "pull_if_clean", lambda root: True)
+    monkeypatch.setattr(m, "find_outdated", lambda: [])
+    monkeypatch.setattr(m, "apply_settings", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(codex, "enabled", lambda: False)
+    _wanted(monkeypatch, fake_runner, on=False)
+    rtk_config.record_path().parent.mkdir(parents=True, exist_ok=True)
+    rtk_config.record_path().write_text('{"line": "suppress_hook_warning = true", "created": true}\n')
+    notes = []
+    monkeypatch.setattr(m, "notify", notes.append)
+    m.maintain(100.0)
+    assert not any("rtk config" in n for n in notes), notes
+
+
+def test_configure_apply_all_writes_rtk_config(fake_home, fake_runner, monkeypatch, capsys):
+    from loadout import configure, paths
+    paths.personal_root().mkdir(parents=True)
+    _wanted(monkeypatch, fake_runner)
+    configure.apply_all(lambda q: "n")
+    assert LINE in _cfg(fake_home).read_text()
+    out = capsys.readouterr().out
+    assert "rtk config.toml" in out and "loadout restore" in out

@@ -383,9 +383,10 @@ def _maintain(now: float) -> None:
             try:  # installs nothing, so the sync runs it; also Codex only (removes loadout's line)
                 from . import apply as apply_steps
                 bk = Backup(description="maintenance: rtk config")
-                for line in apply_steps.rtk_step(bk).lines:
+                lines = apply_steps.rtk_step(bk).lines
+                for line in lines:
                     notify(f"loadout: {line}")
-                if not bk.empty:
+                if lines and not bk.empty:  # a record-only write (a release, a reset) changed no rtk file
                     notify(f"loadout: rtk config changed (undo: loadout restore {bk.root})")
             except Exception as exc:  # never crash in the background; surface next session
                 notify(f"loadout: could not apply rtk config: {exc}")

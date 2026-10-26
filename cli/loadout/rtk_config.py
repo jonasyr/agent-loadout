@@ -109,7 +109,13 @@ def apply(bk, dry_run: bool = False) -> list[str]:
         text = cfg.read_bytes().decode("utf-8") if cfg.exists() else ""
         data = tomllib.loads(text)
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        if not _once(rec, "unparseable"):  # said once, not on every run and every plan
+            return []
+        _store(bk, rec, dry_run)
         return ["skipped rtk config.toml: it does not parse now; left as is"]
+    if "unparseable" in rec.get("said", []):  # it parses again: say it again if it breaks later
+        rec["said"] = [s for s in rec["said"] if s != "unparseable"]
+        _store(bk, rec, dry_run)
     hooks = data.get("hooks")
     if not wanted():
         return _remove(bk, dry_run, cfg, text, data, rec, owned)
@@ -199,7 +205,7 @@ def _remove(bk, dry_run: bool, cfg: Path, text: str, data: dict, rec: dict, owne
     m = None
     if span is not None and owned is not None:
         m = re.search(rf"^{re.escape(owned)}(?:\r?\n|\Z)", text[span[1]:span[2]], re.M)
-    if m is None or not hooks_true(data):  # edited or gone: the user's now; only the record goes
+    if m is None or span is None or not hooks_true(data):  # edited or gone: the user's now; only the record goes
         _store(bk, keep, dry_run)
         return []
     a, b = span[1] + m.start(), span[1] + m.end()
