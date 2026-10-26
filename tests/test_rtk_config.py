@@ -342,3 +342,11 @@ def test_symlinked_parent_folder_records_the_real_path(fake_home, fake_runner, m
     lexical.parent.symlink_to(real, target_is_directory=True)
     _run()
     assert _rec()["path"] == os.path.realpath(real / "config.toml")
+
+
+def test_project_scope_plugin_alone_does_not_silence(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    f = paths.claude_home() / "plugins" / "installed_plugins.json"
+    f.write_text(json.dumps({"version": 2, "plugins": {duplicates.PLUGIN_ID: [{"scope": "project", "projectPath": "/x"}]}}))
+    bk, out = _run()  # rtk's setting is global; the hook runs only in that project
+    assert out == [] and not _cfg(fake_home).exists() and bk.empty

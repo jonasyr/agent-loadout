@@ -28,7 +28,9 @@ def _plugin_installed() -> bool | None:
         installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
     except InvalidJSON:
         return None
-    return isinstance(installed, dict) and bool(installed.get(duplicates.PLUGIN_ID))
+    entries = installed.get(duplicates.PLUGIN_ID) if isinstance(installed, dict) else None
+    # rtk's setting is global: only a user-scope install provides the hook everywhere
+    return any(isinstance(e, dict) and e.get("scope") == "user" for e in entries) if isinstance(entries, list) else False
 
 
 def wanted() -> bool:
