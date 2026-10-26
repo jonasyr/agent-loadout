@@ -280,3 +280,18 @@ def test_dangling_symlink_target_is_created_and_restored(fake_home, fake_runner,
     assert link.is_symlink() and target.read_text() == "[hooks]\nsuppress_hook_warning = true\n"
     backup.restore(bk.root)
     assert link.is_symlink() and not target.exists(), "restore keeps the link and removes only the file loadout made"
+
+
+def test_moved_config_location_leaves_users_line_alone(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    _run()  # loadout's line in ~/.config/rtk/config.toml
+    assert _rec()["path"] == str(_cfg(fake_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / "xdg"))
+    mine = "[hooks]\nsuppress_hook_warning = true\n"
+    p = _put(fake_home, mine)  # the user's own line at the new location
+    _run()
+    _wanted(monkeypatch, fake_runner, on=False)
+    _run()
+    assert p.read_text() == mine, "a line loadout did not write at this path is the user's"

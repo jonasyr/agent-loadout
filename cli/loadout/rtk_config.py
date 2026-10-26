@@ -102,6 +102,10 @@ def apply(bk, dry_run: bool = False) -> list[str]:
         cfg = Path(os.path.realpath(cfg))
     rec = _record()
     owned = rec.get("line") if isinstance(rec.get("line"), str) else None
+    if owned is not None and rec.get("path", str(cfg)) != str(cfg):  # rtk's config moved: loadout owns nothing here
+        rec = {"said": rec.get("said", [])}
+        owned = None
+        _store(bk, rec, dry_run)
     if rec.get("created") and not cfg.exists():  # a restore (or the user) removed the file loadout made
         rec = {"said": rec.get("said", [])}
         owned = None
@@ -179,7 +183,7 @@ def apply(bk, dry_run: bool = False) -> list[str]:
     else:
         bk.save_copy(cfg, "rtk config.toml before loadout changed it")
     write_atomic(cfg, new)
-    _store(bk, {**rec, "line": LINE, "header": header, "created": created, "prefix": prefix, "lead": lead},
+    _store(bk, {**rec, "line": LINE, "path": str(cfg), "header": header, "created": created, "prefix": prefix, "lead": lead},
            False, backed=True)
     return out
 
