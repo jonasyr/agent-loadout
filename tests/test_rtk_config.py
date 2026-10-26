@@ -42,7 +42,7 @@ def _run(dry=False):
 
 
 def _cfg(fake_home):
-    return fake_home / ".config/rtk/config.toml"
+    return paths.rtk_config()  # per OS (the Windows and macOS CI runners resolve elsewhere)
 
 
 def _put(fake_home, text):
