@@ -44,7 +44,15 @@ def _span(text: str):
     return headers[0], start, nxt.start() if nxt else len(text)
 
 
-def _store(bk, rec: dict, dry_run: bool) -> None:
+def _backup_record(bk) -> None:
+    p = record_path()
+    if p.exists():
+        bk.save_copy(p, "loadout's rtk config record")
+    else:
+        bk.record_created(p, "created loadout's rtk config record")
+
+
+def _store(bk, rec: dict, dry_run: bool, backed: bool = False) -> None:
     """Save the record (nothing left in it: the file goes), backed up first."""
     if dry_run:
         return
@@ -53,13 +61,14 @@ def _store(bk, rec: dict, dry_run: bool) -> None:
     if p.exists():
         if _read_record_text(p) == _dump(rec):
             return
-        bk.save_copy(p, "loadout's rtk config record")
+        if not backed:
+            bk.save_copy(p, "loadout's rtk config record")
         if not rec:
             p.unlink()
             return
     elif not rec:
         return
-    else:
+    elif not backed:
         bk.record_created(p, "created loadout's rtk config record")
     p.parent.mkdir(parents=True, exist_ok=True)
     save_json(p, rec)
@@ -122,18 +131,26 @@ def apply(bk, dry_run: bool = False) -> list[str]:
                     "warning stays (left as is)"]
         return _unplaceable(bk, dry_run, rec)
     nl = "\r\n" if "\r\n" in text else "\n"
-    header = False
+    header, prefix, lead = False, "", ""
     if not cfg.exists():
         new, header = NEW_FILE, True
     elif hooks is None:
-        new, header = text + ("" if not text or text.endswith("\n") else nl) + f"[hooks]{nl}{LINE}{nl}", True
+        prefix = (nl + nl if text and not text.endswith("\n") else nl if text else "")
+        new, header = text + prefix + f"[hooks]{nl}{LINE}{nl}", True
     else:
         span = _span(text)
         if span is None:
             return _unplaceable(bk, dry_run, rec)
         _, start, end = span
-        pos = start + len(text[start:end].rstrip(" \t\r\n"))
-        new = text[:pos] + nl + LINE + text[pos:]
+        region = text[start:end]
+        cut = len(region.rstrip(" \t\r\n"))  # past the last non-blank line's content
+        eol = region.find("\n", cut)
+        if eol < 0:  # that line has no newline (end of file): loadout's line brings its own
+            lead = nl
+            new = text[:end] + lead + LINE
+        else:
+            pos = start + eol + 1
+            new = text[:pos] + LINE + nl + text[pos:]
     expected = copy.deepcopy(data)
     expected.setdefault("hooks", {})[KEY] = True
     try:
@@ -147,12 +164,14 @@ def apply(bk, dry_run: bool = False) -> list[str]:
     if dry_run:
         return out
     created = not cfg.exists()
-    _store(bk, {**rec, "line": LINE, "header": header, "created": created}, False)
+    _backup_record(bk)
     if created:
         bk.record_created(cfg, "created rtk config.toml")
     else:
         bk.save_copy(cfg, "rtk config.toml before loadout changed it")
     write_atomic(cfg, new)
+    _store(bk, {**rec, "line": LINE, "header": header, "created": created, "prefix": prefix, "lead": lead},
+           False, backed=True)
     return out
 
 
@@ -183,7 +202,11 @@ def _remove(bk, dry_run: bool, cfg: Path, text: str, data: dict, rec: dict, owne
     if m is None or not hooks_true(data):  # edited or gone: the user's now; only the record goes
         _store(bk, keep, dry_run)
         return []
-    new = text[:span[1] + m.start()] + text[span[1] + m.end():]
+    a, b = span[1] + m.start(), span[1] + m.end()
+    lead = rec.get("lead") if isinstance(rec.get("lead"), str) else ""
+    if lead and b == len(text) and text[:a].endswith(lead):
+        a -= len(lead)  # the newline loadout added to end the user's last line
+    new = text[:a] + text[b:]
     expected = copy.deepcopy(data)
     del expected["hooks"][KEY]
     if rec.get("header"):
@@ -191,7 +214,11 @@ def _remove(bk, dry_run: bool, cfg: Path, text: str, data: dict, rec: dict, owne
         if s2 is not None and not new[s2[1]:s2[2]].strip():
             h = s2[0]
             tail = h.end() + (1 if new[h.end():h.end() + 1] == "\n" else 0)
-            new = new[:h.start()] + new[tail:]
+            prefix = rec.get("prefix") if isinstance(rec.get("prefix"), str) else ""
+            head = new[:h.start()]
+            if prefix and tail >= len(new) and head.endswith(prefix):
+                head = head[:-len(prefix)]  # the blank line loadout put before its table
+            new = head + new[tail:]
             if not expected["hooks"]:
                 del expected["hooks"]
     try:
@@ -202,10 +229,12 @@ def _remove(bk, dry_run: bool, cfg: Path, text: str, data: dict, rec: dict, owne
     out = ["rtk config.toml: removed loadout's suppress_hook_warning (loadout no longer provides rtk's hook)"]
     if dry_run:
         return ["rtk config.toml: to remove loadout's suppress_hook_warning (loadout no longer provides rtk's hook)"]
+    if record_path().exists():
+        _backup_record(bk)
     bk.save_copy(cfg, "rtk config.toml before loadout changed it")
     if rec.get("created") and not new.strip():
         cfg.unlink()
     else:
         write_atomic(cfg, new)
-    _store(bk, keep, False)
+    _store(bk, keep, False, backed=True)
     return out

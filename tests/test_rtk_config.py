@@ -78,7 +78,7 @@ def test_appends_table_when_no_hooks(fake_home, fake_runner, monkeypatch):
     _wanted(monkeypatch, fake_runner)
     p = _put(fake_home, "[display]\ncolors = true")
     _run()
-    assert p.read_text() == "[display]\ncolors = true\n[hooks]\n" + LINE + "\n"
+    assert p.read_text() == "[display]\ncolors = true\n\n[hooks]\n" + LINE + "\n"
     assert _rec()["header"] is True
 
 
@@ -86,7 +86,7 @@ def test_crlf_and_missing_final_newline(fake_home, fake_runner, monkeypatch):
     _wanted(monkeypatch, fake_runner)
     p = _put(fake_home, "[display]\r\ncolors = true")
     _run()
-    assert p.read_bytes() == b"[display]\r\ncolors = true\r\n[hooks]\r\n" + LINE.encode() + b"\r\n"
+    assert p.read_bytes() == b"[display]\r\ncolors = true\r\n\r\n[hooks]\r\n" + LINE.encode() + b"\r\n"
     p.write_bytes(b"[hooks]\r\nx = 1\r\n[d]\r\n")
     rtk_config.record_path().unlink()
     _run()
@@ -216,3 +216,43 @@ def test_not_wanted_and_never_written_is_silent(fake_home, fake_runner, monkeypa
     _wanted(monkeypatch, fake_runner, on=False)
     bk, out = _run()
     assert out == [] and not _cfg(fake_home).exists() and bk.empty
+
+
+def test_trailing_whitespace_of_last_hooks_line_kept(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    for old in ("[hooks]\nexclude_commands = []   \n\n[display]\n", "[hooks]\nx = 1 # c\t\n[d]\n",
+                "[hooks]\nx = 1  ", "[display]\na = 1\n", "[display]\na = 1"):
+        rtk_config.record_path().unlink(missing_ok=True)
+        p = _put(fake_home, old)
+        _wanted(monkeypatch, fake_runner)
+        _run()
+        new = p.read_bytes().decode()
+        assert LINE in new and tomllib_ok(new)
+        if old.startswith("[hooks]\nexclude"):
+            assert new == "[hooks]\nexclude_commands = []   \n" + LINE + "\n\n[display]\n"
+        if old.startswith("[hooks]\nx = 1 #"):
+            assert new == "[hooks]\nx = 1 # c\t\n" + LINE + "\n[d]\n"
+        _, again = _run()
+        assert again == [] and _rec()["line"] == LINE
+        _wanted(monkeypatch, fake_runner, on=False)
+        _run()
+        assert p.read_bytes().decode() == old
+
+
+def tomllib_ok(text):
+    import tomllib
+    tomllib.loads(text)
+    return True
+
+
+def test_record_written_after_config(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+
+    def boom(*a, **k):
+        raise OSError("disk")
+    monkeypatch.setattr(rtk_config, "write_atomic", boom)
+    try:
+        _run()
+    except OSError:
+        pass
+    assert not rtk_config.record_path().exists()
