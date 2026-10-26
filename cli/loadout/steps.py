@@ -19,7 +19,7 @@ def printable(text: str) -> str:
     return _printable(redact(text))
 
 NAMES = {"claude": "Claude Code", "codex": "Codex"}
-HOOKS_TEXT = "start codex and approve the changed hooks in /hooks"
+HOOKS_TEXT = "start codex and trust the changed hooks when it asks (or review them in /hooks)"
 BOOTSTRAP_ROWS = {"MCP servers on PATH", "secrets.env", "VS Code PATH"}  # rows only `loadout bootstrap` fixes
 CLAUDE_FACTS = {"claude_plugins_installed", "claude_plugins_updated", "claude_marketplace_added"}
 LOADOUT_FACT = "claude_loadout_plugin"  # loadout's own Claude Code plugin was installed or updated in this run
@@ -208,7 +208,7 @@ def derive(facts: set[str], upgraded: list[str], claude_on: bool, codex_on: bool
         plugins = bool(facts & {"codex_plugins_installed", "codex_plugins_updated"})
         if facts & {"serena_hooks_added", "serena_remind_moved"} or status in ("untrusted", "changed"):
             text = ((codex.HOOKS_EXTENSION_CHANGED if status == "changed" else codex.HOOKS_EXTENSION) if ext
-                    else "restart Codex and approve the changed hooks in /hooks" if plugins else HOOKS_TEXT)
+                    else "restart Codex and trust the changed hooks when it asks (or review them in /hooks)" if plugins else HOOKS_TEXT)
             out.append(Step("codex/hooks", "codex", text, "Codex runs a changed hook only after you approve it"))
         elif plugins and usable:
             out.append(Step("codex/restart", "codex",
