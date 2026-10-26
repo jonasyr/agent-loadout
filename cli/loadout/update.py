@@ -152,6 +152,8 @@ def build_plan(claude_on: bool, codex_on: bool, notes: list[str] | None = None) 
                          dry=True, on=True)
         parts.append(f"Codex ({step.summary or 'rules block and config'})")
         codex_skips = _codex_item(items)
+    if apply.rtk_step(object(), dry=True).lines:
+        parts.append("rtk (config)")
     for entry, local, latest in maintenance.find_outdated():
         cmds, how = pkgmgr.update_plan(entry)
         label = f"{entry['id']}: {versions.fmt(local)} -> {versions.fmt(latest)}" + (f" (via {how})" if how != "catalog" else "")
@@ -298,7 +300,7 @@ FACT_LINES = {  # one plain "What changed" line per fact a step reported
     "codex_plugins_updated": "Codex: plugins updated",
 }
 STEP_NAMES = {"links": "links", "settings": "rules and settings", "claude_plugins": "Claude Code plugins",
-              "codex": "Codex setup"}
+              "codex": "Codex setup", "rtk": "rtk config"}
 
 
 @dataclass
@@ -479,6 +481,8 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem]
             _show(apply.settings_step(bk, on=True), summary)
     if reapply and (claude_on or codex_ok):
         _show(apply.cbm_step(bk), summary)
+    if reapply:  # also Codex only: loadout's line goes when Claude Code is off
+        _show(apply.rtk_step(bk), summary)
     install = next((i for i in chosen if i.kind == "claude-plugin-install" and i.planned), None)
     if claude_on and install is not None:
         with out.step("Claude Code plugins") as st:
@@ -643,6 +647,8 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
         elif item.kind == "tool-install":
             ran = True
             _install_tool(item, summary, install_failed)
+    if any(i.kind == "tool-install" and i.key == "rtk" for i in chosen) and "rtk" not in install_failed:
+        _show(apply.rtk_step(bk), summary)  # rtk installed by this run: its config line now, not a run later
     if claude_on:  # Codex only: Claude Code's settings and servers are not loadout's to fix
         _guard_settings(settings_path, before, summary)
         if ran:  # installers re-register what the loadout plugin already provides

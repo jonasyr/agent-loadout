@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -41,6 +42,20 @@ def state_dir() -> Path:
     base = os.environ.get("XDG_STATE_HOME", "")
     root = Path(base) if base and Path(base).is_absolute() else home() / ".local" / "state"
     return root / "loadout"
+
+
+def rtk_config() -> Path:
+    """rtk's config.toml where rtk looks for it (Rust's dirs::config_dir()/rtk): Linux $XDG_CONFIG_HOME (absolute
+    only), else ~/.config; macOS ~/Library/Application Support; Windows %APPDATA%, else ~/AppData/Roaming."""
+    if sys.platform == "darwin":
+        root = home() / "Library" / "Application Support"
+    elif sys.platform == "win32":
+        appdata = os.environ.get("APPDATA", "")
+        root = Path(appdata) if appdata else home() / "AppData" / "Roaming"
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME", "")
+        root = Path(base) if base and Path(base).is_absolute() else home() / ".config"
+    return root / "rtk" / "config.toml"
 
 
 def backups_root() -> Path:

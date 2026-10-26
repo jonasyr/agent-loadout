@@ -380,6 +380,16 @@ def _maintain(now: float) -> None:
                     notify(f"loadout: codebase-memory auto_index changed (undo: loadout restore {bk.root})")
             except Exception as exc:  # never crash in the background; surface next session
                 notify(f"loadout: could not apply codebase-memory auto_index: {exc}")
+            try:  # installs nothing, so the sync runs it; also Codex only (removes loadout's line)
+                from . import apply as apply_steps
+                bk = Backup(description="maintenance: rtk config")
+                lines = apply_steps.rtk_step(bk).lines
+                for line in lines:
+                    notify(f"loadout: {line}")
+                if lines and not bk.empty:  # a record-only write (a release, a reset) changed no rtk file
+                    notify(f"loadout: rtk config changed (undo: loadout restore {bk.root})")
+            except Exception as exc:  # never crash in the background; surface next session
+                notify(f"loadout: could not apply rtk config: {exc}")
             try:
                 from . import codex
                 if codex.enabled() and codex.unavailable() is None:

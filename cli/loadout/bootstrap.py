@@ -1055,6 +1055,10 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if result.lines:
             _step("codebase-memory")
             _report(result.name, result.summary, result.lines)
+    result = apply.rtk_step(bk)  # also with Claude Code off: removes loadout's line when it no longer provides the hook
+    if result.lines:
+        _step("rtk")
+        _report(result.name, result.summary, result.lines)
     if chosen["codex"]:
         _step("Codex")
         problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())
