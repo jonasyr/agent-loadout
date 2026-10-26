@@ -23,6 +23,8 @@ def test_rtk_config_path_per_os(fake_home, monkeypatch):
 
 
 import json  # noqa: E402
+import os  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 from loadout import apply as apply_mod, backup, duplicates, rtk_config, targets  # noqa: E402
 
@@ -34,6 +36,14 @@ def _wanted(monkeypatch, fake_runner, on=True):
     monkeypatch.setattr(duplicates, "plugin_enabled", lambda: on)
     monkeypatch.setattr(duplicates, "plugin_guarded_hooks", lambda p: [("PreToolUse", "rtk hook claude")] if on else [])
     fake_runner.missing = set() if on else {"rtk"}
+    if on:  # the plugin is installed, not only wanted in settings
+        _installed(True)
+
+
+def _installed(yes):
+    f = paths.claude_home() / "plugins" / "installed_plugins.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"version": 2, "plugins": {duplicates.PLUGIN_ID: [{"scope": "user"}]} if yes else {}}))
 
 
 def _run(dry=False):
@@ -42,7 +52,7 @@ def _run(dry=False):
 
 
 def _cfg(fake_home):
-    return paths.rtk_config()  # per OS (the Windows and macOS CI runners resolve elsewhere)
+    return Path(os.path.realpath(paths.rtk_config()))  # per OS, resolved as loadout records it (the Windows and macOS CI runners resolve elsewhere)
 
 
 def _put(fake_home, text):
@@ -305,3 +315,30 @@ def test_cyclic_symlink_is_left_and_said_once(fake_home, fake_runner, monkeypatc
     bk, first = _run()
     _, second = _run()
     assert link.is_symlink() and len(first) == 1 and "by hand" in first[0] and second == []
+
+
+def test_plugin_wanted_but_not_installed_does_not_silence(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    _installed(False)  # e.g. bootstrap --no-plugins, or a failed plugin install: rtk's warning is real
+    bk, out = _run()
+    assert out == [] and not _cfg(fake_home).exists() and bk.empty
+
+
+def test_unreadable_installed_plugins_changes_nothing(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    _run()
+    text = _cfg(fake_home).read_text()
+    (paths.claude_home() / "plugins" / "installed_plugins.json").write_text("{broken")
+    bk, out = _run()
+    assert out == [] and _cfg(fake_home).read_text() == text and bk.empty
+
+
+def test_symlinked_parent_folder_records_the_real_path(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    lexical = paths.rtk_config()
+    real = fake_home / "dotfiles/rtk"
+    real.mkdir(parents=True)
+    lexical.parent.parent.mkdir(parents=True, exist_ok=True)
+    lexical.parent.symlink_to(real, target_is_directory=True)
+    _run()
+    assert _rec()["path"] == os.path.realpath(real / "config.toml")

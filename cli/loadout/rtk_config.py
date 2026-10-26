@@ -22,8 +22,17 @@ def record_path() -> Path:
     return paths.state_dir() / "rtk-config.json"
 
 
+def _plugin_installed() -> bool | None:
+    """Whether Claude Code has loadout's plugin installed (wanted in settings is not enough); None: unreadable."""
+    try:
+        installed = load_json(paths.claude_home() / "plugins" / "installed_plugins.json").get("plugins", {})
+    except InvalidJSON:
+        return None
+    return isinstance(installed, dict) and bool(installed.get(duplicates.PLUGIN_ID))
+
+
 def wanted() -> bool:
-    return bool(targets.claude_enabled() and duplicates.plugin_enabled()
+    return bool(targets.claude_enabled() and duplicates.plugin_enabled() and _plugin_installed()
                 and duplicates.plugin_guarded_hooks("rtk") and runner.have("rtk"))
 
 
@@ -97,9 +106,11 @@ def _once(rec: dict, name: str) -> bool:
 
 
 def apply(bk, dry_run: bool = False) -> list[str]:
-    cfg = paths.rtk_config()
-    if cfg.is_symlink():  # a dotfiles link, dangling or not: write and record its target, the link stays
-        cfg = Path(os.path.realpath(cfg))
+    if targets.claude_enabled() and _plugin_installed() is None:
+        return []  # installed_plugins.json unreadable: whether loadout provides the hook is unknown; change nothing
+    # resolved, also through symlinked folders: a dotfiles link, dangling or not, gets its target written and
+    # recorded, and the link stays
+    cfg = Path(os.path.realpath(paths.rtk_config()))
     rec = _record()
     if cfg.is_symlink():  # a cyclic link resolves to a link: nothing to write through
         return _unplaceable(bk, dry_run, rec)
