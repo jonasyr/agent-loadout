@@ -25,6 +25,8 @@ class FakeRunner:
         self.timeouts.append(timeout)
         for prefix, result in self.responses.items():
             if tuple(cmd[: len(prefix)]) == prefix:
+                if isinstance(result, list):  # a sequence: consumed in order, the last one repeats
+                    return result.pop(0) if len(result) > 1 else result[0]
                 return result
         return runner.Result(0, "", "")
 

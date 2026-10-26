@@ -67,3 +67,4 @@ Template:
 | [0039](0039-serena-remind-tools-load-upfront-cbm-refresh.md) | Serena's reminder, tools that load upfront, and a fresh code graph | Accepted |
 | [0040](0040-serena-remind-skips-harmless.md) | Serena's reminder skips harmless searches | Accepted |
 | [0041](0041-own-codebase-memory-by-command.md) | Your own codebase-memory, recognised by its command | Accepted |
+| [0042](0042-readd-codex-marketplace-after-upgrade-timeout.md) | Re-add a Codex marketplace whose upgrade timed out | Accepted |
