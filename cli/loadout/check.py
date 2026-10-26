@@ -155,7 +155,7 @@ def _claude_copies() -> list[tuple[str, Path, str]]:
 def _codex_copies() -> list[tuple[str, Path, str]]:
     from . import codex
     copy = codex.loadout_copy()
-    return [("Codex", copy, UPDATE + "approve the changed hooks in Codex's /hooks")] if copy is not None else []
+    return [("Codex", copy, UPDATE + "trust the changed hooks when Codex asks at start (or review them in /hooks)")] if copy is not None else []
 
 
 def _plugin_copies() -> list[CheckResult]:

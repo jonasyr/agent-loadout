@@ -363,3 +363,10 @@ def test_hook_texts_say_codex_asks_at_start():
     from loadout import codex
     for text in (steps.HOOKS_TEXT, codex.HOOKS_TODO, codex.HOOKS_CHANGED):
         assert "when it asks" in text and "/hooks" in text, text
+
+
+def test_plugin_copy_fix_says_codex_asks_at_start(monkeypatch, tmp_path):
+    from loadout import check, codex
+    monkeypatch.setattr(codex, "loadout_copy", lambda: tmp_path)
+    [(_, _, fix)] = check._codex_copies()
+    assert "when Codex asks at start" in fix and "/hooks" in fix
