@@ -647,6 +647,8 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
         elif item.kind == "tool-install":
             ran = True
             _install_tool(item, summary, install_failed)
+    if any(i.kind == "tool-install" and i.key == "rtk" for i in chosen) and "rtk" not in install_failed:
+        _show(apply.rtk_step(bk), summary)  # rtk installed by this run: its config line now, not a run later
     if claude_on:  # Codex only: Claude Code's settings and servers are not loadout's to fix
         _guard_settings(settings_path, before, summary)
         if ran:  # installers re-register what the loadout plugin already provides

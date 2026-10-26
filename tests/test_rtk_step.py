@@ -91,3 +91,19 @@ def test_configure_apply_all_writes_rtk_config(fake_home, fake_runner, monkeypat
     assert LINE in _cfg(fake_home).read_text()
     out = capsys.readouterr().out
     assert "rtk config.toml" in out and "loadout restore" in out
+
+
+def test_update_configures_rtk_installed_in_the_same_run(fake_home, fake_runner, monkeypatch):
+    """rtk missing at first, its install item chosen: the config line is written after the install, not a run later."""
+    _world(monkeypatch)
+    _wanted(monkeypatch, fake_runner)
+    fake_runner.missing = {"rtk"}
+    monkeypatch.setattr(bootstrap, "missing_tools", lambda: [({"id": "rtk"}, [["install-rtk"]], False)])
+
+    def installed(item, summary, failed):
+        fake_runner.missing = set()
+        summary.changed.append("rtk: installed")
+        summary.upgraded.append("rtk")
+    monkeypatch.setattr(update, "_install_tool", installed)
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    assert LINE in _cfg(fake_home).read_text()
