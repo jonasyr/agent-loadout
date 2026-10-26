@@ -7,7 +7,8 @@ per-item lines (callers print them their own way) and the facts, what the step c
 - codex_step: codex_block_written, codex_config_changed, serena_hooks_added, serena_remind_moved, codex_hooks_removed,
   codex_skills_linked, codex_plugins_installed, codex_plugins_updated
 - cbm_step: no facts (auto_index is the only setting)
-- any step: failed:<step> (links, settings, claude_plugins, codex, cbm) when one of its lines has a failure in the
+- rtk_step: no facts
+- any step: failed:<step> (links, settings, claude_plugins, codex, cbm, rtk) when one of its lines has a failure in the
   forms loadout prints (": failed", "failed to ") or a change it refused ("skipped <file>: …", "by hand",
   "cannot", …; not "left as is", a value the user kept; apply.refused lists them)
 - codex_step: skipped:codex when it did not run (another loadout run held the Codex lock): nothing changed, but
@@ -206,6 +207,15 @@ def cbm_step(bk: Backup, dry: bool = False) -> StepResult:
     lines = cbm.apply_auto_index(bk, dry=dry)
     return _finish(StepResult("codebase-memory", lines[0].removeprefix("codebase-memory: ") if lines else "", lines),
                    "cbm")
+
+
+def rtk_step(bk: Backup, dry: bool = False) -> StepResult:
+    """rtk's config.toml line that silences its false "No hook installed" warning (rtk_config.apply). Installs
+    nothing, so the daily sync runs it too; it also removes loadout's line when loadout no longer provides the hook,
+    so it runs with Claude Code off as well."""
+    from . import rtk_config
+    lines = rtk_config.apply(bk, dry_run=dry)
+    return _finish(StepResult("rtk", lines[0].removeprefix("rtk config.toml: ") if lines else "", lines), "rtk")
 
 
 def _codex_dry(refresh_plugins: bool, auto: bool, keep: bool) -> StepResult:

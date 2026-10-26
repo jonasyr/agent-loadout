@@ -118,6 +118,7 @@ def test_maintain_survives_offline(fake_home, fake_runner, monkeypatch):
         raise OSError("offline")
 
     monkeypatch.setattr(versions, "_fetch_json", boom)
+    monkeypatch.setattr("loadout.rtk_config.wanted", lambda: False)  # its sync notice is not what this test is about
     m.maintain(100.0)  # must not raise
     assert attempts, "latest_version never reached the network path"
     assert not (paths.state_dir() / "pending-notice").exists()

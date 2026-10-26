@@ -210,6 +210,13 @@ def apply_all(ask: Ask, setup: bool = True) -> None:
             print(line)
         if not bk.empty:
             print(f"(undo: loadout restore {bk.root})")
+    if setup:  # rtk's config line, also with Claude Code off (it removes loadout's line)
+        from .backup import Backup
+        bk = Backup(description="configure: rtk config")
+        for line in apply.rtk_step(bk).lines:
+            print(line)
+        if not bk.empty:
+            print(f"(undo: loadout restore {bk.root})")
     offer_commit(ask)
     if setup:
         hints = [h for h, on in (("restart Claude Code (or run /reload-plugins)", claude_on),
