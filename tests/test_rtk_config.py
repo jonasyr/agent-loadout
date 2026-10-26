@@ -268,3 +268,15 @@ def test_unparseable_said_once_and_again_after_it_parsed(fake_home, fake_runner,
     assert _run()[1] == []
     p.write_text("[hooks\nbroken again")
     assert _run()[1] == ["skipped rtk config.toml: it does not parse now; left as is"]
+
+
+def test_dangling_symlink_target_is_created_and_restored(fake_home, fake_runner, monkeypatch):
+    _wanted(monkeypatch, fake_runner)
+    link = _cfg(fake_home)
+    link.parent.mkdir(parents=True, exist_ok=True)
+    target = fake_home / "dotfiles/rtk.toml"
+    link.symlink_to(target)  # a dotfiles link whose target does not exist yet
+    bk, _ = _run()
+    assert link.is_symlink() and target.read_text() == "[hooks]\nsuppress_hook_warning = true\n"
+    backup.restore(bk.root)
+    assert link.is_symlink() and not target.exists(), "restore keeps the link and removes only the file loadout made"

@@ -4,6 +4,7 @@ Exact-text record, parse guard, the user's text byte for byte, a backup before e
 from __future__ import annotations
 
 import copy
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -97,6 +98,8 @@ def _once(rec: dict, name: str) -> bool:
 
 def apply(bk, dry_run: bool = False) -> list[str]:
     cfg = paths.rtk_config()
+    if cfg.is_symlink():  # a dotfiles link, dangling or not: write and record its target, the link stays
+        cfg = Path(os.path.realpath(cfg))
     rec = _record()
     owned = rec.get("line") if isinstance(rec.get("line"), str) else None
     if rec.get("created") and not cfg.exists():  # a restore (or the user) removed the file loadout made
