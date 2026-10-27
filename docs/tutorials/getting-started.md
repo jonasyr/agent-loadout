@@ -108,7 +108,7 @@ Restart your agent: Claude Code (or run `/reload-plugins`) and Codex; if you cho
 loadout check
 ```
 
-It is read-only. It prints `Health check: N of M OK`, then only the problems, and each problem line names the fix (`--verbose` lists every check). If you see `loadout: command not found`, open a new terminal: bootstrap added `~/.local/bin` to your profile (Windows: your user PATH). More in [Troubleshooting](../how-to/troubleshooting.md). What each check means is in the [CLI reference](../reference/cli.md#loadout-check).
+It is read-only. It prints `Health check: N of M OK`, a `Setup` line with your cell in the [Setup matrix](../reference/setup-matrix.md), then only the problems, and each problem line names the fix (`--verbose` lists every check). If you see `loadout: command not found`, open a new terminal: bootstrap added `~/.local/bin` to your profile (Windows: your user PATH). More in [Troubleshooting](../how-to/troubleshooting.md). What each check means is in the [CLI reference](../reference/cli.md#loadout-check).
 
 ## Prepare a project
 
