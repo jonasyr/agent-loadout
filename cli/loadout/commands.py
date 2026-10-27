@@ -66,7 +66,11 @@ def _register_check(sub):
     def run_check(a):
         if a.verbose:
             out.VERBOSE = True
-        text, code = (check.format_results if out.VERBOSE else check.format_summary)(check.run_checks())
+        # a progress line only on a terminal: logs, agents and --verbose get the report alone
+        say = (lambda done, total: out.progress(f"checking… {done}/{total}")) if out._tty() and not out.VERBOSE else None
+        results = check.run_checks(say=say) if say is not None else check.run_checks()
+        out.end_progress()
+        text, code = (check.format_results if out.VERBOSE else check.format_summary)(results)
         print(text)
         from . import steps, targets
         steps.print_pending(targets.claude_enabled(), targets.codex_enabled())

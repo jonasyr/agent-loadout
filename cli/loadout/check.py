@@ -923,7 +923,8 @@ def _codex(cs=None) -> list[CheckResult]:
     if _windows_only(cs) and codex.enabled():
         return [CheckResult("Codex", True, "runs on Windows: loadout sets it up there with bootstrap.ps1 "
                             "(docs/how-to/wsl.md#codex)")]
-    return codex.checks()
+    with codex.mcp_list_cache():  # drift and the login rows read the same answer
+        return codex.checks()
 
 
 def _legacy_state() -> list[CheckResult]:
@@ -1015,8 +1016,42 @@ def _setup(cs, codex_windows: bool, found: list | None = None) -> list[CheckResu
     return [CheckResult("Setup", True, info=info)]
 
 
-def run_checks(codex_windows: bool = False) -> list[CheckResult]:
-    """codex_windows: bootstrap chose the Windows side for Codex in this run, whatever the detection says."""
+@dataclass(frozen=True)
+class Serial:
+    """A row that must run alone, after the parallel ones: it changes shared state while it runs
+    (_without_codex sets targets.OVERRIDE)."""
+    fn: object
+
+    def __call__(self):
+        return self.fn()
+
+
+def _run_rows(rows: list, say=None) -> list[CheckResult]:
+    """Run the row functions at once (most wait on an external command), then the Serial ones one by one, and return
+    every result in the rows' order. A row that raises raises here, as it would serially. say(done, total) after
+    each finished row."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    total, done, results = len(rows), 0, [None] * len(rows)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(row): i for i, row in enumerate(rows) if not isinstance(row, Serial)}
+        for f in as_completed(futures):
+            done += 1
+            if say is not None:
+                say(done, total)
+        for f, i in futures.items():
+            results[i] = f.result()
+    for i, row in enumerate(rows):
+        if isinstance(row, Serial):
+            results[i] = row()
+            done += 1
+            if say is not None:
+                say(done, total)
+    return [result for part in results for result in part]
+
+
+def run_checks(codex_windows: bool = False, say=None) -> list[CheckResult]:
+    """codex_windows: bootstrap chose the Windows side for Codex in this run, whatever the detection says.
+    say(done, total): progress, called as rows finish."""
     from . import targets
     on = targets.claude_enabled()  # Codex only: no Claude Code links, settings, plugins or own tools to check
     cs = _wsl_codex_side()
@@ -1024,12 +1059,22 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
         from dataclasses import replace
         cs = replace(cs, side="windows", shared_home=False)
     found = _extensions(cs)  # one lookup for the Setup row and the VS Code rows (it may ask Windows, in WSL)
-    return [*_setup(cs, codex_windows, found), *_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs),
-            *_vscode_surfaces(cs, found), *_legacy_state(),
-            *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
-            *_codex(cs), *(_without_codex(_codex_staging) if _windows_only(cs) else _codex_staging()), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
-            *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []),
-            *(_without_codex(_cbm_installer) if _windows_only(cs) else _cbm_installer()), *_cbm_refresh(), *_cbm_conflict(), *_cbm_binaries(), *(_without_codex(_cbm_cache_folders) if _windows_only(cs) else _cbm_cache_folders()), *_gh(), *_secrets(), *_repos(), *_repo_skill_links(), *_repo_mcp_paths()]
+    only = _windows_only(cs)
+
+    def none() -> list[CheckResult]:
+        return []
+
+    def codex_part(row):  # in WSL with only a Windows Codex, its Codex parts are left out (ADR 0029)
+        return Serial(lambda: _without_codex(row)) if only else row
+    rows = [lambda: _setup(cs, codex_windows, found), _python, lambda: _wsl(cs), lambda: _codex_side(cs),
+            lambda: _vscode(cs), lambda: _vscode_surfaces(cs, found), _legacy_state,
+            _links if on else none, _skills_json, _settings if on else none, _plugins if on else none,
+            lambda: _codex(cs), codex_part(_codex_staging), codex_part(_plugin_copies),
+            _connectors if on else none, codex_part(_own),
+            lambda: _binaries(cs), _mcp_path, _cbm_auto_index, _tool_setups if on else none,
+            codex_part(_cbm_installer), _cbm_refresh, _cbm_conflict, _cbm_binaries, codex_part(_cbm_cache_folders),
+            _gh, _secrets, _repos, _repo_skill_links, _repo_mcp_paths]
+    return _run_rows(rows, say)
 
 
 def format_results(results: list[CheckResult]) -> tuple[str, int]:
