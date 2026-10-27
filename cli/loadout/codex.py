@@ -1280,11 +1280,13 @@ def _tail(res: runner.Result) -> str:
 
 def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
     """{GitHub source: [plugin names]} for every plugin enabled for Claude Code, and those without a GitHub source."""
+    from . import catalog
     markets = get_dict(settings, "extraKnownMarketplaces")
     routes: dict[str, list[str]] = {}
     missing = []
+    claude_only = catalog.claude_only_plugins()
     for pid, on in get_dict(settings, "enabledPlugins").items():
-        if on is not True or not isinstance(pid, str) or "@" not in pid:
+        if on is not True or not isinstance(pid, str) or "@" not in pid or pid in claude_only:
             continue
         name, market = pid.rsplit("@", 1)
         source = get_dict(markets.get(market), "source")
@@ -1846,6 +1848,17 @@ def record_has(src: str) -> bool:
     return isinstance(_load_record().get(src), dict)
 
 
+def claude_only_line(pid: str) -> str:
+    return f"plugin {pid}: Claude Code only, not added to Codex"
+
+
+def claude_only_enabled(settings: dict) -> list[str]:
+    """Enabled plugins that loadout keeps out of Codex (catalog `target: claude`)."""
+    from . import catalog
+    only = catalog.claude_only_plugins()
+    return [pid for pid, on in get_dict(settings, "enabledPlugins").items() if on is True and pid in only]
+
+
 def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False, skip_unchanged: bool = False,
                   skips: tuple | None = None) -> list[str]:
     """say: called with a progress line before each slow step (git clones of marketplaces, plugin installs).
@@ -1861,6 +1874,7 @@ def apply_plugins(bk, refresh: bool = False, say=None, auto: bool = False, skip_
     frozen = frozenset(name for name, cfg in get_dict(desired, "extraKnownMarketplaces").items()
                        if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False)
     lines = [f"plugin {pid}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
+    lines += [claude_only_line(pid) for pid in claude_only_enabled(desired)]
     return lines + _install_routes(routes, bk, refresh, say, installed_plugins(), frozen, skip_unchanged, skips)[0]
 
 
