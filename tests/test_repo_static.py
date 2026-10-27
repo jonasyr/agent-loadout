@@ -212,7 +212,8 @@ def test_catalog_short_reasons():
             assert "\n" not in s and len(s) <= 60 and not s.endswith("."), e["id"]
 
 
-def test_target_field_only_on_binaries():
+def test_target_field_only_on_binaries_and_claude_only_plugins():
     for entry in _json("catalog.json")["entries"]:
-        if "target" in entry:
-            assert entry["kind"] == "binary" and entry["target"] in ("claude", "codex"), entry["id"]
+        if "target" in entry:  # a plugin's target only keeps it out of Codex (catalog.claude_only_plugins)
+            assert (entry["kind"] == "binary" and entry["target"] in ("claude", "codex")
+                    or entry["kind"] == "plugin" and entry["target"] == "claude"), entry["id"]
