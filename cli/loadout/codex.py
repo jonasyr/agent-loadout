@@ -1,6 +1,7 @@
 """Codex CLI as a second target: the same kit and personal layer, mapped to Codex (docs/how-to/codex.md)."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -1899,8 +1900,33 @@ def apply_skills(bk) -> list[str]:
     return [line for dest, src in skill_links() if (line := link._link_one(dest, src, bk))]
 
 
+_MCP_LIST: dict | None = None  # inside mcp_list_cache(): the one `codex mcp list` answer, keyed by program
+
+
+@contextmanager
+def mcp_list_cache():
+    """Within it, `codex mcp list --json` runs once (check asks it for drift and for logins); outside, every call
+    asks Codex again, since a write in between changes the answer."""
+    global _MCP_LIST
+    outer, _MCP_LIST = _MCP_LIST, {} if _MCP_LIST is None else _MCP_LIST
+    try:
+        yield
+    finally:
+        _MCP_LIST = outer
+
+
+def _mcp_list() -> runner.Result:
+    cache, prog = _MCP_LIST, program()
+    if cache is not None and prog in cache:
+        return cache[prog]
+    res = runner.run([prog, "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
+    if cache is not None:
+        cache[prog] = res
+    return res
+
+
 def mcp_names() -> set[str] | None:
-    res = runner.run([program(), "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
+    res = _mcp_list()
     data = _json(res.stdout) if res.ok else None
     return {s["name"] for s in data if isinstance(s, dict) and isinstance(s.get("name"), str)} if isinstance(data, list) else None
 
@@ -2455,7 +2481,7 @@ def hooks_status(remember: bool = False) -> str | None:
 
 
 def _not_logged_in() -> list[str]:
-    res = runner.run([program(), "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
+    res = _mcp_list()
     data = _json(res.stdout) if res.ok else None
     return [s["name"] for s in data if isinstance(s, dict) and s.get("auth_status") == "not_logged_in"
             and isinstance(s.get("name"), str)] if isinstance(data, list) else []
@@ -2469,7 +2495,7 @@ def logins_optional() -> list[str]:
 
 def logins_needed() -> list[str]:
     """Codex MCP servers that wait for an OAuth login (`codex mcp login NAME`)."""
-    res = runner.run([program(), "mcp", "list", "--json"], cwd=str(paths.home()), timeout=120)  # not a repo's servers
+    res = _mcp_list()
     data = _json(res.stdout) if res.ok else None
     # Codex says not_logged_in for every server that offers OAuth, also when it answers anonymously; the servers
     # loadout writes itself are chosen to work without a login (Context7's plain address, verified live)

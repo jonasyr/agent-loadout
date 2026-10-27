@@ -284,7 +284,7 @@ Verify this machine. Read-only: it reports problems and names the fix, and chang
 loadout check [--verbose]
 ```
 
-By default it prints `Health check: N of M OK`, then the `Setup` line, then only the warnings and failures, each with a `fix:` line. `--verbose` lists every check. Each listed line is `ok`, `warn` or `FAIL`. Bootstrap runs the same checks at its end. What to do about each warning or failure: [Troubleshooting](../how-to/troubleshooting.md).
+By default it prints `Health check: N of M OK`, then the `Setup` line, then only the warnings and failures, each with a `fix:` line. `--verbose` lists every check. Each listed line is `ok`, `warn` or `FAIL`. The checks run in parallel; on a terminal (and without `--verbose`) a `checking… N/M` line shows the progress and is cleared before the report. Bootstrap runs the same checks at its end. What to do about each warning or failure: [Troubleshooting](../how-to/troubleshooting.md).
 
 Which rows appear depends on the agents that are on (`targets.json`, see [personal-layer](personal-layer.md)): with Claude Code off, the rows marked "Claude Code on" are skipped; with Codex off, nothing about Codex is checked (no `Codex …` rows, no `binary codex`, no Codex extension rows). In WSL, when your only Codex is the Windows one, the `Codex …` rows below, and the Codex parts of the `loadout plugin` and `own tools` rows, are replaced by one `ok` line, `Codex`, that points to `bootstrap.ps1` ([Codex in WSL](../how-to/wsl.md#codex)).
 
