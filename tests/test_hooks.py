@@ -198,6 +198,8 @@ def test_repo_enables_codex_reviewer_and_has_no_copy():
     root = paths.kit_root()
     settings = json.loads((root / ".claude/settings.json").read_text())
     assert settings["enabledPlugins"]["codex-reviewer@agent-loadout"] is True
+    # without loadout, Claude Code only finds the plugin once the repo names its marketplace
+    assert settings["extraKnownMarketplaces"]["agent-loadout"]["source"] == {"source": "github", "repo": "jonasyr/agent-loadout"}
     assert not (root / ".claude/agents/codex-reviewer.md").exists()
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
     rules = agents[agents.index("## Code Review Rules"):agents.index("## Where things are")]
