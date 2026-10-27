@@ -88,3 +88,11 @@ def test_optional_codex_cli_is_not_missing(calm, capsys, monkeypatch, fake_runne
     _run(agents="claude,codex")
     block = _block(capsys.readouterr().out)
     assert "codex" not in [w.strip(",") for line in block.splitlines() if "missing" in line for w in line.split()]
+
+
+def test_without_codex_cli_does_not_hide_a_required_codex(calm, capsys, fake_runner):
+    # Codex review on #70: no extension stands in, so --without-codex-cli does not apply and Codex stays required
+    fake_runner.missing.add("codex")
+    _run(agents="claude,codex", codex_cli=False)
+    block = _block(capsys.readouterr().out)
+    assert any("codex" in line and "missing" in line for line in block.splitlines()), block

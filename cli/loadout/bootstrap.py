@@ -938,7 +938,7 @@ def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli
         if cs is not None and gate is None and cs.side == "windows":
             cs = replace(cs, side="wsl")  # the gate set Codex up on this side (--codex-side wsl, or answer 1)
         cell = recommend.detect(chosen, cs, codex_windows=bool(gate) and WINDOWS_WAY in gate)
-        skip = frozenset({"codex"}) if gate or not codex_cli else frozenset()
+        skip = frozenset({"codex"}) if gate else frozenset()  # --without-codex-cli: covered by recommended below
         # as in Prerequisites: a CLI that an extension stands in for is optional, not missing
         bundled = chosen["claude"] and not runner.have("claude") and vscode.bundled_claude() is not None
         recommended = codex_recommended(chosen, gate) | (frozenset({"claude"}) if bundled else frozenset())
