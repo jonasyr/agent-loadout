@@ -284,7 +284,7 @@ Verify this machine. Read-only: it reports problems and names the fix, and chang
 loadout check [--verbose]
 ```
 
-By default it prints `Health check: N of M OK`, then only the warnings and failures, each with a `fix:` line. `--verbose` lists every check. Each listed line is `ok`, `warn` or `FAIL`. Bootstrap runs the same checks at its end. What to do about each warning or failure: [Troubleshooting](../how-to/troubleshooting.md).
+By default it prints `Health check: N of M OK`, then the `Setup` line, then only the warnings and failures, each with a `fix:` line. `--verbose` lists every check. Each listed line is `ok`, `warn` or `FAIL`. Bootstrap runs the same checks at its end. What to do about each warning or failure: [Troubleshooting](../how-to/troubleshooting.md).
 
 Which rows appear depends on the agents that are on (`targets.json`, see [personal-layer](personal-layer.md)): with Claude Code off, the rows marked "Claude Code on" are skipped; with Codex off, nothing about Codex is checked (no `Codex …` rows, no `binary codex`, no Codex extension rows). In WSL, when your only Codex is the Windows one, the `Codex …` rows below, and the Codex parts of the `loadout plugin` and `own tools` rows, are replaced by one `ok` line, `Codex`, that points to `bootstrap.ps1` ([Codex in WSL](../how-to/wsl.md#codex)).
 
@@ -292,6 +292,7 @@ The rows, in the order they are printed:
 
 | Row | What it checks | Severity |
 |---|---|---|
+| `Setup` | This machine's cell in the [setup matrix](setup-matrix.md): the platform (native Windows marked experimental), the agents that are on, the surfaces found for them (the CLI on PATH, VS Code's extension and its window type) and, in WSL with Codex on Windows, the Codex side; then the matrix section with the recommended flags. Always `ok`, and printed with its text in both outputs; it repeats none of the warnings below. | — |
 | `Python 3.x` | The Python that runs loadout. Always `ok`: loadout needs 3.11 or newer and stops before this on older versions. | — |
 | `WSL <version>`, `WSL` | Inside WSL only: the version (an `ok` line), then one `WSL` row per problem from [WSL 2](../how-to/wsl.md): WSL 1 (with Claude Code on), the kit, the personal layer or the current folder on the Windows filesystem, a tool that resolves to a Windows program, missing sandbox packages. The `claude`, WSL 1 and sandbox rows only with Claude Code on. | warn |
 | `Codex home` | Inside WSL with Codex on: `CODEX_HOME` points into Windows. | warn |
