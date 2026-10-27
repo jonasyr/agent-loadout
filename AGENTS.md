@@ -47,6 +47,6 @@ Every module and kit part, grouped, is in [docs/reference/modules.md](docs/refer
 - `plugins/loadout/`: the plugin (`skills/`, `hooks/`, `evals/`, `evals-browser/`); at the repo root: `catalog.json`, `profiles/`, `rules/`, `templates/`, `tests/conftest.py` (the fixtures)
 - loadout's state folders and the daily sync: [docs/reference/state-and-sync.md](docs/reference/state-and-sync.md)
 
-`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security, documentation strategy, execution advisor), `adr/` (decisions 0001-0043), `examples/`, `assets/` (wordmark, demo GIF), `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
+`docs/` (start at `docs/README.md`): `tutorials/`, `how-to/`, `reference/`, `explanation/` (toolset, architecture, security, documentation strategy, execution advisor), `adr/` (decisions 0001-0044), `examples/`, `assets/` (wordmark, demo GIF), `diagrams/` (Mermaid sources and their rendered SVGs; see CONTRIBUTING.md), and `docs/superpowers/` (where agents write specs and plans).
 
 Agent notes: `.serena/memories/` (short summaries linking into `docs/`).

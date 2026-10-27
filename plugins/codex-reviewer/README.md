@@ -4,4 +4,6 @@ A stand-in for Codex's GitHub code review ("@codex review") for when it is unava
 
 Off by default. Turn it on with `loadout configure set plugin codex-reviewer@agent-loadout on`, then `/reload-plugins`, and ask Claude Code to "run the codex-reviewer agent on this branch". Claude Code only; loadout never adds it to Codex.
 
+How to use it: [Use the codex-reviewer when Codex's review quota is out](../../docs/how-to/codex-review-stand-in.md).
+
 License of the rubric: [NOTICE](NOTICE).

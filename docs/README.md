@@ -23,6 +23,7 @@ Questions about loadout, or a change to your setup? Ask your agent in plain word
 - [Use loadout on Windows with WSL 2](how-to/wsl.md). Read this when you run loadout inside WSL.
 - [Use loadout with VS Code](how-to/vscode.md). Read this when you work in VS Code with the Claude Code or Codex extension, with or without the CLIs.
 - [Set loadout up from inside an agent](how-to/install-with-an-agent.md). Read this (or give it to Codex or Claude Code) when you want your agent to install loadout for you.
+- [Use the codex-reviewer when Codex's review quota is out](how-to/codex-review-stand-in.md). Read this when Codex's GitHub review is unavailable and you want a review of your branch from Claude Code.
 - [Troubleshooting](how-to/troubleshooting.md). Read this when a command fails or `loadout check` reports a problem.
 - [Run the skill evals](how-to/run-evals.md). Read this when you changed one of the plugin's skills.
 - [Uninstall loadout](how-to/uninstall.md). Read this when you want to remove loadout from a machine.
