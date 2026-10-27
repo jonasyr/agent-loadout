@@ -192,3 +192,13 @@ def test_claude_card_promises_loaded_tools_only_when_the_folder_has_them(tmp_pat
     (home / ".claude.json").write_text(json.dumps(
         {"projects": {str(repo): {"disabledMcpServers": ["plugin:loadout:serena"]}}}))
     assert "already active" not in card()
+
+
+def test_repo_enables_codex_reviewer_and_has_no_copy():
+    root = paths.kit_root()
+    settings = json.loads((root / ".claude/settings.json").read_text())
+    assert settings["enabledPlugins"]["codex-reviewer@agent-loadout"] is True
+    assert not (root / ".claude/agents/codex-reviewer.md").exists()
+    agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    rules = agents[agents.index("## Code Review Rules"):agents.index("## Where things are")]
+    assert "Codex-only" in rules and "uv run --python 3.12 --with pytest pytest -q <files>" in rules

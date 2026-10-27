@@ -129,7 +129,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `templates/personal/` | The starter personal layer (`rules/me.md`, `settings.json`). |
 | `templates/project/` | The files `init` creates when missing: `AGENTS.md`, `CLAUDE.md`, `docs/README.md`, `docs/adr/README.md`. |
 | `.claude/skills/diagrams` | A repo-local skill for editing the docs diagrams; Codex finds it through the pointer in `.agents/skills/diagrams`. |
-| `.claude/agents/codex-reviewer.md` | A stand-in for Codex's GitHub review when its quota is used up ([CONTRIBUTING](../../CONTRIBUTING.md)). |
+| `plugins/codex-reviewer/` | The opt-in `codex-reviewer` plugin: a stand-in for Codex's GitHub review when its quota is used up; this repo turns it on in `.claude/settings.json` ([CONTRIBUTING](../../CONTRIBUTING.md)). |
 | `.github/` | CI (`ci.yml` on Linux, Windows and WSL 2; `fresh-machine.yml` for CLI and bootstrap changes, and weekly), the issue forms and the PR template. |
 | `demo/` | The README demo: the VHS tapes, the sandbox, the container render ([CONTRIBUTING](../../CONTRIBUTING.md)). |
 | `dev/codex-sandbox.sh` | Runs loadout's Codex part against the real Codex CLI in a throwaway `HOME` and `CODEX_HOME`. |

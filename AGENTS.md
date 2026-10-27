@@ -33,6 +33,10 @@ A shareable setup for Claude Code and Codex: a plugin marketplace (kit) plus the
 ### Tests
 - Tests use `fake_home` and `fake_runner`; a test that can reach the real `~/.claude`, `~/.claude.json`, `~/.codex` or `~/.config/loadout`, or run real `claude`/`codex`/installers, is P1.
 
+### Edge cases and limits
+- Consider Codex-only machines (Claude Code off), VS Code's Codex extension without the Codex CLI, WSL with a Windows-side Codex, the Claude Code extension's bundled `claude` as runner, Windows with Git Bash, valid-but-odd input shapes, and commands that report success on failure.
+- A reviewer that runs commands runs only read-only ones and `uv run --python 3.12 --with pytest pytest -q <files>`: never real `claude`, `codex` or `loadout` against the real home, never installers or evals, and never edits files.
+
 ## Where things are
 
 Every module and kit part, grouped, is in [docs/reference/modules.md](docs/reference/modules.md). Start with these:
