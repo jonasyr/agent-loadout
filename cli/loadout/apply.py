@@ -248,6 +248,7 @@ def _codex_dry(refresh_plugins: bool, auto: bool, keep: bool) -> StepResult:
               get_dict(desired, "extraKnownMarketplaces").items()
               if auto and isinstance(cfg, dict) and cfg.get("autoUpdate") is False}
     lines += [f"plugin {out.printable(pid)}: no Codex route (its marketplace is not on GitHub)" for pid in missing]
+    lines += [codex.claude_only_line(out.printable(pid)) for pid in codex.claude_only_enabled(desired)]
     have = {pid.split("@")[0] for pid in codex.installed_plugins() or ()}
     new_plugins = [name for names in routes.values() for name in names if name not in have]
     lines += [f"plugin {out.printable(name)}: to install" for name in new_plugins]

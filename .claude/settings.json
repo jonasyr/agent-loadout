@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "agent-loadout": {
+      "source": { "source": "github", "repo": "jonasyr/agent-loadout" }
+    }
+  },
+  "enabledPlugins": {
+    "codex-reviewer@agent-loadout": true
+  }
+}

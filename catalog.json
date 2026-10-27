@@ -1244,6 +1244,22 @@
       }
     },
     {
+      "id": "addon-codex-reviewer",
+      "kind": "plugin",
+      "status": "alternative",
+      "category": "workflow",
+      "target": "claude",
+      "match": {
+        "names": [
+          "codex-reviewer@agent-loadout"
+        ]
+      },
+      "reason": "Stand-in for Codex's GitHub review when its quota is out: one read-only agent with Codex's open-source rubric that returns the same JSON findings. Adds one agent description to every session; Claude Code only (Codex has /review).",
+      "offer": {
+        "plugin": "codex-reviewer@agent-loadout"
+      }
+    },
+    {
       "id": "addon-dbhub-global",
       "kind": "mcp",
       "status": "alternative",

@@ -23,8 +23,12 @@ def _wanted(prof: profiles.Profile) -> tuple[dict[str, str], list[str], list[str
             continue
         tables[name] = text + ("enabled = false\n" if name in off else "")
     plugins = []
+    from . import catalog
+    claude_only = catalog.claude_only_plugins()
     for p in prof.install:
-        if isinstance(p, str) and profiles.PLUGIN_ID.match(p):
+        if isinstance(p, str) and p in claude_only:
+            skipped.append(codex.claude_only_line(p))
+        elif isinstance(p, str) and profiles.PLUGIN_ID.match(p):
             plugins.append(p)
         else:
             skipped.append(f"plugin {p!r}: not a name@marketplace id, skipped")

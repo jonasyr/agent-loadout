@@ -18,6 +18,7 @@ The file is one JSON object with one key, `entries`, a list of entries. Ids are 
 | `profile` | for `status: profile` | Name of the kit profile (a file in `profiles/`) that carries the tool. |
 | `offer` | no | Makes the entry a global add-on in `loadout configure`. See below. |
 | `connector` | no | For a plugin: the name of the claude.ai connector with the same tools, as Claude Code lists it (for example "claude.ai Context7"). `loadout check` warns when the plugin is enabled and the connector has been connected. |
+| `target` | no | The one coding agent the entry belongs to: `claude` or `codex`. A `binary` with a target is offered and checked only while that agent is on (`targets.json`). A `plugin` with `target: claude` is never added to Codex: Codex's plugin setup and a profile's Codex side skip it, and their output names it once (`Claude Code only, not added to Codex`). |
 | `category` | no | Group heading in the configure wizard. Default: `other`. |
 | `required` | no | For a `binary`: a missing one is a `FAIL` in `loadout check` and is installed by `bootstrap --install`. Exceptions: a missing `codex` or `claude` is only a warning while VS Code's extension for that agent brings its own binary, and in WSL `codex` is not checked when your only Codex is the Windows one ([`binary <name>`](cli.md#loadout-check)). |
 | `version` | for `binary` | How to read and look up versions. See below. |

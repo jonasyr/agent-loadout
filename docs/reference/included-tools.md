@@ -91,3 +91,4 @@ Off by default. `loadout configure` offers them with each one's reason; `loadout
 | Exa | Web, code and paper search. Needs an API key and is paid per query. |
 | Sentry | Sentry issues and traces while debugging production errors. |
 | DBHub (global) | One database you use from every repo, reading `${DATABASE_URL}`. Otherwise use the `db` profile per project. |
+| codex-reviewer (`addon-codex-reviewer`) | Stand-in for Codex's GitHub review when its quota is out: one read-only agent with Codex's open-source rubric that returns the same JSON findings. Adds one agent description to every session, hence off by default. Claude Code only. [How to use it](../how-to/codex-review-stand-in.md). |

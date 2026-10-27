@@ -32,6 +32,12 @@ def by_id(entry_id: str) -> dict | None:
     return next((e for e in load() if e["id"] == entry_id), None)
 
 
+def claude_only_plugins() -> frozenset[str]:
+    """Plugin ids whose catalog entry is tied to Claude Code (`target: claude`): loadout never adds them to Codex."""
+    return frozenset(n for e in load() if e["kind"] == "plugin" and e.get("target") == "claude"
+                     for n in e["match"].get("names", []))
+
+
 def binaries() -> list[dict]:
     """Binary entries; one tied to a coding agent (target) only while that agent is chosen (targets.json)."""
     from . import targets

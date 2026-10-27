@@ -95,6 +95,7 @@ def _codex_item(items: list) -> tuple | None:
             adds, readds = adds + (not again), readds + again
             groups.append((f"{'re-add' if again else 'add'} plugin {out.printable(pid)}",
                            [[exe, "plugin", "add", out.printable(pid), "--json"]]))
+    groups += [(codex.claude_only_line(out.printable(pid)), []) for pid in codex.claude_only_enabled(desired_settings())]
     if refresh and not any(isinstance(get_dict(record, src).get("name"), str) for src in routes):
         label += " (no record to compare yet)"
     if adds or readds:
