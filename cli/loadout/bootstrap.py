@@ -927,6 +927,27 @@ def _no_question(question: str) -> str:
     return ""
 
 
+def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli: bool) -> None:
+    """This machine's setup cell, its recommended flags and how this run differs; text only, never a question
+    (spec 2026-10-27). A detection error never stops bootstrap."""
+    from . import recommend
+    try:
+        cs = wsl.codex_side() if wsl.detect() is not None and chosen["codex"] else None
+        cell = recommend.detect(chosen, cs, codex_windows=bool(gate) and WINDOWS_WAY in gate)
+        skip = frozenset({"codex"}) if gate else frozenset()
+        missing = [e["id"] for e, _cmds, optional in missing_tools(skip) if not optional]
+        lines = [f"recommended: {recommend.flags(cell)}  ({recommend.anchor(cell)})"]
+        if cell.surface == "none":
+            lines.append(f"using VS Code? see {recommend.anchor(cell)}")
+        lines += recommend.differences(cell, chosen, install, missing, vscode_wsl, codex_cli)
+    except Exception:
+        return
+    _step("This machine")
+    out.status("This machine", recommend.describe(cell))
+    for line in lines:
+        out.problem(line)
+
+
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
@@ -1005,6 +1026,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     gate = codex_gate(codex_side, ask, interactive and not yes, bk, vscode=vscode_wsl) if codex_gate_needed(chosen) else None
     if vscode_wsl and wsl.detect() is not None and not codex_gate_needed(chosen):  # outside WSL the CLI already said so
         out.status("VS Code", "--vscode-wsl: Codex is not set up in WSL in this run; nothing changed", "warn")
+    _this_machine(chosen, gate, install, vscode_wsl, codex_cli)
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []
