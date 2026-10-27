@@ -43,6 +43,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `steps.py` | "Now do this": derives each agent's open steps from what a run changed, saves them in `open-steps.json`, shows them at that agent's session start and clears them when done ([state-and-sync](state-and-sync.md#at-each-session-start)). |
 | `locks.py` | The run locks `maintenance.lock` and `codex.lock`: a foreground command waits for the holder, the background job does not; a crashed holder's lock is taken over ([The background run](state-and-sync.md#the-background-run)). |
 | `check.py` | `loadout check`: reports problems and names each fix; changes nothing. |
+| `recommend.py` | This machine's cell in the [setup matrix](setup-matrix.md) (platform, agents, surface, Codex side), its recommended bootstrap flags and how a run differs; read-only. Its flag table mirrors the matrix, and a test fails when they drift. Used by check's `Setup` row and bootstrap's "This machine" block. |
 | `catalog.py` | Reads tool knowledge from `catalog.json`. |
 | `versions.py` | Installed and latest versions of catalog tools; a network failure means "unknown". |
 | `pkgmgr.py` | Updates a tool through the package manager that installed it (mise, Homebrew). |
