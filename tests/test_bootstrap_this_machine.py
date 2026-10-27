@@ -64,3 +64,27 @@ def test_block_never_breaks_bootstrap(calm, capsys, monkeypatch):
     monkeypatch.undo()
     assert "Prerequisites" in capsys.readouterr().out
     assert first in (0, 1)
+
+
+def _wsl_codex(monkeypatch, side):
+    from loadout import wsl
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "codex_side", lambda *a, **k: wsl.CodexSide(side))
+    monkeypatch.setattr(bootstrap, "codex_gate", lambda *a, **k: None)  # the gate settled this side (WSL)
+
+
+def test_gate_choosing_wsl_overrides_a_windows_side(calm, capsys, monkeypatch):
+    # review #2: only a Windows Codex, but --codex-side wsl (gate None): the WSL table applies
+    _wsl_codex(monkeypatch, "windows")
+    _run(agents="claude,codex")
+    block = _block(capsys.readouterr().out)
+    assert "Codex on Windows" not in block and "--codex-side windows" not in block
+
+
+def test_optional_codex_cli_is_not_missing(calm, capsys, monkeypatch, fake_runner):
+    # review #3: the extension runs Codex, so its CLI is optional and not "missing and no --install"
+    fake_runner.missing.add("codex")
+    monkeypatch.setattr(bootstrap, "codex_recommended", lambda chosen, gate: frozenset({"codex"}))
+    _run(agents="claude,codex")
+    block = _block(capsys.readouterr().out)
+    assert "codex" not in [w.strip(",") for line in block.splitlines() if "missing" in line for w in line.split()]

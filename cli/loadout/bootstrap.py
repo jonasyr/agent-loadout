@@ -932,10 +932,17 @@ def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli
     (spec 2026-10-27). A detection error never stops bootstrap."""
     from . import recommend
     try:
+        from dataclasses import replace
+        from . import vscode
         cs = wsl.codex_side() if wsl.detect() is not None and chosen["codex"] else None
+        if cs is not None and gate is None and cs.side == "windows":
+            cs = replace(cs, side="wsl")  # the gate set Codex up on this side (--codex-side wsl, or answer 1)
         cell = recommend.detect(chosen, cs, codex_windows=bool(gate) and WINDOWS_WAY in gate)
-        skip = frozenset({"codex"}) if gate else frozenset()
-        missing = [e["id"] for e, _cmds, optional in missing_tools(skip) if not optional]
+        skip = frozenset({"codex"}) if gate or not codex_cli else frozenset()
+        # as in Prerequisites: a CLI that an extension stands in for is optional, not missing
+        bundled = chosen["claude"] and not runner.have("claude") and vscode.bundled_claude() is not None
+        recommended = codex_recommended(chosen, gate) | (frozenset({"claude"}) if bundled else frozenset())
+        missing = [e["id"] for e, _cmds, optional in missing_tools(skip, recommended) if not optional]
         lines = [f"recommended: {recommend.flags(cell)}  ({recommend.anchor(cell)})"]
         if cell.surface == "none":
             lines.append(f"using VS Code? see {recommend.anchor(cell)}")

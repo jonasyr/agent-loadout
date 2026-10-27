@@ -33,3 +33,13 @@ def test_setup_row_never_fails(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(recommend, "detect", boom)
     first = check.run_checks()[0]
     assert first.name == "Setup" and first.ok and first.info == "unknown"
+
+
+def test_extensions_are_read_once_per_check(fake_home, fake_runner, monkeypatch):
+    # review #4: the Setup row and the VS Code rows share one lookup (each may probe Windows in WSL)
+    from loadout import vscode
+    calls = []
+    real = vscode.extensions
+    monkeypatch.setattr(vscode, "extensions", lambda *a, **k: calls.append(1) or real(*a, **k))
+    check.run_checks()
+    assert len(calls) == 1

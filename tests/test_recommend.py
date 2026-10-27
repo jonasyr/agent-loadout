@@ -133,3 +133,10 @@ def test_differences(fake_home, fake_runner, monkeypatch):
     assert len(d) == 1 and "--without-codex-cli" in d[0]
     fake_runner.missing.add("codex")
     assert recommend.differences(cell, BOTH, True, [], False, True) == []
+
+
+def test_windows_side_has_no_vscode_wsl_difference(fake_home, fake_runner):
+    # review #1: the Codex-on-Windows cell recommends the Windows side; it must not also ask for --vscode-wsl
+    cell = Cell("wsl", ("codex",), "windows-window", "windows")
+    lines = recommend.differences(cell, {"claude": False, "codex": True}, True, [], False, True)
+    assert not any("--vscode-wsl" in line for line in lines)

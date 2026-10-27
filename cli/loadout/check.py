@@ -839,12 +839,14 @@ def _vscode_path(found, windows_only: bool = False) -> list[CheckResult]:
     return rows
 
 
-def _vscode_surfaces(cs=None) -> list[CheckResult]:
-    """VS Code's agent extensions, per window type, for the agents that are on (spec Part 4)."""
+def _vscode_surfaces(cs=None, found: list | None = None) -> list[CheckResult]:
+    """VS Code's agent extensions, per window type, for the agents that are on (spec Part 4). found: run_checks'
+    lookup, shared with the Setup row."""
     from . import targets, vscode
-    on = {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
-    # Codex on in WSL: codex_side already looked for the Windows home, so it is not looked up twice
-    found = vscode.extensions(on, win_home=getattr(cs, "windows_home", None), look=cs is None)
+    if found is None:
+        on = {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
+        # Codex on in WSL: codex_side already looked for the Windows home, so it is not looked up twice
+        found = vscode.extensions(on, win_home=getattr(cs, "windows_home", None), look=cs is None)
     only = _windows_only(cs) if hasattr(cs, "side") else False  # ADR 0029: the WSL Codex home is not theirs
     if only and any(vscode.runs_in_wsl(e) for e in found):
         only = False  # the open folder switches the extension to WSL: the WSL home is the one it reads
@@ -991,12 +993,22 @@ def _codex_staging() -> list[CheckResult]:
                         "openai/codex#39421)", severity="warn")]
 
 
-def _setup(cs, codex_windows: bool) -> list[CheckResult]:
+def _extensions(cs) -> list | None:
+    """VS Code's agent extensions for the agents that are on; None when the lookup fails (each row reads again)."""
+    from . import targets, vscode
+    try:
+        on = {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
+        return vscode.extensions(on, win_home=getattr(cs, "windows_home", None), look=cs is None)
+    except Exception:
+        return None
+
+
+def _setup(cs, codex_windows: bool, found: list | None = None) -> list[CheckResult]:
     """This machine's setup cell and its setup-matrix section; informational, never a warning (spec 2026-10-27)."""
     from . import recommend, targets
     try:
         chosen = {"claude": targets.claude_enabled(), "codex": targets.codex_enabled()}
-        cell = recommend.detect(chosen, cs, codex_windows=codex_windows)
+        cell = recommend.detect(chosen, cs, codex_windows=codex_windows, found=found)
         info = f"{recommend.describe(cell)} — {recommend.anchor(cell)}"
     except Exception:  # an informational row never breaks check
         info = "unknown"
@@ -1011,7 +1023,9 @@ def run_checks(codex_windows: bool = False) -> list[CheckResult]:
     if codex_windows and cs is not None:
         from dataclasses import replace
         cs = replace(cs, side="windows", shared_home=False)
-    return [*_setup(cs, codex_windows), *_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs), *_vscode_surfaces(cs), *_legacy_state(),
+    found = _extensions(cs)  # one lookup for the Setup row and the VS Code rows (it may ask Windows, in WSL)
+    return [*_setup(cs, codex_windows, found), *_python(), *_wsl(cs), *_codex_side(cs), *_vscode(cs),
+            *_vscode_surfaces(cs, found), *_legacy_state(),
             *(_links() if on else []), *_skills_json(), *(_settings() if on else []), *(_plugins() if on else []),
             *_codex(cs), *(_without_codex(_codex_staging) if _windows_only(cs) else _codex_staging()), *(_without_codex(_plugin_copies) if _windows_only(cs) else _plugin_copies()), *(_connectors() if on else []), *(_without_codex(_own) if _windows_only(cs) else _own()),
             *_binaries(cs), *_mcp_path(), *_cbm_auto_index(), *(_tool_setups() if on else []),

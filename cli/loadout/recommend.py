@@ -122,7 +122,8 @@ def differences(cell: Cell, chosen: dict[str, bool], install: bool, missing: lis
     out = []
     if not install and missing:
         out.append(f"{', '.join(missing)} missing and no --install: the recommended setup installs missing tools")
-    if cell.platform == "wsl" and chosen.get("codex") and cell.surface == "windows-window" and not vscode_wsl:
+    if (cell.platform == "wsl" and chosen.get("codex") and cell.surface == "windows-window" and not vscode_wsl
+            and not cell.codex_side):  # the Codex-on-Windows cell recommends that side, not the WSL switch
         out.append("Codex's VS Code extension runs on Windows and no --vscode-wsl: the recommended setup adds it")
     if not chosen.get("codex") and runner.have("codex"):
         out.append("a Codex CLI is on PATH but Codex is not chosen (--agents)")
