@@ -3,5 +3,5 @@ codex-reviewer, part of agent-loadout (MIT).
 agents/codex-reviewer.md contains a review rubric adapted from openai/codex,
 codex-rs/prompts/templates/review/rubric.md,
 <https://github.com/openai/codex/blob/main/codex-rs/prompts/templates/review/rubric.md>,
-licensed under the Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>.
+licensed under the Apache License 2.0; its full text is in LICENSE-APACHE-2.0 next to this file.
 Changes: a "How to review" section (base branch, AGENTS.md rules, read-only limits) was added before the rubric.
