@@ -24,8 +24,8 @@ The agent compares the branch with the repo's default branch (`origin/HEAD`, els
 
 The answer is JSON in the rubric's format:
 
-- `findings`: each has a title, a body and a priority. `P0` blocks, `P1` should be fixed, `P2` is minor. Nothing below P2 is reported.
-- `code_location`: the file and line range a finding is about.
+- `findings`: each has a title, a body and a priority. The priorities are the rubric's: `P0` drop everything (blocking), `P1` urgent, `P2` normal. `P3` (nice to have) is not reported.
+- `code_location`: the absolute file path and line range a finding is about.
 - `overall_correctness`: whether the change is correct as it stands, with a short explanation.
 
 Fix what you agree with, then run it again.
