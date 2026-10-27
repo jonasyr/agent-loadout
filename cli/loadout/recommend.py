@@ -13,7 +13,7 @@ COLUMN = {("claude",): "Claude Code", ("codex",): "Codex", ("claude", "codex"): 
 ROW = {"cli": "CLI only", "none": "CLI only", "vscode": "VS Code extension",
        "vscode+cli": "VS Code extension + CLI (optional)", "windows-window": "A Windows window anyway (not recommended)"}
 CODEX_ROW = {"windows": "On Windows only", "both": "On both sides"}
-PLATFORMS = {"linux": "Linux", "macos": "macOS", "wsl": "WSL 2", "windows": "Windows (experimental)"}
+PLATFORMS = {"linux": "Linux", "macos": "macOS", "wsl": "WSL", "windows": "Windows (experimental)"}
 SURFACES = {"cli": "CLI", "vscode": "VS Code extension", "vscode+cli": "VS Code extension + CLI",
             "windows-window": "VS Code extension in a Windows window",
             "none": "no CLI or VS Code extension found yet"}
@@ -57,7 +57,7 @@ class Cell:
 
 def _platform() -> str:
     from . import bootstrap, wsl
-    return "wsl" if wsl.detect() == 2 else bootstrap.os_key()
+    return "wsl" if wsl.detect() is not None else bootstrap.os_key()  # WSL 1 too: its own row says to move to 2
 
 
 def detect(chosen: dict[str, bool], cs=None, codex_windows: bool = False, found: list | None = None) -> Cell:

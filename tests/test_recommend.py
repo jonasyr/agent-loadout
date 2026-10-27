@@ -140,3 +140,10 @@ def test_windows_side_has_no_vscode_wsl_difference(fake_home, fake_runner):
     cell = Cell("wsl", ("codex",), "windows-window", "windows")
     lines = recommend.differences(cell, {"claude": False, "codex": True}, True, [], False, True)
     assert not any("--vscode-wsl" in line for line in lines)
+
+
+def test_wsl_1_is_a_wsl_cell(fake_home, fake_runner, monkeypatch):
+    # Codex review on #70: WSL 1 is WSL, not Linux (its own WSL row tells the user to move to WSL 2)
+    monkeypatch.setattr(wsl, "detect", lambda: 1)
+    cell = recommend.detect({"claude": True, "codex": False}, found=[])
+    assert cell.platform == "wsl" and recommend.anchor(cell).endswith("#wsl-2")
