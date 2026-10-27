@@ -52,3 +52,18 @@ def test_codex_dry_run_names_claude_only_plugin(fake_home, fake_runner, monkeypa
     _desired(monkeypatch, {PID: True})
     res = apply._codex_dry(True, False, True)
     assert f"plugin {PID}: Claude Code only, not added to Codex" in res.lines
+
+
+def test_update_plan_names_claude_only_plugin(fake_home, fake_runner, monkeypatch):
+    from loadout import update
+    _desired(monkeypatch, {PID: True, "loadout@agent-loadout": True})
+    monkeypatch.setattr(codex, "unavailable", lambda: None)
+    monkeypatch.setattr(codex, "program", lambda: "codex")
+    monkeypatch.setattr(codex, "installed_plugins", lambda: set())
+    monkeypatch.setattr(codex, "unchanged_routes", lambda routes, installed: (set(), set()))
+    monkeypatch.setattr(codex, "marketplaces", lambda: {})
+    items = []
+    update._codex_item(items)
+    groups = items[0][-1]
+    assert (f"plugin {PID}: Claude Code only, not added to Codex", []) in groups
+    assert not any("codex-reviewer" in " ".join(c) for _, cmds in groups for c in cmds)
