@@ -15,7 +15,7 @@ To let your agent run the steps, give it [Set loadout up from inside an agent](i
 
 ## Recommended setups
 
-One recommended path for each platform, agent choice and surface is in the [Setup matrix](../reference/setup-matrix.md). For Codex only on Windows with VS Code, the walkthrough [below](#codex-only-on-windows-with-vs-code) shows the steps in order.
+One recommended path for each platform, agent choice and surface is in the [Setup matrix](../reference/setup-matrix.md). You do not have to find your cell by hand: every bootstrap run shows it under **This machine**, with the recommended flags and how your run differs from them, and `loadout check` prints it as its `Setup` line. For Codex only on Windows with VS Code, the walkthrough [below](#codex-only-on-windows-with-vs-code) shows the steps in order.
 
 ### Linux and macOS
 

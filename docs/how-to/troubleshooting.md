@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with `loadout check`. It is read-only, names what is wrong and prints the fix. It prints `Health check: N of M OK` and then only the problems, each as `[warn] NAME: message` or `[FAIL] NAME: message` with a `fix:` line under it (`loadout check --verbose` lists every check). What each row tests: [loadout check](../reference/cli.md#loadout-check).
+Start with `loadout check`. It is read-only, names what is wrong and prints the fix. It prints `Health check: N of M OK`, a `Setup` line naming your cell in the [setup matrix](../reference/setup-matrix.md) (never a problem), and then only the problems, each as `[warn] NAME: message` or `[FAIL] NAME: message` with a `fix:` line under it (`loadout check --verbose` lists every check). What each row tests: [loadout check](../reference/cli.md#loadout-check).
 
 This page has one row per problem row that `loadout check` can show, grouped by area, plus the messages that bootstrap, `adopt`, `configure` and `profile` print. In the tables, `NAME:` is the row name and the text after it is the start of the message; `…` stands for names and paths that the real message fills in. When the printed fix and this page differ, this page says why.
 
