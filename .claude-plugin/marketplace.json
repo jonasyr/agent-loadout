@@ -1,13 +1,23 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "agent-loadout",
-  "owner": { "name": "Jonas Weirauch" },
-  "metadata": { "description": "agent-loadout: a shareable, self-updating setup for Claude Code and Codex" },
+  "owner": {
+    "name": "Jonas Weirauch"
+  },
+  "metadata": {
+    "description": "agent-loadout: a shareable, self-updating setup for Claude Code and Codex"
+  },
   "plugins": [
     {
       "name": "loadout",
       "description": "Core of agent-loadout: Serena and codebase-memory MCP servers, tool hooks, and skills for onboarding, docs, changing your loadout setup, plan execution advice and tool-use reports.",
       "source": "./plugins/loadout",
+      "category": "development"
+    },
+    {
+      "name": "codex-reviewer",
+      "description": "Opt-in stand-in for Codex's GitHub code review when it is unavailable: a read-only agent with Codex's open-source review rubric (Claude Code only).",
+      "source": "./plugins/codex-reviewer",
       "category": "development"
     }
   ]

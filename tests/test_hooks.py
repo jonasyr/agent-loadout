@@ -73,14 +73,28 @@ def test_tooling_rule_says_name_tools_when_delegating():
     assert "When you delegate code work" in (paths.kit_root() / "rules/tooling.md").read_text(encoding="utf-8")
 
 
+REVIEWER = "plugins/codex-reviewer"
+
+
 def test_codex_reviewer_can_use_serena_and_graph():
-    text = (paths.kit_root() / ".claude/agents/codex-reviewer.md").read_text(encoding="utf-8")
+    text = (paths.kit_root() / REVIEWER / "agents/codex-reviewer.md").read_text(encoding="utf-8")
     tools = [t.strip() for t in re.search(r"^tools: (.*)$", text, re.M).group(1).split(",")]
-    serena, cbm = "mcp__plugin_loadout_serena__", "mcp__plugin_loadout_codebase-memory-mcp__"
-    for t in ("Read", "Grep", "Glob", "Bash", serena + "find_symbol", serena + "find_referencing_symbols",
-              serena + "get_symbols_overview", cbm + "search_graph", cbm + "trace_path", cbm + "get_code_snippet", cbm + "query_graph"):
+    for t in ("Read", "Grep", "Glob", "Bash"):
         assert t in tools, t
+    for serena, cbm in (("mcp__plugin_loadout_serena__", "mcp__plugin_loadout_codebase-memory-mcp__"),
+                        ("mcp__serena__", "mcp__codebase-memory-mcp__")):  # loadout's servers, and a user's own
+        for t in (serena + "find_symbol", serena + "find_referencing_symbols", serena + "get_symbols_overview",
+                  cbm + "search_graph", cbm + "trace_path", cbm + "get_code_snippet", cbm + "query_graph"):
+            assert t in tools, t
     assert not {"Edit", "Write", "MultiEdit"} & set(tools) and not any("replace_" in t or "insert_" in t for t in tools)
+
+
+def test_codex_reviewer_prompt_is_repo_neutral():
+    text = (paths.kit_root() / REVIEWER / "agents/codex-reviewer.md").read_text(encoding="utf-8")
+    for word in ("origin/HEAD", "master", "AGENTS.md"):
+        assert word in text, word
+    assert "apache license 2.0" in text.lower()
+    assert "# This repository" not in text and "uv run --python 3.12" not in text
 
 
 def test_marketplace_lists_kit_core_without_version():
@@ -89,6 +103,9 @@ def test_marketplace_lists_kit_core_without_version():
     assert market["plugins"][0]["source"] == "./plugins/loadout"
     plugin = json.loads((PLUGIN / ".claude-plugin/plugin.json").read_text())
     assert "version" not in plugin and "version" not in market["plugins"][0]
+    second = market["plugins"][1]
+    assert second["name"] == "codex-reviewer" and second["source"] == "./" + REVIEWER and "version" not in second
+    assert "version" not in json.loads((paths.kit_root() / REVIEWER / ".claude-plugin/plugin.json").read_text())
 
 
 GUARD = '"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" --soft --python "${CLAUDE_PLUGIN_ROOT}/hooks/mcp_guard.py" serena '

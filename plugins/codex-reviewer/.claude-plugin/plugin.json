@@ -1,0 +1,8 @@
+{
+  "name": "codex-reviewer",
+  "description": "Stand-in for Codex's GitHub code review when it is unavailable: one read-only agent that reviews the branch diff with Codex's open-source rubric and returns its JSON findings.",
+  "author": { "name": "Jonas Weirauch" },
+  "homepage": "https://github.com/jonasyr/agent-loadout",
+  "repository": "https://github.com/jonasyr/agent-loadout",
+  "license": "MIT"
+}

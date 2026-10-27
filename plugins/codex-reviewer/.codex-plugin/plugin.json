@@ -1,0 +1,8 @@
+{
+  "name": "codex-reviewer",
+  "description": "Claude Code only: loadout never adds this plugin to Codex (Codex has /review). This manifest only keeps the shared marketplace readable for Codex.",
+  "author": { "name": "Jonas Weirauch" },
+  "homepage": "https://github.com/jonasyr/agent-loadout",
+  "repository": "https://github.com/jonasyr/agent-loadout",
+  "license": "MIT"
+}
