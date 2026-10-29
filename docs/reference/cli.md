@@ -207,19 +207,19 @@ loadout init [--agents claude|codex|claude,codex] [--yes] [--no-install] [--dry-
 | `--agents` | Which agents the repo is for. Written to [`.loadout.json`](#loadoutjson); in a repo that has the file, it changes the list. Any other value exits 1. The choice decides the files everyone who clones the repo gets: for a shared repo, name every agent your team uses; for a repo only you use, the default (the agents that are on for you) fits. |
 | `--yes` | No questions: apply the suggested profiles and the plan. A folder that is not a git repo yet gets `git init` as a step of the plan. |
 | `--no-install` | Do not install the profiles' plugins or run their commands. |
-| `--verbose` | Print every detail of the steps that run after the plan. `init` and `profile` always show the full plan first, then one status line (`Init` or `Profile NAME`), the problems and notes, the `undo:` line and the next step. |
+| `--verbose` | Show every key and reason in the plan and every detail of the steps that run after it. Without it the plan is short ([The plan and the result](#the-plan-and-the-result)). |
 | `--dry-run` | Print the plan and change nothing. |
 
 In a terminal, `init` asks which agents the repo is for (Enter: the agents that are on for you), unless `--agents` is given or the repo's `.loadout.json` already names its agents (with `--yes` or `--dry-run` it does not ask). Then it asks which profiles (not with `--yes` or `--dry-run`, which take the suggested ones). Without a terminal it takes the repo's agents (`--agents`, or what `.loadout.json` names; else yours), applies no profile unless you name one, pass `--yes` or `--dry-run` (which plan the suggested ones), shows the plan and writes nothing unless `--yes` is given. `git init` is a step of the plan: declining the plan or `--dry-run` skips it, and `loadout restore` cannot undo it (the plan says so). If `CLAUDE.md` exists without `AGENTS.md`, neither file is created and a note says that `/loadout:onboard` will offer the migration. It adds `.serena/cache/` and, when the repo is for Claude Code, `.claude/settings.local.json` to `.gitignore`, under a `# loadout` line.
 
-Exit codes: 0 on success, and also when the plan was declined, when there was no terminal and no `--yes`, for `--dry-run`, and when `.loadout.json` says `"manage": false`. 1 for an unknown profile name (every name is checked before anything changes), an invalid `.loadout.json` or `--agents` value, or when a profile was applied with problems (the run goes on and ends with `Init: applied with problems (below)` or `Profile NAME: applied with problems (below)`). Problems are: a repo file skipped because it is, or lies behind, a symlink out of the repo; a JSON file that is not in a layout loadout can keep (its entries are printed, the file is left as it is); skills not copied; a plugin install or command that failed, a plugin id that is not `name@marketplace`, or a command that is not a list of words; a repo skill that was not linked for an agent the repo is for, or a different item left at the link's place (`not linked`, `left as is`); a committed skill link that this checkout wrote as a plain file (Git without symlinks) is not a problem: it is reported once with the fix; with Codex, a Codex step that failed or was skipped. A `not written` or `not installed` note for an agent that is off for you or not in the repo's list is not a problem. `init` also returns 1 when it skipped `git init` because `.git` points out of the repo.
+Exit codes: 0 on success, and also when the plan was declined, when there was no terminal and no `--yes`, for `--dry-run`, and when `.loadout.json` says `"manage": false`. 1 for an unknown profile name (every name is checked before anything changes), an invalid `.loadout.json` or `--agents` value, or when a profile was applied with problems (the run goes on and ends with `Init: applied with problems (below)` or `Profile NAME: applied with problems (below)`). Problems are: a repo file skipped because it is, or lies behind, a symlink out of the repo; a JSON file that is not in a layout loadout can keep (its entries are printed, the file is left as it is); skills not copied; a plugin install or command that failed, a plugin id that is not `name@marketplace`, or a command that is not a list of words; a repo skill that was not linked for an agent the repo is for, or a different item left at the link's place (`not linked`, `left as is`); a committed skill link that this checkout wrote as a plain file (Git without symlinks) is not a problem: it is reported once with the fix; with Codex, a Codex step that failed or was skipped. A skip Codex cannot express is not a problem either ([below](#a-skip-codex-cannot-express)). A `not written` or `not installed` note for an agent that is off for you or not in the repo's list is not a problem. `init` also returns 1 when it skipped `git init` because `.git` points out of the repo.
 
 ## loadout profile
 
 Add one profile to the current project. It does what `init` does for a single profile, without the scaffolding.
 
 ```
-loadout profile [--no-install] [--dry-run] [--yes] [--take-profile] [--verbose] NAME
+loadout profile [--no-install] [--dry-run] [--yes] [--take-profile] [--refresh] [--verbose] NAME
 ```
 
 | Flag | Meaning |
@@ -229,7 +229,8 @@ loadout profile [--no-install] [--dry-run] [--yes] [--take-profile] [--verbose] 
 | `--dry-run` | Print the plan and change nothing. |
 | `--yes` | Apply the plan without asking. Needed without a terminal; without it the plan is shown and nothing is written. |
 | `--take-profile` | Where someone changed an entry the profile set, use the profile's value. Without it, a terminal asks once (`Use the profile's values for these? [y/N]`); with `--yes` or without a terminal the repo's values stay. |
-| `--verbose` | Print every file, command and note instead of the one status line. |
+| `--verbose` | Show every key and reason in the plan, and every file, command and note instead of the one status line. |
+| `--refresh` | Plan the whole profile again, even when it is already applied here ([Applied again](#applied-again)). |
 
 A re-run merges three-way against what the profile wrote last time ([Applying a profile](profile-format.md#what-applying-a-profile-does), [ADR 0031](../adr/0031-repo-profile-entries-merge-three-way.md)): updates apply by themselves, a teammate's changes stay unless you say yes, and a value you declined is not asked about again.
 
@@ -237,15 +238,41 @@ What `init` and `profile` write in the repo, per agent. The repo's agents come f
 
 | | Claude Code (only when the repo is for Claude Code) | Codex (only when the repo is for Codex) |
 |---|---|---|
-| Profile MCP servers | Merged into `.mcp.json`. | Added as sections to `.codex/config.toml`; `${VAR}` arguments are skipped with the reason. |
+| Profile MCP servers | Merged into `.mcp.json`. | Added as sections to `.codex/config.toml`; a server Codex cannot express is skipped with the reason ([a skip](#a-skip-codex-cannot-express)). |
 | Profile settings | Merged into `.claude/settings.json`. | Not used, except which servers are switched off. |
 | Profile plugins (`install`) | `claude plugin install ID --scope project`, only when Claude Code is also on for you. | `codex plugin add`, switched on only in this repo (`enabled = true` in `.codex/config.toml`), only when Codex is also on for you. |
 | Profile skills | Copied into `.claude/skills/`; every skill in `.agents/skills` is linked into `.claude/skills`. | Copied into `.agents/skills/` when the repo is for Codex only; every skill in `.claude/skills` is linked into `.agents/skills`. |
 | `commands` | Run once, after all file changes; they are not tied to an agent. | |
 | Scaffold (`init` only) | `CLAUDE.md` and the `.claude/settings.local.json` line in `.gitignore`. | `AGENTS.md`, `docs/` and the other `.gitignore` entries are for both agents. |
-| Next step printed (`init`) | Start Claude Code here and run `/loadout:onboard`. | Start Codex here and ask it to use the `loadout:onboard` skill (printed when Claude Code is off for you or not in the repo's list). |
+| Last to-do of `init` | Start Claude Code here and run `/loadout:onboard`. | Start Codex here and ask it to use the `loadout:onboard` skill (when Claude Code is off for you or not in the repo's list). |
 
 When the repo is not for Claude Code, the profile's `.mcp.json` and `.claude/settings.json` are not written, its plugins are not installed for Claude Code, and the plan names each; files already in the repo stay. When the repo is for an agent that is off for you, you get its files but not its installs, and the plan says which ([ADR 0030](../adr/0030-repo-files-follow-the-repos-agents.md)). Codex reads `.codex/config.toml` only in a trusted project; loadout prints the step and never trusts one for you. Details per field: [In Codex](profile-format.md#in-codex). The format of a profile is in [profile-format](profile-format.md). Exit codes: as for [init](#loadout-init).
+
+### The plan and the result
+
+The plan is short by default: one line per new file with a few words on what it is, and `init`'s scaffold files together on one line. `.loadout.json` is one line (`what loadout wrote here (commit it)`). A changed existing file keeps its line per key, so you see what happens to what is yours. `skip` lines say what was left out and why. A `run` line names the profile and, when `loadout restore` cannot undo it, says `restore can't undo it`. `--verbose` shows every key and reason.
+
+The result is one status line (`Init: applied` or `Profile NAME: applied`, with problems `applied with problems (below)`), the problems, Codex's own backup line when Codex was set up, a numbered `Still to do:` list and the `undo: loadout restore <dir>` line. The list holds only what you must do (trust the repo in Codex, a plugin that could not be installed, a skill link to fix, for `init` last `Start Claude Code here and run /loadout:onboard` or the Codex form); each item appears once. Other notes show with `--verbose`.
+
+#### A skip Codex cannot express
+
+A repo for Codex gets a profile's MCP server only when Codex's config can express it. These are planned skips: the plan shows a `skip` line, the result is `✓` and the exit code 0:
+
+- a server with `${…}` in `command`, `args` or `url`;
+- text mixed with a variable (`Bearer ${TOKEN}` outside a header Codex forwards by name);
+- an env variable under another name than the variable it reads;
+- keys Codex's mapping lacks;
+- a Claude-only plugin.
+
+A plaintext secret in a server, or a malformed profile or server, is not a skip: it stays a problem and the exit code is 1 ([In Codex](profile-format.md#in-codex)).
+
+#### Skills a command adds
+
+Skills that a profile's `commands` installed are linked for the repo's other agent without a second question: the question you answered at the plan covers them. The result lists the links, and a link that fails is a problem.
+
+#### Applied again
+
+`loadout profile NAME` on a repo where the profile is already applied prints `profile NAME: already applied here (nothing to change)`, exits 0 and asks nothing (also with `--dry-run`). That needs all of these: `.loadout.json` records the profile, the plan has no file changes, and this machine has the profile's parts (Claude Code plugins installed for this project, Codex plugins in your Codex, a path named in the profile's [`done_when`](profile-format.md)). The notes that a repo's own value stays are still printed under that line. When this machine lacks something, the plan covers only what it lacks (so a teammate's clone gets the plugins, not the files again). `--refresh` plans the whole profile again.
 
 ## .loadout.json
 
@@ -269,10 +296,10 @@ Changing the list with `init --agents`: an added agent gets its missing files an
 
 `init`, `profile` and `configure new skill --to repo` write in a repo only through a plan.
 
-1. **Plan.** One line per change, with its reason: `create` (a new file, with its number of lines and, for JSON, the entries), `change` (the diff: added and changed JSON keys, or unified diff lines for text), `copy` (a skill folder, with its number of files), `link` and `run` (a command). File changes come first; commands run after all of them. Secret values are masked.
+1. **Plan.** One line per change, short unless `--verbose` ([the plan and the result](#the-plan-and-the-result)): `create` (a new file), `change` (the diff: added and changed JSON keys, or unified diff lines for text), `copy` (a skill folder, with its number of files), `link` and `run` (a command). File changes come first; commands run after all of them. Secret values are masked.
 2. **Question.** In a terminal: `Apply these changes? [y/N]`. Without a terminal: `no terminal: nothing written (run it again with --yes to apply this plan)`, then `nothing changed`. Declined: `nothing changed`. `--dry-run` stops after the plan.
 3. **Apply.** Before each change loadout saves a copy of the file it changes and records every file and folder it creates, in a backup that names the repo. The run ends with `undo: loadout restore <dir>` (`configure new skill`: `backup: <dir>  (undo: loadout restore <dir>)`). A file that changed after the plan was shown (an edit, a `git pull`) is left as is: `changed since the plan, left as is`; run the command again for a new plan. If `.loadout.json` changed in that time, the plan no longer fits the repo's agents and nothing is written.
-4. **After the commands.** Skills that a profile's commands installed get a short second plan, `The commands of profile NAME added skills; link them for the repo's other agent:`, with the same question (`--yes` covers it). With Codex on for you, the repo's `.codex/config.toml` is written after the Codex plugin installs and names only the plugins that installed; a failed one gets a note.
+4. **After the commands.** Skills that a profile's commands installed are linked for the repo's other agent without a second question. With Codex on for you, the repo's `.codex/config.toml` is written after the Codex plugin installs and names only the plugins that installed; a failed one gets a note.
 5. **Layout kept.** A repo JSON file is rewritten only in the layout it has (indentation or one line, line endings, key order); new keys go at the end. A file that cannot be kept that way is left, and its entries are printed for you to add. Nothing is written through a link that leads outside the repo.
 
 `loadout restore` puts changed files back byte for byte and takes away the files loadout created. A folder loadout created is removed only when it is empty; otherwise it stays and restore prints a `kept` line. It cannot undo a `run` step: a profile's `commands`, and the `git init` of `init`; the plan says so.

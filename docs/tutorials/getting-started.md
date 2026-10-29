@@ -121,8 +121,8 @@ loadout init
 
 1. **Agents.** `Which agents is this repo for? 1 Claude Code, 2 Codex, 3 both`. Enter takes the agents you use. The answer decides the repo's files for everyone who clones it, so pick the agents your team uses. A repo whose `.loadout.json` already names its agents is not asked.
 2. **Profiles.** It prints the profiles (domain tools) it suggests for what it finds in the repo, then asks `profiles to apply (comma separated, empty = suggested, '-' = none):`. Enter takes the suggested ones.
-3. **The plan.** It lists every file it would write: `.loadout.json` (the repo's agents, commit it), `AGENTS.md`, a `docs/` folder, `.gitignore` entries (with Claude Code also `CLAUDE.md`), and the shared files the profiles write for the repo's agents. It never overwrites an existing scaffold file. Which files each agent gets: [`loadout profile`](../reference/cli.md#loadout-profile).
-4. **Apply.** `Apply these changes? [y/N]`: answer `y`. The run ends with `undo: loadout restore <dir>`; a planned `git init` is the one step restore does not undo.
+3. **The plan.** It lists what it would write, one line each: `.loadout.json` (the repo's agents, commit it), the scaffold files together on one line (`AGENTS.md`, a `docs/` folder, `.gitignore` entries, with Claude Code also `CLAUDE.md`), and the shared files the profiles write for the repo's agents. It never overwrites an existing scaffold file. Which files each agent gets: [`loadout profile`](../reference/cli.md#loadout-profile).
+4. **Apply.** `Apply these changes? [y/N]`: answer `y`. It prints a status line, a numbered `Still to do:` list and `undo: loadout restore <dir>`; a planned `git init` is the one step restore does not undo.
 5. **Codex only: trust the repo.** Start `codex` in the repo once and accept the trust question, or Codex ignores the repo's `.codex/config.toml` ([Project trust](../how-to/codex.md#project-trust)).
 
 Then open your agent in the repo and run the onboard skill:

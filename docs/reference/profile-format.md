@@ -56,7 +56,7 @@ The repo's `.claude/settings.json` and `.mcp.json` are normal project files that
 
 `--dry-run` (on `init` and on `profile`) prints the plan, including the settings and `.mcp.json` changes, and changes nothing.
 
-When a step has a problem, the rest still runs, and the command ends with `Profile NAME: applied with problems (below)` (`Init: …` for init) and exit code 1 (the causes are listed under [loadout init](cli.md#loadout-init)).
+When a step has a problem, the rest still runs, and the command ends with `Profile NAME: applied with problems (below)` (`Init: …` for init) and exit code 1 (the causes are listed under [loadout init](cli.md#loadout-init)). A skip Codex cannot express is not a problem ([cli](cli.md#a-skip-codex-cannot-express)).
 
 ### Skills
 
