@@ -7,7 +7,7 @@ Use this page if you work in VS Code with the Claude Code extension, VS Code's C
 The flags for each platform are in the [Setup matrix](../reference/setup-matrix.md); in short:
 
 - **VS Code's Codex extension alone is a full setup.** The Codex CLI next to it is optional, for `codex` in a terminal ([Setup matrix](../reference/setup-matrix.md); [Codex in VS Code without the CLI](#codex-in-vs-code-without-the-cli)).
-- **Let `--install` install the Claude Code CLI too** ([Setup matrix](../reference/setup-matrix.md); [Claude Code in VS Code without the CLI](#claude-code-in-vs-code-without-the-cli)).
+- **Install the Claude Code CLI too:** in a terminal, answer y to the question; without a terminal, `--install` installs it unless you pass `--without-claude-cli` ([Setup matrix](../reference/setup-matrix.md); [Claude Code in VS Code without the CLI](#claude-code-in-vs-code-without-the-cli)).
 - **In WSL, open repos in a Remote-WSL window** (`code .` from WSL), for both extensions; `--vscode-wsl` is the fix for a Windows window you open anyway ([Setup matrix](../reference/setup-matrix.md); [Windows and WSL](#windows-and-wsl)).
 
 ## What each extension sees
@@ -51,7 +51,7 @@ When this applies:
 
 The Claude Code extension runs the same plugin hooks as the CLI. Which hooks those are: [Hooks](../reference/hooks.md).
 
-With no `claude` on your PATH, loadout runs the Claude Code extension's own binary for its `claude plugin …` and `claude mcp …` commands: the newest copy in a local or Remote-WSL install (from WSL, never a Windows window's, which reads the Windows home). Bootstrap's `Claude Code CLI` line names the binary, and `loadout check` shows an `ok` row `Claude Code CLI` (`not installed (optional): …`) instead of failing. The CLI is optional, decided like the Codex CLI: with `--install`, a terminal is asked `Install the Claude Code CLI too (optional, for claude in a terminal)? [y/N]` (default No); without a terminal, or with `--yes`, it is installed; `--without-claude-cli` skips the question and the install. Install it only if you want `claude` in a terminal or the extension's terminal mode (`claudeCode.useTerminal`). `Next` names the extension (reload the window if it is open) also when the CLI is there. Without a bundled binary, the CLI is required as before.
+With no `claude` on your PATH, loadout runs the Claude Code extension's own binary for its `claude plugin …` and `claude mcp …` commands: the newest copy in a local or Remote-WSL install (from WSL, never a Windows window's, which reads the Windows home). Bootstrap's `Claude Code CLI` line names the binary, and `loadout check` shows an `ok` row `Claude Code CLI` (`not installed (optional): …`) instead of failing. The CLI is optional, decided like the Codex CLI: with `--install`, a terminal is asked `Install the Claude Code CLI too (optional, for claude in a terminal)? [y/N]` (default No); without a terminal, or with `--yes`, it is installed; `--without-claude-cli` skips the question and the install. Install it only if you want `claude` in a terminal or the extension's terminal mode (`claudeCode.useTerminal`). `Next` names the extension (reload the window if it is open); when the CLI is there too, a second line, `Or open VS Code's Claude Code or Codex extension (reload the window if it is open).`, names the extensions that are present. Without a bundled binary, the CLI is required as before.
 
 ## Windows and WSL
 

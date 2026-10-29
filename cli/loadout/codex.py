@@ -2312,9 +2312,11 @@ def checks() -> list:
         own = get_dict(get_dict(get_dict(desired_settings(), "extraKnownMarketplaces"), "agent-loadout"),
                        "source").get("repo")
         results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
-                                   MISSING_FIX if own in lacks[0] else "loadout bootstrap"))
+                                   MISSING_FIX if own in lacks[0] else "loadout bootstrap",
+                                   plugins_missing=installed is not None and not ok))  # a failed listing is no choice
     if lacks[0] or lacks[1]:
-        results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
+        results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn",
+                                   plugins_missing=True))
     config = _tilde(paths.codex_home() / "config.toml")
     results += [CheckResult(f"Codex MCP {name}", False,
                             "defined in config.toml and by the loadout plugin; Codex starts one of them",
@@ -2533,8 +2535,9 @@ def logins_needed() -> list[str]:
             and isinstance(s.get("name"), str) and s["name"] not in owned] if isinstance(data, list) else []
 
 
-def open_steps() -> list[str]:
-    """What the user still has to do in Codex, for "Still to do" lists; empty when nothing is open."""
+def open_steps(plugins: bool = True) -> list[str]:
+    """What the user still has to do in Codex, for "Still to do" lists; empty when nothing is open. plugins=False
+    (bootstrap --no-plugins): no step for the plugins that run chose not to install."""
     if not enabled():
         return []
     if not has_codex():
@@ -2545,7 +2548,7 @@ def open_steps() -> list[str]:
     todo = HOOKS_TODO if cli else HOOKS_EXTENSION
     changed = HOOKS_CHANGED if cli else HOOKS_EXTENSION_CHANGED
     steps = [changed] if status == "changed" else [] if status == "trusted" else [todo]
-    lacks = missing_routes()
+    lacks = missing_routes() if plugins else ([], [])
     if lacks[0] or lacks[1]:
         steps.append(f"{_missing_text(lacks)}: run {MISSING_FIX}")
     if not cli:

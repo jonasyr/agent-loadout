@@ -93,7 +93,8 @@ def test_fresh_home_bootstrap_end_to_end(tmp_path):
     settings = json.loads((home / ".claude/settings.json").read_text())
     assert settings["enabledPlugins"]["loadout@agent-loadout"] is True
     assert (home / ".config/loadout/secrets.env").exists()
-    assert "[warn] plugins installed" in out
+    # --no-plugins: the missing plugins are this run's choice, said once (spec 2026-10-29 tour leftovers G1)
+    assert "[warn] plugins installed" not in out and "plugins skipped (--no-plugins)" in out
     calls = log.read_text() if log.exists() else ""
     for mutating in ("plugin install", "plugin uninstall", "mcp add", "mcp remove", "self update", "upgrade"):
         assert mutating not in calls, calls

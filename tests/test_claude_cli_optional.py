@@ -88,13 +88,39 @@ def test_without_claude_cli_no_effect_says_so(fake_home, fake_runner, monkeypatc
     assert "--without-claude-cli: not used" in capsys.readouterr().out
 
 
+def _after_next(text, start="Next:"):
+    lines = text.splitlines()
+    i = next(i for i, line in enumerate(lines) if line.startswith(start))
+    return lines[i], lines[i + 1]
+
+
+EXT_LINE = "Or open VS Code's Claude Code extension (reload the window if it is open)."
+
+
 def test_cli_present_no_question_next_names_extension(fake_home, fake_runner, monkeypatch, capsys):
     monkeypatch.setattr(out, "VERBOSE", False)
     _ext(fake_home)
     _run(ask=lambda q: pytest.fail(f"asked: {q}"))  # claude on PATH: no Claude Code CLI question
-    text = capsys.readouterr().out
-    next_line = next(line for line in text.splitlines() if line.startswith("Next:"))
-    assert "`claude`" in next_line and "Claude Code extension" in next_line
+    first, second = _after_next(capsys.readouterr().out)
+    assert "`claude`" in first and "extension" not in first
+    assert second == EXT_LINE
+
+
+def test_next_second_line_names_extensions_next_to_their_cli(fake_home, fake_runner, monkeypatch, capsys):
+    monkeypatch.setattr(out, "VERBOSE", False)
+    _ext(fake_home)
+    _run(install=False)
+    first, second = _after_next(capsys.readouterr().out)
+    assert first.startswith("Next: run `claude` ") and second == EXT_LINE
+
+
+def test_next_second_line_verbose_variants(fake_home, fake_runner, monkeypatch, capsys):
+    monkeypatch.setattr(out, "VERBOSE", True)
+    _ext(fake_home)
+    _run(install=False)
+    first, second = _after_next(capsys.readouterr().out, start=("Then start ", "Restart "))
+    assert first in ("Then start Claude Code.", "Restart Claude Code to load plugins and rules.")
+    assert second == EXT_LINE
 
 
 def test_check_row_is_ok_and_optional(bundled):
@@ -110,8 +136,19 @@ def test_the_flag_parses(fake_home):
     assert build_parser().parse_args(["bootstrap", "--without-claude-cli"]).without_claude_cli is True
 
 
-def test_differences_names_a_flag_with_a_cli_on_path(fake_runner):
-    from loadout import recommend
-    cell = recommend.Cell("linux", ("claude",), "vscode+cli", None)
-    assert "--without-claude-cli given while a Claude Code CLI is on PATH" in recommend.differences(
-        cell, {"claude": True, "codex": False}, True, [], False, True, claude_cli=False)
+def test_ignored_cli_flag_is_said_once(bundled, fake_runner, monkeypatch, capsys):
+    monkeypatch.setattr(out, "VERBOSE", False)
+    fake_runner.missing.discard("claude")  # a claude on PATH next to the extension
+    _run(claude_cli=False, install=False)
+    text = capsys.readouterr().out
+    assert text.count("--without-claude-cli: not used") == 1
+    assert "given while a Claude Code CLI is on PATH" not in text
+
+
+def test_ignored_codex_cli_flag_is_said_once(bundled, fake_runner, monkeypatch, capsys):
+    monkeypatch.setattr(out, "VERBOSE", False)
+    fake_runner.missing.discard("claude")
+    _run(codex_cli=False, install=False, agents="claude,codex")
+    text = capsys.readouterr().out
+    assert text.count("--without-codex-cli: not used") == 1
+    assert "given while a Codex CLI is on PATH" not in text

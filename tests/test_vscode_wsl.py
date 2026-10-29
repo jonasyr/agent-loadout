@@ -85,7 +85,7 @@ def test_the_flag_outside_wsl_gets_no_second_warning_from_bootstrap(fake_home, f
     monkeypatch.setattr(wsl, "detect", lambda *a, **k: None)
     monkeypatch.setattr(codex, "unavailable", lambda *a, **k: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, vscode_wsl=True,
                         agents="claude,codex")
     assert not any("not set up in WSL in this run" in t for t in seen), seen

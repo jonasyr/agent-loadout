@@ -99,9 +99,10 @@ def _claude_logged_in() -> bool:
 
 
 PERSONAL_REPO_HOWTO = "docs/how-to/personal-repo.md"
+PLUGINS_SKIPPED = "plugins skipped (--no-plugins): run loadout bootstrap without it to add them"
 
 
-def still_to_do(key: str, codex_here: bool = True) -> list[str]:
+def still_to_do(key: str, codex_here: bool = True, plugins: bool = True) -> list[str]:
     out = []
     if not runner.have("git"):
         out.append(f"install git: {MANUAL_STEPS['git'][key]}")
@@ -111,7 +112,7 @@ def still_to_do(key: str, codex_here: bool = True) -> list[str]:
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    out += codex.open_steps() if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
+    out += codex.open_steps(plugins=plugins) if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
@@ -955,8 +956,7 @@ def _no_question(question: str) -> str:
     return ""
 
 
-def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli: bool,
-                  claude_cli: bool = True) -> None:
+def _this_machine(chosen: dict, gate, vscode_wsl: bool) -> None:
     """This machine's setup cell, its recommended flags and how this run differs; text only, never a question
     (spec 2026-10-27). A detection error never stops bootstrap."""
     from . import recommend
@@ -969,8 +969,8 @@ def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli
         lines = [f"recommended: {recommend.flags(cell)}  ({recommend.anchor(cell)})"]
         if cell.surface == "none":
             lines.append(f"using VS Code? see {recommend.anchor(cell)}")
-        # missing tools: Prerequisites in the same run names them, so not again here
-        lines += recommend.differences(cell, chosen, install, [], vscode_wsl, codex_cli, claude_cli)
+        # missing tools and ignored CLI flags: Prerequisites in the same run says them, so not again here
+        lines += recommend.differences(cell, chosen, vscode_wsl)
     except Exception:
         return
     _step("This machine")
@@ -1057,7 +1057,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     gate = codex_gate(codex_side, ask, interactive and not yes, bk, vscode=vscode_wsl) if codex_gate_needed(chosen) else None
     if vscode_wsl and wsl.detect() is not None and not codex_gate_needed(chosen):  # outside WSL the CLI already said so
         out.status("VS Code", "--vscode-wsl: Codex is not set up in WSL in this run; nothing changed", "warn")
-    _this_machine(chosen, gate, install, vscode_wsl, codex_cli, claude_cli)
+    _this_machine(chosen, gate, vscode_wsl)
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []
@@ -1134,14 +1134,29 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                 out.problem(codex.SERENA_KEPT)
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
-        _step("Adopt existing setup")
-        if not yes and not interactive:
-            print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
+        if yes:  # nothing to report: no heading and no blank lines
+            import contextlib
+            import io
+            buf = io.StringIO()  # held back to see whether adopt says anything (its lines lose colour meanwhile)
+            try:
+                with contextlib.redirect_stdout(buf):
+                    adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask,
+                              interactive=interactive, embedded=True)
+            finally:  # also when adopt raised partway: what it applied or found stays on screen
+                if buf.getvalue().strip():
+                    _step("Adopt existing setup")
+                    print()
+                    print(buf.getvalue(), end="")
+                    print()
         else:
-            print()
-            adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
-                      embedded=True)
-            print()
+            _step("Adopt existing setup")
+            if not interactive:
+                print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
+            else:
+                print()
+                adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
+                          embedded=True)
+                print()
     _step("Secrets")
     _report("Secrets", f"{_tilde(paths.secrets_file())} ready", setup_secrets(bk))
     _step("PATH")
@@ -1153,6 +1168,10 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         out.detail(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
     results = check.run_checks(codex_windows=True) if gate and WINDOWS_WAY in gate else check.run_checks()
+    # --no-plugins: rows that only say the skipped plugins are missing are this run's choice, not problems
+    hidden = [] if plugins else [r for r in results if not r.ok and r.plugins_missing]
+    every = results  # settle reads every row: a row it does not see counts as passing
+    results = [r for r in results if not any(r is h for h in hidden)]
     if out.VERBOSE:
         text, code = check.format_results(results)
         print(text)
@@ -1163,12 +1182,14 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                    "fail" if code else "warn" if bad else "ok")
         if bad:
             print(text)
+    if hidden:
+        out.problem(PLUGINS_SKIPPED)
     here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
-    todo = still_to_do(os_key(), codex_here=here["codex"])
+    todo = still_to_do(os_key(), codex_here=here["codex"], plugins=plugins)
     from . import steps
     try:  # the steps visible without a run's facts (hooks, plugin copy), as `loadout update` leaves them: shown at that agent's next session until done
         steps.save(steps.derive(set(), [], here["claude"], here["codex"]))
-        steps.settle(here["claude"], chosen["codex"], results)  # Codex on but set up on the Windows side keeps its steps
+        steps.settle(here["claude"], chosen["codex"], every)  # Codex on but set up on the Windows side keeps its steps
     except Exception:
         pass
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
@@ -1209,8 +1230,6 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                             and vscode.bundled_claude() is not None),
                            ("Codex", here["codex"] and not extension and codex.extension_state()[0] is not None))
            if on]
-    if too:
-        also += f", or open VS Code's {' or '.join(too)} extension (reload the window if it is open)"
     if not run:  # Codex only, and its step stopped: on Windows, or a CODEX_HOME shared with Windows
         print(f"\nNext: {WINDOWS_WAY}." if WINDOWS_WAY in gate else "\nNext: settle Codex's side (see the Codex step above).")
     elif out.VERBOSE:
@@ -1218,6 +1237,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     else:
         print(f"\nNext: run {run} in a new terminal{also}." if path_changed
               else f"\nNext: run {run} (restart it if it is open){also}. The kit loads automatically.")
+    if too and run:  # an extension next to its CLI gets its own line
+        print(f"Or open VS Code's {' or '.join(too)} extension (reload the window if it is open).")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1

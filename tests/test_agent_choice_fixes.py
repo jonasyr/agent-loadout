@@ -25,7 +25,7 @@ def test_existing_layer_without_a_choice_gets_no_new_file(fake_home, fake_runner
 def test_an_answered_question_is_stored(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     _run(yes=False, interactive=True, ask=lambda q: "3" if "coding agents" in q else "")
     assert json.loads(targets.path().read_text()) == {"claude": True, "codex": True}
 
@@ -77,7 +77,7 @@ def test_cloned_choice_is_announced(fake_home, fake_runner, monkeypatch, capsys)
     monkeypatch.setattr(bootstrap, "ensure_personal", cloned_layer)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     _run(yes=False, interactive=True, ask=lambda q: "1" if "coding agents" in q else "")
     assert "using your personal layer's agents: Codex" in capsys.readouterr().out
 
@@ -86,7 +86,7 @@ def test_verbose_ending_names_the_chosen_agent(fake_home, fake_runner, monkeypat
     monkeypatch.setattr(out, "VERBOSE", True)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     _run(agents="codex")
     ending = "\n".join(capsys.readouterr().out.rstrip().splitlines()[-2:])
     assert "Claude Code" not in ending and "Codex" in ending, ending
