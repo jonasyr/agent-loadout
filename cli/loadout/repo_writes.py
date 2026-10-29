@@ -26,6 +26,7 @@ class Change:
     touches: tuple = ()
     absent: tuple = ()        # paths that must still be absent when a `run` step starts (git init and .git)
     pre: object = None        # what the path held when the plan was made (see _snapshot)
+    group: str | None = None  # creates in one group share one line in the calm plan (e.g. init's scaffold)
 
 
 def _snapshot(path: Path):
@@ -93,6 +94,30 @@ def _text_diff(old: str, new: str) -> list[str]:
     return lines
 
 
+RECORD_FILE = ".loadout.json"
+RECORD_LABEL = "what loadout wrote here (commit it)"
+
+
+def _who(why: str) -> str:
+    """The profiles a reason names ("profile web", "profiles web, db"), else its first clause."""
+    names = list(dict.fromkeys(re.findall(r"profile (\S+?)[:( ;]", why + " ")))
+    if names:
+        return ("profile " if len(names) == 1 else "profiles ") + ", ".join(names)
+    return why.split("(")[0].split(";")[0].strip().rstrip(":")
+
+
+def _label(c: Change) -> str:
+    """A new file in a few words: its MCP servers when it has them, else who adds it."""
+    if c.path.suffix == ".json":
+        try:
+            servers = json.loads(c.text).get("mcpServers")
+        except (ValueError, AttributeError):
+            servers = None
+        if isinstance(servers, dict) and servers:
+            return "MCP servers: " + ", ".join(str(k) for k in servers)
+    return _who(c.why)
+
+
 class RepoWrites:
     def __init__(self, project: Path, now: bool = False, bk=None):
         self.project, self.now, self.bk = project, now, bk
@@ -133,8 +158,8 @@ class RepoWrites:
         """File changes first, commands after them, so a command's own edits are not overwritten by the plan."""
         return [c for c in self._changes if c.kind != "run"] + [c for c in self._changes if c.kind == "run"]
 
-    def create(self, path: Path, text: str, why: str) -> None:
-        self._add(Change("create", path, why, text=text))
+    def create(self, path: Path, text: str, why: str, group: str | None = None) -> None:
+        self._add(Change("create", path, why, text=text, group=group))
 
     def modify(self, path: Path, text: str, why: str) -> None:
         self._add(Change("modify", path, why, text=text))
@@ -154,7 +179,11 @@ class RepoWrites:
         except ValueError:
             return str(path)
 
-    def render(self) -> list[str]:
+    def render(self, calm: bool = False) -> list[str]:
+        """The plan's lines. calm: one line per new file (no keys), init's files on one line, .loadout.json without
+        its record; a changed file keeps its key lines."""
+        if calm:
+            return [redact(l) for l in self._render_calm()]
         out = []
         for c in self._ordered():
             if c.kind == "create":
@@ -176,6 +205,34 @@ class RepoWrites:
                 out.append(f"  run     {' '.join(c.cmd)}  {c.why}; what it changes is its own, restore cannot undo it"
                            if not c.touches else f"  run     {' '.join(c.cmd)}  {c.why}")
         return [redact(l) for l in out]
+
+    def _render_calm(self) -> list[str]:
+        out, grouped = [], {}
+        for c in self._ordered():
+            if c.kind == "create" and c.group:
+                if c.group not in grouped:
+                    grouped[c.group] = len(out)
+                    out.append([c.group])
+                out[grouped[c.group]].append(self._rel(c.path))
+                continue
+            if c.kind in ("create", "modify") and c.path.name == RECORD_FILE and c.path.parent == self.project:
+                verb = "create" if c.kind == "create" else "change"
+                out.append(f"  {verb}  {RECORD_FILE}  {RECORD_LABEL}")
+            elif c.kind == "create":
+                out.append(f"  create  {self._rel(c.path)}  {_label(c)}")
+            elif c.kind == "run":
+                undo = "" if c.touches else "; restore can't undo it"
+                out.append(f"  run     {' '.join(c.cmd)}  ({_who(c.why)}{undo})")
+            else:
+                out += self._render_one(c)
+        return [f"  create  {', '.join(l[1:])}  {l[0]}" if isinstance(l, list) else l for l in out]
+
+    def _render_one(self, c: Change) -> list[str]:
+        keep, self._changes = self._changes, [c]
+        try:
+            return self.render()
+        finally:
+            self._changes = keep
 
     def apply(self, bk, hold: frozenset = frozenset()) -> list[str]:
         """Apply every collected change in order; each is recorded in `bk` before it acts. One failing change is a

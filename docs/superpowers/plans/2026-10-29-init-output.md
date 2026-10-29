@@ -86,7 +86,7 @@
 - [ ] **Step 1: Write the failing tests.** Each runs `project.add_profile` / `project.init` with `fake_home`, `fake_runner`, a Codex-on repo (`.loadout.json` agents claude, codex; `targets.codex_enabled` → True) and a test profile that copies `profiles/db.json`'s dbhub server:
   - `test_dbhub_skip_shown_once`: the plan has exactly one line starting `  skip    mcp dbhub: Codex does not expand`, and the whole output contains `Codex does not expand` exactly once.
   - `test_planned_skip_exit_0_yes`: `add_profile(..., approve=approver(True, ask, False))` returns 0, the status is `✓`, and the output has no "applied with problems".
-  - `test_real_refusal_still_fails`: a profile server with `"env": {"API_KEY": "sk-live-abcdef0123456789"}` (a plaintext secret). It exits 1 and shows "applied with problems".
+  - `test_real_refusal_still_fails`: a profile server with `"env": {"API_KEY": "sk-" + "live-abcdef0123456789" (built in two parts, so the repo secret scan does not flag the test)}` (a plaintext secret). It exits 1 and shows "applied with problems".
   - `test_claude_only_plugin_is_planned_skip`: a profile installing a plugin from `catalog.claude_only_plugins()` in a Codex repo gives one `skip` line and exit 0.
 - [ ] **Step 2: Run** `uv run --python 3.12 --with pytest pytest -q tests/test_planned_skips.py`. Expected: FAIL (the skip is printed 3 times; exit 1).
 - [ ] **Step 3: Implement.**

@@ -121,8 +121,10 @@ def _agent_names(on: dict) -> str:
 
 def _show(project: Path, title: str, w, notes: list[str]) -> list[str]:
     from . import repo_config
-    plan = [f"Plan for {project} ({title}; this repo's agents: {_agent_names(repo_config.agents(project))}):"]
-    plan += w.render() or ["  (no file changes)"]
+    calm = _calm()
+    plan = [f"Plan for {project.name if calm else project} ({title}; this repo's agents: "
+            f"{_agent_names(repo_config.agents(project))}):"]
+    plan += w.render(calm=calm) or ["  (no file changes)"]
     plan += [secrets.redact(f"  note    {n}") for n in notes]
     from .out import printable
     plan = [printable(line) for line in plan]  # keys and values come from repo files

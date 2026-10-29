@@ -206,3 +206,58 @@ def test_now_mode_redacts_its_error(repo, monkeypatch):
     with pytest.raises(OSError) as exc:
         repo_writes.RepoWrites(repo, now=True).run(["tool"], "x")
     assert token not in str(exc.value)
+
+
+# calm plan (spec 2026-10-29 init output, G1): one line per new file, keys only for changed files
+
+MCP = '{\n  "mcpServers": {\n    "chrome-devtools": {"command": "npx"},\n    "dbhub": {"command": "npx"}\n  }\n}\n'
+
+
+def test_calm_new_json_one_line(repo):
+    w = repo_writes.RepoWrites(repo)
+    w.create(repo / ".mcp.json", MCP, "profile web: Chrome DevTools; profile db: DBHub")
+    lines = w.render(calm=True)
+    assert len(lines) == 1 and ".mcp.json" in lines[0] and "MCP servers: chrome-devtools, dbhub" in lines[0]
+    assert not any(l.startswith("          +") for l in lines)
+
+
+def test_calm_groups_init_files(repo):
+    w = repo_writes.RepoWrites(repo)
+    for name in ("AGENTS.md", "CLAUDE.md", ".gitignore"):
+        w.create(repo / name, "x\n", f"init: {name}", group="init")
+    lines = w.render(calm=True)
+    assert lines == ["  create  AGENTS.md, CLAUDE.md, .gitignore  init"]
+
+
+def test_calm_loadout_json_one_line(repo):
+    w = repo_writes.RepoWrites(repo)
+    w.create(repo / ".loadout.json", '{"agents": ["claude"], "profiles": {"web": {"x": {"a": 1}}}}\n', "init: agents")
+    assert w.render(calm=True) == ["  create  .loadout.json  what loadout wrote here (commit it)"]
+    (repo / ".loadout.json").write_text('{"agents": ["claude"]}\n')
+    w = repo_writes.RepoWrites(repo)
+    w.modify(repo / ".loadout.json", '{"agents": ["claude"], "profiles": {"db": {"x": {"a": 1}}}}\n', "profile db")
+    lines = w.render(calm=True)
+    assert lines == ["  change  .loadout.json  what loadout wrote here (commit it)"]
+    assert not any("profiles." in l for l in lines)
+
+
+def test_calm_keeps_change_keys(repo):
+    (repo / ".mcp.json").write_text('{\n  "mcpServers": {}\n}\n')
+    w = repo_writes.RepoWrites(repo)
+    w.modify(repo / ".mcp.json", '{"mcpServers": {"x": {"command": "npx"}}}\n', "profile db")
+    assert any("+ mcpServers.x.command" in l for l in w.render(calm=True))
+
+
+def test_calm_run_line(repo):
+    w = repo_writes.RepoWrites(repo)
+    w.run(["playwright-cli", "install", "--skills"], "profile web (Web UI work: Playwright skills)")
+    assert w.render(calm=True) == ["  run     playwright-cli install --skills  (profile web; restore can't undo it)"]
+
+
+def test_verbose_render_unchanged(repo):
+    w = repo_writes.RepoWrites(repo)
+    w.create(repo / "a.json", '{"k": 1}\n', "profile web: why")
+    w.run(["x", "y"], "profile web")
+    expected = ["  create  a.json (1 line)  profile web: why", "          + k: 1",
+                "  run     x y  profile web; what it changes is its own, restore cannot undo it"]
+    assert w.render() == expected and w.render(calm=False) == expected

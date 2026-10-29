@@ -52,7 +52,7 @@ def scaffold(project: Path, dry_run: bool = False, w=None) -> tuple[list[Path], 
         created.append(dest)
         if writes is not None:
             writes.create(dest, render(src.read_text(encoding="utf-8"), {"PROJECT_NAME": project.name}),
-                          f"init: {WHY.get(rel.as_posix(), 'project scaffold')}")
+                          f"init: {WHY.get(rel.as_posix(), 'project scaffold')}", group="init")
     return created, notes
 
 
@@ -85,5 +85,8 @@ def ensure_gitignore(project: Path, dry_run: bool = False, w=None) -> list[str]:
         lines += ["# loadout" + nl] + added
     new = "".join(lines)
     writes = _writes(project, w)
-    (writes.modify if path.exists() else writes.create)(path, new, "init: keep local agent files out of git")
+    if path.exists():
+        writes.modify(path, new, "init: keep local agent files out of git")
+    else:
+        writes.create(path, new, "init: keep local agent files out of git", group="init")
     return missing
