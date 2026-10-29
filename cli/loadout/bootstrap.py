@@ -99,9 +99,10 @@ def _claude_logged_in() -> bool:
 
 
 PERSONAL_REPO_HOWTO = "docs/how-to/personal-repo.md"
+PLUGINS_SKIPPED = "plugins skipped (--no-plugins): run loadout bootstrap without it to add them"
 
 
-def still_to_do(key: str, codex_here: bool = True) -> list[str]:
+def still_to_do(key: str, codex_here: bool = True, plugins: bool = True) -> list[str]:
     out = []
     if not runner.have("git"):
         out.append(f"install git: {MANUAL_STEPS['git'][key]}")
@@ -111,7 +112,7 @@ def still_to_do(key: str, codex_here: bool = True) -> list[str]:
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    out += codex.open_steps() if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
+    out += codex.open_steps(plugins) if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
@@ -1153,6 +1154,9 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         out.detail(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
     _step("Check")
     results = check.run_checks(codex_windows=True) if gate and WINDOWS_WAY in gate else check.run_checks()
+    # --no-plugins: rows that only say the skipped plugins are missing are this run's choice, not problems
+    hidden = [] if plugins else [r for r in results if not r.ok and r.plugins_missing]
+    results = [r for r in results if not any(r is h for h in hidden)]
     if out.VERBOSE:
         text, code = check.format_results(results)
         print(text)
@@ -1163,8 +1167,10 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                    "fail" if code else "warn" if bad else "ok")
         if bad:
             print(text)
+    if hidden:
+        out.problem(PLUGINS_SKIPPED)
     here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
-    todo = still_to_do(os_key(), codex_here=here["codex"])
+    todo = still_to_do(os_key(), codex_here=here["codex"], plugins=plugins)
     from . import steps
     try:  # the steps visible without a run's facts (hooks, plugin copy), as `loadout update` leaves them: shown at that agent's next session until done
         steps.save(steps.derive(set(), [], here["claude"], here["codex"]))

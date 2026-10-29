@@ -24,7 +24,8 @@ class CheckResult:
     detail: str = ""
     fix: str = ""
     severity: str = "error"
-    info: str = ""  # an ok row's one-line note (the Setup row's cell), shown in both formats
+    info: str = ""
+    plugins_missing: bool = False  # not ok only because plugins or marketplaces are missing (bootstrap --no-plugins)  # an ok row's one-line note (the Setup row's cell), shown in both formats
 
 
 def _links() -> list[CheckResult]:
@@ -80,6 +81,7 @@ def _plugins() -> list[CheckResult]:
     missing = [p for p in wanted if p not in installed]
     no_market = sorted({m for p in missing if "@" in p and (m := p.rpartition("@")[2]) not in known})
     detail = ", ".join(missing)
+    unknown: list[str] = []
     if no_market:
         detail += f"; marketplace not added: {', '.join(no_market)}"
         from . import profiles
@@ -92,7 +94,8 @@ def _plugins() -> list[CheckResult]:
             fix = "run loadout update (adds the marketplace, then installs them)"
     else:
         fix = "run loadout update (or loadout bootstrap)"
-    return [CheckResult("plugins installed", not missing, detail, fix, "warn")]
+    return [CheckResult("plugins installed", not missing, detail, fix, "warn",
+                        plugins_missing=bool(missing) and not unknown)]  # an undeclared marketplace is config
 
 
 PLUGIN_ID = "loadout@agent-loadout"
