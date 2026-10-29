@@ -1134,14 +1134,27 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                 out.problem(codex.SERENA_KEPT)
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
-        _step("Adopt existing setup")
-        if not yes and not interactive:
-            print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
+        if yes:  # nothing to report: no heading and no blank lines
+            import contextlib
+            import io
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
+                          embedded=True)
+            if buf.getvalue().strip():
+                _step("Adopt existing setup")
+                print()
+                print(buf.getvalue(), end="")
+                print()
         else:
-            print()
-            adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
-                      embedded=True)
-            print()
+            _step("Adopt existing setup")
+            if not interactive:
+                print("non-interactive: skipping adopt (review with `loadout adopt`, apply with `loadout adopt --apply`)")
+            else:
+                print()
+                adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
+                          embedded=True)
+                print()
     _step("Secrets")
     _report("Secrets", f"{_tilde(paths.secrets_file())} ready", setup_secrets(bk))
     _step("PATH")

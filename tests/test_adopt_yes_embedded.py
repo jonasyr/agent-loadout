@@ -52,3 +52,33 @@ def test_yes_line_counts_review_and_own():
     line = adopt.yes_line([_v("a", "review"), _v("b", "own"), _v("c", "remove")], [])
     assert line == "Your existing setup: 2 to review (loadout adopt)"
     assert adopt.yes_line([_v("c", "remove")], []) is None
+
+
+def _boot(**kw):
+    from loadout import bootstrap
+    args = dict(install=False, yes=True, plugins=False, adopt_step=True, ask=lambda q: "", interactive=False,
+                agents="claude", personal="new")
+    args.update(kw)
+    return bootstrap.bootstrap(**args)
+
+
+def test_adopt_step_silent_when_nothing(setup, capsys, monkeypatch):
+    setup([_v("d", "keep")])
+    monkeypatch.setattr(out, "VERBOSE", False)
+    _boot(interactive=True)
+    text = capsys.readouterr().out
+    assert "Adopt existing setup" not in text
+    assert "\n\n\n" not in text  # no empty step's blank lines left behind
+
+
+def test_adopt_step_prints_when_secrets(setup, capsys, monkeypatch):
+    setup([_v("d", "keep")])
+    finding = secrets.Finding("srv", "env", "TOKEN", "x" * 40, "project .mcp.json", False)
+    monkeypatch.setattr(secrets, "scan_all", lambda: [finding])
+    monkeypatch.setattr(out, "VERBOSE", False)
+    _boot(interactive=True)
+    text = capsys.readouterr().out
+    assert "Plaintext secrets" in text and "srv" in text and "TOKEN" in text
+    monkeypatch.setattr(out, "VERBOSE", True)
+    _boot(interactive=True)
+    assert "== Adopt existing setup" in capsys.readouterr().out
