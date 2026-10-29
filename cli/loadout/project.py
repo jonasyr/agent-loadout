@@ -248,7 +248,7 @@ def _codex_after_installs(project: Path, install: bool) -> bool:
 
 
 def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive_note: bool,
-                 notes: list[str], problems: list[str]) -> bool:
+                 notes: list[str], problems: list[str], codex_plugins: bool = True) -> bool:
     """After the plan's files and commands: links for the skills the commands installed (the plan's yes covers
     them; backed up like every repo write), then the Codex plugins and the repo's Codex config without the plugins
     that failed."""
@@ -274,7 +274,7 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
                   if c.kind == "link" and not any(c.why in f for f in failed)]
     if repo_config.agents(project)["codex"] and targets.codex_enabled():
         if install:
-            lines = codex_project.plugins(prof, False)
+            lines = codex_project.plugins(prof, False) if codex_plugins else []  # a missing-only re-run: Codex has them
             for line in lines:
                 if line.startswith("backup: "):  # Codex's own backup: its undo line must reach the user
                     notes.append(line)
@@ -411,7 +411,9 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
                  "loadout: which agents this repo is for (commit it)")
     planned_notes, failures, skips = _plan_profile(prof, project, w, install, decide)
     notes += planned_notes
-    if not refresh and cfg.exists and cfg.manage and not any(c.kind != "run" for c in w.changes) and not failures:
+    codex_plugins = True
+    if (not refresh and cfg.exists and cfg.manage and not failures
+            and not any(c.kind not in ("run", "promise") for c in w.changes)):  # a promise is no file change
         try:
             recorded = name in repo_config.records(project)
         except repo_config.Invalid:
@@ -425,8 +427,10 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
                 for line in dict.fromkeys(n for n in notes if isinstance(n, profiles.Kept)):
                     out.problem(secrets.redact(line))  # what stays the repo's own (ADR 0031)
                 return 0
-            w.keep(lambda c: c.kind != "run" or _still_needed(c, missing))
+            commands_missing = any(" ".join(cmd) in missing for cmd in prof.commands if isinstance(cmd, list))
+            w.keep(lambda c: c.kind == "run" and _still_needed(c, missing) or c.kind == "promise" and commands_missing)
             codex_missing = [m.removeprefix("Codex plugin ") for m in missing if m.startswith("Codex plugin ")]
+            codex_plugins = bool(codex_missing)
             if codex_missing:
                 notes.append(f"Codex plugins to install here: {', '.join(codex_missing)}")
     plan = _show(project, f"profile {name}", w, failures + notes, skips)
@@ -446,7 +450,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         return _report(f"Profile {name}", bk, [], problems[-1:])
     result["applied"] = True
     notes = [n for n in notes if not n.startswith(("Codex plugins of profile",))]
-    _after_apply(prof, project, bk, install, drive_note, notes, problems)
+    _after_apply(prof, project, bk, install, drive_note, notes, problems, codex_plugins=codex_plugins)
     return _report(f"Profile {name}", bk, notes, problems)
 
 

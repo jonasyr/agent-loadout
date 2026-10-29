@@ -150,3 +150,34 @@ def test_dangling_done_when_link_is_missing(setup, fake_runner, capsys):
     (repo / ".agents" / "skills").mkdir(parents=True)
     (repo / ".agents" / "skills" / "playwright-cli").symlink_to("../../.claude/skills/playwright-cli")
     assert project.missing_here(WEB, repo) == ["playwright-cli install --skills"]
+
+
+def test_link_promise_does_not_block_already_applied(setup, fake_runner, capsys):
+    # Codex review on #74: in a repo for both agents the plan's link line is not a file change
+    repo = setup
+    _agents(repo, "claude", "codex")
+    assert project.add_profile(repo, "web", install=False, approve=lambda plan: True) == 0
+    (repo / ".claude" / "skills" / "playwright-cli").mkdir(parents=True)
+    (repo / ".agents" / "skills").mkdir(parents=True)
+    (repo / ".agents" / "skills" / "playwright-cli").symlink_to("../../.claude/skills/playwright-cli")
+    capsys.readouterr()
+    asked = []
+    assert _again(repo, "web", asked) == 0 and asked == []
+    assert project.ALREADY.format(name="web") in capsys.readouterr().out
+
+
+def test_missing_claude_plugin_does_no_codex_work(setup, fake_runner, monkeypatch, capsys):
+    # Codex review on #74: only what is missing runs; Codex's plugins are all there
+    repo = setup
+    _agents(repo, "claude", "codex")
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    fake_runner.responses[("codex", "plugin", "list")] = runner.Result(
+        0, json.dumps({"installed": [{"pluginId": KOTLIN}], "available": []}), "")
+    assert project.add_profile(repo, "android", install=False, approve=lambda plan: True) == 0
+    _claude_installed(repo)
+    fake_runner.calls.clear()
+    asked = []
+    _again(repo, "android", asked)
+    assert len(asked) == 1
+    assert not any(c[:3] == ["codex", "plugin", "marketplace"] or c[:3] == ["codex", "plugin", "install"]
+                   for c in fake_runner.calls), fake_runner.calls
