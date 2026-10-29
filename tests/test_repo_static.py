@@ -38,7 +38,7 @@ def test_profiles_are_well_formed():
     for path in (ROOT / "profiles").glob("*.json"):
         prof = json.loads(path.read_text(encoding="utf-8"))
         assert prof["description"]
-        assert set(prof) <= {"description", "settings", "mcp", "install", "commands", "notes", "why"}, path
+        assert set(prof) <= {"description", "settings", "mcp", "install", "commands", "done_when", "notes", "why"}, path
         entries = {f"{part}.{key}" for part in ("settings", "mcp") for key in prof.get(part, {})}
         why = prof.get("why", {})
         assert set(why) == entries and all(isinstance(t, str) and t for t in why.values()), path

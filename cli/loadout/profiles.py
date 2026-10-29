@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from . import paths
 from .jsonio import get_dict, load_json
@@ -24,6 +24,7 @@ class Profile:
     install: list = field(default_factory=list)
     commands: list = field(default_factory=list)
     skills: list = field(default_factory=list)
+    done_when: list = field(default_factory=list)  # repo-relative paths: the commands are done here when any exists
     notes: str = ""
     why: dict = field(default_factory=dict)  # entry path like "settings.disabledMcpjsonServers" -> reason
 
@@ -58,9 +59,20 @@ def read_profile(path: Path, name: str) -> Profile:
         install=field_of("install", list, []),
         commands=field_of("commands", list, []),
         skills=field_of("skills", list, []),
+        done_when=done_when(path, field_of("done_when", list, [])),
         notes=field_of("notes", str, ""),
         why=field_of("why", dict, {}),
     )
+
+
+def done_when(path: Path, items: list) -> list:
+    """The `done_when` paths, each a string inside the repo: relative, with no `..` part."""
+    for item in items:
+        if not isinstance(item, str):
+            raise ValueError(f"profile {path}: done_when must be a list of strings")
+        if PurePosixPath(item).is_absolute() or PureWindowsPath(item).anchor or ".." in re.split(r"[\\/]", item):
+            raise ValueError(f"profile {path}: done_when {item!r} must be a relative path inside the repo (no ..)")
+    return items
 
 
 def load_profile(name: str) -> Profile:

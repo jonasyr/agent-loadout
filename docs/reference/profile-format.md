@@ -16,10 +16,11 @@ Every field is optional; a missing field is empty. Kit profiles must have a `des
 | `mcp` | object | Merged (three-way, see below) into the repo's `.mcp.json` (when the repo is for Claude Code). Usually `{"mcpServers": {...}}`. Pin versions: the kit's own profiles must not use `@latest`. |
 | `commands` | list of commands | Commands run in the repo after the plugins, each a list of arguments, for example `["playwright-cli", "install", "--skills"]`. |
 | `skills` | list of names | Skill folders copied into the repo's `.claude/skills/`. |
+| `done_when` | list of repo-relative paths | Paths that show the profile's `commands` are already done in the repo, for example `[".claude/skills/playwright-cli"]`. A path is relative to the repo root, with no `..` part and no leading `/`; anything else is refused when the profile is read. The commands count as done on this machine when **any** of the paths exists in the repo. Without `done_when`, a profile that is recorded in the repo's `.loadout.json` counts its commands as done. `loadout profile` uses this to say `already applied` (see [loadout profile](cli.md#loadout-profile)) instead of running the commands again. |
 | `notes` | string | Printed after the profile is applied. |
 | `why` | object | One-line reasons for the plan, keyed by a top-level entry: `settings.KEY` or `mcp.KEY`, for example `{"mcp.mcpServers": "Chrome DevTools for performance and network debugging"}`. The plan's line for that file reads `profile NAME: <reason>`; without one it names the profile. |
 
-Kit profiles use `description`, `settings`, `mcp`, `install`, `commands`, `notes` and `why`. A `skills` list is for personal profiles; the folders come from `profiles/skills/<name>/` (see below).
+Kit profiles use `description`, `settings`, `mcp`, `install`, `commands`, `done_when`, `notes` and `why`. A `skills` list is for personal profiles; the folders come from `profiles/skills/<name>/` (see below).
 
 Example, the kit's `web` profile:
 
