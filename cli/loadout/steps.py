@@ -107,12 +107,12 @@ def row_items(results: list, skip_rows: set[str], after_bootstrap: bool = False,
               said: list[str] = ()) -> tuple[list[str], list[str]]:
     """(FAIL items, warn items) from the check rows that are not ok and have a fix, for the to-do list; never saved.
     skip_rows: rows another item already says (a name matches when it equals or starts with an entry); said: the
-    other items' texts, so a fix one of them already gives is not repeated. Rows with the same fix merge into one
+    other items' texts, so a fix one of them already ends with is not repeated. Rows with the same fix merge into one
     item. after_bootstrap: a bare `loadout bootstrap` fix says how to see why instead."""
     merged: dict[str, list] = {}  # fix -> the rows that give it; a FAIL among them makes the item a FAIL
     for r in results:
         if r.ok or not r.fix or any(r.name == s or r.name.startswith(s) for s in skip_rows) \
-                or any(r.fix in text for text in said):
+                or any(text.endswith(r.fix) for text in said):  # the item ends with this fix, not a shorter one
             continue
         fix = ("re-run loadout bootstrap --verbose to see why"
                if after_bootstrap and r.fix == "loadout bootstrap" else r.fix)

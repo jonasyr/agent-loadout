@@ -141,3 +141,21 @@ def test_a_fix_an_item_already_gives_is_not_repeated():
     rows = [R("Codex plugin", False, "loadout plugin not installed in Codex", codex.MISSING_FIX)]
     said = [f"Codex lacks marketplaces jonasyr/agent-loadout: run {codex.MISSING_FIX}"]
     assert steps.row_items(rows, set(), said=said) == ([], [])
+
+
+def test_a_shorter_fix_inside_another_item_is_still_listed():
+    # final review: "loadout update" is inside "run loadout update (retries them)", but it is another row's own fix
+    rows = [R("Codex instructions", False, "lacks loadout's block", "loadout update", "warn")]
+    said = [f"Codex lacks marketplaces x: run {codex.MISSING_FIX}"]
+    assert steps.row_items(rows, set(), said=said) == ([], ["Codex instructions: loadout update"])
+
+
+def test_a_stopped_codex_step_on_this_side_keeps_codex_rows(fake_home, fake_runner, monkeypatch, capsys):
+    # final review: only the Windows way leaves Codex to bootstrap.ps1; another stop keeps its rows' fixes listed
+    from loadout import bootstrap
+    monkeypatch.setattr(bootstrap, "codex_gate_needed", lambda chosen: True)
+    monkeypatch.setattr(bootstrap, "codex_gate", lambda *a, **k: "Codex: CODEX_HOME is shared with Windows")
+    _bootstrap(fake_home, monkeypatch, [R("Codex config", False, "differs", "loadout bootstrap", "warn")],
+               agents="claude,codex")
+    text = capsys.readouterr().out
+    assert "Codex config" in text[text.index("Still to do"):]

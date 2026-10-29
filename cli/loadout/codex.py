@@ -1279,6 +1279,9 @@ NETWORK_HINT = "network error; loadout update retries"
 _NETWORK_RE = re.compile(
     r"RPC failed|Connection reset|Could not resolve host|Temporary failure in name resolution"
     r"|timed out|early EOF|unable to access", re.IGNORECASE)
+# no network error, and a retry does not help: a private repository or a bad token
+_AUTH_RE = re.compile(r"returned error: 40\d|Authentication failed|Repository not found|could not read Username",
+                      re.IGNORECASE)
 
 
 def _tail(res: runner.Result) -> str:
@@ -1288,15 +1291,15 @@ def _tail(res: runner.Result) -> str:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if not lines:
         return f"exit code {res.returncode}"
-    pick = next((ln for ln in lines if ln.startswith("error:")), None)
+    pick = next((ln for ln in lines if ln.lower().startswith("error:")), None)  # git's error:, Codex's Error:
     if pick is None:
-        pick = next((ln for ln in reversed(lines) if ln.startswith("fatal:")), lines[-1])
+        pick = next((ln for ln in reversed(lines) if ln.lower().startswith("fatal:")), lines[-1])
     for prefix in ("error:", "fatal:"):
-        if pick.startswith(prefix):
+        if pick.lower().startswith(prefix):
             pick = pick[len(prefix):].strip()
             break
     pick = pick[:300]
-    if _NETWORK_RE.search(text):
+    if _NETWORK_RE.search(text) and not _AUTH_RE.search(text):
         pick = pick[:300 - len(NETWORK_HINT) - 3] + f" ({NETWORK_HINT})" if len(pick) > 300 - len(NETWORK_HINT) - 3 else f"{pick} ({NETWORK_HINT})"
     return pick
 

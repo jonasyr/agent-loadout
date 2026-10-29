@@ -19,3 +19,15 @@ def test_tail_fatal_only_and_empty():
 
 def test_tail_keeps_a_plain_message_short():
     assert len(codex._tail(runner.Result(1, "x" * 900, ""))) <= 300
+
+
+def test_auth_failure_is_not_called_a_network_error():
+    # final review: a private repo or bad token is no network error, and a retry does not help
+    res = runner.Result(128, "", "fatal: unable to access 'https://github.com/x/y.git/': "
+                                 "The requested URL returned error: 403\n")
+    assert codex.NETWORK_HINT not in codex._tail(res)
+
+
+def test_capitalised_error_line_is_picked():
+    res = runner.Result(1, "", "Error: failed to add marketplace\n\nCaused by:\n    0: git clone failed\n")
+    assert codex._tail(res) == "failed to add marketplace"
