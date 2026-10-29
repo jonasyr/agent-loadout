@@ -140,3 +140,13 @@ def test_a_command_that_is_a_claude_plugin_command_is_kept(setup):
     from loadout.repo_writes import Change
     cmd = ["claude", "plugin", "install", "x@y", "--scope", "user"]
     assert project._still_needed(Change("run", None, "", cmd=cmd), [" ".join(cmd)])
+
+
+def test_dangling_done_when_link_is_missing(setup, fake_runner, capsys):
+    # Codex review on #74: a dangling link left behind does not count as done
+    repo = setup
+    _agents(repo, "claude")
+    _apply(repo, "web")
+    (repo / ".agents" / "skills").mkdir(parents=True)
+    (repo / ".agents" / "skills" / "playwright-cli").symlink_to("../../.claude/skills/playwright-cli")
+    assert project.missing_here(WEB, repo) == ["playwright-cli install --skills"]

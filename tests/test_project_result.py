@@ -75,3 +75,19 @@ def test_codex_backup_line_kept(repo, fake_runner, monkeypatch, capsys):
     monkeypatch.setattr(codex_project, "plugins", lambda prof, dry_run: ["backup: loadout restore /x/codex-1"])
     _init(repo)
     assert "backup: loadout restore /x/codex-1" in capsys.readouterr().out
+
+
+def test_plan_names_the_links_and_the_result_lists_them(repo, fake_runner, monkeypatch, capsys):
+    # Codex review on #74: the approved plan must say that skills the commands add get linked; the result names them
+    def run(cmd, cwd=None, **k):
+        if cmd[:1] == ["playwright-cli"]:
+            skill = repo / ".claude" / "skills" / "x"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: x\ndescription: x\n---\n")
+        return fake_runner(cmd, cwd=cwd, **k)
+    monkeypatch.setattr(runner, "run", run)
+    _init(repo)
+    text = capsys.readouterr().out
+    plan, result = text[:text.index("Init ")], text[text.index("Init "):]
+    assert "  link    skills these commands add, for Codex (.agents/skills)" in plan
+    assert "linked skill x for Codex" in result

@@ -16,7 +16,7 @@ from .secrets import redact
 
 @dataclass
 class Change:
-    kind: str                 # create | modify | copy | link | run
+    kind: str                 # create | modify | copy | link | run | promise (a plan line for links made later)
     path: Path | None
     why: str
     text: str | None = None
@@ -139,6 +139,8 @@ class RepoWrites:
             if problem:
                 raise OSError(redact(problem))
             return
+        if change.kind == "promise" and any(c.kind == "promise" and c.why == change.why for c in self._changes):
+            return
         if change.path is not None:
             change.pre = _snapshot(change.path)
         if change.kind in ("create", "modify"):  # a second write to one file: one change with the final text
@@ -174,6 +176,11 @@ class RepoWrites:
     def link(self, dest: Path, target: str, why: str) -> None:
         self._add(Change("link", dest, why, target=target))
 
+    def promise(self, why: str) -> None:
+        """A plan line for links that follow from a command's result (the skills it adds): approved with the plan,
+        made after the command (project._after_apply); nothing to apply here."""
+        self._add(Change("promise", None, why))
+
     def run(self, cmd: list, why: str, touches: tuple = (), absent: tuple = ()) -> None:
         self._add(Change("run", None, why, cmd=list(cmd), touches=tuple(touches), absent=tuple(absent)))
 
@@ -205,6 +212,8 @@ class RepoWrites:
                 out.append(f"  copy    {self._rel(c.path)} ({files} file{'s' if files != 1 else ''})  {c.why}")
             elif c.kind == "link":
                 out.append(f"  link    {self._rel(c.path)} -> {c.target}  {c.why}")
+            elif c.kind == "promise":
+                out.append(f"  link    {c.why}")
             else:
                 out.append(f"  run     {' '.join(c.cmd)}  {c.why}; what it changes is its own, restore cannot undo it"
                            if not c.touches else f"  run     {' '.join(c.cmd)}  {c.why}")
@@ -294,6 +303,8 @@ class RepoWrites:
             bk.record_created(path, f"{self._rel(path)} (created by {who})")
 
     def _do(self, c: Change, bk) -> str | None:
+        if c.kind == "promise":
+            return None
         if c.kind == "run":
             here = [p for p in c.absent if p.exists() or p.is_symlink()]
             if here:  # e.g. .git appeared since the plan: git init would follow it

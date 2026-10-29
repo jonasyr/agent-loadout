@@ -268,7 +268,7 @@ A plaintext secret in a server, or a malformed profile or server, is not a skip:
 
 #### Skills a command adds
 
-Skills that a profile's `commands` installed are linked for the repo's other agent without a second question: the question you answered at the plan covers them. `--verbose` lists the links; a link that fails is a problem.
+Skills that a profile's `commands` installed are linked for the repo's other agent without a second question: in a repo for both agents the plan says so (`link    skills these commands add, for Codex (.agents/skills)`), and the question you answered there covers them. The result names each link (`linked skill … for Codex`); a link that fails is a problem.
 
 #### Applied again
 

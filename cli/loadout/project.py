@@ -25,6 +25,10 @@ class Info(str):
     """A note shown only with --verbose."""
 
 
+class Done(str):
+    """A line about what the run did beyond the plan's files (e.g. the skill links it made): shown in calm mode."""
+
+
 CLAUDE_OFF = "not installed for Claude Code, which is off for you (a Claude Code user installs it with loadout profile here)"
 
 
@@ -199,6 +203,9 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool,
                 w.run(cmd, profiles.reason(prof))
             else:
                 failures.append(f"command {cmd!r}: not a list of words, skipped")
+        if prof.commands and other is not None:  # the plan the user approves names the links made after the run
+            rel = other.relative_to(project).as_posix()
+            w.promise(f"skills these commands add, for {profiles.AGENT_OF[rel]} ({rel})")
     from . import skill_links
     links = profiles.link_skills(project, False, w=w)
     failures += [l for l in links if "not linked" in l or "left as is" in l]
@@ -259,9 +266,12 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
             from .out import printable
             follow = [f"linked for the repo's other agent (skills profile {prof.name}'s commands added):"]
             print("\n".join(printable(line) for line in follow + later.render()))
-        problems += later.apply(bk)
+        failed = later.apply(bk)
+        problems += failed
         if later.stale:  # .loadout.json changed: nothing after this may run
             return False
+        notes += [Done(f"linked {c.why}") for c in later.changes
+                  if c.kind == "link" and not any(c.why in f for f in failed)]
     if repo_config.agents(project)["codex"] and targets.codex_enabled():
         if install:
             lines = codex_project.plugins(prof, False)
@@ -302,7 +312,8 @@ def _report(title: str, bk, notes: list[str], problems: list[str], done: str = "
     from . import out
     out.status(title, done if not problems else "applied with problems (below)", "ok" if not problems else "warn")
     todos = list(dict.fromkeys([n for n in notes if isinstance(n, Todo)] + list(todos_after)))
-    shown = [n for n in notes if not isinstance(n, Todo) and (not _calm() or n.startswith("backup: "))]
+    shown = [n for n in notes if not isinstance(n, Todo)
+             and (not _calm() or isinstance(n, Done) or n.startswith("backup: "))]
     for line in dict.fromkeys(problems + shown):  # each said once
         out.problem(secrets.redact(line))  # problem() escapes control characters, keeping line breaks
     if todos:
@@ -352,8 +363,8 @@ def missing_here(prof: profiles.Profile, project: Path) -> list[str]:
         wanted = codex_project._wanted(prof)[1]
         have = codex.installed_plugins() if wanted else set()
         out += [f"Codex plugin {pid}" for pid in wanted if have is None or pid not in have]
-    if prof.commands and prof.done_when and not any((project / p).exists() or (project / p).is_symlink()
-                                                     for p in prof.done_when):
+    # a dangling link left behind is not done: only a path that exists counts
+    if prof.commands and prof.done_when and not any((project / p).exists() for p in prof.done_when):
         out += [" ".join(cmd) for cmd in prof.commands if isinstance(cmd, list)]
     return out
 
