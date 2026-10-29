@@ -1,6 +1,7 @@
 """loadout usage: tool families per agent from local transcripts, counts only."""
 import json
 import os
+from pathlib import Path
 import time
 
 import pytest
@@ -19,13 +20,17 @@ def _claude(lines, sub=False, name="s1"):
     return path
 
 
+# a recent day, so the 14-day window always holds it (a fixed date aged out on 2026-10-29)
+RECENT = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))
+
+
 def _tool(name, **inp):
-    return {"type": "assistant", "timestamp": "2026-10-14T10:00:00Z",
+    return {"type": "assistant", "timestamp": RECENT,
             "message": {"content": [{"type": "tool_use", "name": name, "input": inp}]}}
 
 
 def _codex(lines, name="rollout-1"):
-    path = paths.codex_home() / "sessions" / "2026" / "10" / "14" / f"{name}.jsonl"
+    path = paths.codex_home() / "sessions" / Path(*RECENT[:10].split("-")) / f"{name}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(json.dumps(l) for l in lines) + "\n")
     return path
@@ -52,7 +57,7 @@ def test_claude_main_and_subagent_counts(fake_home, monkeypatch):
 
 def test_codex_counts_function_calls_and_mcp_events(fake_home, monkeypatch):
     _on(monkeypatch, claude=False)
-    _codex([{"type": "session_meta", "payload": {"timestamp": "2026-10-14T10:00:00Z", "source": "cli"}},
+    _codex([{"type": "session_meta", "payload": {"timestamp": RECENT, "source": "cli"}},
             {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command",
                                                   "arguments": json.dumps({"cmd": "rg record_project"})}},
             {"type": "event_msg", "payload": {"type": "mcp_tool_call_end",
@@ -156,7 +161,7 @@ def test_an_old_codex_subagent_session_with_new_calls_stays_a_subagent(fake_home
 
 def test_a_codex_mcp_call_logged_twice_counts_once(fake_home, monkeypatch):
     _on(monkeypatch, claude=False)
-    _codex([{"type": "session_meta", "payload": {"timestamp": "2026-10-14T10:00:00Z"}},
+    _codex([{"type": "session_meta", "payload": {"timestamp": RECENT}},
             {"type": "response_item", "payload": {"type": "function_call", "name": "mcp__serena__find_symbol",
                                                   "arguments": "{}", "call_id": "c1"}},
             {"type": "event_msg", "payload": {"type": "mcp_tool_call_end", "call_id": "c1",
@@ -181,7 +186,7 @@ def test_hint_sessions_follow_the_window_and_include_docs_hints(fake_home, monke
 
 def test_codex_symbol_searches_are_counted_in_every_command_shape(fake_home, monkeypatch):
     _on(monkeypatch, claude=False)
-    _codex([{"type": "session_meta", "payload": {"timestamp": "2026-10-14T10:00:00Z", "source": "cli"}},
+    _codex([{"type": "session_meta", "payload": {"timestamp": RECENT, "source": "cli"}},
             {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command",
                                                   "arguments": json.dumps({"cmd": "rg record_project"})}},
             {"type": "response_item", "payload": {"type": "function_call", "name": "shell",
@@ -195,7 +200,7 @@ def test_codex_symbol_searches_are_counted_in_every_command_shape(fake_home, mon
 def test_an_agent_that_is_off_is_not_read(fake_home, monkeypatch):
     _on(monkeypatch, claude=False, codex=True)
     _claude([_tool("Read", file_path="a")])
-    _codex([{"type": "session_meta", "payload": {"timestamp": "2026-10-14T10:00:00Z"}}])
+    _codex([{"type": "session_meta", "payload": {"timestamp": RECENT}}])
     report = usage.collect(14)
     assert "claude" not in report and report["codex"]["main"]["sessions"] == 1
 
@@ -234,7 +239,7 @@ def test_usage_is_read_only_and_never_migrates_or_creates_state(fake_home, monke
 
 
 def _denial(text):
-    return {"type": "user", "timestamp": "2026-10-14T10:00:01Z",
+    return {"type": "user", "timestamp": RECENT,
             "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": text}]}}
 
 

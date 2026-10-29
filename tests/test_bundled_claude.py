@@ -59,11 +59,12 @@ def test_main_fills_the_fallback(fake_home, fake_runner, monkeypatch):
     assert seen == [None]
 
 
-def test_check_row_warns_and_names_the_binary(fake_home, fake_runner):
+def test_check_row_is_optional_and_names_the_binary(fake_home, fake_runner):
+    # as the Codex CLI row next to its extension (spec 2026-10-29 G3): ok, optional, and which claude loadout runs
     exe = _ext(fake_home, "2.1.10")
     fake_runner.missing.add("claude")
-    row = next(r for r in check._binaries() if r.name == "binary claude")
-    assert not row.ok and row.severity == "warn" and str(exe) in row.detail
+    row = next(r for r in check._binaries() if r.name == "Claude Code CLI")
+    assert row.ok and "optional" in row.detail and str(exe) in row.detail
 
 
 def test_missing_claude_with_a_bundled_one_is_not_a_failure(fake_home, fake_runner):

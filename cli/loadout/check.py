@@ -241,15 +241,15 @@ def _binaries(cs=None) -> list[CheckResult]:
         if name == "claude" and not ok:
             from . import vscode
             found = vscode.bundled_claude()
-            if found is not None:  # loadout's claude commands run it; a terminal still has no claude
-                out.append(CheckResult(f"binary {name}", False,
-                                       printable(f"not on PATH; loadout runs VS Code's Claude Code extension's own "
-                                                 f"({found})"),
-                                       "loadout bootstrap --install (a claude on PATH for the terminal and the "
-                                       "extension's terminal mode)", "warn"))
+            if found is not None:  # as the Codex CLI row: optional next to the extension, whose claude loadout runs
+                out.append(CheckResult("Claude Code CLI", True, printable(f"{vscode.CLAUDE_CLI_OPTIONAL} ({found})")))
                 continue
         out.append(CheckResult(f"binary {name}", ok, "" if ok else "not on PATH", fix, severity))
     return out
+
+
+CBM_UNREADABLE_FIX = ("run codebase-memory-mcp config get auto_index in a terminal: its error says why (often "
+                      "another codebase-memory-mcp session holds the daemon)")
 
 
 def _cbm_auto_index() -> list[CheckResult]:
@@ -261,8 +261,10 @@ def _cbm_auto_index() -> list[CheckResult]:
         return []
     name = "codebase-memory auto_index"
     if now == cbm.UNREADABLE:
+        if cbm_conflict_detail() is not None:
+            return []  # the `codebase-memory-mcp daemon` row says why, once
         return [CheckResult(name, False, "could not read it (codebase-memory-mcp config get auto_index failed)",
-                            "run codebase-memory-mcp config get auto_index to see why", "warn")]
+                            CBM_UNREADABLE_FIX, "warn")]
     if now:
         detail = "on"
     elif cbm.answer() == "off":
@@ -518,12 +520,10 @@ def _cbm_records(path: Path) -> list[dict]:
     return out
 
 
-def _cbm_conflict() -> list[CheckResult]:
-    """codebase-memory-mcp 0.12 runs one daemon per account; a session for another cache folder or version fails
-    and writes why into its own cache folder ($CBM_CACHE_DIR, else ~/.cache/codebase-memory-mcp). Read only: the
-    binary is never run (its `daemon status` hangs)."""
+def _cbm_conflict_info() -> tuple[str, str] | None:
+    """(detail, fix) of the daemon conflict, or None."""
     if os.name == "nt":
-        return []
+        return None
     default = paths.home() / ".cache/codebase-memory-mcp"
     folders = [(default, False)]
     env = os.environ.get("CBM_CACHE_DIR")
@@ -537,7 +537,7 @@ def _cbm_conflict() -> list[CheckResult]:
                         best is None or rec["timestamp_unix_s"] > best[0]["timestamp_unix_s"]):
                     best = (rec, folder, from_env)
     if best is None:
-        return []
+        return None
     rec, folder, from_env = best
     active, requested = rec.get("active_version"), rec.get("requested_version")
     if rec.get("reason") != "cache_root" and isinstance(active, str) and isinstance(requested, str) \
@@ -553,7 +553,23 @@ def _cbm_conflict() -> list[CheckResult]:
                "codebase-memory-mcp daemon stop retires the daemon once no session uses it")
     if from_env:
         detail += f"; logged in {folder}, the CBM_CACHE_DIR of this check's own environment"
-    return [CheckResult("codebase-memory-mcp daemon", False, printable(detail), fix, "warn")]
+    return printable(detail), fix
+
+
+def cbm_conflict_detail() -> str | None:
+    """The daemon row's detail text, or None without a recent conflict."""
+    info = _cbm_conflict_info()
+    return info[0] if info else None
+
+
+def _cbm_conflict() -> list[CheckResult]:
+    """codebase-memory-mcp 0.12 runs one daemon per account; a session for another cache folder or version fails
+    and writes why into its own cache folder ($CBM_CACHE_DIR, else ~/.cache/codebase-memory-mcp). Read only: the
+    binary is never run (its `daemon status` hangs)."""
+    info = _cbm_conflict_info()
+    if info is None:
+        return []
+    return [CheckResult("codebase-memory-mcp daemon", False, info[0], info[1], "warn")]
 
 
 def _gh() -> list[CheckResult]:
@@ -1077,7 +1093,8 @@ def run_checks(codex_windows: bool = False, say=None) -> list[CheckResult]:
     return _run_rows(rows, say)
 
 
-def format_results(results: list[CheckResult]) -> tuple[str, int]:
+def format_results(results: list[CheckResult], fixes: bool = True) -> tuple[str, int]:
+    """fixes=False: no fix: lines (calm mode: every fix is in the to-do list below)."""
     lines, code = [], 0
     for r in results:
         mark = "ok  " if r.ok else ("FAIL" if r.severity == "error" else "warn")
@@ -1086,17 +1103,17 @@ def format_results(results: list[CheckResult]) -> tuple[str, int]:
             line += f": {r.info}"
         if not r.ok:
             line += f": {r.detail}" if r.detail else ""
-            line += f"\n        fix: {r.fix}" if r.fix else ""
+            line += f"\n        fix: {r.fix}" if r.fix and fixes else ""
             if r.severity == "error":
                 code = 1
         lines.append(line)
     return "\n".join(lines), code
 
 
-def format_summary(results: list[CheckResult]) -> tuple[str, int]:
+def format_summary(results: list[CheckResult], fixes: bool = True) -> tuple[str, int]:
     """One count line, then only the warnings and failures (same lines as format_results)."""
     bad = [r for r in results if not r.ok]
-    text, code = format_results(bad)
+    text, code = format_results(bad, fixes)
     head = "\n".join([f"Health check: {len(results) - len(bad)} of {len(results)} OK",
                       *(f"{r.name}: {r.info}" for r in results if r.ok and r.info)])
     return (f"{head}\n{text}" if bad else head), code

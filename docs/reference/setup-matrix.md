@@ -6,8 +6,9 @@ For each platform, agent choice and surface, the bootstrap flags and the steps a
 
 - **`--agents`** takes `claude`, `codex` or `claude,codex`. Without it, a personal layer that already chose (`targets.json`) decides. Otherwise bootstrap asks in a terminal; with an existing personal layer and no Codex on PATH it asks nothing and sets up Claude Code. The default answer is both when bootstrap sees a Codex CLI on your PATH (VS Code's Codex extension alone does not count), else Claude Code ([Use loadout with Codex](../how-to/codex.md#switch-it-on)).
 - **Surface** is where you use the agent: the CLI in a terminal, the VS Code extension, or both.
-- **`--install`** runs the installers for missing tools. For the Claude Code extension it also installs the Claude Code CLI, and there is no flag to leave that out; without `--install`, loadout runs the extension's own `claude` ([Claude Code in VS Code without the CLI](../how-to/vscode.md#claude-code-in-vs-code-without-the-cli)).
+- **`--install`** runs the installers for missing tools. With the Claude Code extension the Claude Code CLI is optional, like the Codex CLI: in a terminal bootstrap asks `Install the Claude Code CLI too (optional, for claude in a terminal)? [y/N]` (default No); without a terminal, or with `--yes`, it installs it. Without `--install`, or when you decline, loadout runs the extension's own `claude` ([Claude Code in VS Code without the CLI](../how-to/vscode.md#claude-code-in-vs-code-without-the-cli)).
 - **`--without-codex-cli`** skips the optional Codex CLI question and its install, when VS Code's Codex extension runs its own codex ([The Codex CLI alongside VS Code](../how-to/vscode.md#the-codex-cli-alongside-vs-code)).
+- **`--without-claude-cli`** skips the optional Claude Code CLI question and its install, when VS Code's Claude Code extension is there and no `claude` is on PATH ([Claude Code in VS Code without the CLI](../how-to/vscode.md#claude-code-in-vs-code-without-the-cli)).
 - **`--codex-side wsl|windows`** (WSL) picks the side bootstrap sets Codex up for, without asking ([which side](../how-to/wsl.md#when-your-only-codex-is-the-windows-one)).
 - **`--vscode-wsl`** (WSL) switches VS Code's Codex extension to the Codex in WSL, with a backup ([Windows and WSL](../how-to/vscode.md#windows-and-wsl)).
 - **`--vscode-path`** (WSL) adds loadout's tool folders to the PATH of VS Code's Remote-WSL server ([MCP servers in a Remote-WSL window](../how-to/vscode.md#mcp-servers-in-a-remote-wsl-window)).
@@ -18,7 +19,7 @@ For each platform, agent choice and surface, the bootstrap flags and the steps a
 | Surface | Claude Code | Codex | Both |
 |---|---|---|---|
 | CLI only | `--install --agents claude` | `--install --agents codex`, then `codex login` and approve the hooks | `--install --agents claude,codex`, then `codex login` and approve the hooks |
-| VS Code extension | `--install --agents claude`. The extension reads the same `~/.claude` as the CLI ([Use loadout with VS Code](../how-to/vscode.md)). | First open the folder in VS Code and choose Trust Folder & Continue. Then `--install --agents codex`: loadout installs its plugins with the extension's own Codex. In a terminal bootstrap asks whether to also install the Codex CLI (optional, default No). Then approve the hooks. | `--install --agents claude,codex`, Codex as in the Codex column |
+| VS Code extension | `--install --agents claude`. The extension reads the same `~/.claude` as the CLI ([Use loadout with VS Code](../how-to/vscode.md)). In a terminal bootstrap asks whether to also install the Claude Code CLI (optional, default No); add --without-claude-cli to skip it. | First open the folder in VS Code and choose Trust Folder & Continue. Then `--install --agents codex`: loadout installs its plugins with the extension's own Codex. In a terminal bootstrap asks whether to also install the Codex CLI (optional, default No). Then approve the hooks. | `--install --agents claude,codex`, Codex as in the Codex column |
 | VS Code extension + CLI (optional) | As in the row above. | As in the row above, and answer yes to the Codex CLI question. Run `codex login` in VS Code's terminal if you use `codex` there; both read the same `~/.codex`. | As in the row above |
 
 ## WSL 2
@@ -41,7 +42,7 @@ Run everything inside WSL, with the clone and your repos in the Linux home ([Use
 
 ## Native Windows (experimental)
 
-With `bootstrap.ps1`, the flags are the same as on Linux and macOS, row for row: `--install --agents claude`, `codex` or `claude,codex`, and `--without-codex-cli` to skip the optional Codex CLI question. It sets up `%USERPROFILE%\.claude` and `%USERPROFILE%\.codex`, which the CLIs and a local VS Code window read ([VS Code on native Windows](../how-to/vscode.md#vs-code-on-native-windows)). loadout on Windows does not report a Codex in WSL.
+With `bootstrap.ps1`, the flags are the same as on Linux and macOS, row for row: `--install --agents claude`, `codex` or `claude,codex`, `--without-codex-cli` to skip the optional Codex CLI question, and `--without-claude-cli` for the Claude Code CLI. It sets up `%USERPROFILE%\.claude` and `%USERPROFILE%\.codex`, which the CLIs and a local VS Code window read ([VS Code on native Windows](../how-to/vscode.md#vs-code-on-native-windows)). loadout on Windows does not report a Codex in WSL.
 
 ## One agent choice for every machine
 

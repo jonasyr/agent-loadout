@@ -21,6 +21,7 @@ def printable(text: str) -> str:
 NAMES = {"claude": "Claude Code", "codex": "Codex"}
 HOOKS_TEXT = "start codex and trust the changed hooks when it asks (or review them in /hooks)"
 BOOTSTRAP_ROWS = {"MCP servers on PATH", "secrets.env", "VS Code PATH"}  # rows only `loadout bootstrap` fixes
+STILL_TO_DO_ROWS = {"gh auth", "Codex hooks", "Codex plugins missing", "Codex logins"}  # bootstrap.still_to_do says these
 CLAUDE_FACTS = {"claude_plugins_installed", "claude_plugins_updated", "claude_marketplace_added"}
 LOADOUT_FACT = "claude_loadout_plugin"  # loadout's own Claude Code plugin was installed or updated in this run
 
@@ -100,6 +101,37 @@ def render(items: list[Step], claude_on: bool, codex_on: bool) -> list[str]:
 def block(items: list[Step], claude_on: bool, codex_on: bool, indent: str = "  ") -> list[str]:
     lines = render(items, claude_on, codex_on)
     return ["Now do this", *(indent + line for line in lines)] if lines else []
+
+
+def row_items(results: list, skip_rows: set[str], after_bootstrap: bool = False,
+              said: list[str] = ()) -> tuple[list[str], list[str]]:
+    """(FAIL items, warn items) from the check rows that are not ok and have a fix, for the to-do list; never saved.
+    skip_rows: rows another item already says (a name matches when it equals or starts with an entry); said: the
+    other items' texts, so a fix one of them already ends with is not repeated. Rows with the same fix merge into one
+    item. after_bootstrap: a bare `loadout bootstrap` fix says how to see why instead."""
+    merged: dict[str, list] = {}  # fix -> the rows that give it; a FAIL among them makes the item a FAIL
+    for r in results:
+        if r.ok or not r.fix or any(r.name == s or r.name.startswith(s) for s in skip_rows) \
+                or any(text.endswith(r.fix) for text in said):  # the item ends with this fix, not a shorter one
+            continue
+        fix = ("re-run loadout bootstrap --verbose to see why"
+               if after_bootstrap and r.fix == "loadout bootstrap" else r.fix)
+        merged.setdefault(fix, []).append(r)
+    fails, warns = [], []
+    for fix, rows in merged.items():
+        (fails if any(r.severity == "error" for r in rows) else warns).append(
+            f"{', '.join(r.name for r in rows)}: {fix}")
+    return fails, warns
+
+
+def todo_block(title: str, fails: list[str], plain: list[str], saved: list[Step], warns: list[str],
+               claude_on: bool, codex_on: bool) -> list[str]:
+    """One numbered list: FAIL rows, the caller's own items, saved steps (with their agent), warn rows, and every
+    `optional:` item last; [] when there is nothing to do."""
+    on = {"claude": claude_on, "codex": codex_on}
+    texts = [*fails, *plain, *(f"{NAMES[s.agent]}: {printable(s.text)}" for s in saved if on.get(s.agent)), *warns]
+    texts = [t for t in texts if not t.startswith("optional:")] + [t for t in texts if t.startswith("optional:")]
+    return [title, *(f"  {n}. {t}" for n, t in enumerate(texts, 1))] if texts else []
 
 
 # --- which MCP servers a binary starts ---------------------------------------------------------------------------
@@ -303,16 +335,7 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
         save_json(_path(), keep)
 
 
-def print_pending(claude_on: bool, codex_on: bool, skip: set[str] = frozenset(), show_codex: bool | None = None) -> None:
-    """The end of a command that prints a summary: every open step, so a step that its agent's session hook cannot
-    show (Codex does not run an unapproved hook) still reaches you. skip: ids already said by the caller.
-    codex_on: whether Codex is on (what settle keeps); show_codex: whether to print its steps (default codex_on;
-    False when Codex is on but set up elsewhere, as on the Windows side of WSL)."""
-    try:
-        settle(claude_on, codex_on)
-        items = [s for agent in NAMES for s in pending(agent) if s.id not in skip]
-        lines = block(items, claude_on, codex_on if show_codex is None else show_codex)
-    except Exception:
-        return
-    if lines:
-        print("\n" + "\n".join(lines))
+def open_items(claude_on: bool, codex_on: bool, skip: set[str] = frozenset()) -> list[Step]:
+    """The saved steps that still hold (settle first), minus the ids in skip; todo_block shows only the agents that are on."""
+    settle(claude_on, codex_on)
+    return [s for agent in NAMES for s in pending(agent) if s.id not in skip]

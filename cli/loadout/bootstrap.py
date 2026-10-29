@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, apply, catalog, check, out, paths, runner, secrets, settings_merge, ui, wsl
+from . import adopt, apply, catalog, check, out, paths, runner, secrets, settings_merge, ui, vscode, wsl
 from .backup import Backup
 from .jsonio import get_dict, load_json
 from .secrets import redact
@@ -41,6 +41,7 @@ POLICY_NOTE = ("PowerShell's execution policy is Restricted, so profiles (and th
 
 INTRO = "loadout sets up your coding agent with a reviewed kit of plugins, rules and tools."
 PROBLEM = out.PROBLEM
+INSTALL_FAILED_HINT = "the install failed (see above); fix that, then run loadout bootstrap --install again"
 
 
 def _step(title: str) -> None:
@@ -58,6 +59,8 @@ def _report(name: str, summary: str, lines: list[str] = (), level: str = "ok") -
     bad = [line for line in lines if PROBLEM.search(line)]
     out.status(name, summary, "warn" if bad and level == "ok" else level)
     for line in lines:
+        if line.removeprefix(f"{name}: ") == summary:
+            continue  # only repeats the status line
         (out.problem if line in bad else out.detail)(line)
 
 
@@ -289,7 +292,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             print(line)
     if install:
         _ensure_local_bin()
-    missing, failed = [], set()
+    missing, failed, tried = [], set(), set()
     for entry, cmds, _optional in missing_tools(skip, recommended):
         name = entry["id"]
         if not missing_binary(name):  # an earlier install brought it
@@ -302,6 +305,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 missing.append(name)
             continue
         if install and cmds:
+            tried.add(name)
             _, problems = install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
             if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
@@ -320,7 +324,10 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
         if missing_binary(name):
             failed.add(name)
             if not entry.get("helper"):
-                hint = "re-run with --install" if cmds else entry.get("manual", "")
+                if name in tried:
+                    hint = f"install it by hand: {entry['manual']}" if entry.get("manual") else INSTALL_FAILED_HINT
+                else:
+                    hint = "re-run with --install" if cmds else entry.get("manual", "")
                 if wsl.detect() is not None and wsl.is_windows_program(name):
                     if cmds:
                         hint = f"{hint}; {_windows_first_note(name)}"
@@ -809,6 +816,27 @@ CODEX_CLI_WHY = "installed alongside VS Code's Codex extension (optional, for co
 CODEX_CLI_DECLINED = "not installed (optional): VS Code's Codex extension runs its own, and loadout set Codex up for it"
 
 
+CLAUDE_CLI_QUESTION = ("\nVS Code's Claude Code extension runs its own claude, and loadout sets it up fully. "
+                       "Install the Claude Code CLI too (optional, for claude in a terminal)? [y/N] ")
+CLAUDE_CLI_WHY = "installed alongside VS Code's Claude Code extension (optional, for claude in a terminal)"
+CLAUDE_CLI_DECLINED = vscode.CLAUDE_CLI_OPTIONAL
+
+
+def claude_cli_choice(install: bool, ask: Ask, interactive: bool, wanted: bool,
+                      bundled: Path | None) -> tuple[str | None, bool]:
+    """(the Claude Code CLI line to print or None, skip its install): as codex_cli_choice, for a missing claude next
+    to VS Code's Claude Code extension, whose bundled claude runs loadout's commands (spec 2026-10-29 G3)."""
+    if runner.have("claude") or bundled is None:
+        return None, False
+    if not wanted:
+        return CLAUDE_CLI_DECLINED, True
+    if not install:
+        return None, False  # nothing installs this run; the missing line says it is recommended
+    if interactive and ask(CLAUDE_CLI_QUESTION).strip().lower() not in ("y", "yes"):  # optional: no unless asked
+        return CLAUDE_CLI_DECLINED, True
+    return CLAUDE_CLI_WHY, False
+
+
 def codex_recommended(chosen: dict, gate) -> frozenset:
     """{"codex"} when the Codex CLI is recommended, not required: no codex on PATH and VS Code's Codex extension on
     this side runs a usable one."""
@@ -927,26 +955,22 @@ def _no_question(question: str) -> str:
     return ""
 
 
-def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli: bool) -> None:
+def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli: bool,
+                  claude_cli: bool = True) -> None:
     """This machine's setup cell, its recommended flags and how this run differs; text only, never a question
     (spec 2026-10-27). A detection error never stops bootstrap."""
     from . import recommend
     try:
         from dataclasses import replace
-        from . import vscode
         cs = wsl.codex_side() if wsl.detect() is not None and chosen["codex"] else None
         if cs is not None and gate is None and cs.side == "windows":
             cs = replace(cs, side="wsl")  # the gate set Codex up on this side (--codex-side wsl, or answer 1)
         cell = recommend.detect(chosen, cs, codex_windows=bool(gate) and WINDOWS_WAY in gate)
-        skip = frozenset({"codex"}) if gate else frozenset()  # --without-codex-cli: covered by recommended below
-        # as in Prerequisites: a CLI that an extension stands in for is optional, not missing
-        bundled = chosen["claude"] and not runner.have("claude") and vscode.bundled_claude() is not None
-        recommended = codex_recommended(chosen, gate) | (frozenset({"claude"}) if bundled else frozenset())
-        missing = [e["id"] for e, _cmds, optional in missing_tools(skip, recommended) if not optional]
         lines = [f"recommended: {recommend.flags(cell)}  ({recommend.anchor(cell)})"]
         if cell.surface == "none":
             lines.append(f"using VS Code? see {recommend.anchor(cell)}")
-        lines += recommend.differences(cell, chosen, install, missing, vscode_wsl, codex_cli)
+        # missing tools: Prerequisites in the same run names them, so not again here
+        lines += recommend.differences(cell, chosen, install, [], vscode_wsl, codex_cli, claude_cli)
     except Exception:
         return
     _step("This machine")
@@ -958,11 +982,11 @@ def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
-              vscode_path: bool = False) -> int:
+              vscode_path: bool = False, claude_cli: bool = True) -> int:
     from . import targets
     try:
         return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
-                          vscode_wsl, codex_cli, vscode_path)
+                          vscode_wsl, codex_cli, vscode_path, claude_cli)
     finally:
         targets.OVERRIDE = None
 
@@ -970,7 +994,7 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
                answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
-               vscode_path: bool = False) -> int:
+               vscode_path: bool = False, claude_cli: bool = True) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -1033,7 +1057,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     gate = codex_gate(codex_side, ask, interactive and not yes, bk, vscode=vscode_wsl) if codex_gate_needed(chosen) else None
     if vscode_wsl and wsl.detect() is not None and not codex_gate_needed(chosen):  # outside WSL the CLI already said so
         out.status("VS Code", "--vscode-wsl: Codex is not set up in WSL in this run; nothing changed", "warn")
-    _this_machine(chosen, gate, install, vscode_wsl, codex_cli)
+    _this_machine(chosen, gate, install, vscode_wsl, codex_cli, claude_cli)
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []
@@ -1042,15 +1066,23 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     claude_bundled = vscode.use_bundled_claude(on=chosen["claude"])
     cli_line, cli_skip = (codex_cli_choice(install, ask, interactive and not yes, codex_cli)
                           if chosen["codex"] and not gate else (None, False))
+    claude_line, claude_skip = (claude_cli_choice(install, ask, interactive and not yes, claude_cli, claude_bundled)
+                                if chosen["claude"] else (None, False))
     recommended = codex_recommended(chosen, gate) | (frozenset({"claude"}) if claude_bundled else frozenset())
-    missing = check_prereqs(install, ask, installed=installed, notes=notes,
-                            skip=frozenset({"codex"}) if gate or cli_skip else frozenset(), recommended=recommended)
+    skip = (frozenset({"codex"}) if gate or cli_skip else frozenset()) | (
+        frozenset({"claude"}) if claude_skip else frozenset())
+    missing = check_prereqs(install, ask, installed=installed, notes=notes, skip=skip, recommended=recommended)
     summary, level = _prereq_summary(missing, installed, recommended)
     out.status("Prerequisites", summary, level)
     if cli_line is not None and (cli_skip or "codex" in installed):
         out.status("Codex CLI", cli_line, "warn" if cli_skip else "ok")
-    if claude_bundled is not None and missing_binary("claude"):
+    if claude_line is not None and (claude_skip or "claude" in installed):
+        out.status("Claude Code CLI", claude_line, "warn" if claude_skip else "ok")
+    elif claude_bundled is not None and missing_binary("claude"):  # no --install: nothing was decided this run
         out.status("Claude Code CLI", _claude_bundled_line(claude_bundled), "warn")
+    if not claude_cli and not claude_skip:  # as --without-codex-cli: say that it did nothing
+        out.problem("--without-claude-cli: not used; it applies only with VS Code's Claude Code extension and no "
+                    "Claude Code CLI on PATH")
     if not codex_cli and not cli_skip:  # shown in calm mode too: an agent that passed it must see it did nothing
         out.problem("--without-codex-cli: not used; it applies only with VS Code's Codex extension and no Codex CLI "
                     "on PATH")
@@ -1126,7 +1158,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print(text)
     else:
         bad = [r for r in results if not r.ok]
-        text, code = check.format_results(bad)
+        text, code = check.format_results(bad, fixes=False)  # each fix is in "Still to do" below
         out.status("Health check", f"{len(results) - len(bad)} of {len(results)} OK",
                    "fail" if code else "warn" if bad else "ok")
         if bad:
@@ -1143,14 +1175,17 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print(f"\n{adopt.UNDO_LINE}")
     if path_changed and out.VERBOSE:
         print("\nOpen a new terminal so the new PATH applies.")
-    if todo:
-        print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
-        for line in todo:
-            print(f"  - {line}")
-    try:  # steps an earlier run left open (the hooks one is in "Still to do" above)
-        steps.print_pending(here["claude"], chosen["codex"], skip={"codex/hooks"}, show_codex=here["codex"])
+    try:  # steps an earlier run left open (the hooks one is in still_to_do's own items)
+        saved = steps.open_items(here["claude"], chosen["codex"], skip={"codex/hooks"})
     except Exception:
-        pass
+        saved = []
+    # rows still_to_do already says; Codex set up on the Windows side (bootstrap.ps1): its rows are that side's
+    skip_rows = steps.STILL_TO_DO_ROWS | ({"Codex"} if gate and WINDOWS_WAY in gate else set())
+    fails, warns = steps.row_items(results, skip_rows, after_bootstrap=True, said=todo)
+    lines = steps.todo_block("Still to do (in a new terminal):" if path_changed else "Still to do:",
+                             fails, todo, saved, warns, here["claude"], here["codex"])
+    if lines:
+        print("\n" + "\n".join(lines))
     extension = here["codex"] and codex.mode() == "extension"
     claude_ext = here["claude"] and claude_bundled is not None and not runner.have("claude")
     run = " or ".join(f"`{a}`" for a in ("claude", "codex")
@@ -1169,6 +1204,13 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     names = " or ".join(n for n, a in (("Claude Code", "claude"), ("Codex", "codex"))
                         if here[a] and not (a == "claude" and claude_ext))
     also = ", and open VS Code's Claude Code extension" if claude_ext else ""  # it runs Claude Code here
+    # an extension next to its CLI: either one runs the agent (tour 2026-10-28 E2)
+    too = [n for n, on in (("Claude Code", here["claude"] and not claude_ext and runner.have("claude")
+                            and vscode.bundled_claude() is not None),
+                           ("Codex", here["codex"] and not extension and codex.extension_state()[0] is not None))
+           if on]
+    if too:
+        also += f", or open VS Code's {' or '.join(too)} extension (reload the window if it is open)"
     if not run:  # Codex only, and its step stopped: on Windows, or a CODEX_HOME shared with Windows
         print(f"\nNext: {WINDOWS_WAY}." if WINDOWS_WAY in gate else "\nNext: settle Codex's side (see the Codex step above).")
     elif out.VERBOSE:

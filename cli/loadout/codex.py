@@ -1275,8 +1275,33 @@ def _json(text: str):
     return None
 
 
+NETWORK_HINT = "network error; loadout update retries"
+_NETWORK_RE = re.compile(
+    r"RPC failed|Connection reset|Could not resolve host|Temporary failure in name resolution"
+    r"|timed out|early EOF|unable to access", re.IGNORECASE)
+# no network error, and a retry does not help: a private repository or a bad token
+_AUTH_RE = re.compile(r"returned error: 40\d|Authentication failed|Repository not found|could not read Username",
+                      re.IGNORECASE)
+
+
 def _tail(res: runner.Result) -> str:
-    return (res.stderr.strip() or res.stdout.strip())[-300:]
+    """One readable line for a failed command: the first `error:` line, else the last
+    `fatal:` line, else the last line; marked when the output looks like a network failure."""
+    text = res.stderr.strip() or res.stdout.strip()
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return f"exit code {res.returncode}"
+    pick = next((ln for ln in lines if ln.lower().startswith("error:")), None)  # git's error:, Codex's Error:
+    if pick is None:
+        pick = next((ln for ln in reversed(lines) if ln.lower().startswith("fatal:")), lines[-1])
+    for prefix in ("error:", "fatal:"):
+        if pick.lower().startswith(prefix):
+            pick = pick[len(prefix):].strip()
+            break
+    pick = pick[:300]
+    if _NETWORK_RE.search(text) and not _AUTH_RE.search(text):
+        pick = pick[:300 - len(NETWORK_HINT) - 3] + f" ({NETWORK_HINT})" if len(pick) > 300 - len(NETWORK_HINT) - 3 else f"{pick} ({NETWORK_HINT})"
+    return pick
 
 
 def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
@@ -1815,8 +1840,9 @@ def missing_routes(installed: set[str] | None = None,
     lacks_m: list[str] = []
     lacks_p: list[str] = []
     for src, names in routes.items():
+        own_route = src == own and "loadout" in names  # its marketplace is still named when Codex lacks it
         names = [n for n in names if not (n == "loadout" and src == own)]
-        if not names:
+        if not names and not own_route:
             continue
         url = _src_url(src) or ""
         market = next((name for name, info in listed.items() if _same_source(info, url)), None)
@@ -2277,13 +2303,16 @@ def checks() -> list:
     cli = mode() != "extension"  # the wording: the CLI's /hooks and logins, or the extension's
     installed = installed_plugins()
     ok = installed is not None and "loadout@agent-loadout" in installed
+    lacks = missing_routes(installed) if installed is not None else ([], [])
     if installed is None and no_plugin_command():  # bootstrap cannot install plugins with this codex
         results.append(CheckResult("Codex plugin", False, PLUGINS_OLD.split(": ", 2)[2],
                                    "update the extension in VS Code, then run loadout update", "warn"))
-    else:
+    else:  # its marketplace missing (a failed clone): the same fix as the plugins-missing row, which names it
+        from .settings_merge import desired_settings
+        own = get_dict(get_dict(get_dict(desired_settings(), "extraKnownMarketplaces"), "agent-loadout"),
+                       "source").get("repo")
         results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
-                                   "loadout bootstrap"))
-    lacks = missing_routes(installed) if installed is not None else ([], [])
+                                   MISSING_FIX if own in lacks[0] else "loadout bootstrap"))
     if lacks[0] or lacks[1]:
         results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
     config = _tilde(paths.codex_home() / "config.toml")

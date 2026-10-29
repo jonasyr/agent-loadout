@@ -13,6 +13,10 @@ from pathlib import Path
 
 from . import paths, runner, wsl
 
+# a missing claude next to the extension's own (bootstrap's Claude Code CLI line, check's Claude Code CLI row)
+CLAUDE_CLI_OPTIONAL = ("not installed (optional): VS Code's Claude Code extension runs its own, and loadout set "
+                       "Claude Code up for it")
+
 EXT_ID = {"claude": "anthropic.claude-code", "codex": "openai.chatgpt"}
 LABEL = {"claude": "Claude Code", "codex": "Codex"}
 WHERE = {"local": "", "windows": "Windows window", "remote-wsl": "Remote-WSL window"}

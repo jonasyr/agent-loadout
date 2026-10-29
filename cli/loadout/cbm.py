@@ -84,6 +84,10 @@ def apply_auto_index(bk, dry: bool = False) -> list[str]:
     if given is None or now is None:
         return []
     if now == UNREADABLE:
+        from . import check
+        why = check.cbm_conflict_detail()
+        if why:
+            return [f"codebase-memory: could not read auto_index: {why} (see loadout check)"]
         return ["codebase-memory: could not read auto_index (config get failed)"]
     record = _record()
     if now == want:

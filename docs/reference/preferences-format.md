@@ -110,7 +110,7 @@ In Codex the `me.md` line reaches the agent through the instruction block, but t
 - codebase-memory's default is `false`. A `false` you set before loadout therefore looks like the default, and loadout turns it on once (undoable).
 - If `loadout.json` cannot be read, the answer is unknown and nothing changes.
 - When it is applied: by `loadout bootstrap`, `loadout update` (again), the daily sync after a pull ([state and sync](state-and-sync.md#the-daily-sync)), and at once by `loadout configure set pref-choice cbm_auto_index on|off`.
-- The `codebase-memory auto_index` row of `loadout check` shows its state in the line: `[ok] codebase-memory auto_index: on`, `: off (yours)` or `: off (your answer)`. It warns with `off (loadout turns it on at the next update)` (fix: `loadout update`) and when `codebase-memory-mcp config get auto_index` fails; bootstrap and update then print `codebase-memory: could not read auto_index (config get failed)` and change nothing.
+- The `codebase-memory auto_index` row of `loadout check` shows its state in the line: `[ok] codebase-memory auto_index: on`, `: off (yours)` or `: off (your answer)`. It warns with `off (loadout turns it on at the next update)` (fix: `loadout update`) and when `codebase-memory-mcp config get auto_index` fails; bootstrap and update then print `codebase-memory: could not read auto_index: <why> (see loadout check)` (naming the daemon conflict when that is the cause) and change nothing.
 
 The decision: [ADR 0039](../adr/0039-serena-remind-tools-load-upfront-cbm-refresh.md).
 

@@ -51,7 +51,7 @@ When this applies:
 
 The Claude Code extension runs the same plugin hooks as the CLI. Which hooks those are: [Hooks](../reference/hooks.md).
 
-With no `claude` on your PATH, loadout runs the Claude Code extension's own binary for its `claude plugin …` and `claude mcp …` commands: the newest copy in a local or Remote-WSL install (from WSL, never a Windows window's, which reads the Windows home). Bootstrap's `Claude Code CLI` line names the binary, and `loadout check` warns `binary claude` instead of failing. `--install` still installs the Claude Code CLI, which a terminal and the extension's terminal mode (`claudeCode.useTerminal`) need; this is the intended path. Without a bundled binary, the CLI is required as before.
+With no `claude` on your PATH, loadout runs the Claude Code extension's own binary for its `claude plugin …` and `claude mcp …` commands: the newest copy in a local or Remote-WSL install (from WSL, never a Windows window's, which reads the Windows home). Bootstrap's `Claude Code CLI` line names the binary, and `loadout check` shows an `ok` row `Claude Code CLI` (`not installed (optional): …`) instead of failing. The CLI is optional, decided like the Codex CLI: with `--install`, a terminal is asked `Install the Claude Code CLI too (optional, for claude in a terminal)? [y/N]` (default No); without a terminal, or with `--yes`, it is installed; `--without-claude-cli` skips the question and the install. Install it only if you want `claude` in a terminal or the extension's terminal mode (`claudeCode.useTerminal`). `Next` names the extension (reload the window if it is open) also when the CLI is there. Without a bundled binary, the CLI is required as before.
 
 ## Windows and WSL
 
