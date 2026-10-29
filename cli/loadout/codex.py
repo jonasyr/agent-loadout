@@ -1275,8 +1275,30 @@ def _json(text: str):
     return None
 
 
+NETWORK_HINT = "network error; loadout update retries"
+_NETWORK_RE = re.compile(
+    r"RPC failed|Connection reset|Could not resolve host|Temporary failure in name resolution"
+    r"|timed out|early EOF|unable to access", re.IGNORECASE)
+
+
 def _tail(res: runner.Result) -> str:
-    return (res.stderr.strip() or res.stdout.strip())[-300:]
+    """One readable line for a failed command: the first `error:` line, else the last
+    `fatal:` line, else the last line; marked when the output looks like a network failure."""
+    text = res.stderr.strip() or res.stdout.strip()
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return f"exit code {res.returncode}"
+    pick = next((ln for ln in lines if ln.startswith("error:")), None)
+    if pick is None:
+        pick = next((ln for ln in reversed(lines) if ln.startswith("fatal:")), lines[-1])
+    for prefix in ("error:", "fatal:"):
+        if pick.startswith(prefix):
+            pick = pick[len(prefix):].strip()
+            break
+    pick = pick[:300]
+    if _NETWORK_RE.search(text):
+        pick = pick[:300 - len(NETWORK_HINT) - 3] + f" ({NETWORK_HINT})" if len(pick) > 300 - len(NETWORK_HINT) - 3 else f"{pick} ({NETWORK_HINT})"
+    return pick
 
 
 def plugin_routes(settings: dict) -> tuple[dict[str, list[str]], list[str]]:
