@@ -103,15 +103,18 @@ def block(items: list[Step], claude_on: bool, codex_on: bool, indent: str = "  "
     return ["Now do this", *(indent + line for line in lines)] if lines else []
 
 
-def row_items(results: list, skip_rows: set[str], after_bootstrap: bool = False) -> tuple[list[str], list[str]]:
+def row_items(results: list, skip_rows: set[str], after_bootstrap: bool = False,
+              said: list[str] = ()) -> tuple[list[str], list[str]]:
     """(FAIL items, warn items) from the check rows that are not ok and have a fix, for the to-do list; never saved.
-    skip_rows: rows another item already says (a name matches when it equals or starts with an entry). Rows with
-    the same fix merge into one item. after_bootstrap: a bare `loadout bootstrap` fix says how to see why instead."""
+    skip_rows: rows another item already says (a name matches when it equals or starts with an entry); said: the
+    other items' texts, so a fix one of them already gives is not repeated. Rows with the same fix merge into one
+    item. after_bootstrap: a bare `loadout bootstrap` fix says how to see why instead."""
     merged: dict[str, list] = {}  # fix -> the rows that give it; a FAIL among them makes the item a FAIL
     for r in results:
-        if r.ok or not r.fix or any(r.name == s or r.name.startswith(s) for s in skip_rows):
+        if r.ok or not r.fix or any(r.name == s or r.name.startswith(s) for s in skip_rows) \
+                or any(r.fix in text for text in said):
             continue
-        fix = (f"re-run loadout bootstrap --verbose to see why {r.name} failed"
+        fix = ("re-run loadout bootstrap --verbose to see why"
                if after_bootstrap and r.fix == "loadout bootstrap" else r.fix)
         merged.setdefault(fix, []).append(r)
     fails, warns = [], []
@@ -333,19 +336,6 @@ def settle(claude_on: bool, codex_on: bool, results: list | None = None) -> None
 
 
 def open_items(claude_on: bool, codex_on: bool, skip: set[str] = frozenset()) -> list[Step]:
-    """The saved steps that still hold (settle first), minus the ids in skip; filtering by agent is render's."""
+    """The saved steps that still hold (settle first), minus the ids in skip; todo_block shows only the agents that are on."""
     settle(claude_on, codex_on)
     return [s for agent in NAMES for s in pending(agent) if s.id not in skip]
-
-
-def print_pending(claude_on: bool, codex_on: bool, skip: set[str] = frozenset(), show_codex: bool | None = None) -> None:
-    """The end of a command that prints a summary: every open step, so a step that its agent's session hook cannot
-    show (Codex does not run an unapproved hook) still reaches you. skip: ids already said by the caller.
-    codex_on: whether Codex is on (what settle keeps); show_codex: whether to print its steps (default codex_on;
-    False when Codex is on but set up elsewhere, as on the Windows side of WSL)."""
-    try:
-        lines = block(open_items(claude_on, codex_on, skip), claude_on, codex_on if show_codex is None else show_codex)
-    except Exception:
-        return
-    if lines:
-        print("\n" + "\n".join(lines))

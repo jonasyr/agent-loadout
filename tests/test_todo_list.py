@@ -30,7 +30,7 @@ def test_row_items_skip_and_rewrite_after_bootstrap():
             R("x", False, "no fix here", "", "warn"), R("ok", True)]
     fails, warns = steps.row_items(rows, steps.STILL_TO_DO_ROWS, after_bootstrap=True)
     assert fails == ["binary playwright-cli: loadout bootstrap --install",
-                     "Codex plugin: re-run loadout bootstrap --verbose to see why Codex plugin failed"]
+                     "Codex plugin: re-run loadout bootstrap --verbose to see why"]
     assert warns == []
 
 
@@ -128,3 +128,16 @@ def test_windows_side_codex_rows_not_listed(fake_home, fake_runner, monkeypatch,
                agents="claude,codex")
     text = capsys.readouterr().out
     assert "Codex config" not in text[text.index("Still to do"):] and "binary rtk" in text
+
+
+def test_bare_bootstrap_rows_merge_after_bootstrap():
+    rows = [R("Codex config", False, "", "loadout bootstrap", "warn"), R("links", False, "", "loadout bootstrap", "warn")]
+    assert steps.row_items(rows, set(), after_bootstrap=True) == (
+        [], ["Codex config, links: re-run loadout bootstrap --verbose to see why"])
+
+
+def test_a_fix_an_item_already_gives_is_not_repeated():
+    # review of task 6: the loadout marketplace failed to clone; still_to_do's Codex line already says loadout update
+    rows = [R("Codex plugin", False, "loadout plugin not installed in Codex", codex.MISSING_FIX)]
+    said = [f"Codex lacks marketplaces jonasyr/agent-loadout: run {codex.MISSING_FIX}"]
+    assert steps.row_items(rows, set(), said=said) == ([], [])

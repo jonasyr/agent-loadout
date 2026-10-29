@@ -1180,8 +1180,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     except Exception:
         saved = []
     # rows still_to_do already says; Codex set up on the other side (bootstrap.ps1): its rows are that side's
-    said = steps.STILL_TO_DO_ROWS | (set() if here["codex"] else {"Codex"})
-    fails, warns = steps.row_items(results, said, after_bootstrap=True)
+    skip_rows = steps.STILL_TO_DO_ROWS | (set() if here["codex"] else {"Codex"})
+    fails, warns = steps.row_items(results, skip_rows, after_bootstrap=True, said=todo)
     lines = steps.todo_block("Still to do (in a new terminal):" if path_changed else "Still to do:",
                              fails, todo, saved, warns, here["claude"], here["codex"])
     if lines:
