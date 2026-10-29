@@ -1128,7 +1128,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print(text)
     else:
         bad = [r for r in results if not r.ok]
-        text, code = check.format_results(bad)
+        text, code = check.format_results(bad, fixes=False)  # each fix is in "Still to do" below
         out.status("Health check", f"{len(results) - len(bad)} of {len(results)} OK",
                    "fail" if code else "warn" if bad else "ok")
         if bad:
@@ -1145,14 +1145,17 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         print(f"\n{adopt.UNDO_LINE}")
     if path_changed and out.VERBOSE:
         print("\nOpen a new terminal so the new PATH applies.")
-    if todo:
-        print("\nStill to do (in a new terminal):" if path_changed else "\nStill to do:")
-        for line in todo:
-            print(f"  - {line}")
-    try:  # steps an earlier run left open (the hooks one is in "Still to do" above)
-        steps.print_pending(here["claude"], chosen["codex"], skip={"codex/hooks"}, show_codex=here["codex"])
+    try:  # steps an earlier run left open (the hooks one is in still_to_do's own items)
+        saved = steps.open_items(here["claude"], chosen["codex"], skip={"codex/hooks"})
     except Exception:
-        pass
+        saved = []
+    # rows still_to_do already says; Codex set up on the other side (bootstrap.ps1): its rows are that side's
+    said = steps.STILL_TO_DO_ROWS | (set() if here["codex"] else {"Codex"})
+    fails, warns = steps.row_items(results, said, after_bootstrap=True)
+    lines = steps.todo_block("Still to do (in a new terminal):" if path_changed else "Still to do:",
+                             fails, todo, saved, warns, here["claude"], here["codex"])
+    if lines:
+        print("\n" + "\n".join(lines))
     extension = here["codex"] and codex.mode() == "extension"
     claude_ext = here["claude"] and claude_bundled is not None and not runner.have("claude")
     run = " or ".join(f"`{a}`" for a in ("claude", "codex")

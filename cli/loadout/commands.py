@@ -70,10 +70,22 @@ def _register_check(sub):
         say = (lambda done, total: out.progress(f"checking… {done}/{total}")) if out._tty() and not out.VERBOSE else None
         results = check.run_checks(say=say) if say is not None else check.run_checks()
         out.end_progress()
-        text, code = (check.format_results if out.VERBOSE else check.format_summary)(results)
+        # calm: each fix is said once, in the list below; --verbose keeps them on their rows too
+        text, code = check.format_results(results) if out.VERBOSE else check.format_summary(results, fixes=False)
         print(text)
         from . import steps, targets
-        steps.print_pending(targets.claude_enabled(), targets.codex_enabled())
+        claude_on, codex_on = targets.claude_enabled(), targets.codex_enabled()
+        try:
+            saved = steps.open_items(claude_on, codex_on)
+        except Exception:
+            saved = []
+        said = {"Codex hooks"} if any(s.id == "codex/hooks" for s in saved) else set()
+        if any(s.id.endswith("/bootstrap") for s in saved):
+            said |= steps.BOOTSTRAP_ROWS
+        fails, warns = steps.row_items(results, said)
+        lines = steps.todo_block("Now do this", fails, [], saved, warns, claude_on, codex_on)
+        if lines:
+            print("\n" + "\n".join(lines))
         return code
 
     p.set_defaults(func=run_check)

@@ -1097,7 +1097,8 @@ def run_checks(codex_windows: bool = False, say=None) -> list[CheckResult]:
     return _run_rows(rows, say)
 
 
-def format_results(results: list[CheckResult]) -> tuple[str, int]:
+def format_results(results: list[CheckResult], fixes: bool = True) -> tuple[str, int]:
+    """fixes=False: no fix: lines (calm mode: every fix is in the to-do list below)."""
     lines, code = [], 0
     for r in results:
         mark = "ok  " if r.ok else ("FAIL" if r.severity == "error" else "warn")
@@ -1106,17 +1107,17 @@ def format_results(results: list[CheckResult]) -> tuple[str, int]:
             line += f": {r.info}"
         if not r.ok:
             line += f": {r.detail}" if r.detail else ""
-            line += f"\n        fix: {r.fix}" if r.fix else ""
+            line += f"\n        fix: {r.fix}" if r.fix and fixes else ""
             if r.severity == "error":
                 code = 1
         lines.append(line)
     return "\n".join(lines), code
 
 
-def format_summary(results: list[CheckResult]) -> tuple[str, int]:
+def format_summary(results: list[CheckResult], fixes: bool = True) -> tuple[str, int]:
     """One count line, then only the warnings and failures (same lines as format_results)."""
     bad = [r for r in results if not r.ok]
-    text, code = format_results(bad)
+    text, code = format_results(bad, fixes)
     head = "\n".join([f"Health check: {len(results) - len(bad)} of {len(results)} OK",
                       *(f"{r.name}: {r.info}" for r in results if r.ok and r.info)])
     return (f"{head}\n{text}" if bad else head), code
