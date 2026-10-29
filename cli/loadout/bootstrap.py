@@ -41,6 +41,7 @@ POLICY_NOTE = ("PowerShell's execution policy is Restricted, so profiles (and th
 
 INTRO = "loadout sets up your coding agent with a reviewed kit of plugins, rules and tools."
 PROBLEM = out.PROBLEM
+INSTALL_FAILED_HINT = "the install failed (see above); fix that, then run loadout bootstrap --install again"
 
 
 def _step(title: str) -> None:
@@ -58,6 +59,8 @@ def _report(name: str, summary: str, lines: list[str] = (), level: str = "ok") -
     bad = [line for line in lines if PROBLEM.search(line)]
     out.status(name, summary, "warn" if bad and level == "ok" else level)
     for line in lines:
+        if line.removeprefix(f"{name}: ") == summary:
+            continue  # only repeats the status line
         (out.problem if line in bad else out.detail)(line)
 
 
@@ -289,7 +292,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
             print(line)
     if install:
         _ensure_local_bin()
-    missing, failed = [], set()
+    missing, failed, tried = [], set(), set()
     for entry, cmds, _optional in missing_tools(skip, recommended):
         name = entry["id"]
         if not missing_binary(name):  # an earlier install brought it
@@ -302,6 +305,7 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
                 missing.append(name)
             continue
         if install and cmds:
+            tried.add(name)
             _, problems = install_tool(entry, cmds, on_problem=lambda line: note(line, problem=True))
             if installed is not None and not missing_binary(name) and not entry.get("helper"):
                 installed.append(name)
@@ -320,7 +324,10 @@ def check_prereqs(install: bool, ask: Ask, installed: list | None = None, notes:
         if missing_binary(name):
             failed.add(name)
             if not entry.get("helper"):
-                hint = "re-run with --install" if cmds else entry.get("manual", "")
+                if name in tried:
+                    hint = f"install it by hand: {entry['manual']}" if entry.get("manual") else INSTALL_FAILED_HINT
+                else:
+                    hint = "re-run with --install" if cmds else entry.get("manual", "")
                 if wsl.detect() is not None and wsl.is_windows_program(name):
                     if cmds:
                         hint = f"{hint}; {_windows_first_note(name)}"
@@ -933,20 +940,15 @@ def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli
     from . import recommend
     try:
         from dataclasses import replace
-        from . import vscode
         cs = wsl.codex_side() if wsl.detect() is not None and chosen["codex"] else None
         if cs is not None and gate is None and cs.side == "windows":
             cs = replace(cs, side="wsl")  # the gate set Codex up on this side (--codex-side wsl, or answer 1)
         cell = recommend.detect(chosen, cs, codex_windows=bool(gate) and WINDOWS_WAY in gate)
-        skip = frozenset({"codex"}) if gate else frozenset()  # --without-codex-cli: covered by recommended below
-        # as in Prerequisites: a CLI that an extension stands in for is optional, not missing
-        bundled = chosen["claude"] and not runner.have("claude") and vscode.bundled_claude() is not None
-        recommended = codex_recommended(chosen, gate) | (frozenset({"claude"}) if bundled else frozenset())
-        missing = [e["id"] for e, _cmds, optional in missing_tools(skip, recommended) if not optional]
         lines = [f"recommended: {recommend.flags(cell)}  ({recommend.anchor(cell)})"]
         if cell.surface == "none":
             lines.append(f"using VS Code? see {recommend.anchor(cell)}")
-        lines += recommend.differences(cell, chosen, install, missing, vscode_wsl, codex_cli)
+        # missing tools: Prerequisites in the same run names them, so not again here
+        lines += recommend.differences(cell, chosen, install, [], vscode_wsl, codex_cli)
     except Exception:
         return
     _step("This machine")

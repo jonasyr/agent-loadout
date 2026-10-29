@@ -37,8 +37,9 @@ def test_block_shows_cell_and_flags(calm, capsys):
 def test_block_names_differences(calm, capsys, fake_runner):
     fake_runner.missing.add("serena")
     _run()
-    block = _block(capsys.readouterr().out)
-    assert "serena" in block and "--install" in block
+    text = capsys.readouterr().out
+    assert "missing" in text.split("Prerequisites", 1)[1] and "serena" in text.split("Prerequisites", 1)[1]
+    assert "missing and no --install" not in _block(text)
 
 
 def test_block_never_asks(calm, capsys):
@@ -86,13 +87,13 @@ def test_optional_codex_cli_is_not_missing(calm, capsys, monkeypatch, fake_runne
     fake_runner.missing.add("codex")
     monkeypatch.setattr(bootstrap, "codex_recommended", lambda chosen, gate: frozenset({"codex"}))
     _run(agents="claude,codex")
-    block = _block(capsys.readouterr().out)
-    assert "codex" not in [w.strip(",") for line in block.splitlines() if "missing" in line for w in line.split()]
+    text = capsys.readouterr().out.split("Prerequisites", 1)[1]
+    assert not any("missing (required) codex" in line for line in text.splitlines()), text  # optional: never "required"
 
 
 def test_without_codex_cli_does_not_hide_a_required_codex(calm, capsys, fake_runner):
     # Codex review on #70: no extension stands in, so --without-codex-cli does not apply and Codex stays required
     fake_runner.missing.add("codex")
     _run(agents="claude,codex", codex_cli=False)
-    block = _block(capsys.readouterr().out)
-    assert any("codex" in line and "missing" in line for line in block.splitlines()), block
+    text = capsys.readouterr().out.split("Prerequisites", 1)[1]
+    assert any("codex" in line and "missing" in line for line in text.splitlines()), text
