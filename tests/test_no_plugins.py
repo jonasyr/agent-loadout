@@ -40,7 +40,6 @@ def test_no_line_when_nothing_hidden(fake_home, fake_runner, monkeypatch, capsys
 
 
 def test_with_plugins_rows_unchanged(fake_home, fake_runner, monkeypatch, capsys):
-    monkeypatch.setattr(bootstrap, "plugin_step", lambda *a, **k: None, raising=False)
     code = _bootstrap(fake_home, monkeypatch, [R("python", True), P("Codex plugin")], plugins=True)
     text = capsys.readouterr().out
     assert code == 1 and "Codex plugin" in text and bootstrap.PLUGINS_SKIPPED not in text

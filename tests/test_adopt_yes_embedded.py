@@ -82,3 +82,20 @@ def test_adopt_step_prints_when_secrets(setup, capsys, monkeypatch):
     monkeypatch.setattr(out, "VERBOSE", True)
     _boot(interactive=True)
     assert "== Adopt existing setup" in capsys.readouterr().out
+
+
+def test_adopt_output_survives_an_error(fake_home, fake_runner, monkeypatch, capsys):
+    # final review: lines adopt printed before it raised must not vanish with the held-back buffer
+    import pytest
+    from loadout import adopt, bootstrap, out
+    monkeypatch.setattr(out, "VERBOSE", False)
+    (fake_home / ".config/loadout/personal").mkdir(parents=True, exist_ok=True)
+
+    def run(**k):
+        print("removed duplicate x (backup kept)")
+        raise RuntimeError("broken file")
+    monkeypatch.setattr(adopt, "run", run)
+    with pytest.raises(RuntimeError):
+        bootstrap.bootstrap(install=False, yes=True, plugins=False, adopt_step=True, ask=lambda q: "",
+                            interactive=False)
+    assert "removed duplicate x (backup kept)" in capsys.readouterr().out

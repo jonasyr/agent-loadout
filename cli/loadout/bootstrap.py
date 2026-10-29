@@ -1137,15 +1137,17 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if yes:  # nothing to report: no heading and no blank lines
             import contextlib
             import io
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf):
-                adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
-                          embedded=True)
-            if buf.getvalue().strip():
-                _step("Adopt existing setup")
-                print()
-                print(buf.getvalue(), end="")
-                print()
+            buf = io.StringIO()  # held back to see whether adopt says anything (its lines lose colour meanwhile)
+            try:
+                with contextlib.redirect_stdout(buf):
+                    adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask,
+                              interactive=interactive, embedded=True)
+            finally:  # also when adopt raised partway: what it applied or found stays on screen
+                if buf.getvalue().strip():
+                    _step("Adopt existing setup")
+                    print()
+                    print(buf.getvalue(), end="")
+                    print()
         else:
             _step("Adopt existing setup")
             if not interactive:
