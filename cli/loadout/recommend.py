@@ -118,7 +118,7 @@ def anchor(cell: Cell) -> str:
 
 
 def differences(cell: Cell, chosen: dict[str, bool], install: bool, missing: list[str], vscode_wsl: bool,
-                codex_cli: bool) -> list[str]:
+                codex_cli: bool, claude_cli: bool = True) -> list[str]:
     out = []
     if not install and missing:
         out.append(f"{', '.join(missing)} missing and no --install: the recommended setup installs missing tools")
@@ -129,6 +129,8 @@ def differences(cell: Cell, chosen: dict[str, bool], install: bool, missing: lis
         out.append("a Codex CLI is on PATH but Codex is not chosen (--agents)")
     if chosen.get("codex") and not codex_cli and runner.have("codex"):
         out.append("--without-codex-cli given while a Codex CLI is on PATH")
+    if chosen.get("claude") and not claude_cli and runner.have("claude"):
+        out.append("--without-claude-cli given while a Claude Code CLI is on PATH")
     return out
 
 
