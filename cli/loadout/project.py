@@ -214,7 +214,7 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool,
                 repo_config.record_text(project, repo_config.current_text(project, w), prof.name, {})
                 notes.append(Info(RECORD_LATER.format(name=prof.name)))
             except repo_config.Invalid as exc:
-                notes.append(str(exc))
+                failures.append(str(exc))
         if install and not targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(Todo(f"Codex plugins of profile {prof.name}: not installed for Codex, which is off for "
                               "you (a Codex user installs them with loadout profile here)"))
@@ -303,7 +303,7 @@ def _report(title: str, bk, notes: list[str], problems: list[str], done: str = "
     out.status(title, done if not problems else "applied with problems (below)", "ok" if not problems else "warn")
     todos = list(dict.fromkeys([n for n in notes if isinstance(n, Todo)] + list(todos_after)))
     shown = [n for n in notes if not isinstance(n, Todo) and (not _calm() or n.startswith("backup: "))]
-    for line in problems + list(dict.fromkeys(shown)):
+    for line in dict.fromkeys(problems + shown):  # each said once
         out.problem(secrets.redact(line))  # problem() escapes control characters, keeping line breaks
     if todos:
         from .out import printable
@@ -400,7 +400,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
                  "loadout: which agents this repo is for (commit it)")
     planned_notes, failures, skips = _plan_profile(prof, project, w, install, decide)
     notes += planned_notes
-    if not refresh and cfg.exists and not any(c.kind != "run" for c in w.changes) and not failures:
+    if not refresh and cfg.exists and cfg.manage and not any(c.kind != "run" for c in w.changes) and not failures:
         try:
             recorded = name in repo_config.records(project)
         except repo_config.Invalid:
@@ -599,13 +599,15 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         notes += [Todo(l) for l in skill_links.report(skill_links.plain_files(project)) if l not in notes]
         _, scaffold_notes = scaffold.scaffold(project, w=w)
         if not paths.inside(project / ".gitignore", project):
-            notes.append("skipped .gitignore: it points outside the repo")
+            failures.append("skipped .gitignore: it points outside the repo")
             rc = 1
         scaffold.ensure_gitignore(project, w=w)
         for note in scaffold_notes:
-            notes.append(note if note.startswith("skipped") else f"note: {note}")
-            if note.startswith("skipped"):
+            if note.startswith("skipped"):  # a real problem: ! and exit 1 (spec: still problems)
+                failures.append(note)
                 rc = 1
+            else:
+                notes.append(f"note: {note}")
         title = "init" + (f", profiles {', '.join(chosen)}" if chosen else "")
         plan = _show(project, title, w, failures + notes, skips)
     if not cfg.manage:

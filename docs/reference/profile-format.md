@@ -34,6 +34,7 @@ Example, the kit's `web` profile:
   },
   "settings": { "disabledMcpjsonServers": ["chrome-devtools"] },
   "commands": [["playwright-cli", "install", "--skills"]],
+  "done_when": [".claude/skills/playwright-cli", ".agents/skills/playwright-cli"],
   "why": {
     "mcp.mcpServers": "Chrome DevTools for performance and network debugging",
     "settings.disabledMcpjsonServers": "keeps Chrome DevTools off until you enable it in /mcp"
