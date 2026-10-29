@@ -112,7 +112,7 @@ def still_to_do(key: str, codex_here: bool = True, plugins: bool = True) -> list
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    out += (codex.open_steps() if plugins else codex.open_steps(plugins=False)) if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
+    out += codex.open_steps(plugins=plugins) if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
@@ -1168,6 +1168,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     results = check.run_checks(codex_windows=True) if gate and WINDOWS_WAY in gate else check.run_checks()
     # --no-plugins: rows that only say the skipped plugins are missing are this run's choice, not problems
     hidden = [] if plugins else [r for r in results if not r.ok and r.plugins_missing]
+    every = results  # settle reads every row: a row it does not see counts as passing
     results = [r for r in results if not any(r is h for h in hidden)]
     if out.VERBOSE:
         text, code = check.format_results(results)
@@ -1186,7 +1187,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     from . import steps
     try:  # the steps visible without a run's facts (hooks, plugin copy), as `loadout update` leaves them: shown at that agent's next session until done
         steps.save(steps.derive(set(), [], here["claude"], here["codex"]))
-        steps.settle(here["claude"], chosen["codex"], results)  # Codex on but set up on the Windows side keeps its steps
+        steps.settle(here["claude"], chosen["codex"], every)  # Codex on but set up on the Windows side keeps its steps
     except Exception:
         pass
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
