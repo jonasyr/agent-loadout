@@ -252,6 +252,10 @@ def _binaries(cs=None) -> list[CheckResult]:
     return out
 
 
+CBM_UNREADABLE_FIX = ("run codebase-memory-mcp config get auto_index in a terminal: its error says why (often "
+                      "another codebase-memory-mcp session holds the daemon)")
+
+
 def _cbm_auto_index() -> list[CheckResult]:
     """The cbm_auto_index row; none without codebase-memory-mcp. An OK row carries its state in the name, since
     `loadout check` prints details only for warnings."""
@@ -261,8 +265,10 @@ def _cbm_auto_index() -> list[CheckResult]:
         return []
     name = "codebase-memory auto_index"
     if now == cbm.UNREADABLE:
+        if cbm_conflict_detail() is not None:
+            return []  # the `codebase-memory-mcp daemon` row says why, once
         return [CheckResult(name, False, "could not read it (codebase-memory-mcp config get auto_index failed)",
-                            "run codebase-memory-mcp config get auto_index to see why", "warn")]
+                            CBM_UNREADABLE_FIX, "warn")]
     if now:
         detail = "on"
     elif cbm.answer() == "off":
@@ -518,12 +524,10 @@ def _cbm_records(path: Path) -> list[dict]:
     return out
 
 
-def _cbm_conflict() -> list[CheckResult]:
-    """codebase-memory-mcp 0.12 runs one daemon per account; a session for another cache folder or version fails
-    and writes why into its own cache folder ($CBM_CACHE_DIR, else ~/.cache/codebase-memory-mcp). Read only: the
-    binary is never run (its `daemon status` hangs)."""
+def _cbm_conflict_info() -> tuple[str, str] | None:
+    """(detail, fix) of the daemon conflict, or None."""
     if os.name == "nt":
-        return []
+        return None
     default = paths.home() / ".cache/codebase-memory-mcp"
     folders = [(default, False)]
     env = os.environ.get("CBM_CACHE_DIR")
@@ -537,7 +541,7 @@ def _cbm_conflict() -> list[CheckResult]:
                         best is None or rec["timestamp_unix_s"] > best[0]["timestamp_unix_s"]):
                     best = (rec, folder, from_env)
     if best is None:
-        return []
+        return None
     rec, folder, from_env = best
     active, requested = rec.get("active_version"), rec.get("requested_version")
     if rec.get("reason") != "cache_root" and isinstance(active, str) and isinstance(requested, str) \
@@ -553,7 +557,23 @@ def _cbm_conflict() -> list[CheckResult]:
                "codebase-memory-mcp daemon stop retires the daemon once no session uses it")
     if from_env:
         detail += f"; logged in {folder}, the CBM_CACHE_DIR of this check's own environment"
-    return [CheckResult("codebase-memory-mcp daemon", False, printable(detail), fix, "warn")]
+    return printable(detail), fix
+
+
+def cbm_conflict_detail() -> str | None:
+    """The daemon row's detail text, or None without a recent conflict."""
+    info = _cbm_conflict_info()
+    return info[0] if info else None
+
+
+def _cbm_conflict() -> list[CheckResult]:
+    """codebase-memory-mcp 0.12 runs one daemon per account; a session for another cache folder or version fails
+    and writes why into its own cache folder ($CBM_CACHE_DIR, else ~/.cache/codebase-memory-mcp). Read only: the
+    binary is never run (its `daemon status` hangs)."""
+    info = _cbm_conflict_info()
+    if info is None:
+        return []
+    return [CheckResult("codebase-memory-mcp daemon", False, info[0], info[1], "warn")]
 
 
 def _gh() -> list[CheckResult]:
