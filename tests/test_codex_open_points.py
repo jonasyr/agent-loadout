@@ -128,6 +128,6 @@ def test_set_target_offers_to_commit_the_personal_layer(fake_home, fake_runner, 
     monkeypatch.setattr(configure, "offer_commit", lambda ask: offered.append(1))
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     main(["configure", "set", "target", "codex", "on"])
     assert offered == [1]

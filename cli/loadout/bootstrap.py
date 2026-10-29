@@ -112,7 +112,7 @@ def still_to_do(key: str, codex_here: bool = True, plugins: bool = True) -> list
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    out += codex.open_steps(plugins) if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
+    out += (codex.open_steps() if plugins else codex.open_steps(plugins=False)) if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out

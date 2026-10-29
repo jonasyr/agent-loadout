@@ -54,7 +54,7 @@ def test_codex_only_bootstrap_leaves_no_claude_folder(fake_home, fake_runner, mo
     monkeypatch.setattr(out, "VERBOSE", False)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     bootstrap.bootstrap(install=False, yes=True, plugins=True, adopt_step=True, ask=lambda q: "",
                         interactive=False, agents="codex")
     assert not (fake_home / ".claude").exists(), sorted(str(p) for p in (fake_home / ".claude").rglob("*"))

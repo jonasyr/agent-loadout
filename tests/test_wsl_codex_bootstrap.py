@@ -243,7 +243,7 @@ def test_both_sides_without_a_terminal_names_the_manual_switch(fake_home, fake_r
 
 def test_the_windows_side_gets_no_wsl_codex_follow_ups(fake_home, fake_runner, monkeypatch, capsys):
     _side(monkeypatch, "windows")
-    monkeypatch.setattr(codex, "open_steps", lambda: ["approve them in Codex: /hooks"])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: ["approve them in Codex: /hooks"])
     bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="codex",
                         codex_side="windows")
     out = capsys.readouterr().out
@@ -252,7 +252,7 @@ def test_the_windows_side_gets_no_wsl_codex_follow_ups(fake_home, fake_runner, m
 
 def test_both_agents_with_the_windows_side_name_only_claude_next(fake_home, fake_runner, monkeypatch, capsys):
     _side(monkeypatch, "windows")
-    monkeypatch.setattr(codex, "open_steps", lambda: ["approve them in Codex: /hooks"])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: ["approve them in Codex: /hooks"])
     bootstrap.bootstrap(False, True, False, False, ask=lambda q: "", interactive=False, agents="claude,codex",
                         codex_side="windows")
     last = capsys.readouterr().out.strip().splitlines()[-1]

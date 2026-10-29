@@ -42,7 +42,7 @@ def test_existing_machine_with_codex_is_asked(fake_home, fake_runner):
 def test_codex_only_bootstrap_never_touches_claude(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: ["instructions written"])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     _run(agents="codex", plugins=True, adopt_step=True)  # both on: with Claude Code off they must be skipped
     assert not any(c[0] == "claude" for c in fake_runner.calls)
     assert not paths.claude_home().exists(), "loadout keeps its own files outside ~/.claude (ADR 0025)"
@@ -61,7 +61,7 @@ def test_cloned_choice_decides_without_asking(fake_home, fake_runner, monkeypatc
         {e["id"] for e in __import__("loadout").catalog.binaries()}) or [])
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     asked = []
     _run(install=True, yes=False, interactive=True, ask=lambda q: asked.append(q) or "")
     assert targets.codex_enabled(), "the cloned layer's choice is used"
@@ -83,7 +83,7 @@ def test_next_line_names_the_chosen_agent(fake_home, fake_runner, monkeypatch, c
     monkeypatch.setattr(out, "VERBOSE", False)
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     _run(agents="codex")
     assert "run `codex`" in capsys.readouterr().out
 
@@ -91,7 +91,7 @@ def test_next_line_names_the_chosen_agent(fake_home, fake_runner, monkeypatch, c
 def test_a_starter_layer_asks_the_agents_before_its_own_questions(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(codex, "unavailable", lambda: None)
     monkeypatch.setattr(codex, "apply_all", lambda bk, refresh=False, **kw: [])
-    monkeypatch.setattr(codex, "open_steps", lambda: [])
+    monkeypatch.setattr(codex, "open_steps", lambda *a, **k: [])
     asked, seen = [], []
 
     def ask(q):
