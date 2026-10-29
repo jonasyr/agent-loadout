@@ -64,9 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", action="store_true", help="apply the plan without asking (needed without a terminal)")
     p.add_argument("--take-profile", action="store_true",
                    help="where someone changed an entry the profile set, use the profile's value")
+    p.add_argument("--refresh", action="store_true",
+                   help="plan the whole profile again, even when it is already applied here")
     p.add_argument("--verbose", action="store_true", help="every file, command and note, not only the summary")
     p.set_defaults(func=lambda a: _verbose(a) or project.add_profile(
-        Path.cwd(), a.name, install=not a.no_install, dry_run=a.dry_run,
+        Path.cwd(), a.name, install=not a.no_install, dry_run=a.dry_run, refresh=a.refresh,
         approve=project.approver(a.yes, _ask, ui.is_interactive()),
         decide=project.chooser(a.take_profile, _ask, ui.is_interactive() and not a.yes, a.dry_run)))
 

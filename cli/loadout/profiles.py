@@ -227,23 +227,27 @@ def apply_profile(profile: Profile, project: Path, w=None, decide=None, notes: l
     return changed, skipped
 
 
+class Kept(str):
+    """A note that a person's change in a repo file stays (ADR 0031): said even when nothing else changes."""
+
+
 def _merge_notes(profile: Profile, rel: str, m) -> list[str]:
     from . import repo_merge
     out = [f"{rel}: update {p} to profile {profile.name}'s value" for p in m.updated]
     out += [f"{rel}: remove {p} (no longer in profile {profile.name})" for p in m.removed]
-    out += [f"{rel}: {line}" for line in m.kept + m.left]
-    out += [f"{rel}: {line} was removed in this repo; kept removed" for line in m.kept_removed]
+    out += [Kept(f"{rel}: {line}") for line in m.kept + m.left]
+    out += [Kept(f"{rel}: {line} was removed in this repo; kept removed") for line in m.kept_removed]
     for d in m.differs:
         if d.pointer not in m.updated:
             k = repo_merge.unpointer(d.pointer)[-1]
-            out.append(f"{rel}: {d.pointer}: kept the repo's {repo_merge.show(d.theirs, k)} (profile {profile.name} "
-                       f"has {repo_merge.show(d.new, k)}; loadout profile {profile.name} --take-profile uses it)")
+            out.append(Kept(f"{rel}: {d.pointer}: kept the repo's {repo_merge.show(d.theirs, k)} (profile {profile.name} "
+                       f"has {repo_merge.show(d.new, k)}; loadout profile {profile.name} --take-profile uses it)"))
     for d in m.offered:
         if d.pointer not in m.updated:
             k = repo_merge.unpointer(d.pointer)[-1]
-            out.append(f"{rel}: {d.pointer}: the repo's {repo_merge.show(d.theirs, k)} stays (changed in this repo; "
-                       f"loadout profile {profile.name} --take-profile uses the profile's {repo_merge.show(d.new, k)})")
-    return [redact(line) for line in out]
+            out.append(Kept(f"{rel}: {d.pointer}: the repo's {repo_merge.show(d.theirs, k)} stays (changed in this repo; "
+                       f"loadout profile {profile.name} --take-profile uses the profile's {repo_merge.show(d.new, k)})"))
+    return [type(line)(redact(line)) for line in out]  # a Kept note stays one after redaction
 
 
 

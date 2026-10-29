@@ -144,7 +144,7 @@ def test_a_no_op_rerun_touches_nothing(repo, monkeypatch, capsys):
     capsys.readouterr()
     assert run(repo) == 0
     assert [f.stat().st_mtime for f in files] == [1_000_000, 1_000_000]
-    assert "(no file changes)" in capsys.readouterr().out
+    assert capsys.readouterr().out.startswith(project.ALREADY.format(name="web"))
 
 
 def test_two_profiles_in_one_plan_share_a_list_entry(repo, monkeypatch):

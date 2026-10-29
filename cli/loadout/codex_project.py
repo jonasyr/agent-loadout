@@ -105,7 +105,7 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
                 lines.append(f"mcp {name}: left as is in {path} (a server of that name is already there)")
             continue
         if ptr in mine:
-            lines.append(f"mcp {name}: removed from {path} in this repo; kept removed")
+            lines.append(profiles.Kept(f"mcp {name}: removed from {path} in this repo; kept removed"))
             rec[ptr] = mine[ptr]
             continue
         added.append(text)
@@ -123,7 +123,7 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
                 rec[ptr] = True
             continue
         if ptr in mine:
-            lines.append(f"plugin {pid}: removed from {path} in this repo; kept removed")
+            lines.append(profiles.Kept(f"plugin {pid}: removed from {path} in this repo; kept removed"))
             rec[ptr] = mine[ptr]
             continue
         added.append(f"[plugins.{codex.toml_key(pid)}]\nenabled = true\n")

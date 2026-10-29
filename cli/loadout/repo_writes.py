@@ -150,6 +150,10 @@ class RepoWrites:
                     return
         self._changes.append(change)
 
+    def keep(self, wanted) -> None:
+        """Keep only the changes `wanted(change)` is true for (e.g. the installs this machine still lacks)."""
+        self._changes = [c for c in self._changes if wanted(c)]
+
     def planned(self, path: Path) -> str | None:
         """The text already planned for `path`, so a later planner builds on it instead of on the disk."""
         return next((c.text for c in self._changes if c.kind in ("create", "modify") and c.path == path), None)

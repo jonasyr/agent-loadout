@@ -324,10 +324,55 @@ def _config_or_report(project: Path):
         return None
 
 
+ALREADY = "profile {name}: already applied here (nothing to change)"
+
+
+def missing_here(prof: profiles.Profile, project: Path) -> list[str]:
+    """What this machine still lacks of `prof` (spec 2026-10-29 init output, G4): the Claude Code plugins installed
+    for this project, the Codex plugins in the user's Codex, and what the profile's commands leave behind
+    (`done_when`, any of its paths). Each only for an agent that is on for the repo and the user."""
+    from . import codex, codex_project, repo_config, targets
+    from .jsonio import InvalidJSON, get_dict, load_json
+    on = repo_config.agents(project)
+    out: list[str] = []
+    if on["claude"] and targets.claude_enabled():
+        try:
+            installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
+        except InvalidJSON:
+            installed = {}
+        here = str(project.resolve())
+        for pid in prof.install:
+            if not (isinstance(pid, str) and profiles.PLUGIN_ID.match(pid)):
+                continue
+            entries = installed.get(pid)
+            if not any(isinstance(e, dict) and e.get("scope") in ("project", "local") and e.get("projectPath") == here
+                       for e in (entries if isinstance(entries, list) else [])):
+                out.append(f"plugin {pid}")
+    if on["codex"] and targets.codex_enabled():
+        wanted = codex_project._wanted(prof)[1]
+        have = codex.installed_plugins() if wanted else set()
+        out += [f"Codex plugin {pid}" for pid in wanted if have is None or pid not in have]
+    if prof.commands and prof.done_when and not any((project / p).exists() or (project / p).is_symlink()
+                                                     for p in prof.done_when):
+        out += [" ".join(cmd) for cmd in prof.commands if isinstance(cmd, list)]
+    return out
+
+
+def _still_needed(change, missing: list[str]) -> bool:
+    """Whether a planned `run` step installs or makes something this machine lacks."""
+    cmd = change.cmd or []
+    if cmd[:3] == ["claude", "plugin", "install"]:
+        return f"plugin {cmd[3]}" in missing
+    if cmd[:4] == ["claude", "plugin", "marketplace", "add"]:  # needed only for a plugin still to install
+        return any(m.startswith("plugin ") for m in missing)
+    return " ".join(cmd) in missing
+
+
 def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = False, drive_note: bool = True,
-                approve=None, result: dict | None = None, decide=None) -> int:
+                approve=None, result: dict | None = None, decide=None, refresh: bool = False) -> int:
     """approve(plan lines) -> bool: show the plan and ask (the CLI). None: apply at once, backed up (callers that
-    already asked). dry_run: show the plan, change nothing."""
+    already asked). dry_run: show the plan, change nothing. refresh: plan the whole profile even when it is
+    already applied here."""
     from . import backup, repo_config
     from .repo_writes import RepoWrites
     project = Path(project).resolve()  # backups record absolute paths, so restore works from any folder
@@ -353,6 +398,23 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
                  "loadout: which agents this repo is for (commit it)")
     planned_notes, failures, skips = _plan_profile(prof, project, w, install, decide)
     notes += planned_notes
+    if not refresh and cfg.exists and not any(c.kind != "run" for c in w.changes) and not failures:
+        try:
+            recorded = name in repo_config.records(project)
+        except repo_config.Invalid:
+            recorded = False
+        if recorded:
+            missing = missing_here(prof, project) if install else []
+            if not missing:
+                from . import out
+                print(ALREADY.format(name=name))
+                for line in dict.fromkeys(n for n in notes if isinstance(n, profiles.Kept)):
+                    out.problem(secrets.redact(line))  # what stays the repo's own (ADR 0031)
+                return 0
+            w.keep(lambda c: c.kind != "run" or _still_needed(c, missing))
+            codex_missing = [m.removeprefix("Codex plugin ") for m in missing if m.startswith("Codex plugin ")]
+            if codex_missing:
+                notes.append(f"Codex plugins to install here: {', '.join(codex_missing)}")
     plan = _show(project, f"profile {name}", w, failures + notes, skips)
     if not cfg.manage:
         print(MANAGE_OFF)
