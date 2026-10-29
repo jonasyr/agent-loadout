@@ -82,8 +82,9 @@ def test_init_prints_a_short_summary(fake_home, fake_runner, calm, tmp_path, cap
     plan_end = next(i for i, line in enumerate(lines) if line.startswith(("✓ Init", "! Init")))
     assert lines[0].startswith("Plan for ") and any("create  AGENTS.md" in line for line in lines[:plan_end]), text
     assert lines[plan_end].startswith("✓ Init"), text
-    assert "running:" not in text and lines[-1].startswith("next: ")
-    assert len(lines) - plan_end <= 5, text  # after the plan: the status, notes, the undo line and next
+    assert "running:" not in text and lines[-1].startswith("undo: ")
+    assert "/loadout:onboard" in lines[-2], text  # the last to-do
+    assert len(lines) - plan_end <= 7, text  # after the plan: the status, the numbered to-dos and the undo line
 
 
 def test_init_shows_a_failed_command_in_calm_mode(fake_home, fake_runner, calm, tmp_path, capsys):
