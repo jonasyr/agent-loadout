@@ -182,6 +182,21 @@ def render_calm(verdicts: list[Verdict], findings: list, header_only: bool = Fal
     return "\n".join(lines)
 
 
+def yes_line(verdicts: list[Verdict], findings: list) -> str | None:
+    """One line for the groups --yes does not apply; None when there are none."""
+    def n(*groups):
+        return sum(1 for v in verdicts if v.action in groups)
+    parts = []
+    if n("update"):
+        parts.append(f"{_plural(n('update'), 'tool update')} (loadout update)")
+    if n("install"):
+        c = n("install")
+        parts.append(f"{c} {'tool' if c == 1 else 'tools'} to install (loadout adopt)")
+    if n("review", "own"):
+        parts.append(f"{n('review', 'own')} to review (loadout adopt)")
+    return "Your existing setup: " + ", ".join(parts) if parts else None
+
+
 def calm_summary(chosen: list[Verdict], acting: list) -> list[str]:
     ok = out.paint(out.sym("ok"), "ok")
     lines = []
@@ -515,7 +530,14 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         return 2
     calm = not out.VERBOSE
     asks_each_group = calm and apply_changes and interactive and not yes and groups is None
-    if asks_each_group:
+    quiet_yes = embedded and yes and calm and apply_changes
+    if quiet_yes:
+        line = yes_line(verdicts, findings)
+        if line:
+            print(line)
+        if findings:
+            print(calm_secrets(findings))
+    elif asks_each_group:
         print(render_calm(verdicts, findings, header_only=True))
     else:
         print(render_calm(verdicts, findings) if calm else render_plan(verdicts, findings))
@@ -545,7 +567,8 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
             print("nothing changed")
             return 0
     elif not chosen and not own_pairs and not findings:
-        print("nothing selected")
+        if not quiet_yes:
+            print("nothing selected")
         return 0
     bk = Backup(description="adopt")
     if own_spec is not None:
