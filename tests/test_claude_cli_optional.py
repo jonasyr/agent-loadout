@@ -58,7 +58,7 @@ def _run(**kw):
 
 
 def _claude_installs(fake_runner):
-    return [c for c in fake_runner.calls if c[:2] == ["sh", "-c"] and "claude.ai/install.sh" in c[2]]
+    return [c for c in fake_runner.calls if "claude.ai/install" in " ".join(c)]  # install.sh, or install.ps1 on Windows
 
 
 def test_without_claude_cli_flag_skips_the_install(bundled, fake_runner, monkeypatch, capsys):
