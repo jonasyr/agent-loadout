@@ -432,8 +432,12 @@ def _check_shape(name: str, cfg) -> None:
 
 def server(name: str, cfg: dict) -> dict:
     """A Claude-style MCP config as Codex keys; secrets only as variable names, never as plaintext."""
-    _check_shape(name, cfg)
     from .secrets import scan
+    try:
+        _check_shape(name, cfg)
+    except Unsupported:  # a planned skip must not hide a plaintext secret: that stays a problem
+        if not any(scan({"mcpServers": {name: cfg}})):
+            raise
     for finding in scan({"mcpServers": {name: cfg}}):
         raise Refused(f"mcp {name}: {finding.field} {finding.key} holds a plaintext secret; move it to secrets.env "
                       "(Codex forwards env variables and headers by name, never arguments or URLs)")

@@ -52,3 +52,11 @@ def test_claude_only_plugin_is_planned_skip(repo, fake_runner, monkeypatch, caps
     assert _run(repo, monkeypatch, prof) == 0
     text = capsys.readouterr().out
     assert sum(l.startswith("  skip    ") for l in text.splitlines()) == 1
+
+
+def test_unknown_key_with_secret_still_fails(repo, fake_runner, monkeypatch, capsys):
+    # review: an unsupported key must not hide a plaintext secret behind a calm skip
+    prof = profiles.Profile(name="s", description="", mcp={"mcpServers": {"x": {
+        "command": "npx", "foo": 1, "env": {"API_KEY": "sk-" + "live-abcdef0123456789"}}}})
+    assert _run(repo, monkeypatch, prof) == 1
+    assert "plaintext secret" in capsys.readouterr().out
