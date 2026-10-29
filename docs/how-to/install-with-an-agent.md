@@ -44,7 +44,7 @@ Ask these, one at a time:
    - On Linux and macOS the extension must be a local install. In WSL it must be installed in WSL (`~/.vscode-server/extensions` has it; the user installs it from the Extensions view in a Remote-WSL window).
    - In WSL with the walkthrough [below](#codex-only-on-windows-with-vs-code), skip this question: it installs the CLI.
 
-   For the Claude Code extension there is no question: `--install` also installs the Claude Code CLI, which is the intended path ([Claude Code in VS Code without the CLI](vscode.md#claude-code-in-vs-code-without-the-cli)).
+   For the Claude Code extension (when Claude Code is chosen and no `claude` is on PATH), ask the same: do they also want `claude` in a terminal? The Claude Code CLI is optional next to the extension, like the Codex CLI. If not, add `--without-claude-cli` ([Claude Code in VS Code without the CLI](vscode.md#claude-code-in-vs-code-without-the-cli)).
 3. **In WSL, only when the user's Codex is the Windows one:** set up Codex in WSL (installs Codex here) or on Windows (they run `bootstrap.ps1` there)? This becomes `--codex-side wsl` or `--codex-side windows`. See [Codex in WSL](wsl.md#codex).
 4. **The personal layer:** the URL of their private git repo for it, or a new one? This becomes `--personal <URL>` or `--personal new`. If a personal layer exists already (step 1), skip this question and the next two; loadout keeps it.
 5. **About them** (only with `--personal new`; a cloned layer has its own): their name, their role, their main languages, and anything else about how they like to work. Every answer is optional.
