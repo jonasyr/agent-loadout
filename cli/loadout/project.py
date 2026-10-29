@@ -119,12 +119,13 @@ def _agent_names(on: dict) -> str:
     return " and ".join(n for n, k in (("Claude Code", "claude"), ("Codex", "codex")) if on[k]) or "none"
 
 
-def _show(project: Path, title: str, w, notes: list[str]) -> list[str]:
+def _show(project: Path, title: str, w, notes: list[str], skips=()) -> list[str]:
     from . import repo_config
     calm = _calm()
     plan = [f"Plan for {project.name if calm else project} ({title}; this repo's agents: "
             f"{_agent_names(repo_config.agents(project))}):"]
     plan += w.render(calm=calm) or ["  (no file changes)"]
+    plan += [secrets.redact(f"  skip    {s.removeprefix('skipped ')}") for s in skips]
     plan += [secrets.redact(f"  note    {n}") for n in notes]
     from .out import printable
     plan = [printable(line) for line in plan]  # keys and values come from repo files
@@ -137,9 +138,17 @@ RECORD_LATER = (".loadout.json: the record of profile {name}'s .codex/config.tom
                 "plugin installs, naming only what was added")
 
 
-def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decide=None) -> tuple[list[str], list[str]]:
-    """Collect everything a profile changes in the repo into `w`. Returns (notes, failures): both are shown in the
-    plan; failures also make the run end with problems (exit 1), as `_profile_now` does."""
+def _planned(prof: profiles.Profile, project: Path) -> list[str]:
+    """The parts of `prof` this repo's Codex can't take: planned skips (spec 2026-10-29 init output, G2)."""
+    from . import codex_project, repo_config
+    return codex_project.planned_skips(prof) if repo_config.agents(project)["codex"] else []
+
+
+def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool,
+                  decide=None) -> tuple[list[str], list[str], list[str]]:
+    """Collect everything a profile changes in the repo into `w`. Returns (notes, failures, skips): all are shown in
+    the plan; failures also make the run end with problems (exit 1), as `_profile_now` does; skips are what this
+    repo's Codex can't take, said once and not a problem."""
     import os
     from . import codex_project, repo_config, targets
     on = repo_config.agents(project)
@@ -204,7 +213,8 @@ def _plan_profile(prof: profiles.Profile, project: Path, w, install: bool, decid
         elif install and targets.codex_enabled() and codex_project._wanted(prof)[1]:
             notes.append(f"Codex plugins of profile {prof.name}: installed in your Codex (outside this repo, "
                          "with their own backup)")
-    return notes, failures
+    skips = _planned(prof, project)
+    return [n for n in notes if n not in skips], [f for f in failures if f not in skips], skips
 
 
 def _no_codex() -> bool:
@@ -225,6 +235,7 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
     plugins and the repo's Codex config without the plugins that failed."""
     from . import codex, codex_project, repo_config, targets, wsl
     from .repo_writes import RepoWrites
+    skips = _planned(prof, project)
     later = RepoWrites(project)
     later.watch(project / repo_config.FILE)  # the follow-up question is a second window for a change
     late = profiles.link_skills(project, False, w=later)
@@ -248,11 +259,15 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
             for line in lines:
                 if line.startswith("backup: "):  # Codex's own backup: its undo line must reach the user
                     notes.append(line)
+                elif line in skips:
+                    continue
                 elif line.startswith("skipped") or line == codex.PLUGINS_OLD or any(
                         s in line for s in (": failed", "not installed", "no Codex route")):
                     problems.append(line)
             failed = codex_project.failed_plugins(prof, lines)
             for line in codex_project.config(prof, project, False, skip=failed, w=RepoWrites(project, now=True, bk=bk)):
+                if line in skips:
+                    continue
                 if line.startswith("skipped") or "left as is" in line:
                     problems.append(line)
                 elif line.startswith(repo_config.FILE + ":") and line not in notes:
@@ -317,9 +332,9 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         mine = frozenset(a for a, on in repo_config.user_agents().items() if on)
         w.create(project / repo_config.FILE, repo_config.new_text(project, mine),
                  "loadout: which agents this repo is for (commit it)")
-    planned_notes, failures = _plan_profile(prof, project, w, install, decide)
+    planned_notes, failures, skips = _plan_profile(prof, project, w, install, decide)
     notes += planned_notes
-    plan = _show(project, f"profile {name}", w, failures + notes)
+    plan = _show(project, f"profile {name}", w, failures + notes, skips)
     if not cfg.manage:
         print(MANAGE_OFF)
         return 0
@@ -396,8 +411,12 @@ def _profile_now(project: Path, prof: profiles.Profile, install: bool, drive_not
     from . import codex, codex_project, targets
     if on["codex"]:  # the repo's Codex file; installs only for a user with Codex on
         codex_ok = links_ok
+        skips = _planned(prof, project)
         for line in codex_project.apply(prof, project, install=install, dry_run=dry_run, w=w,
                                         user_codex=targets.codex_enabled()):
+            if line in skips:  # planned: said once, not a problem
+                (steps.append if calm else info)(line)
+                continue
             bad = line.startswith("skipped") or line == codex.PLUGINS_OLD or any(s in line for s in (
                 ": failed", "not installed", "no Codex route", "not linked", "switched off", "left as is"))
             step = line == codex_project.TRUST_NOTE or line.startswith("backup: ")
@@ -466,6 +485,7 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     w.watch(project / repo_config.FILE)  # the agent choice the plan was made for
     notes: list[str] = []
     failures: list[str] = []
+    skips: list[str] = []
     if git_init:
         w.run(["git", "init"], "init: make this folder a git repository", absent=(git_dir,))
         w.watch(git_dir)
@@ -487,8 +507,9 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
     with repo_config.pending(project, agents):
         hold = frozenset({project / ".codex" / "config.toml"}) if _codex_after_installs(project, install) else frozenset()
         for prof in profs:
-            planned_notes, planned_failures = _plan_profile(prof, project, w, install,
-                                                            chooser(False, ask, interactive and not yes, dry_run))
+            planned_notes, planned_failures, planned_skips = _plan_profile(
+                prof, project, w, install, chooser(False, ask, interactive and not yes, dry_run))
+            skips += [s for s in planned_skips if s not in skips]
             notes += [n for n in planned_notes if not (n.startswith(skill_links.PREFIX) and n in notes)]
             failures += planned_failures
         notes += [l for l in skill_links.report(skill_links.plain_files(project)) if l not in notes]
@@ -502,7 +523,7 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
             if note.startswith("skipped"):
                 rc = 1
         title = "init" + (f", profiles {', '.join(chosen)}" if chosen else "")
-        plan = _show(project, title, w, failures + notes)
+        plan = _show(project, title, w, failures + notes, skips)
     if not cfg.manage:
         print(MANAGE_OFF)
         return 0

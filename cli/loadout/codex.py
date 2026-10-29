@@ -373,6 +373,10 @@ class Refused(Exception):
     """A server config loadout will not write into Codex, with the reason and the fix."""
 
 
+class Unsupported(Refused):
+    """A valid server config that Codex cannot express (not a fault in it): a planned skip for a repo's Codex."""
+
+
 def _tomllib():
     """tomllib, which the config edit needs to prove it changed nothing of the user's."""
     import tomllib
@@ -401,7 +405,7 @@ def toml_value(value) -> str:
 
 def _plain(name: str, key: str, value: str) -> None:
     if "${" in value:
-        raise Refused(f"mcp {name}: {key} mixes text and a variable; Codex can forward only a whole value from a variable")
+        raise Unsupported(f"mcp {name}: {key} mixes text and a variable; Codex can forward only a whole value from a variable")
     from .secrets import looks_secret
     if looks_secret(key, value):
         raise Refused(f"mcp {name}: {key} holds a plaintext secret; move it to secrets.env and refer to it as ${{{key}}}")
@@ -412,7 +416,7 @@ def _check_shape(name: str, cfg) -> None:
         raise Refused(f"mcp {name}: not a server configuration")
     unknown = sorted(set(cfg) - _SUPPORTED)
     if unknown:
-        raise Refused(f"mcp {name}: Codex mapping does not support {', '.join(unknown)}")
+        raise Unsupported(f"mcp {name}: Codex mapping does not support {', '.join(unknown)}")
     for field in ("command", "url", "type"):
         if field in cfg and not isinstance(cfg[field], str):
             raise Refused(f"mcp {name}: {field} must be a string")
@@ -435,7 +439,7 @@ def server(name: str, cfg: dict) -> dict:
                       "(Codex forwards env variables and headers by name, never arguments or URLs)")
     for value in (cfg.get("command"), cfg.get("url"), *(cfg.get("args") or [])):
         if isinstance(value, str) and "${" in value:
-            raise Refused(f"mcp {name}: Codex does not expand ${{…}} in command, args or url; pass the value through env")
+            raise Unsupported(f"mcp {name}: Codex does not expand ${{…}} in command, args or url; pass the value through env")
     out: dict = {}
     if isinstance(cfg.get("url"), str):
         out["url"] = cfg["url"]
@@ -464,7 +468,7 @@ def server(name: str, cfg: dict) -> dict:
     for key, value in (cfg.get("env") or {}).items():
         var = _VAR.match(value)
         if var and var.group(1) != key:
-            raise Refused(f"mcp {name}: env {key} refers to ${{{var.group(1)}}}; Codex forwards a variable only under "
+            raise Unsupported(f"mcp {name}: env {key} refers to ${{{var.group(1)}}}; Codex forwards a variable only under "
                           f"its own name, so name it {key} in secrets.env")
         if var:
             forwarded.append(key)

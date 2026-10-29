@@ -35,6 +35,23 @@ def _wanted(prof: profiles.Profile) -> tuple[dict[str, str], list[str], list[str
     return tables, plugins, skipped
 
 
+def planned_skips(prof: profiles.Profile) -> list[str]:
+    """The parts of `prof` Codex can't express (a server it can't take, a Claude-only plugin): planned skips, not
+    faults, in `_wanted`'s order and words."""
+    from . import catalog
+    out = []
+    for name, cfg in get_dict(prof.mcp, "mcpServers").items():
+        try:
+            codex.server(name, cfg)
+        except codex.Unsupported as exc:
+            out.append(f"skipped {exc}")
+        except codex.Refused:
+            pass
+    claude_only = catalog.claude_only_plugins()
+    out += [codex.claude_only_line(p) for p in prof.install if isinstance(p, str) and p in claude_only]
+    return out
+
+
 def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset = frozenset(), w=None,
            record: bool = True) -> list[str]:
     """Add the profile's servers and plugin switches to the repo's .codex/config.toml. Only adds tables; a table of
