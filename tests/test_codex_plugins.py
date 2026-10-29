@@ -469,12 +469,14 @@ def test_without_the_cli_or_a_listing_nothing_is_reported(fake_home, fake_runner
 
 
 def test_loadout_plugin_not_reported_twice(fake_home, fake_runner, monkeypatch):
+    # its marketplace is named (tour 2026-10-28 C1), its plugin only by the Codex plugin row, both with one fix
     _checks_on(monkeypatch, {"enabledPlugins": {"loadout@agent-loadout": True},
                              "extraKnownMarketplaces": SETTINGS["extraKnownMarketplaces"]})
     _codex_has(fake_runner)
-    assert codex.missing_routes() == ([], [])
+    lacks_m, lacks_p = codex.missing_routes()
+    assert lacks_p == [] and len(lacks_m) == 1
     rows = {r.name: r for r in codex.checks()}
-    assert not rows["Codex plugin"].ok and "Codex plugins missing" not in rows
+    assert not rows["Codex plugin"].ok and rows["Codex plugin"].fix == rows["Codex plugins missing"].fix
 
 
 # --- plain words: the summary names only what was set up (live-tour fixes, spec fix 11)
@@ -582,3 +584,30 @@ def test_the_codex_lock_is_renewed_before_each_long_call(fake_home, fake_runner,
     long_calls = [i for i, e in enumerate(events) if e.startswith(("plugin marketplace", "plugin add"))]
     assert len([i for i in long_calls if events[i] == "plugin marketplace upgrade"]) == 2
     assert all(events[i - 1] == "touch" for i in long_calls), events
+
+
+OWN = {"enabledPlugins": {"loadout@agent-loadout": True},
+       "extraKnownMarketplaces": {"agent-loadout": {"source": {"source": "github", "repo": "jonasyr/agent-loadout"}}}}
+
+
+def test_own_marketplace_missing_is_named(fake_home, fake_runner, monkeypatch):
+    # tour 2026-10-28 C1: a failed clone of loadout's own marketplace must show in "Codex plugins missing"
+    _checks_on(monkeypatch, OWN)
+    _codex_has(fake_runner)
+    lacks_m, lacks_p = codex.missing_routes()
+    assert lacks_m == ["jonasyr/agent-loadout"] and lacks_p == []  # the plugin itself is the Codex plugin row's
+
+
+def test_codex_plugin_row_points_to_update_when_its_marketplace_is_missing(fake_home, fake_runner, monkeypatch):
+    _checks_on(monkeypatch, OWN)
+    _codex_has(fake_runner)
+    (row,) = [r for r in codex.checks() if r.name == "Codex plugin"]
+    assert not row.ok and row.fix == codex.MISSING_FIX
+
+
+def test_own_marketplace_present_plugin_missing_keeps_bootstrap_fix(fake_home, fake_runner, monkeypatch):
+    _checks_on(monkeypatch, OWN)
+    _codex_has(fake_runner, markets=[("agent-loadout", "https://github.com/jonasyr/agent-loadout.git")])
+    assert codex.missing_routes() == ([], [])
+    (row,) = [r for r in codex.checks() if r.name == "Codex plugin"]
+    assert not row.ok and row.fix == "loadout bootstrap"

@@ -1837,8 +1837,9 @@ def missing_routes(installed: set[str] | None = None,
     lacks_m: list[str] = []
     lacks_p: list[str] = []
     for src, names in routes.items():
+        own_route = src == own and "loadout" in names  # its marketplace is still named when Codex lacks it
         names = [n for n in names if not (n == "loadout" and src == own)]
-        if not names:
+        if not names and not own_route:
             continue
         url = _src_url(src) or ""
         market = next((name for name, info in listed.items() if _same_source(info, url)), None)
@@ -2299,13 +2300,16 @@ def checks() -> list:
     cli = mode() != "extension"  # the wording: the CLI's /hooks and logins, or the extension's
     installed = installed_plugins()
     ok = installed is not None and "loadout@agent-loadout" in installed
+    lacks = missing_routes(installed) if installed is not None else ([], [])
     if installed is None and no_plugin_command():  # bootstrap cannot install plugins with this codex
         results.append(CheckResult("Codex plugin", False, PLUGINS_OLD.split(": ", 2)[2],
                                    "update the extension in VS Code, then run loadout update", "warn"))
-    else:
+    else:  # its marketplace missing (a failed clone): the same fix as the plugins-missing row, which names it
+        from .settings_merge import desired_settings
+        own = get_dict(get_dict(get_dict(desired_settings(), "extraKnownMarketplaces"), "agent-loadout"),
+                       "source").get("repo")
         results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
-                                   "loadout bootstrap"))
-    lacks = missing_routes(installed) if installed is not None else ([], [])
+                                   MISSING_FIX if own in lacks[0] else "loadout bootstrap"))
     if lacks[0] or lacks[1]:
         results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn"))
     config = _tilde(paths.codex_home() / "config.toml")
