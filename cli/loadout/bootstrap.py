@@ -1214,8 +1214,6 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                             and vscode.bundled_claude() is not None),
                            ("Codex", here["codex"] and not extension and codex.extension_state()[0] is not None))
            if on]
-    if too:
-        also += f", or open VS Code's {' or '.join(too)} extension (reload the window if it is open)"
     if not run:  # Codex only, and its step stopped: on Windows, or a CODEX_HOME shared with Windows
         print(f"\nNext: {WINDOWS_WAY}." if WINDOWS_WAY in gate else "\nNext: settle Codex's side (see the Codex step above).")
     elif out.VERBOSE:
@@ -1223,6 +1221,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     else:
         print(f"\nNext: run {run} in a new terminal{also}." if path_changed
               else f"\nNext: run {run} (restart it if it is open){also}. The kit loads automatically.")
+    if too and run:  # an extension next to its CLI gets its own line
+        print(f"Or open VS Code's {' or '.join(too)} extension (reload the window if it is open).")
     if not personal_ok:
         print("personal layer: the clone failed (see above); re-run bootstrap after fixing access")
         return 1
