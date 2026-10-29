@@ -110,8 +110,19 @@ def test_the_flag_parses(fake_home):
     assert build_parser().parse_args(["bootstrap", "--without-claude-cli"]).without_claude_cli is True
 
 
-def test_differences_names_a_flag_with_a_cli_on_path(fake_runner):
-    from loadout import recommend
-    cell = recommend.Cell("linux", ("claude",), "vscode+cli", None)
-    assert "--without-claude-cli given while a Claude Code CLI is on PATH" in recommend.differences(
-        cell, {"claude": True, "codex": False}, True, [], False, True, claude_cli=False)
+def test_ignored_cli_flag_is_said_once(bundled, fake_runner, monkeypatch, capsys):
+    monkeypatch.setattr(out, "VERBOSE", False)
+    fake_runner.missing.discard("claude")  # a claude on PATH next to the extension
+    _run(claude_cli=False, install=False)
+    text = capsys.readouterr().out
+    assert text.count("--without-claude-cli: not used") == 1
+    assert "given while a Claude Code CLI is on PATH" not in text
+
+
+def test_ignored_codex_cli_flag_is_said_once(bundled, fake_runner, monkeypatch, capsys):
+    monkeypatch.setattr(out, "VERBOSE", False)
+    fake_runner.missing.discard("claude")
+    _run(codex_cli=False, install=False, agents="claude,codex")
+    text = capsys.readouterr().out
+    assert text.count("--without-codex-cli: not used") == 1
+    assert "given while a Codex CLI is on PATH" not in text

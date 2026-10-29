@@ -2312,7 +2312,8 @@ def checks() -> list:
         own = get_dict(get_dict(get_dict(desired_settings(), "extraKnownMarketplaces"), "agent-loadout"),
                        "source").get("repo")
         results.append(CheckResult("Codex plugin", ok, "" if ok else "loadout plugin not installed in Codex",
-                                   MISSING_FIX if own in lacks[0] else "loadout bootstrap", plugins_missing=not ok))
+                                   MISSING_FIX if own in lacks[0] else "loadout bootstrap",
+                                   plugins_missing=installed is not None and not ok))  # a failed listing is no choice
     if lacks[0] or lacks[1]:
         results.append(CheckResult("Codex plugins missing", False, _missing_text(lacks), MISSING_FIX, "warn",
                                    plugins_missing=True))

@@ -24,8 +24,8 @@ class CheckResult:
     detail: str = ""
     fix: str = ""
     severity: str = "error"
-    info: str = ""
-    plugins_missing: bool = False  # not ok only because plugins or marketplaces are missing (bootstrap --no-plugins)  # an ok row's one-line note (the Setup row's cell), shown in both formats
+    info: str = ""  # an ok row's one-line note (the Setup row's cell), shown in both formats
+    plugins_missing: bool = False  # not ok only because plugins or marketplaces are missing (bootstrap --no-plugins)
 
 
 def _links() -> list[CheckResult]:

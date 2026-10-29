@@ -98,3 +98,12 @@ def test_too_old_codex_row_stays(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(codex, "no_plugin_command", lambda: True)
     (row,) = [r for r in codex.checks() if r.name == "Codex plugin"]
     assert not row.ok and not row.plugins_missing
+
+
+def test_failed_codex_listing_is_not_hidden(fake_home, fake_runner, monkeypatch):
+    # review: a listing that times out or does not parse is Codex failing to answer, not a skipped plugin
+    _codex_on(monkeypatch, IMPECCABLE)
+    monkeypatch.setattr(codex, "installed_plugins", lambda: None)
+    monkeypatch.setattr(codex, "no_plugin_command", lambda: False)
+    (row,) = [r for r in codex.checks() if r.name == "Codex plugin"]
+    assert not row.ok and not row.plugins_missing

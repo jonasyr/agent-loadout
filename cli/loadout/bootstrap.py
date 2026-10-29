@@ -956,8 +956,7 @@ def _no_question(question: str) -> str:
     return ""
 
 
-def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli: bool,
-                  claude_cli: bool = True) -> None:
+def _this_machine(chosen: dict, gate, vscode_wsl: bool) -> None:
     """This machine's setup cell, its recommended flags and how this run differs; text only, never a question
     (spec 2026-10-27). A detection error never stops bootstrap."""
     from . import recommend
@@ -970,8 +969,8 @@ def _this_machine(chosen: dict, gate, install: bool, vscode_wsl: bool, codex_cli
         lines = [f"recommended: {recommend.flags(cell)}  ({recommend.anchor(cell)})"]
         if cell.surface == "none":
             lines.append(f"using VS Code? see {recommend.anchor(cell)}")
-        # missing tools: Prerequisites in the same run names them, so not again here
-        lines += recommend.differences(cell, chosen, install, [], vscode_wsl, codex_cli, claude_cli)
+        # missing tools and ignored CLI flags: Prerequisites in the same run says them, so not again here
+        lines += recommend.differences(cell, chosen, vscode_wsl)
     except Exception:
         return
     _step("This machine")
@@ -1058,7 +1057,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     gate = codex_gate(codex_side, ask, interactive and not yes, bk, vscode=vscode_wsl) if codex_gate_needed(chosen) else None
     if vscode_wsl and wsl.detect() is not None and not codex_gate_needed(chosen):  # outside WSL the CLI already said so
         out.status("VS Code", "--vscode-wsl: Codex is not set up in WSL in this run; nothing changed", "warn")
-    _this_machine(chosen, gate, install, vscode_wsl, codex_cli, claude_cli)
+    _this_machine(chosen, gate, vscode_wsl)
     _step("Prerequisites")
     installed: list[str] = []
     notes: list[str] = []

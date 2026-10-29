@@ -117,20 +117,13 @@ def anchor(cell: Cell) -> str:
     return f"docs/reference/setup-matrix.md#{name}"
 
 
-def differences(cell: Cell, chosen: dict[str, bool], install: bool, missing: list[str], vscode_wsl: bool,
-                codex_cli: bool, claude_cli: bool = True) -> list[str]:
+def differences(cell: Cell, chosen: dict[str, bool], vscode_wsl: bool) -> list[str]:
     out = []
-    if not install and missing:
-        out.append(f"{', '.join(missing)} missing and no --install: the recommended setup installs missing tools")
     if (cell.platform == "wsl" and chosen.get("codex") and cell.surface == "windows-window" and not vscode_wsl
             and not cell.codex_side):  # the Codex-on-Windows cell recommends that side, not the WSL switch
         out.append("Codex's VS Code extension runs on Windows and no --vscode-wsl: the recommended setup adds it")
     if not chosen.get("codex") and runner.have("codex"):
         out.append("a Codex CLI is on PATH but Codex is not chosen (--agents)")
-    if chosen.get("codex") and not codex_cli and runner.have("codex"):
-        out.append("--without-codex-cli given while a Codex CLI is on PATH")
-    if chosen.get("claude") and not claude_cli and runner.have("claude"):
-        out.append("--without-claude-cli given while a Claude Code CLI is on PATH")
     return out
 
 
