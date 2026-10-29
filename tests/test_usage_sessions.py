@@ -1,6 +1,7 @@
 """usage_sessions: one counts-only Session per transcript."""
 import dataclasses
 import json
+import time
 import os
 from datetime import datetime
 
@@ -94,8 +95,9 @@ def test_a_session_without_timestamps_starts_at_file_mtime(fake_home):
 def test_symbol_searches_match_todays_counter(fake_home, monkeypatch):
     monkeypatch.setattr(targets, "claude_enabled", lambda: True)
     monkeypatch.setattr(targets, "codex_enabled", lambda: False)
-    _write([_tool("Bash", command="rg -n record_project src"), _tool("Grep", pattern="record_project"),
-            _tool("Read", file_path="x")])
+    recent = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))  # inside collect's 14 days
+    _write([_tool("Bash", ts=recent, command="rg -n record_project src"),
+            _tool("Grep", ts=recent, pattern="record_project"), _tool("Read", ts=recent, file_path="x")])
     (s,) = _run()
     assert s.symbol_searches == usage.collect(14)["claude"]["main"]["symbol_searches"] == 2
 
