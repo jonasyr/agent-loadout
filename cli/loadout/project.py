@@ -361,6 +361,8 @@ def missing_here(prof: profiles.Profile, project: Path) -> list[str]:
 def _still_needed(change, missing: list[str]) -> bool:
     """Whether a planned `run` step installs or makes something this machine lacks."""
     cmd = change.cmd or []
+    if " ".join(cmd) in missing:  # a profile command, matched by its own text first
+        return True
     if cmd[:3] == ["claude", "plugin", "install"]:
         return f"plugin {cmd[3]}" in missing
     if cmd[:4] == ["claude", "plugin", "marketplace", "add"]:  # needed only for a plugin still to install
@@ -407,6 +409,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             missing = missing_here(prof, project) if install else []
             if not missing:
                 from . import out
+                result["already"] = True
                 print(ALREADY.format(name=name))
                 for line in dict.fromkeys(n for n in notes if isinstance(n, profiles.Kept)):
                     out.problem(secrets.redact(line))  # what stays the repo's own (ADR 0031)

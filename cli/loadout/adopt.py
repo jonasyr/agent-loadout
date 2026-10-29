@@ -649,7 +649,7 @@ def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
                 done: dict = {}
                 ok = project.add_profile(repo, name, approve=project.approver(False, ask, True), result=done) == 0  # plan, yes
                 state = ("applied" if ok else "applied with problems (see above)") if done.get("applied") else (
-                    "not applied" if ok else "not applied (see above)")
+                    "already applied" if done.get("already") else "not applied" if ok else "not applied (see above)")
                 print(f"  {repo.resolve()}: profile {name} {state}")
             except (OSError, InvalidJSON, ValueError) as exc:
                 print(redact(f"  {repo.resolve()}: failed: {exc}"))

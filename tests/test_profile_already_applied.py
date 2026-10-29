@@ -122,3 +122,21 @@ def test_refresh_runs_anyway(setup, fake_runner, capsys):
     asked = []
     _again(repo, "web", asked, refresh=True)
     assert len(asked) == 1 and any("run     playwright-cli install --skills" in l for l in asked[0])
+
+
+def test_already_applied_is_reported_to_the_caller(setup, fake_runner, capsys):
+    # review: adopt read applied=False as "not applied" right after "already applied here"
+    repo = setup
+    _agents(repo, "claude")
+    _apply(repo, "web")
+    (repo / ".claude" / "skills" / "playwright-cli").mkdir(parents=True)
+    done = {}
+    assert project.add_profile(repo, "web", approve=lambda plan: True, result=done) == 0
+    assert done.get("already") is True
+
+
+def test_a_command_that_is_a_claude_plugin_command_is_kept(setup):
+    # review: a profile command shaped like `claude plugin install …` is still matched by its own text first
+    from loadout.repo_writes import Change
+    cmd = ["claude", "plugin", "install", "x@y", "--scope", "user"]
+    assert project._still_needed(Change("run", None, "", cmd=cmd), [" ".join(cmd)])
