@@ -370,8 +370,9 @@ def missing_here(prof: profiles.Profile, project: Path) -> list[str]:
         wanted = codex_project._wanted(prof)[1]
         have = codex.installed_plugins() if wanted else set()
         out += [f"Codex plugin {pid}" for pid in wanted if have is None or pid not in have]
-    # a dangling link left behind is not done: only a path that exists counts
-    if prof.commands and prof.done_when and not any((project / p).exists() for p in prof.done_when):
+    # a dangling link left behind is not done, nor one that leads out of the repo: only a path in it counts
+    if prof.commands and prof.done_when and not any((project / p).exists() and paths.inside(project / p, project)
+                                                     for p in prof.done_when):
         out += [" ".join(cmd) for cmd in prof.commands if isinstance(cmd, list)]
     return out
 

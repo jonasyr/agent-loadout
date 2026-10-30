@@ -269,3 +269,15 @@ def test_no_unplanned_link_when_the_agents_change_during_the_commands(setup, fak
     monkeypatch.setattr(targets, "codex_enabled", lambda: True)
     assert project.add_profile(repo, "web", approve=lambda plan: True) == 1
     assert not (repo / ".agents" / "skills" / "playwright-cli").is_symlink()
+
+
+def test_done_when_through_a_link_out_of_the_repo_is_missing(setup, fake_runner, tmp_path):
+    # Codex review: a done_when path that a symlink leads out of the repo does not count as done
+    repo = setup
+    _agents(repo, "claude")
+    _apply(repo, "tool")
+    (tmp_path / "elsewhere").mkdir()
+    (repo / ".tool").symlink_to(tmp_path / "elsewhere")
+    asked = []
+    _again(repo, "tool", asked)
+    assert len(asked) == 1 and any("run     tool setup" in l for l in asked[0])
