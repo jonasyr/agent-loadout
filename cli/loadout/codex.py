@@ -373,6 +373,10 @@ class Refused(Exception):
     """A server config loadout will not write into Codex, with the reason and the fix."""
 
 
+class Unsupported(Refused):
+    """A valid server config that Codex cannot express (not a fault in it): a planned skip for a repo's Codex."""
+
+
 def _tomllib():
     """tomllib, which the config edit needs to prove it changed nothing of the user's."""
     import tomllib
@@ -401,7 +405,7 @@ def toml_value(value) -> str:
 
 def _plain(name: str, key: str, value: str) -> None:
     if "${" in value:
-        raise Refused(f"mcp {name}: {key} mixes text and a variable; Codex can forward only a whole value from a variable")
+        raise Unsupported(f"mcp {name}: {key} mixes text and a variable; Codex can forward only a whole value from a variable")
     from .secrets import looks_secret
     if looks_secret(key, value):
         raise Refused(f"mcp {name}: {key} holds a plaintext secret; move it to secrets.env and refer to it as ${{{key}}}")
@@ -410,9 +414,6 @@ def _plain(name: str, key: str, value: str) -> None:
 def _check_shape(name: str, cfg) -> None:
     if not isinstance(cfg, dict):
         raise Refused(f"mcp {name}: not a server configuration")
-    unknown = sorted(set(cfg) - _SUPPORTED)
-    if unknown:
-        raise Refused(f"mcp {name}: Codex mapping does not support {', '.join(unknown)}")
     for field in ("command", "url", "type"):
         if field in cfg and not isinstance(cfg[field], str):
             raise Refused(f"mcp {name}: {field} must be a string")
@@ -424,18 +425,27 @@ def _check_shape(name: str, cfg) -> None:
         if table is not None and not (isinstance(table, dict)
                                       and all(isinstance(k, str) and isinstance(v, str) for k, v in table.items())):
             raise Refused(f"mcp {name}: {field} must map names to strings")
+    if not isinstance(cfg.get("url"), str) and not isinstance(cfg.get("command"), str):
+        raise Refused(f"mcp {name}: neither a command nor a url")
+    unknown = sorted(set(cfg) - _SUPPORTED)  # last: a planned skip never hides a server that is broken anyway
+    if unknown:
+        raise Unsupported(f"mcp {name}: Codex mapping does not support {', '.join(unknown)}")
 
 
 def server(name: str, cfg: dict) -> dict:
     """A Claude-style MCP config as Codex keys; secrets only as variable names, never as plaintext."""
-    _check_shape(name, cfg)
     from .secrets import scan
+    try:
+        _check_shape(name, cfg)
+    except Unsupported:  # a planned skip must not hide a plaintext secret: that stays a problem
+        if not any(scan({"mcpServers": {name: cfg}})):
+            raise
     for finding in scan({"mcpServers": {name: cfg}}):
         raise Refused(f"mcp {name}: {finding.field} {finding.key} holds a plaintext secret; move it to secrets.env "
                       "(Codex forwards env variables and headers by name, never arguments or URLs)")
     for value in (cfg.get("command"), cfg.get("url"), *(cfg.get("args") or [])):
         if isinstance(value, str) and "${" in value:
-            raise Refused(f"mcp {name}: Codex does not expand ${{…}} in command, args or url; pass the value through env")
+            raise Unsupported(f"mcp {name}: Codex does not expand ${{…}} in command, args or url; pass the value through env")
     out: dict = {}
     if isinstance(cfg.get("url"), str):
         out["url"] = cfg["url"]
@@ -464,7 +474,7 @@ def server(name: str, cfg: dict) -> dict:
     for key, value in (cfg.get("env") or {}).items():
         var = _VAR.match(value)
         if var and var.group(1) != key:
-            raise Refused(f"mcp {name}: env {key} refers to ${{{var.group(1)}}}; Codex forwards a variable only under "
+            raise Unsupported(f"mcp {name}: env {key} refers to ${{{var.group(1)}}}; Codex forwards a variable only under "
                           f"its own name, so name it {key} in secrets.env")
         if var:
             forwarded.append(key)

@@ -23,7 +23,8 @@ def test_a_file_changed_after_the_plan_is_left_as_is(repo):
     assert (repo / ".gitignore").read_text() == "a\nmine\n" and (repo / "AGENTS.md").read_text() == "theirs\n"
 
 
-def test_links_for_skills_a_command_installed_are_asked_about(repo, fake_runner, monkeypatch, capsys):
+def test_links_for_skills_a_command_installed_need_no_second_question(repo, fake_runner, monkeypatch, capsys):
+    # spec 2026-10-29 init output, G3: the plan's yes covers them (they are backed up like every repo write)
     targets.set_agents({"claude": True, "codex": True})
     prof = profiles.Profile(name="web", description="", commands=[["installer"]])
     monkeypatch.setattr(profiles, "load_profile", lambda n: prof)
@@ -35,9 +36,8 @@ def test_links_for_skills_a_command_installed_are_asked_about(repo, fake_runner,
         return runner.Result(0, "", "")
     monkeypatch.setattr(repo_writes.runner, "run", run)
     answers = []
-    project.add_profile(repo, "web", approve=lambda plan: answers.append(plan) or len(answers) == 1)
-    assert len(answers) == 2 and any("link    .agents/skills/pw" in l for l in answers[1])
-    assert not (repo / ".agents" / "skills" / "pw").exists()  # the second plan was declined
+    project.add_profile(repo, "web", approve=lambda plan: answers.append(plan) or True)
+    assert len(answers) == 1 and (repo / ".agents" / "skills" / "pw").is_symlink()
 
 
 def test_a_failed_codex_plugin_is_not_named_in_the_repo(repo, monkeypatch):
@@ -118,28 +118,6 @@ def test_a_new_json_file_shows_no_removed_entry(repo):
     w = repo_writes.RepoWrites(repo)
     w.create(repo / "a.json", '{\n  "x": 1\n}\n', "p")
     assert not any(l.strip() == "-" or l.strip().startswith("- ") for l in w.render())
-
-
-def test_the_follow_up_plan_stops_when_the_agent_choice_changed(repo, monkeypatch):
-    targets.set_agents({"claude": True, "codex": True})
-    prof = profiles.Profile(name="web", description="", commands=[["installer"]])
-    monkeypatch.setattr(profiles, "load_profile", lambda n: prof)
-
-    def run(cmd, **k):
-        if cmd[0] == "installer":
-            (repo / ".claude" / "skills" / "pw").mkdir(parents=True)
-        from loadout import runner
-        return runner.Result(0, "", "")
-    monkeypatch.setattr(repo_writes.runner, "run", run)
-    answers = []
-
-    def approve(plan):
-        answers.append(plan)
-        if len(answers) == 2:
-            (repo / ".loadout.json").write_text('{"manage": false}')
-        return True
-    assert project.add_profile(repo, "web", approve=approve) == 1
-    assert len(answers) == 2 and not (repo / ".agents").exists()
 
 
 def test_a_secret_nested_in_a_list_of_objects_is_masked(repo):
