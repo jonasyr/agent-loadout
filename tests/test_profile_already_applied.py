@@ -250,3 +250,22 @@ def test_commands_without_done_when_still_run_on_a_fresh_repo(setup, fake_runner
     asked = []
     _again(repo, "bare", asked)
     assert len(asked) == 1
+
+
+def test_no_unplanned_link_when_the_agents_change_during_the_commands(setup, fake_runner, monkeypatch):
+    # Codex review (P1): the plan was for Claude only; .loadout.json gains Codex while the command runs
+    repo = setup
+    _agents(repo, "claude")
+    real = runner.run
+
+    def run(cmd, *a, **k):
+        if cmd[:1] == ["playwright-cli"]:
+            (repo / ".claude" / "skills" / "playwright-cli").mkdir(parents=True)
+            (repo / ".claude" / "skills" / "playwright-cli" / "SKILL.md").write_text("x")
+            _agents(repo, "claude", "codex")
+        return real(cmd, *a, **k)
+
+    monkeypatch.setattr(runner, "run", run)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: True)
+    assert project.add_profile(repo, "web", approve=lambda plan: True) == 1
+    assert not (repo / ".agents" / "skills" / "playwright-cli").is_symlink()

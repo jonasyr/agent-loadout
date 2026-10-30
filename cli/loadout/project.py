@@ -249,12 +249,17 @@ def _codex_after_installs(project: Path, install: bool) -> bool:
 
 
 def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive_note: bool,
-                 notes: list[str], problems: list[str], codex_plugins: set | None = None) -> bool:
+                 notes: list[str], problems: list[str], codex_plugins: set | None = None,
+                 planned: dict | None = None) -> bool:
     """After the plan's files and commands: links for the skills the commands installed (the plan's yes covers
     them; backed up like every repo write), then the Codex plugins and the repo's Codex config without the plugins
     that failed."""
     from . import codex, codex_project, repo_config, targets, wsl
     from .repo_writes import RepoWrites
+    if planned is not None and repo_config.agents(project) != planned:  # the yes was for the plan's agents
+        problems.append(f"{repo_config.FILE}: its agents changed while the commands ran, so profile {prof.name}'s "
+                        "skill links and Codex plugins were left out (run the command again for a new plan)")
+        return False
     skips = _planned(prof, project)
     later = RepoWrites(project)
     later.watch(project / repo_config.FILE)  # the follow-up question is a second window for a change
@@ -416,6 +421,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         w.create(project / repo_config.FILE, repo_config.new_text(project, mine),
                  "loadout: which agents this repo is for (commit it)")
     planned_notes, failures, skips = _plan_profile(prof, project, w, install, decide)
+    planned = repo_config.agents(project)  # the agents this plan was made for
     notes += planned_notes
     codex_plugins = None  # every Codex plugin of the profile
     if (not refresh and cfg.exists and cfg.manage and not failures
@@ -458,7 +464,8 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         return _report(f"Profile {name}", bk, [], problems[-1:])
     result["applied"] = True
     notes = [n for n in notes if not n.startswith(("Codex plugins of profile",))]
-    _after_apply(prof, project, bk, install, drive_note, notes, problems, codex_plugins=codex_plugins)
+    _after_apply(prof, project, bk, install, drive_note, notes, problems, codex_plugins=codex_plugins,
+                 planned=planned)
     return _report(f"Profile {name}", bk, notes, problems)
 
 
@@ -631,6 +638,7 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
                 rc = 1
             else:
                 notes.append(f"note: {note}")
+        planned = repo_config.agents(project)  # the agents this plan was made for
         title = "init" + (f", profiles {', '.join(chosen)}" if chosen else "")
         plan = _show(project, title, w, failures + notes, skips)
     if not cfg.manage:
@@ -648,7 +656,8 @@ def init(project: Path, names: list[str], yes: bool, install: bool, dry_run: boo
         return _report("Init", bk, [], problems[-1:])
     notes = [n for n in notes if not n.startswith("Codex plugins of profile")]
     for i, prof in enumerate(profs):
-        if not _after_apply(prof, project, bk, install, i == 0, notes, problems):
+        if not _after_apply(prof, project, bk, install, i == 0, notes, problems,
+                            planned=planned):
             break
     from . import targets
     on = repo_config.agents(project)
