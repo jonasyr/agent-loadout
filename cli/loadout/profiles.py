@@ -70,8 +70,9 @@ def done_when(path: Path, items: list) -> list:
     for item in items:
         if not isinstance(item, str):
             raise ValueError(f"profile {path}: done_when must be a list of strings")
-        if PurePosixPath(item).is_absolute() or PureWindowsPath(item).anchor or ".." in re.split(r"[\\/]", item):
-            raise ValueError(f"profile {path}: done_when {item!r} must be a relative path inside the repo (no ..)")
+        if PurePosixPath(item).is_absolute() or PureWindowsPath(item).anchor or ".." in re.split(r"[\\/]", item) \
+                or PurePosixPath(item.replace("\\", "/")) == PurePosixPath("."):  # the repo itself always exists
+            raise ValueError(f"profile {path}: done_when {item!r} must be a relative path inside the repo (no .., not the repo itself)")
     return items
 
 

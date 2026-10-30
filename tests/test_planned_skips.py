@@ -60,3 +60,10 @@ def test_unknown_key_with_secret_still_fails(repo, fake_runner, monkeypatch, cap
         "command": "npx", "foo": 1, "env": {"API_KEY": "sk-" + "live-abcdef0123456789"}}}})
     assert _run(repo, monkeypatch, prof) == 1
     assert "plaintext secret" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("cfg", [{"foo": 1}, {"command": "x", "foo": 1, "args": [7]}])
+def test_unknown_key_does_not_hide_a_broken_shape(repo, fake_runner, monkeypatch, capsys, cfg):
+    # review: a server Claude can't use either (no command or url, malformed args) stays a problem, not a skip
+    prof = profiles.Profile(name="s", description="", mcp={"mcpServers": {"x": cfg}})
+    assert _run(repo, monkeypatch, prof) == 1

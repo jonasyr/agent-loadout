@@ -414,9 +414,6 @@ def _plain(name: str, key: str, value: str) -> None:
 def _check_shape(name: str, cfg) -> None:
     if not isinstance(cfg, dict):
         raise Refused(f"mcp {name}: not a server configuration")
-    unknown = sorted(set(cfg) - _SUPPORTED)
-    if unknown:
-        raise Unsupported(f"mcp {name}: Codex mapping does not support {', '.join(unknown)}")
     for field in ("command", "url", "type"):
         if field in cfg and not isinstance(cfg[field], str):
             raise Refused(f"mcp {name}: {field} must be a string")
@@ -428,6 +425,11 @@ def _check_shape(name: str, cfg) -> None:
         if table is not None and not (isinstance(table, dict)
                                       and all(isinstance(k, str) and isinstance(v, str) for k, v in table.items())):
             raise Refused(f"mcp {name}: {field} must map names to strings")
+    if not isinstance(cfg.get("url"), str) and not isinstance(cfg.get("command"), str):
+        raise Refused(f"mcp {name}: neither a command nor a url")
+    unknown = sorted(set(cfg) - _SUPPORTED)  # last: a planned skip never hides a server that is broken anyway
+    if unknown:
+        raise Unsupported(f"mcp {name}: Codex mapping does not support {', '.join(unknown)}")
 
 
 def server(name: str, cfg: dict) -> dict:

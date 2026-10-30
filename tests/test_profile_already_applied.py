@@ -181,3 +181,19 @@ def test_missing_claude_plugin_does_no_codex_work(setup, fake_runner, monkeypatc
     assert len(asked) == 1
     assert not any(c[:3] == ["codex", "plugin", "marketplace"] or c[:3] == ["codex", "plugin", "install"]
                    for c in fake_runner.calls), fake_runner.calls
+
+
+def test_a_short_plugin_install_command_does_not_crash(setup):
+    # review: a profile command `claude plugin install` without an id is not a generated install step
+    from loadout.repo_writes import Change
+    assert not project._still_needed(Change("run", None, "", cmd=["claude", "plugin", "install"]), ["plugin a@b"])
+
+
+def test_only_the_missing_plugins_marketplace_is_added(setup):
+    # review: with two marketplaces and one plugin missing, only that plugin's marketplace add is kept
+    from loadout.repo_writes import Change
+    prof = profiles.Profile(name="two", description="", install=["a@m1", "b@m2"], settings={"extraKnownMarketplaces": {
+        "m1": {"source": {"source": "github", "repo": "o/m1"}}, "m2": {"source": {"source": "github", "repo": "o/m2"}}}})
+    add = lambda origin: Change("run", None, "", cmd=["claude", "plugin", "marketplace", "add", origin])
+    assert project._still_needed(add("o/m2"), ["plugin b@m2"], prof)
+    assert not project._still_needed(add("o/m1"), ["plugin b@m2"], prof)

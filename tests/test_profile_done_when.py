@@ -13,7 +13,7 @@ def test_done_when_loaded():
     ]
 
 
-@pytest.mark.parametrize("bad", ["/abs/path", "a/../b", "..", 7])
+@pytest.mark.parametrize("bad", ["/abs/path", "a/../b", "..", 7, "", ".", "./", "a/.."])
 def test_done_when_rejects_absolute_and_dotdot(fake_home, bad):
     pdir = fake_home / ".config/loadout/personal/profiles"
     pdir.mkdir(parents=True)

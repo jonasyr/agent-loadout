@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import detect, paths, profiles, runner, scaffold, secrets, ui
+from .jsonio import get_dict
 
 Ask = Callable[[str], str]
 
@@ -369,15 +370,19 @@ def missing_here(prof: profiles.Profile, project: Path) -> list[str]:
     return out
 
 
-def _still_needed(change, missing: list[str]) -> bool:
+def _still_needed(change, missing: list[str], prof: profiles.Profile | None = None) -> bool:
     """Whether a planned `run` step installs or makes something this machine lacks."""
     cmd = change.cmd or []
     if " ".join(cmd) in missing:  # a profile command, matched by its own text first
         return True
-    if cmd[:3] == ["claude", "plugin", "install"]:
+    if cmd[:3] == ["claude", "plugin", "install"] and len(cmd) > 3:
         return f"plugin {cmd[3]}" in missing
-    if cmd[:4] == ["claude", "plugin", "marketplace", "add"]:  # needed only for a plugin still to install
-        return any(m.startswith("plugin ") for m in missing)
+    if cmd[:4] == ["claude", "plugin", "marketplace", "add"] and len(cmd) > 4:
+        # needed only for a plugin still to install from that marketplace (named by its declared origin)
+        declared = get_dict(prof.settings if prof else {}, "extraKnownMarketplaces")
+        names = {n for n, m in declared.items() if cmd[4] in (get_dict(m, "source").get("repo"),
+                                                               get_dict(m, "source").get("url"))}
+        return any(m.startswith("plugin ") and m.rpartition("@")[2] in names for m in missing)
     return " ".join(cmd) in missing
 
 
@@ -428,7 +433,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
                     out.problem(secrets.redact(line))  # what stays the repo's own (ADR 0031)
                 return 0
             commands_missing = any(" ".join(cmd) in missing for cmd in prof.commands if isinstance(cmd, list))
-            w.keep(lambda c: c.kind == "run" and _still_needed(c, missing) or c.kind == "promise" and commands_missing)
+            w.keep(lambda c: c.kind == "run" and _still_needed(c, missing, prof) or c.kind == "promise" and commands_missing)
             codex_missing = [m.removeprefix("Codex plugin ") for m in missing if m.startswith("Codex plugin ")]
             codex_plugins = bool(codex_missing)
             if codex_missing:
