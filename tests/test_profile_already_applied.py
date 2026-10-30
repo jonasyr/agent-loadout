@@ -223,3 +223,30 @@ def test_codex_plugins_installs_only_the_missing_ones(monkeypatch):
     monkeypatch.setattr(codex, "unavailable", lambda: "off")
     lines = codex_project.plugins(profiles.Profile(name="x", description=""), False, only={"b@m2"})
     assert lines == ["plugin b@m2: not installed (off)"]
+
+
+def test_install_only_profile_is_already_applied(setup, fake_runner, monkeypatch, capsys):
+    # review: a profile with only plugins owns no repo entries; the installed plugins decide
+    repo = setup
+    plug = profiles.Profile(name="plug", description="", install=[KOTLIN])
+    monkeypatch.setattr(profiles, "load_profile", lambda name: plug)
+    _agents(repo, "claude")
+    _apply(repo, "plug")
+    _claude_installed(repo, KOTLIN)
+    capsys.readouterr()
+    fake_runner.calls.clear()
+    asked = []
+    assert _again(repo, "plug", asked) == 0
+    assert capsys.readouterr().out.strip() == project.ALREADY.format(name="plug")
+    assert asked == [] and fake_runner.calls == []
+
+
+def test_commands_without_done_when_still_run_on_a_fresh_repo(setup, fake_runner, monkeypatch):
+    # nothing can tell that such commands ran here, so the profile is planned, never "already applied"
+    repo = setup
+    bare = profiles.Profile(name="bare", description="", commands=[["tool", "setup"]])
+    monkeypatch.setattr(profiles, "load_profile", lambda name: bare)
+    _agents(repo, "claude")
+    asked = []
+    _again(repo, "bare", asked)
+    assert len(asked) == 1

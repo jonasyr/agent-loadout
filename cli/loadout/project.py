@@ -424,8 +424,9 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             recorded = name in repo_config.records(project)
         except repo_config.Invalid:
             recorded = False
-        # a profile that owns no repo entries has no record: its done_when paths show it was applied
-        if recorded or prof.done_when and not (prof.settings or prof.mcp or prof.skills):
+        # a profile that owns no repo entries has no record: this machine's state shows it was applied (its
+        # plugins, its done_when paths); commands without done_when leave nothing to tell, so they are planned
+        if recorded or not (prof.settings or prof.mcp or prof.skills) and (prof.done_when or not prof.commands):
             missing = missing_here(prof, project) if install else []
             if not missing:
                 from . import out
