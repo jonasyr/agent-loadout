@@ -14,6 +14,8 @@ KOTLIN = "kotlin-lsp@claude-plugins-official"
 ANDROID = profiles.Profile(name="android", description="", install=[KOTLIN],
                            settings={"enabledPlugins": {KOTLIN: True}})
 
+TOOL = profiles.Profile(name="tool", description="", commands=[["tool", "setup"]], done_when=[".tool"])
+
 
 @pytest.fixture
 def setup(fake_home, fake_runner, tmp_path, monkeypatch):
@@ -22,7 +24,7 @@ def setup(fake_home, fake_runner, tmp_path, monkeypatch):
     monkeypatch.setattr(out, "VERBOSE", False)
     monkeypatch.setattr(targets, "claude_enabled", lambda: True)
     monkeypatch.setattr(targets, "codex_enabled", lambda: False)
-    monkeypatch.setattr(profiles, "load_profile", lambda name: {"web": WEB, "android": ANDROID}[name])
+    monkeypatch.setattr(profiles, "load_profile", lambda name: {"web": WEB, "android": ANDROID, "tool": TOOL}[name])
     return p
 
 
@@ -197,3 +199,27 @@ def test_only_the_missing_plugins_marketplace_is_added(setup):
     add = lambda origin: Change("run", None, "", cmd=["claude", "plugin", "marketplace", "add", origin])
     assert project._still_needed(add("o/m2"), ["plugin b@m2"], prof)
     assert not project._still_needed(add("o/m1"), ["plugin b@m2"], prof)
+
+
+def test_command_only_profile_is_already_applied(setup, fake_runner, capsys):
+    # review: a profile with only commands owns no entries, so it has no record; its done_when path decides
+    repo = setup
+    _agents(repo, "claude")
+    _apply(repo, "tool")
+    (repo / ".tool").mkdir()
+    capsys.readouterr()
+    fake_runner.calls.clear()
+    asked = []
+    assert _again(repo, "tool", asked) == 0
+    assert capsys.readouterr().out.strip() == project.ALREADY.format(name="tool")
+    assert asked == [] and fake_runner.calls == []
+
+
+def test_codex_plugins_installs_only_the_missing_ones(monkeypatch):
+    # review: a missing-only re-run hands Codex only the plugins it lacks, not every route of the profile
+    from loadout import codex, codex_project
+    monkeypatch.setattr(codex_project, "_wanted", lambda prof: ([], ["a@m1", "b@m2"], []))
+    monkeypatch.setattr(codex, "has_codex", lambda: False)
+    monkeypatch.setattr(codex, "unavailable", lambda: "off")
+    lines = codex_project.plugins(profiles.Profile(name="x", description=""), False, only={"b@m2"})
+    assert lines == ["plugin b@m2: not installed (off)"]

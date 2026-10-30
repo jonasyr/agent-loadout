@@ -155,11 +155,14 @@ def config(prof: profiles.Profile, project: Path, dry_run: bool, skip: frozenset
     return lines
 
 
-def plugins(prof: profiles.Profile, dry_run: bool) -> list[str]:
-    """Install the profile's plugins in Codex; one that is not on everywhere stays switched off outside its projects."""
+def plugins(prof: profiles.Profile, dry_run: bool, only: set | None = None) -> list[str]:
+    """Install the profile's plugins in Codex; one that is not on everywhere stays switched off outside its projects.
+    only: just these plugin ids (a missing-only re-run), so no other plugin's marketplace is touched."""
     from . import backup
     from .settings_merge import desired_settings
     _, wanted, _ = _wanted(prof)
+    if only is not None:
+        wanted = [pid for pid in wanted if pid in only]
     if not wanted:
         return []
     if not codex.has_codex():  # neither a CLI nor a usable extension: a failure, not a note

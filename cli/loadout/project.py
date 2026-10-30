@@ -249,7 +249,7 @@ def _codex_after_installs(project: Path, install: bool) -> bool:
 
 
 def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive_note: bool,
-                 notes: list[str], problems: list[str], codex_plugins: bool = True) -> bool:
+                 notes: list[str], problems: list[str], codex_plugins: set | None = None) -> bool:
     """After the plan's files and commands: links for the skills the commands installed (the plan's yes covers
     them; backed up like every repo write), then the Codex plugins and the repo's Codex config without the plugins
     that failed."""
@@ -275,7 +275,8 @@ def _after_apply(prof: profiles.Profile, project: Path, bk, install: bool, drive
                   if c.kind == "link" and not any(c.why in f for f in failed)]
     if repo_config.agents(project)["codex"] and targets.codex_enabled():
         if install:
-            lines = codex_project.plugins(prof, False) if codex_plugins else []  # a missing-only re-run: Codex has them
+            lines = (codex_project.plugins(prof, False) if codex_plugins is None
+                     else codex_project.plugins(prof, False, only=codex_plugins))  # a missing-only re-run: only those
             for line in lines:
                 if line.startswith("backup: "):  # Codex's own backup: its undo line must reach the user
                     notes.append(line)
@@ -416,14 +417,15 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
                  "loadout: which agents this repo is for (commit it)")
     planned_notes, failures, skips = _plan_profile(prof, project, w, install, decide)
     notes += planned_notes
-    codex_plugins = True
+    codex_plugins = None  # every Codex plugin of the profile
     if (not refresh and cfg.exists and cfg.manage and not failures
             and not any(c.kind not in ("run", "promise") for c in w.changes)):  # a promise is no file change
         try:
             recorded = name in repo_config.records(project)
         except repo_config.Invalid:
             recorded = False
-        if recorded:
+        # a profile that owns no repo entries has no record: its done_when paths show it was applied
+        if recorded or prof.done_when and not (prof.settings or prof.mcp or prof.skills):
             missing = missing_here(prof, project) if install else []
             if not missing:
                 from . import out
@@ -435,7 +437,7 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
             commands_missing = any(" ".join(cmd) in missing for cmd in prof.commands if isinstance(cmd, list))
             w.keep(lambda c: c.kind == "run" and _still_needed(c, missing, prof) or c.kind == "promise" and commands_missing)
             codex_missing = [m.removeprefix("Codex plugin ") for m in missing if m.startswith("Codex plugin ")]
-            codex_plugins = bool(codex_missing)
+            codex_plugins = set(codex_missing)
             if codex_missing:
                 notes.append(f"Codex plugins to install here: {', '.join(codex_missing)}")
     plan = _show(project, f"profile {name}", w, failures + notes, skips)
