@@ -122,3 +122,23 @@ def test_show_names_config_file_without_secret(fake_home):
     _made()
     text = "\n".join(backup.contents(backup.backups()[0]))
     assert "add-json -s user srv <config in " in text and SECRET not in text
+
+
+def test_pair_with_broken_config_runs_neither(fake_home, fake_runner):
+    bk, file = _made("s")
+    bk.record_command("s (remove rewritten)", ["claude", "mcp", "remove", "-s", "user", "s"])
+    file.unlink()
+    lines, ok, _ = backup.restore(bk.root)
+    assert ok is False and fake_runner.calls == []
+    assert sum(x.startswith("failed: ") for x in lines) >= 2
+    assert sum("not run, the paired add-json's config cannot be loaded" in x for x in lines) == 2
+
+
+def test_pair_refused_on_windows_writes_full_commands(fake_home, fake_runner, windows_cmd):
+    bk, _ = _made("s")
+    bk.record_command("s (remove rewritten)", ["claude", "mcp", "remove", "-s", "user", "s"])
+    lines, ok, _ = backup.restore(bk.root)
+    assert ok is False and fake_runner.calls == []
+    manual = (bk.root / "manual-commands.txt").read_text(encoding="utf-8")
+    assert "mcp remove -s user s" in manual and SECRET in manual
+    assert SECRET not in "\n".join(lines)

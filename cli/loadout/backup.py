@@ -160,15 +160,21 @@ def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, st
             continue
         name = _mcp_target(cmd)[1]
         for j in range(i + 1, len(ordered)):
-            other = get_dict(ordered[j], "undo").get("run")
-            if other and _mcp_target(other) == ("add-json", name) and _allowed_run(cmd) and _allowed_run(other):
-                if runner.would_refuse(other):
-                    where = runner.write_manual_commands(
-                        root, f"restore: mcp {name} (remove, then add; full commands, contains secrets)", [cmd, other])
-                    msg = (f"failed: {{label}}: not run, the paired add-json cannot run through this claude "
-                           f"(Windows .cmd shim); run both commands in {where} by hand")
-                    skip[i] = skip[j] = msg
-                break
+            undo = _mapped(get_dict(ordered[j], "undo"))
+            other, why = _resolve_run(undo, root)  # the full command, config loaded
+            target = _mcp_target(other if other else undo.get("run") or [])
+            if target != ("add-json", name):
+                continue
+            if other is None:  # its config cannot be loaded: running the remove alone would lose the server
+                skip[i] = skip[j] = ("failed: {label}: not run, the paired add-json's config cannot be loaded "
+                                     f"({why})")
+            elif _allowed_run(cmd) and _allowed_run(other) and runner.would_refuse(other):
+                where = runner.write_manual_commands(
+                    root, f"restore: mcp {name} (remove, then add; full commands, contains secrets)", [cmd, other])
+                msg = (f"failed: {{label}}: not run, the paired add-json cannot run through this claude "
+                       f"(Windows .cmd shim); run both commands in {where} by hand")
+                skip[i] = skip[j] = msg
+            break
     return skip
 
 
