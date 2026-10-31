@@ -9,6 +9,7 @@ import filecmp
 import json
 import math
 import os
+import re
 import shutil
 import stat
 import time
@@ -116,6 +117,15 @@ class Backup:
         self._ensure_root()
         self._add(label, {"run": undo_cmd}, **info)
 
+    def record_mcp_add(self, label: str, name: str, config: dict) -> Path:
+        """Undo that re-adds a user MCP server: the config goes to a private file, the manifest only points at it."""
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip(".") or "server"
+        dest = self._slot(Path(f"mcp-{safe}.json"))
+        dest.write_text(json.dumps(config), encoding="utf-8")
+        _private(dest, PRIVATE_FILE)  # file first, step second: a step never points at nothing
+        self._add(label, {"run": ["claude", "mcp", "add-json", "-s", "user", name], "config-file": str(dest)})
+        return dest
+
     def _add(self, label: str, undo: dict, **info) -> None:
         self.steps.append({"label": label, "undo": undo, **info})
         self._save()
@@ -220,10 +230,35 @@ def _mapped(undo: dict) -> dict:
     for key in ("move", "restore-file"):
         if isinstance(out.get(key), list):
             out[key] = [_map_legacy(str(v)) for v in out[key]]
-    for key in ("created", "kept"):
+    for key in ("created", "kept", "config-file"):
         if isinstance(out.get(key), str):
             out[key] = _map_legacy(out[key])
     return out
+
+
+def _resolve_run(undo: dict, root: Path) -> tuple[list[str] | None, str | None]:
+    """The full command of a run step: (cmd, None), or (None, why not) when its config file cannot be loaded.
+
+    A config-file step is `claude mcp add-json -s user NAME` plus the JSON object in a file of this backup's files/."""
+    cmd = undo.get("run")
+    if "config-file" not in undo:
+        return cmd, None
+    if not (isinstance(cmd, list) and len(cmd) == 6 and all(isinstance(a, str) for a in cmd)
+            and cmd[:5] == ["claude", "mcp", "add-json", "-s", "user"] and cmd[5] and not cmd[5].startswith("-")):
+        return None, "its config-file step is not a claude mcp add-json command"
+    raw = undo["config-file"]
+    path = Path(raw) if isinstance(raw, str) and raw else None
+    if path is None or not _inside(path, root / "files"):
+        return None, f"its config file is not inside {root}"
+    if path.is_symlink() or not path.is_file():
+        return None, f"its config file {path} is missing"
+    try:
+        cfg = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cfg = None
+    if not isinstance(cfg, dict):
+        return None, f"its config file {path} is not a JSON object"
+    return [*cmd, json.dumps(cfg)], None
 
 
 def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
@@ -272,7 +307,9 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
     elif "kept" in undo:
         return f"not restored automatically: {label}; the old value is in {undo['kept']}, restore it by hand"
     elif "run" in undo:
-        cmd = undo["run"]
+        cmd, reason = _resolve_run(undo, root or pre.root)
+        if reason:
+            return f"failed: {label}: {reason}"
         if not _allowed_run(cmd):  # the undo commands loadout records only, never a shell
             shown = " ".join(map(str, cmd)) if isinstance(cmd, list) else str(cmd)
             return f"failed: refusing to run this command from a manifest: {shown}"
@@ -453,6 +490,8 @@ def contents(info: BackupInfo) -> list[str]:
             what = f"remove the folder {_shown(undo['created-dir'])} if it is empty"
         elif "run" in undo and isinstance(undo["run"], list):
             what = "run: " + redact(" ".join(map(str, undo["run"])))
+            if "config-file" in undo:
+                what += f" <config in {_shown(_map_legacy(str(undo['config-file'])))}>"
         elif "kept" in undo:
             what = "nothing automatic: the old value is kept in the backup"
         else:
