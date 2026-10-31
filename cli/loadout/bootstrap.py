@@ -164,13 +164,14 @@ def _open_local_bin_hint() -> str:
 # mise's footer after an error ("Version: …", "Run with --verbose …"): without it the tail keeps the error itself
 _FOOTER = re.compile(r"^(mise ERROR )?(Version: |Run with --verbose|Run with RUST_BACKTRACE|Backtrace omitted|"
                      r"Location:)")
-LIBATOMIC_FIX = ("fix: node needs the system library libatomic1: sudo apt install libatomic1 (Fedora: sudo dnf install "
-                 "libatomic; Arch: sudo pacman -S gcc-libs), then run this again")
+LIBATOMIC_FIX = ("fix: {name} needs the system library libatomic1: sudo apt install libatomic1 (Fedora: sudo dnf "
+                 "install libatomic; Arch: sudo pacman -S gcc-libs), then run this again")
 
 
 def _tail(res: runner.Result, limit: int = 400) -> str:
-    text = res.stderr.strip() or res.stdout.strip()
-    text = "\n".join(l for l in text.splitlines() if not _FOOTER.match(l.strip())).strip()[-limit:]
+    def body(stream: str) -> str:
+        return "\n".join(l for l in stream.splitlines() if not _FOOTER.match(l.strip())).strip()
+    text = (body(res.stderr) or body(res.stdout) or res.stderr.strip() or res.stdout.strip())[-limit:]
     return text.split("\n", 1)[1] if len(text) == limit and "\n" in text else text
 
 
@@ -275,7 +276,7 @@ def install_tool(entry: dict, cmds: list[list[str]], on_problem=None) -> tuple[b
         res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
         if not res.ok:
             found = [f"failed to install {name}: {_tail(res)}", _open_local_bin_hint(),
-                     LIBATOMIC_FIX if "libatomic.so.1" in res.stderr + res.stdout else ""]
+                     LIBATOMIC_FIX.format(name=name) if "libatomic.so.1" in res.stderr + res.stdout else ""]
             for line in filter(None, found):
                 lines.append(line)
                 if on_problem is not None:

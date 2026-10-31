@@ -316,3 +316,17 @@ def test_update_names_the_libatomic_fix(fake_home, fake_runner):
     summary = update.Summary()
     update._install_tool(item, summary, set())
     assert any("sudo apt install libatomic1" in how for _, how in summary.failed)
+
+
+def test_the_fix_line_names_the_tool_that_failed(fake_home, fake_runner):
+    fake_runner.missing.add("rg")
+    fake_runner.responses[("install-rg",)] = runner.Result(1, "", "rg: libatomic.so.1: cannot open shared object")
+    _, lines = b.install_tool(_bin("rg"), [["install-rg"]])
+    assert any(l.startswith("fix: rg needs the system library libatomic1") for l in lines)
+
+
+def test_a_footer_only_stderr_keeps_the_error_on_stdout(fake_home, fake_runner):
+    fake_runner.missing.add("rg")
+    fake_runner.responses[("install-rg",)] = runner.Result(1, "the real error", "Run with --verbose for more")
+    _, lines = b.install_tool(_bin("rg"), [["install-rg"]])
+    assert lines[0] == "failed to install rg: the real error"
