@@ -107,3 +107,25 @@ def test_a_file_put_at_a_committed_links_place_is_not_a_broken_checkout(fake_hom
     assert project.add_profile(origin, "web", install=False, approve=lambda plan: True) == 1
     printed = capsys.readouterr().out
     assert "left as is" in printed and "plain file in this checkout" not in printed and link.read_text() == "my own file"
+
+
+def test_a_skills_only_profile_still_reports_the_plain_file(clone, monkeypatch, capsys):
+    # stand-in review on #75: "already applied" must not hide that Codex cannot see the skill
+    from loadout import paths
+    src = paths.personal_root() / "profiles" / "skills" / "demo"
+    src.mkdir(parents=True)
+    (src / "SKILL.md").write_text("---\nname: demo\n---\n")
+    monkeypatch.setattr(profiles, "load_profile", lambda n: profiles.Profile(name=n, description="d", skills=["demo"]))
+    project.add_profile(clone, "sk", install=False, approve=lambda plan: True)
+    out = capsys.readouterr().out
+    assert "is a plain file in this checkout" in out and project.ALREADY.format(name="sk") not in out
+
+
+def test_a_recorded_profile_still_reports_the_plain_file(clone, monkeypatch, capsys):
+    # stand-in re-review on #75: a recorded profile's "already applied" must not hide the skill-link to-do either
+    monkeypatch.setattr(profiles, "load_profile", lambda n: profiles.Profile(name=n, description="d", settings={"x": 1}))
+    project.add_profile(clone, "web", install=False, approve=lambda plan: True)
+    capsys.readouterr()
+    project.add_profile(clone, "web", install=False, approve=lambda plan: True)
+    out = capsys.readouterr().out
+    assert "is a plain file in this checkout" in out and project.ALREADY.format(name="web") not in out

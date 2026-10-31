@@ -377,6 +377,24 @@ def missing_here(prof: profiles.Profile, project: Path) -> list[str]:
     return out
 
 
+def _skills_here(prof: profiles.Profile, project: Path) -> bool:
+    """Whether each of the profile's skills is in the repo with every file as the profile has it (a copy someone
+    changed, or another skill of that name, is not the profile's; files added next to them don't matter)."""
+    import filecmp
+    for name in prof.skills:
+        src = profiles._skill_source(name) if isinstance(name, str) and name and Path(name).name == name else None
+        if src is None:
+            return False
+        dest = next((project / rel / name for rel in profiles.REPO_SKILLS if (project / rel / name).is_dir()), None)
+        files = [f.relative_to(src).as_posix() for f in src.rglob("*") if f.is_file()]
+        if dest is None or not paths.inside(dest, project):
+            return False
+        same, _, _ = filecmp.cmpfiles(src, dest, files, shallow=False)
+        if len(same) != len(files):
+            return False
+    return True
+
+
 def _still_needed(change, missing: list[str], prof: profiles.Profile | None = None) -> bool:
     """Whether a planned `run` step installs or makes something this machine lacks."""
     cmd = change.cmd or []
@@ -432,8 +450,11 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         except repo_config.Invalid:
             recorded = False
         # a profile that owns no repo entries has no record: this machine's state shows it was applied (its
-        # plugins, its done_when paths); commands without done_when leave nothing to tell, so they are planned
-        if recorded or not (prof.settings or prof.mcp or prof.skills) and (prof.done_when or not prof.commands):
+        # plugins, its done_when paths, its skills as copied); commands without done_when leave nothing to tell
+        from . import skill_links
+        if (recorded or (not (prof.settings or prof.mcp) and (not prof.skills or _skills_here(prof, project))
+                         and (prof.done_when or not prof.commands))) \
+                and not any(n.startswith(skill_links.PREFIX) for n in notes):  # a skill-link to-do stays shown
             missing = missing_here(prof, project) if install else []
             if not missing:
                 from . import out

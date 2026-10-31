@@ -224,6 +224,28 @@ def test_install_tool_reports_ok_and_failure(fake_home, fake_runner, monkeypatch
     assert not ok and lines[0] == "failed to install rg: boom"
 
 
+# mise 2026.10.23 on a bare ubuntu:24.04: node 26's binary needs libatomic.so.1 (fresh-machine CI, 2026-10-30)
+MISE_LIBATOMIC = ("mise ERROR Failed to install core:node@lts: ~/.local/share/mise/installs/node/26.13.0/bin/node "
+                  "exited with non-zero status: exit code 127; last stderr: " + "x" * 300
+                  + " libatomic.so.1: cannot open shared object file: No such file or directory\n"
+                  "mise ERROR Version: 2026.10.23 linux-x64 (2026-10-29)\n"
+                  "mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information")
+
+
+def test_a_failed_mise_install_shows_the_error_not_the_footer(fake_home, fake_runner):
+    fake_runner.missing.add("node")
+    fake_runner.responses[("mise",)] = runner.Result(1, "", MISE_LIBATOMIC)
+    ok, lines = b.install_tool(_bin("node"), [["mise", "use", "-g", "node@lts"]])
+    assert not ok and "libatomic.so.1" in lines[0] and "Version:" not in lines[0]
+
+
+def test_a_missing_libatomic_names_the_package(fake_home, fake_runner):
+    fake_runner.missing.add("node")
+    fake_runner.responses[("mise",)] = runner.Result(1, "", MISE_LIBATOMIC)
+    _, lines = b.install_tool(_bin("node"), [["mise", "use", "-g", "node@lts"]])
+    assert any(l.startswith("fix: ") and "sudo apt install libatomic1" in l for l in lines)
+
+
 def test_codex_step_passes_command_and_on_wait_to_the_lock(fake_home, fake_runner, monkeypatch):
     from loadout import locks
     _codex_parts(monkeypatch)
@@ -282,3 +304,29 @@ def test_claude_plugins_step_names_loadouts_own_plugin(fake_home, fake_runner, m
     assert {"claude_plugins_installed", "claude_loadout_plugin"} <= apply.claude_plugins_step(on=True).facts
     monkeypatch.setattr(b, "setup_plugins", lambda say=None: ["plugin superpowers@x: installed"])
     assert "claude_loadout_plugin" not in apply.claude_plugins_step(on=True).facts
+
+
+def test_update_names_the_libatomic_fix(fake_home, fake_runner):
+    from loadout import update
+    fake_runner.missing.add("node")
+    fake_runner.responses[("mise",)] = runner.Result(1, "", MISE_LIBATOMIC)
+    entry = next(e for e in catalog.binaries() if e["id"] == "node")
+    item = update.PlanItem(1, "tool-install", "install node", [["mise", "use", "-g", "node@lts"]], key="node",
+                           entry=entry)
+    summary = update.Summary()
+    update._install_tool(item, summary, set())
+    assert any("sudo apt install libatomic1" in how for _, how in summary.failed)
+
+
+def test_the_fix_line_names_the_tool_that_failed(fake_home, fake_runner):
+    fake_runner.missing.add("rg")
+    fake_runner.responses[("install-rg",)] = runner.Result(1, "", "rg: libatomic.so.1: cannot open shared object")
+    _, lines = b.install_tool(_bin("rg"), [["install-rg"]])
+    assert any(l.startswith("fix: rg needs the system library libatomic1") for l in lines)
+
+
+def test_a_footer_only_stderr_keeps_the_error_on_stdout(fake_home, fake_runner):
+    fake_runner.missing.add("rg")
+    fake_runner.responses[("install-rg",)] = runner.Result(1, "the real error", "Run with --verbose for more")
+    _, lines = b.install_tool(_bin("rg"), [["install-rg"]])
+    assert lines[0] == "failed to install rg: the real error"

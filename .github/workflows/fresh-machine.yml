@@ -21,7 +21,7 @@ jobs:
       REPO_URL: https://github.com/${{ github.repository }}
       REF: ${{ github.head_ref || github.ref_name }}
     steps:
-      - run: apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates
+      - run: apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates libatomic1  # node 26+ needs libatomic
       - uses: actions/checkout@v4
       - name: users with empty homes
         run: |
