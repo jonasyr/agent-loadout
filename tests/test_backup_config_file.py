@@ -142,3 +142,55 @@ def test_pair_refused_on_windows_writes_full_commands(fake_home, fake_runner, wi
     manual = (bk.root / "manual-commands.txt").read_text(encoding="utf-8")
     assert "mcp remove -s user s" in manual and SECRET in manual
     assert SECRET not in "\n".join(lines)
+
+
+def _adopt_machine(fake_home):
+    from fixtures import author_machine
+    author_machine(fake_home)
+
+
+def _github_verdict():
+    from loadout import adopt, inventory
+    vs = inventory.classify(inventory.collect(with_versions=False))
+    return adopt, [v for v in vs if v.item.name == "github-server"]
+
+
+def test_adopt_remove_keeps_secret_out_of_manifest(fake_home, fake_runner):
+    from fixtures import FAKE_PAT
+    _adopt_machine(fake_home)
+    adopt, chosen = _github_verdict()
+    bk = backup.Backup(description="t")
+    adopt.apply(chosen, bk)
+    assert FAKE_PAT not in (bk.root / "manifest.json").read_text()
+    fake_runner.calls.clear()
+    lines, ok, _ = backup.restore(bk.root)
+    add = [c for c in fake_runner.calls if c[:3] == ["claude", "mcp", "add-json"]]
+    assert ok and len(add) == 1 and add[0][5] == "github-server"
+    assert json.loads(add[0][6]) == chosen[0].item.extra["config"]
+
+
+def test_fix_secrets_original_is_in_config_file(fake_home, fake_runner):
+    from loadout import adopt, secrets
+    _adopt_machine(fake_home)
+    found = [f for f in secrets.scan(json.loads(paths.claude_json().read_text())) if f.fixable]
+    original = json.loads(paths.claude_json().read_text())["mcpServers"][found[0].server]
+    bk = backup.Backup(description="t")
+    adopt.fix_secrets(found, bk)
+    assert found[0].value not in (bk.root / "manifest.json").read_text()
+    fake_runner.calls.clear()
+    backup.restore(bk.root)
+    mcp = [c for c in fake_runner.calls if c[:2] == ["claude", "mcp"]]
+    assert [c[2] for c in mcp[:2]] == ["remove", "add-json"]
+    assert json.loads(mcp[1][6]) == original
+
+
+def test_adopt_refused_removal_leaves_no_config_file(fake_home, fake_runner, windows_cmd):
+    _adopt_machine(fake_home)
+    adopt, chosen = _github_verdict()
+    bk = backup.Backup(description="t")
+    out = adopt.apply(chosen, bk)
+    assert not list((bk.root / "files").glob("*mcp-*")) if (bk.root / "files").exists() else True
+    manifest = bk.root / "manifest.json"
+    assert "github-server" not in (manifest.read_text() if manifest.exists() else "")
+    assert (bk.root / "manual-commands.txt").exists()
+    assert ["claude", "mcp", "remove", "-s", "user", "github-server"] not in fake_runner.calls
