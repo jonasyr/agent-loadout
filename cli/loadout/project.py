@@ -452,9 +452,9 @@ def add_profile(project: Path, name: str, install: bool = True, dry_run: bool = 
         # a profile that owns no repo entries has no record: this machine's state shows it was applied (its
         # plugins, its done_when paths, its skills as copied); commands without done_when leave nothing to tell
         from . import skill_links
-        if recorded or (not (prof.settings or prof.mcp) and (not prof.skills or _skills_here(prof, project))
-                        and (prof.done_when or not prof.commands)
-                        and not any(n.startswith(skill_links.PREFIX) for n in notes)):  # a to-do stays shown
+        if (recorded or (not (prof.settings or prof.mcp) and (not prof.skills or _skills_here(prof, project))
+                         and (prof.done_when or not prof.commands))) \
+                and not any(n.startswith(skill_links.PREFIX) for n in notes):  # a skill-link to-do stays shown
             missing = missing_here(prof, project) if install else []
             if not missing:
                 from . import out

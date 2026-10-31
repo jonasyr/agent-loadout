@@ -119,3 +119,13 @@ def test_a_skills_only_profile_still_reports_the_plain_file(clone, monkeypatch, 
     project.add_profile(clone, "sk", install=False, approve=lambda plan: True)
     out = capsys.readouterr().out
     assert "is a plain file in this checkout" in out and project.ALREADY.format(name="sk") not in out
+
+
+def test_a_recorded_profile_still_reports_the_plain_file(clone, monkeypatch, capsys):
+    # stand-in re-review on #75: a recorded profile's "already applied" must not hide the skill-link to-do either
+    monkeypatch.setattr(profiles, "load_profile", lambda n: profiles.Profile(name=n, description="d", settings={"x": 1}))
+    project.add_profile(clone, "web", install=False, approve=lambda plan: True)
+    capsys.readouterr()
+    project.add_profile(clone, "web", install=False, approve=lambda plan: True)
+    out = capsys.readouterr().out
+    assert "is a plain file in this checkout" in out and project.ALREADY.format(name="web") not in out
