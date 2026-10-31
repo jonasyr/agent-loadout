@@ -327,7 +327,8 @@ def _undo(step: dict, pre: Backup, root: Path | None = None) -> str:
             return f"failed: {label}: cannot run through this claude (Windows .cmd shim); run the command in {where} by hand"
         res = runner.run(cmd)
         if not res.ok:
-            return f"failed: {' '.join(cmd)}: {res.stderr.strip()}"
+            shown = _run_shown(undo) if "config-file" in undo else " ".join(cmd)
+            return f"failed: {shown}: {res.stderr.strip()}"
     return f"restored: {label}"
 
 
@@ -480,6 +481,14 @@ def _pair_target(value) -> str | None:
     return str(value[1]) if isinstance(value, list) and len(value) == 2 else None
 
 
+def _run_shown(undo: dict) -> str:
+    """A run step as the user sees it: a config-file step names its file, never the config itself."""
+    text = redact(" ".join(map(str, undo["run"])))
+    if "config-file" in undo:
+        text += f" <config in {_shown(_map_legacy(str(undo['config-file'])))}>"
+    return text
+
+
 def contents(info: BackupInfo) -> list[str]:
     """What a restore does, step by step in the order it runs (newest first); undo commands with secrets masked."""
     out = []
@@ -495,9 +504,7 @@ def contents(info: BackupInfo) -> list[str]:
         elif "created-dir" in undo:
             what = f"remove the folder {_shown(undo['created-dir'])} if it is empty"
         elif "run" in undo and isinstance(undo["run"], list):
-            what = "run: " + redact(" ".join(map(str, undo["run"])))
-            if "config-file" in undo:
-                what += f" <config in {_shown(_map_legacy(str(undo['config-file'])))}>"
+            what = "run: " + _run_shown(undo)
         elif "kept" in undo:
             what = "nothing automatic: the old value is kept in the backup"
         else:

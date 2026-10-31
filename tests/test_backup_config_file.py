@@ -194,3 +194,14 @@ def test_adopt_refused_removal_leaves_no_config_file(fake_home, fake_runner, win
     assert "github-server" not in (manifest.read_text() if manifest.exists() else "")
     assert (bk.root / "manual-commands.txt").exists()
     assert ["claude", "mcp", "remove", "-s", "user", "github-server"] not in fake_runner.calls
+
+
+def test_failed_add_does_not_print_the_config(fake_home, fake_runner):
+    plain = "plainvalue" + "q" * 20  # under an innocuous name, so redact() cannot guess it is a secret
+    bk, _ = _made(cfg={"command": "x", "env": {"FOO": plain}})
+    fake_runner.responses[tuple(ADD)] = runner.Result(1, "", "boom")
+    lines, ok, _ = backup.restore(bk.root)
+    assert not ok
+    text = "\n".join(lines)
+    assert plain not in text
+    assert "add-json -s user srv <config in " in text and "boom" in text
