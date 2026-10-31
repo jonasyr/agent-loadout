@@ -75,7 +75,7 @@ Items you own that loadout removes or replaces are moved to a backup first. The 
 
 ## Backups and restore
 
-Backups go to `~/.local/state/loadout/backups/loadout-<timestamp>` with a manifest of undo steps, and `loadout restore` replays them. They can hold old configs and secrets. Which commands make them, their file modes, and what restore does not undo: [Undo what loadout changed](../how-to/undo-and-restore.md).
+Backups go to `~/.local/state/loadout/backups/loadout-<timestamp>` with a manifest of undo steps, and `loadout restore` replays them. The manifest holds no secret values; saved copies and the configs of removed MCP servers in `files/` can (0600). Which commands make them, their file modes, and what restore does not undo: [Undo what loadout changed](../how-to/undo-and-restore.md).
 
 ## Secrets
 
