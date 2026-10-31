@@ -281,3 +281,35 @@ def test_done_when_through_a_link_out_of_the_repo_is_missing(setup, fake_runner,
     asked = []
     _again(repo, "tool", asked)
     assert len(asked) == 1 and any("run     tool setup" in l for l in asked[0])
+
+
+def test_skills_only_profile_is_already_applied(setup, fake_runner, monkeypatch, capsys):
+    # Codex review on #74: a profile with only skills has no record; its copied skills, unchanged, show it is done
+    repo = setup
+    src = paths.personal_root() / "profiles" / "skills" / "my-skill"
+    src.mkdir(parents=True)
+    (src / "SKILL.md").write_text("---\nname: my-skill\ndescription: d\n---\n")
+    sk = profiles.Profile(name="sk", description="", skills=["my-skill"])
+    monkeypatch.setattr(profiles, "load_profile", lambda name: sk)
+    _agents(repo, "claude")
+    _apply(repo, "sk")
+    capsys.readouterr()
+    asked = []
+    assert _again(repo, "sk", asked) == 0
+    assert capsys.readouterr().out.strip() == project.ALREADY.format(name="sk")
+    assert asked == []
+
+
+def test_a_changed_skill_copy_is_not_already_applied(setup, fake_runner, monkeypatch, capsys):
+    repo = setup
+    src = paths.personal_root() / "profiles" / "skills" / "my-skill"
+    src.mkdir(parents=True)
+    (src / "SKILL.md").write_text("---\nname: my-skill\ndescription: d\n---\n")
+    monkeypatch.setattr(profiles, "load_profile", lambda name: profiles.Profile(name="sk", description="",
+                                                                               skills=["my-skill"]))
+    _agents(repo, "claude")
+    _apply(repo, "sk")
+    (repo / ".claude" / "skills" / "my-skill" / "SKILL.md").write_text("mine now")
+    capsys.readouterr()
+    _again(repo, "sk", [])
+    assert project.ALREADY.format(name="sk") not in capsys.readouterr().out

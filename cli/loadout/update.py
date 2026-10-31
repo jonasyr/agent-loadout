@@ -614,8 +614,9 @@ def _install_tool(item: PlanItem, summary: Summary, failed: set[str]) -> None:
         summary.upgraded.append(item.key)
     else:
         failed.add(item.key)
+        fix = next((l.removeprefix("fix: ") for l in lines if l.startswith("fix: ")), None)  # e.g. a missing library
         summary.failed.append((out.printable(redact(lines[0]) if lines else f"{item.key}: not installed"),
-                               AGAIN + ", or install it by hand"))
+                               fix or AGAIN + ", or install it by hand"))
 
 
 def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
