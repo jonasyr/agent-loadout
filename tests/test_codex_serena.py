@@ -53,3 +53,74 @@ def test_a_serena_table_that_is_not_serena_names_the_rename_fix(cfg, monkeypatch
     monkeypatch.setattr(codex, "drift", lambda: [])
     (r,) = [r for r in codex.checks() if r.name == "Codex config"]
     assert not r.ok and "rename" in r.fix
+
+
+SRC = ('# my serena\n[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--context=ide"]\n\n'
+       '[mcp_servers.serena.env]\nSERENA_LOG = "debug"\n')
+BACK = "Serena: put your server back in config.toml"
+
+
+def test_table_source_takes_the_table_with_its_subtables(cfg, fake_home):
+    cfg.write_text('model = "x"\n\n' + SRC + '\n[mcp_servers.other]\ncommand = "o"\n')
+    src = codex.table_source("serena")
+    assert "[mcp_servers.serena.env]" in src and "SERENA_LOG" in src and "other" not in src
+    assert src.startswith("[mcp_servers.serena]\n") and src.endswith('SERENA_LOG = "debug"\n')
+
+
+def test_table_source_keeps_inner_comments_and_tool_subtables(cfg, fake_home):
+    body = ('[mcp_servers.serena]\n# why\ncommand = "serena"  # inline\n\n'
+            '# approved by me\n[mcp_servers.serena.tools.find_symbol]\napproval_mode = "approve"\n')
+    cfg.write_text(body + '\n[mcp_servers.other]\ncommand = "o"\n')
+    assert codex.table_source("serena") == body
+
+
+def test_table_source_none_when_absent_dotted_or_inline(cfg, fake_home):
+    cfg.write_text('[mcp_servers.other]\ncommand = "o"\n')
+    assert codex.table_source("serena") is None
+    cfg.write_text('[mcp_servers]\nserena = { command = "serena" }\n')
+    assert codex.table_source("serena") is None
+    cfg.write_text('mcp_servers.serena = { command = "serena" }\n')
+    assert codex.table_source("serena") is None
+
+
+def test_table_source_none_when_unreadable_or_missing(cfg, fake_home):
+    assert codex.table_source("serena") is None  # no file
+    cfg.write_bytes(b"\xff\xfe[mcp_servers.serena]\n")
+    assert codex.table_source("serena") is None
+
+
+def test_table_source_of_a_crlf_file_is_lf_and_reinsert_restores_crlf(cfg, fake_home):
+    cfg.write_bytes(SRC.replace("\n", "\r\n").encode())
+    src = codex.table_source("serena")
+    assert "\r" not in src
+    cfg.write_bytes(b'model = "x"\r\n')
+    assert BACK in codex.reinsert_table(src)
+    assert cfg.read_bytes() == b'model = "x"\r\n' + src.replace("\n", "\r\n").encode()
+
+
+def test_reinsert_puts_back_exactly_the_text(cfg, fake_home):
+    cfg.write_text('model = "x"\n')
+    assert BACK in codex.reinsert_table(SRC)
+    assert cfg.read_text() == 'model = "x"\n' + SRC
+
+
+def test_reinsert_into_a_file_without_trailing_newline(cfg, fake_home):
+    cfg.write_bytes(b'model = "x"')
+    assert BACK in codex.reinsert_table(SRC)
+    assert cfg.read_text() == 'model = "x"\n' + SRC
+
+
+def test_reinsert_into_a_missing_file_creates_it(cfg, fake_home):
+    assert BACK in codex.reinsert_table(SRC)
+    assert cfg.read_text() == SRC
+
+
+def test_reinsert_never_raises_and_names_the_restore(cfg, fake_home, monkeypatch):
+    cfg.write_bytes(b"\xff\xfe")
+    out = codex.reinsert_table(SRC)
+    assert "could not put your server back" in out and "loadout restore <dir>" in out
+    assert cfg.read_bytes() == b"\xff\xfe"
+    cfg.write_text("a = 1\n")
+    monkeypatch.setattr("loadout.jsonio.write_atomic_bytes", lambda *a, **k: (_ for _ in ()).throw(OSError("disk")))
+    out = codex.reinsert_table(SRC)
+    assert "could not put your server back" in out and "loadout restore <dir>" in out

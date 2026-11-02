@@ -2064,6 +2064,40 @@ def codex_only_skills() -> list[Path]:
             if not p.name.startswith(".") and p.name != "synced" and p.name not in ours | claude]
 
 
+def table_source(name: str) -> str | None:
+    """The text of `[mcp_servers.NAME]` and its sub-tables in config.toml (LF endings, inner comments kept, trailing
+    blank lines dropped), for `reinsert_table`. None when there is no such header table (a dotted or inline form
+    included), the pieces are not one contiguous run, or the file is unreadable."""
+    try:
+        text = _read_exact(paths.codex_home() / "config.toml")
+        secs = _sections(text.splitlines(), _tomllib())
+    except Exception:
+        return None
+    hit = [i for i, s in enumerate(secs) if isinstance(s[0], tuple) and s[0][:2] == ("mcp_servers", name)]
+    if not hit or secs[hit[0]][0] != ("mcp_servers", name) or hit != list(range(hit[0], hit[-1] + 1)):
+        return None
+    lines = [ln for i in hit for ln in secs[i][1]]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines) + "\n"
+
+
+def reinsert_table(text: str) -> str:
+    """Append a table text from `table_source` to config.toml atomically, in the file's line endings. Never raises;
+    the caller replaces <dir> with the backup folder."""
+    from .jsonio import write_atomic_bytes
+    try:
+        path = paths.codex_home() / "config.toml"
+        old = _read_exact(path) if path.exists() else ""
+        nl = "\r\n" if "\r\n" in old else "\n"
+        block = text.replace("\r\n", "\n").replace("\n", nl)
+        sep = "" if not old or old.endswith("\n") else nl
+        write_atomic_bytes(path, (old + sep + block).encode("utf-8"))
+        return "Serena: put your server back in config.toml"
+    except Exception as e:
+        return f"Serena: could not put your server back ({type(e).__name__}); restore it with: loadout restore <dir>"
+
+
 def remove_server(name: str, bk) -> str:
     """Remove a user's server from ~/.codex/config.toml through Codex itself; the file is saved first (restore
     puts it back)."""
