@@ -124,3 +124,21 @@ def test_reinsert_never_raises_and_names_the_restore(cfg, fake_home, monkeypatch
     monkeypatch.setattr("loadout.jsonio.write_atomic_bytes", lambda *a, **k: (_ for _ in ()).throw(OSError("disk")))
     out = codex.reinsert_table(SRC)
     assert "could not put your server back" in out and "loadout restore <dir>" in out
+
+
+def test_table_source_leaves_the_next_tables_comment(cfg, fake_home):
+    cfg.write_text('[mcp_servers.serena]\ncommand = "x"\n\n# about other\n[mcp_servers.other]\ncommand = "o"\n')
+    assert codex.table_source("serena") == '[mcp_servers.serena]\ncommand = "x"\n'
+
+
+def test_table_source_is_byte_exact_for_odd_line_separators(cfg, fake_home):
+    body = '[mcp_servers.serena]\ncommand = "a\u2028b\x0cc\u0085d"\n'
+    cfg.write_bytes(body.encode())
+    assert codex.table_source("serena") == body
+
+
+def test_reinsert_refuses_a_duplicate_table(cfg, fake_home):
+    cfg.write_text(SRC)
+    out = codex.reinsert_table(SRC)
+    assert "could not put your server back" in out and "loadout restore <dir>" in out
+    assert cfg.read_text() == SRC

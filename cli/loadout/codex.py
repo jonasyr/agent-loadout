@@ -2070,15 +2070,20 @@ def table_source(name: str) -> str | None:
     included), the pieces are not one contiguous run, or the file is unreadable."""
     try:
         text = _read_exact(paths.codex_home() / "config.toml")
-        secs = _sections(text.splitlines(), _tomllib())
+        # split on "\n" only (splitlines() also breaks on U+2028, \x0c, ...); a CRLF's "\r" goes with its line end
+        lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
+        secs = _sections(lines, _tomllib())
     except Exception:
         return None
     hit = [i for i, s in enumerate(secs) if isinstance(s[0], tuple) and s[0][:2] == ("mcp_servers", name)]
     if not hit or secs[hit[0]][0] != ("mcp_servers", name) or hit != list(range(hit[0], hit[-1] + 1)):
         return None
     lines = [ln for i in hit for ln in secs[i][1]]
-    while lines and not lines[-1].strip():
-        lines.pop()
+    last = secs[hit[-1]]
+    n = len(last[1])  # the comments and blanks above the next table are its own, not ours
+    while n > 1 and last[2][n - 1] and (not last[1][n - 1].strip() or last[1][n - 1].lstrip().startswith("#")):
+        n -= 1
+    lines = lines[:len(lines) - len(last[1]) + n]
     return "\n".join(lines) + "\n"
 
 
@@ -2092,7 +2097,13 @@ def reinsert_table(text: str) -> str:
         nl = "\r\n" if "\r\n" in old else "\n"
         block = text.replace("\r\n", "\n").replace("\n", nl)
         sep = "" if not old or old.endswith("\n") else nl
-        write_atomic_bytes(path, (old + sep + block).encode("utf-8"))
+        new = old + sep + block
+        try:
+            _tomllib().loads(new)
+        except Exception:  # a table of that name is already there, or the file is not valid TOML: write nothing
+            return ("Serena: could not put your server back (config.toml already has it or is not valid TOML); "
+                    "restore it with: loadout restore <dir>")
+        write_atomic_bytes(path, new.encode("utf-8"))
         return "Serena: put your server back in config.toml"
     except Exception as e:
         return f"Serena: could not put your server back ({type(e).__name__}); restore it with: loadout restore <dir>"
