@@ -16,6 +16,8 @@ def test_ps1_finds_git_bash_next_to_git_not_wsl_bash():
     text = PS1.read_text()
     assert "Get-Command bash" not in text  # WSL's System32\bash.exe would count as Git Bash
     assert "bin\\bash.exe" in text and "CLAUDE_CODE_GIT_BASH_PATH" in text
+    # a git function or alias (a profile wrapper) has no .Source: Split-Path '' would stop the script
+    assert "Get-Command git -CommandType Application" in text
 
 
 def test_sh_stops_when_git_cannot_run():

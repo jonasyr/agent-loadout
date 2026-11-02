@@ -547,6 +547,15 @@ def test_the_codex_extension_alone_makes_both_the_default(codex_ext, fake_runner
     assert choice == {"claude": True, "codex": True} and store
 
 
+def test_a_codex_extension_only_in_windows_vscode_is_seen_from_wsl(fake_home, fake_runner, monkeypatch, tmp_path):
+    fake_runner.missing.add("codex")
+    win = tmp_path / "winhome"
+    (win / ".vscode" / "extensions" / "openai.chatgpt-26.715.61943-win32-x64").mkdir(parents=True)
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda *a, **k: win)
+    assert bootstrap._codex_seen()
+
+
 def test_no_codex_anywhere_keeps_claude_only(fake_home, fake_runner):
     fake_runner.missing.add("codex")
     bootstrap.paths.personal_root().mkdir(parents=True)

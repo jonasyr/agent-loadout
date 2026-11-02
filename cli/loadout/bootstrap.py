@@ -838,8 +838,8 @@ def _codex_seen() -> bool:
     needs to know Codex is used): worth asking which agents to set up."""
     if runner.have("codex") or (wsl.detect() is not None and bool(runner.which("codex.exe"))):
         return True
-    from . import vscode
-    return bool(vscode.extensions({"codex": True}, look=False))
+    from . import vscode  # in WSL also VS Code on Windows (one cmd.exe lookup; only before an agent choice exists)
+    return bool(vscode.extensions({"codex": True}, look=wsl.detect() is not None))
 
 
 CODEX_SIDE_QUESTION = ("Your Codex runs on Windows. Set loadout up for:  1) Codex in WSL (installs Codex here; switch the "
