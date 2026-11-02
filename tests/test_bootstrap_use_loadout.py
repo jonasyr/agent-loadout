@@ -203,3 +203,24 @@ def test_failed_rollback_makes_bootstrap_return_1(fake_home, fake_runner, monkey
     monkeypatch.setattr(apply, "codex_step", lambda *a, **k: apply.StepResult("Codex", "failed", []))
     _reinsert_fails(monkeypatch)
     assert _boot(use_loadout=True) == 1
+
+
+def test_exception_inside_the_serena_pass_rolls_back_earlier_removals(fake_home, fake_runner, monkeypatch, capsys):
+    _plain(fake_home, fake_runner)
+    cfg = paths.codex_home() / "config.toml"
+    second = PLAIN.replace("my-serena", "serena")
+    cfg.write_text(PLAIN + second, encoding="utf-8")
+    _fake_remove(monkeypatch, [])
+    asked = []
+
+    def ask(q):
+        if "Serena" not in q and "serena" not in q:
+            return "n"
+        asked.append(q)
+        if len(asked) > 1:
+            raise KeyboardInterrupt
+        return "y"
+    with pytest.raises(KeyboardInterrupt):
+        _boot(ask=ask, interactive=True, yes=False)
+    assert "my-serena" in cfg.read_text(encoding="utf-8")
+    assert "put your server back" in capsys.readouterr().out

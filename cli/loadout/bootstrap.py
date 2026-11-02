@@ -1192,7 +1192,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     try:
         if personal_ok and (claude_on or chosen["codex"]):  # loadout's Serena replaces yours, only with a yes; backed up
             pass_lines, removed = adopt.serena_pass(pass_bk, ask, interactive and not yes, use_loadout, keep_own,
-                                                    skip_codex=bool(codex_problem))
+                                                    skip_codex=bool(codex_problem), removed=removed)
             if pass_lines:
                 _step("Serena")
                 for line in pass_lines:
@@ -1216,11 +1216,10 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                     out.problem(codex.SERENA_KEPT)
     finally:
         # yours comes back unless this run really wrote loadout's table (the record may be stale)
-        if removed and not (codex_wrote and codex.table_source("serena") is not None):
-            for text in removed:
-                line = codex.reinsert_table(text).replace("<dir>", str(pass_bk.root))
-                out.problem(line)
-                pass_failed = pass_failed or "could not put" in line
+        back, failed = adopt.rollback_removed(removed, pass_bk, codex_wrote)
+        for line in back:
+            out.problem(line)
+        pass_failed = pass_failed or failed
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
         if yes:  # nothing to report: no heading and no blank lines

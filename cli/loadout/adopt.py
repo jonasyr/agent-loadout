@@ -344,15 +344,16 @@ def serena_duplicate_left() -> bool:
 
 
 def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep_own: bool,
-                skip_codex: bool = False) -> tuple[list[str], list[str]]:
+                skip_codex: bool = False, removed: list[str] | None = None) -> tuple[list[str], list[str]]:
     """loadout's Serena replaces the user's own one, only with a yes. Returns (lines to print, the removed Codex
     table texts for a rollback). A Codex Serena is asked about interactively; a Claude Code one is removed only
-    under use_loadout (interactively it stays in adopt's `migrate` group)."""
+    under use_loadout (interactively it stays in adopt's `migrate` group). The caller may pass `removed`: each text is
+    appended there as soon as its table is removed, so a rollback still has them when the pass raises partway."""
     from . import cbm_installer, codex
     if keep_own or not (use_loadout or interactive):
         return [], []
     lines: list[str] = []
-    texts: list[str] = []
+    texts: list[str] = removed if removed is not None else []
     for v in _serena_verdicts():
         item, codex_side = v.item, own.is_codex(v.item)
         if v.action == "keep":
@@ -595,6 +596,31 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
     return out
 
 
+def rollback_removed(removed: list[str], bk: Backup, wrote: bool) -> tuple[list[str], bool]:
+    """Put the user's removed Codex Serena tables back unless loadout's own table is really in config.toml now
+    (the record may be stale). Returns (lines to print, whether a reinsert failed). Shared with bootstrap."""
+    from . import codex
+    if not removed or (wrote and codex.table_source("serena") is not None):
+        return [], False
+    lines = [codex.reinsert_table(text).replace("<dir>", str(bk.root)) for text in removed]
+    return lines, any("could not put" in line for line in lines)
+
+
+def _write_loadouts_codex_table(bk: Backup) -> bool:
+    """After a Codex Serena was removed: write loadout's own table (as `own` does after remove_server)."""
+    from . import codex, locks
+    lock = codex._lock(locks.foreground_wait(), "adopt")  # codex-config.json has other writers (session start)
+    if lock is None:
+        print(f"Serena: {locks.busy_message(codex.LOCK)}")
+        return False
+    try:
+        for line in codex.apply_config(bk):
+            print(redact(line))
+    finally:
+        lock.release()
+    return codex.table_source("serena") is not None
+
+
 def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask, with_versions: bool = True,
         interactive: bool | None = None, own_spec: str | None = None, embedded: bool = False,
         use_loadout: bool = False, keep_own: bool = False) -> int:
@@ -610,13 +636,23 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     if interactive is None:
         interactive = ui.is_interactive()
     pass_failed = False
+    pass_changed = False
     if use_loadout and apply_changes:  # before the verdicts: a Serena removed here must not be offered again
-        pass_bk = Backup(description="adopt serena")
+        from . import codex, targets as _targets
+        pass_bk, removed, wrote = Backup(description="adopt serena"), [], False
+        skip_codex = _targets.codex_enabled() and bool(codex.unavailable())  # as bootstrap: decided before removing
         try:
-            for line in serena_pass(pass_bk, ask, False, True, False)[0]:
+            for line in serena_pass(pass_bk, ask, False, True, False, skip_codex=skip_codex, removed=removed)[0]:
                 print(line)
                 pass_failed = pass_failed or isinstance(line, NotDone)
+            if removed:  # loadout's table replaces the removed one
+                wrote = _write_loadouts_codex_table(pass_bk)
         finally:
+            back, failed = rollback_removed(removed, pass_bk, wrote)
+            for line in back:
+                print(line)
+            pass_failed = pass_failed or failed
+            pass_changed = not pass_bk.empty
             if not pass_bk.empty:
                 LAST_BACKUP = pass_bk.root
                 print(f"{UNDO_LINE} (backup: {pass_bk.root}; it holds old configs, keep it private)")
@@ -651,6 +687,9 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         print("\n(dry run — nothing changed. Re-run with --apply to choose and apply.)")
         return 0
     if not interactive and not yes and groups is None and own_pairs is None:
+        if pass_changed:  # the Serena step ran: not a usage error
+            print("\nSerena step applied. For the rest, re-run with --yes, --groups GROUP,... or --own NAME=CHOICE,...")
+            return 1 if pass_failed else 0
         print("\nnon-interactive: re-run with --yes, --groups GROUP,... or --own NAME=CHOICE,... to apply (nothing changed).")
         return 2
     explicit = groups is not None
@@ -670,7 +709,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     acting = [p for p in own_pairs if p[1].action != "leave"]
     if (chosen or acting) and interactive and not yes:
         if not ui.confirm(ask, f"Apply {len(chosen) + len(acting)} change(s)? [y/N] "):
-            print("nothing changed")
+            print("Serena step applied; nothing else changed" if pass_changed else "nothing changed")
             return 1 if pass_failed else 0
     elif not chosen and not own_pairs and not findings:
         if not quiet_yes:

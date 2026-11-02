@@ -18,6 +18,7 @@ CLAUDE_PLAIN = {"type": "stdio", "command": "serena",
 def codex_on(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(targets, "OVERRIDE", {"claude": False, "codex": True})
     monkeypatch.setattr(codex, "_plugin_servers", lambda: {"codebase-memory-mcp"})
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
     return fake_runner
 
 
@@ -25,6 +26,7 @@ def codex_on(fake_home, fake_runner, monkeypatch):
 def both_on(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": True})
     monkeypatch.setattr(codex, "_plugin_servers", lambda: {"codebase-memory-mcp"})
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
     return fake_runner
 
 
@@ -229,3 +231,96 @@ def test_own_remove_names_a_tuned_claude_serena(both_on):
     rc = adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False,
                    own_spec="serena=remove")
     assert rc == 0 and _removes(both_on) == [["claude", "mcp", "remove", "-s", "user", "serena"]]
+
+
+# ---- final-review fixes: adopt --use-loadout writes loadout's Codex Serena or rolls back ----
+
+TWO = PLAIN + PLAIN.replace("[mcp_servers.serena]", "[mcp_servers.my-serena]")
+
+
+def _fake_remove(monkeypatch, events=None, fail_on=None):
+    """`codex mcp remove` does not run under the fake runner: do what it does to the file."""
+    def remove(name, bk):
+        cfg = paths.codex_home() / "config.toml"
+        bk.save_copy(cfg, f"Codex config.toml before removing mcp {name}")
+        if events is not None:
+            events.append(name)
+        if fail_on == name:
+            raise KeyboardInterrupt
+        text = cfg.read_text(encoding="utf-8")
+        block = PLAIN.replace("[mcp_servers.serena]", f"[mcp_servers.{name}]")
+        cfg.write_text(text.replace(block, ""), encoding="utf-8")
+        return f"mcp {name}: removed from Codex"
+    monkeypatch.setattr(codex, "remove_server", remove)
+
+
+def _adopt_flag(**kw):
+    return adopt.run(True, None, set(), True, lambda q: "", with_versions=False, use_loadout=True, **kw)
+
+
+def test_adopt_use_loadout_writes_loadouts_codex_table(codex_on, monkeypatch, capsys):
+    cfg = _config(PLAIN)
+    _fake_remove(monkeypatch)
+    wrote = []
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: wrote.append(1) or
+                        cfg.write_text(cfg.read_text() + '[mcp_servers.serena]\ncommand = "loadout-serena"\n') and [])
+    _adopt_flag()
+    assert wrote and 'command = "loadout-serena"' in cfg.read_text()
+    assert "put your server back" not in capsys.readouterr().out
+
+
+def test_adopt_use_loadout_rolls_back_when_apply_config_writes_nothing(codex_on, monkeypatch, capsys):
+    cfg = _config(PLAIN)
+    _fake_remove(monkeypatch)
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    _adopt_flag()
+    assert cfg.read_text().strip() == PLAIN.strip()
+    assert "put your server back" in capsys.readouterr().out
+
+
+def test_adopt_use_loadout_failed_reinsert_fails_the_run(codex_on, monkeypatch, capsys):
+    _config(PLAIN)
+    _fake_remove(monkeypatch)
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    monkeypatch.setattr(codex, "reinsert_table", lambda text: "Serena: could not put your server back (X); "
+                                                              "restore it with: loadout restore <dir>")
+    assert _adopt_flag() == 1
+    out = capsys.readouterr().out
+    assert "loadout restore" in out and "<dir>" not in out
+
+
+def test_adopt_use_loadout_removes_nothing_when_codex_unavailable(codex_on, monkeypatch, capsys):
+    cfg = _config(PLAIN)
+    events = []
+    _fake_remove(monkeypatch, events)
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: "Codex is not installed")
+    _adopt_flag()
+    assert events == [] and cfg.read_text() == PLAIN
+    assert "Codex is not set up in this run" in capsys.readouterr().out
+
+
+def test_adopt_exception_in_the_pass_rolls_back_earlier_removals(codex_on, monkeypatch, capsys):
+    cfg = _config(TWO)
+    _fake_remove(monkeypatch, fail_on="my-serena")
+    with pytest.raises(KeyboardInterrupt):
+        _adopt_flag()
+    assert "[mcp_servers.serena]" in cfg.read_text() and "put your server back" in capsys.readouterr().out
+
+
+def test_use_loadout_pass_that_changed_something_is_not_a_usage_exit(codex_on, monkeypatch, capsys):
+    _config(PLAIN)
+    _fake_remove(monkeypatch)
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    rc = adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False, use_loadout=True)
+    out = capsys.readouterr().out
+    assert rc == 0 and "nothing changed" not in out and "Serena step applied" in out
+
+
+def test_declined_apply_after_a_pass_change_does_not_say_nothing_changed(codex_on, monkeypatch, capsys):
+    _config(PLAIN)
+    _fake_remove(monkeypatch)
+    monkeypatch.setattr(codex, "apply_config", lambda bk, dry_run=False: [])
+    monkeypatch.setattr(adopt, "select", lambda *a, **k: [object()])
+    monkeypatch.setattr(adopt.ui, "confirm", lambda ask, q: False)
+    rc = adopt.run(True, None, set(), False, lambda q: "n", with_versions=False, interactive=True, use_loadout=True)
+    assert rc == 0 and "nothing changed" not in capsys.readouterr().out
