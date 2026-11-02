@@ -1,6 +1,8 @@
+import json
+
 import pytest
 
-from loadout import catalog, inventory, secrets, versions
+from loadout import catalog, codex, inventory, secrets, versions
 from fixtures import FAKE_DEVIN, FAKE_PAT, author_machine
 
 
@@ -131,3 +133,27 @@ def test_users_serena_remind_hook_is_provided_by_the_kit(fake_home, fake_runner)
         {"type": "command", "command": "serena-hooks remind --client=claude-code"}]}]}}))
     v = [x for x in inventory.classify(inventory.collect(with_versions=False)) if x.item.kind == "hook"]
     assert [x.action for x in v] == ["migrate"] and v[0].entry_id == "hook-serena-remind"
+
+
+def test_a_plain_claude_serena_still_migrates(machine):  # the author fixture's serena is plain
+    v = {x.item.name: x for x in inventory.classify(inventory.collect(with_versions=False)) if x.item.kind == "mcp"}
+    assert v["serena"].action == "migrate"
+
+
+@pytest.mark.parametrize("cfg", [
+    {"command": "serena", "args": ["start-mcp-server", "--context=ide", "--project-from-cwd"]},
+    {"command": "serena", "args": ["start-mcp-server", "--context=claude-code", "--project-from-cwd"],
+     "env": {"SERENA_LOG": "debug"}},
+    {"command": "/opt/fork/serena", "args": ["start-mcp-server", "--context=claude-code", "--project-from-cwd", "--x"]},
+])
+def test_a_tuned_claude_serena_is_kept(fake_home, fake_runner, cfg):
+    (fake_home / ".claude.json").write_text(json.dumps({"mcpServers": {"serena": cfg}}))
+    v = {x.item.name: x for x in inventory.classify(inventory.collect(with_versions=False)) if x.item.kind == "mcp"}
+    assert v["serena"].action == "keep"
+    assert "loadout adopt --apply --own serena=remove" in v["serena"].reason
+
+
+def test_arg_order_and_type_do_not_count_as_own_settings():
+    cfg = {"type": "stdio", "command": "serena", "args": ["start-mcp-server", "--project-from-cwd", "--context=claude-code"],
+           "env": {}}
+    assert not codex.serena_has_own_settings(cfg, "claude")

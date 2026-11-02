@@ -221,6 +221,9 @@ def classify(items: list[Item]) -> list[Verdict]:
                 out.append(Verdict(item, "migrate", f"Provided by loadout; this copy duplicates it. {entry['reason']}",
                                    "mcp-codebase-memory"))
             continue
+        if isinstance(cfg, dict) and codex.is_serena(cfg) and codex.serena_has_own_settings(cfg, "claude"):
+            out.append(Verdict(item, "keep", SERENA_OWN_CLAUDE.format(name=item.name), "mcp-serena"))  # ADR 0045
+            continue
         entry = catalog.match(item.kind, item.name, item.detail)
         if item.kind == "hook" and entry is None:
             from . import cbm_installer  # the installer's hooks by what they run (`.exe`, quoted, its script path)
@@ -247,6 +250,8 @@ def classify(items: list[Item]) -> list[Verdict]:
 CBM_PROVIDED = "Provided by loadout's Codex plugin; this table starts a second codebase-memory server."
 CBM_OWN_CLAUDE = ("It starts codebase-memory with settings of its own (env or args); remove it yourself if "
                   "loadout's plugin should serve it.")
+SERENA_OWN_CLAUDE = ("It starts Serena with settings of its own (command, args or env); kept on --yes. Remove it "
+                     "with: loadout adopt --apply --own {name}=remove")
 CBM_ONLY = ("Codex's only codebase-memory server here: loadout's plugin does not serve it (not installed, or "
             "switched off); keep it, or turn the plugin on first.")
 CBM_OWN = ("It starts codebase-memory with settings of its own (env, args or a fixed path); remove it yourself if "

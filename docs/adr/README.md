@@ -70,3 +70,4 @@ Template:
 | [0042](0042-readd-codex-marketplace-after-upgrade-timeout.md) | Re-add a Codex marketplace whose upgrade timed out | Accepted |
 | [0043](0043-silence-rtk-missing-hook-warning.md) | Silence rtk's "No hook installed" warning where loadout's plugin provides the hook | Accepted |
 | [0044](0044-codex-reviewer-as-opt-in-plugin.md) | codex-reviewer as an opt-in plugin | Accepted |
+| [0045](0045-a-tuned-serena-is-kept.md) | A Serena with settings of its own is kept on `--yes` | Accepted |
