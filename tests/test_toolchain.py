@@ -301,16 +301,23 @@ def _codex_on(monkeypatch):
     from loadout import codex
     monkeypatch.setattr(codex, "open_steps", lambda plugins=True: [])
     monkeypatch.setattr(codex, "enabled", lambda: True)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CODEX_API_KEY", raising=False)
+
+
+def _codex_cli(monkeypatch, fake_runner):
+    _codex_on(monkeypatch)
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
 
 
 def test_still_to_do_names_codex_login(fake_home, fake_runner, monkeypatch):
-    _codex_on(monkeypatch)
+    _codex_cli(monkeypatch, fake_runner)
     fake_runner.responses[("codex", "login", "status")] = runner.Result(1, "", "Not logged in")
     assert b.CODEX_LOGIN in b.still_to_do("linux")
 
 
 def test_still_to_do_quiet_when_codex_is_logged_in(fake_home, fake_runner, monkeypatch):
-    _codex_on(monkeypatch)
+    _codex_cli(monkeypatch, fake_runner)
     fake_runner.responses[("codex", "login", "status")] = runner.Result(0, "", "Logged in using ChatGPT")
     assert not any("Codex" in l and ("log in" in l or "sign in" in l) for l in b.still_to_do("linux"))
 
@@ -322,8 +329,26 @@ def test_still_to_do_codex_extension_login(codex_ext, fake_runner, monkeypatch):
     assert b.CODEX_LOGIN_EXTENSION in lines and b.CODEX_LOGIN not in lines
 
 
-def test_still_to_do_no_codex_login_for_the_windows_side(fake_home, fake_runner, monkeypatch):
+def test_an_unusable_codex_cli_next_to_the_extension_asks_for_the_extension_login(codex_ext, fake_runner,
+                                                                                    monkeypatch):
     _codex_on(monkeypatch)
+    fake_runner.missing.discard("codex")  # an old Codex CLI on PATH: loadout runs the extension's codex
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.100.0\n", "")
+    fake_runner.responses[(str(codex_ext), "login", "status")] = runner.Result(1, "", "Not logged in")
+    lines = b.still_to_do("linux")
+    assert b.CODEX_LOGIN_EXTENSION in lines and b.CODEX_LOGIN not in lines
+    assert ("codex", "login", "status") not in map(tuple, fake_runner.calls)
+
+
+def test_an_api_key_counts_as_logged_in_to_codex(fake_home, fake_runner, monkeypatch):
+    _codex_cli(monkeypatch, fake_runner)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    fake_runner.responses[("codex", "login", "status")] = runner.Result(1, "", "Not logged in")
+    assert b.CODEX_LOGIN not in b.still_to_do("linux")
+
+
+def test_still_to_do_no_codex_login_for_the_windows_side(fake_home, fake_runner, monkeypatch):
+    _codex_cli(monkeypatch, fake_runner)
     fake_runner.responses[("codex", "login", "status")] = runner.Result(1, "", "Not logged in")
     assert b.CODEX_LOGIN not in b.still_to_do("linux", codex_here=False)
 

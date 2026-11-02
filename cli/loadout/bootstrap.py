@@ -106,14 +106,15 @@ CLAUDE_LOGIN_EXTENSION = "sign in to Claude Code in VS Code's Claude Code extens
 
 
 def _codex_login_step() -> str:
-    """`codex login status` exits 1 when no account is set up; it changes nothing."""
+    """`codex login status` exits 1 when no account is set up; it changes nothing. It ignores an API key in the
+    environment, so a key there counts as logged in."""
     from . import codex
-    if not codex.enabled() or not codex.has_codex():
+    if not codex.enabled() or os.environ.get("OPENAI_API_KEY") or os.environ.get("CODEX_API_KEY"):
         return ""
-    cli = runner.have("codex")
-    if runner.run(["codex" if cli else codex.program(), "login", "status"], timeout=20).ok:
+    current = codex.mode()  # the codex loadout uses: an old or Windows codex on PATH may lose to the extension's
+    if current is None or runner.run([codex.program(), "login", "status"], timeout=20).ok:
         return ""
-    return CODEX_LOGIN if cli else CODEX_LOGIN_EXTENSION
+    return CODEX_LOGIN_EXTENSION if current == "extension" else CODEX_LOGIN
 
 
 def still_to_do(key: str, codex_here: bool = True, plugins: bool = True) -> list[str]:
@@ -130,7 +131,8 @@ def still_to_do(key: str, codex_here: bool = True, plugins: bool = True) -> list
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
     if codex_here:  # the Windows side: its steps belong to bootstrap.ps1
-        out += list(filter(None, [_codex_login_step()])) + codex.open_steps(plugins=plugins)
+        login = _codex_login_step()
+        out += ([login] if login else []) + codex.open_steps(plugins=plugins)
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
