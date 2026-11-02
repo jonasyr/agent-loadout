@@ -537,3 +537,27 @@ def test_in_wsl_the_windows_note_names_the_one_that_is_windows(fake_home, fake_r
     note = bootstrap._windows_first_note("node")
     assert f"npm resolves to the Windows program {in_wsl}/npm" in note
     assert not note.startswith("node ")
+
+
+def test_the_codex_extension_alone_makes_both_the_default(codex_ext, fake_runner):
+    bootstrap.paths.personal_root().mkdir(parents=True)  # an existing layer: asked only when Codex is seen
+    asked = []
+    choice, store = bootstrap._choose_agents(lambda q: asked.append(q) or "", interactive=True, flag=None)
+    assert asked and "[3]" in asked[0]
+    assert choice == {"claude": True, "codex": True} and store
+
+
+def test_a_codex_extension_only_in_windows_vscode_is_seen_from_wsl(fake_home, fake_runner, monkeypatch, tmp_path):
+    fake_runner.missing.add("codex")
+    win = tmp_path / "winhome"
+    (win / ".vscode" / "extensions" / "openai.chatgpt-26.715.61943-win32-x64").mkdir(parents=True)
+    monkeypatch.setattr(wsl, "detect", lambda *a, **k: 2)
+    monkeypatch.setattr(wsl, "windows_home", lambda *a, **k: win)
+    assert bootstrap._codex_seen()
+
+
+def test_no_codex_anywhere_keeps_claude_only(fake_home, fake_runner):
+    fake_runner.missing.add("codex")
+    bootstrap.paths.personal_root().mkdir(parents=True)
+    choice, store = bootstrap._choose_agents(lambda q: pytest.fail("asked"), interactive=True, flag=None)
+    assert choice == {"claude": True, "codex": False} and not store

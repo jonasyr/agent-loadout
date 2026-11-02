@@ -61,7 +61,8 @@ main() {
     kit="$(cd "$(dirname "$src")" && pwd)"
   else
     piped=1
-    if ! command -v git >/dev/null 2>&1; then
+    # macOS: /usr/bin/git exists without the Command Line Tools but cannot run
+    if ! command -v git >/dev/null 2>&1 || ! git --version >/dev/null 2>&1; then
       echo "loadout needs git to download itself. Install it, then run this command again:" >&2
       echo "  $(git_hint)" >&2
       exit 1

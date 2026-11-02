@@ -95,7 +95,7 @@ codex                                   # log in to Codex, if you chose it; trus
 gh auth login && gh auth setup-git      # log in to GitHub
 ```
 
-**In VS Code:** the extensions read the same setup and login as the CLIs. In WSL, open your repos with `code .` from the WSL terminal ([Use loadout with VS Code](docs/how-to/vscode.md)).
+**In VS Code:** the extensions read the same setup and login as the CLIs; with only an extension (no CLI), sign in from the extension when it asks. In WSL, open your repos with `code .` from the WSL terminal ([Use loadout with VS Code](docs/how-to/vscode.md)).
 
 ### 3. Check
 

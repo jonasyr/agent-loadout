@@ -105,6 +105,56 @@ def test_path_block_goes_to_rc_and_login_profile(fake_home, fake_runner, monkeyp
     assert b.setup_path(None) == ([], False)  # idempotent: nothing changed, nothing to say
 
 
+def test_fish_gets_its_own_path_file(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch, "/usr/bin/fish")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    out, changed = b.setup_path(None)
+    fish = fake_home / ".config/fish/conf.d/loadout.fish"
+    text = fish.read_text()
+    assert changed and str(fish) in "\n".join(out)
+    assert text.startswith(b.PATH_MARKER + "\n") and b.PATH_END in text
+    assert 'set -gx PATH "$HOME/.local/bin" $PATH' in text and "contains --" in text
+    assert b.setup_path(None) == ([], False)
+
+
+def test_an_existing_fish_config_gets_the_block_too(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch)
+    (fake_home / ".local/bin").mkdir(parents=True)
+    (fake_home / ".config/fish").mkdir(parents=True)
+    b.setup_path(None)
+    assert (fake_home / ".config/fish/conf.d/loadout.fish").is_file()
+    assert b.PATH_MARKER in (fake_home / ".bashrc").read_text()
+
+
+def test_fish_follows_xdg_config_home(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch, "/usr/bin/fish")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / "dotfiles"))
+    b.setup_path(None)
+    assert (fake_home / "dotfiles/fish/conf.d/loadout.fish").is_file()
+    assert not (fake_home / ".config/fish").exists()
+
+
+def test_no_fish_no_fish_file(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch)
+    (fake_home / ".local/bin").mkdir(parents=True)
+    b.setup_path(None)
+    assert not (fake_home / ".config/fish").exists()
+
+
+def test_fish_block_changes_are_replaced_and_backed_up(fake_home, fake_runner, monkeypatch):
+    from loadout.backup import Backup
+    _posix(monkeypatch, "/usr/bin/fish")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    bk = Backup(description="test")
+    b.setup_path(bk)
+    assert any("loadout.fish" in str(s) for s in bk.steps)
+    fish = fake_home / ".config/fish/conf.d/loadout.fish"
+    fish.write_text(fish.read_text().replace(".local/bin", ".local/old"))
+    out, changed = b.setup_path(None)
+    assert changed and ".local/old" not in fish.read_text()
+
+
 def test_path_block_prefers_existing_bash_profile(fake_home, fake_runner, monkeypatch):
     _posix(monkeypatch)
     (fake_home / ".local/bin").mkdir(parents=True)
@@ -254,6 +304,77 @@ def test_tool_dirs_on_windows_include_winget_links(fake_home, monkeypatch):
     links = local / "Microsoft/WinGet/Links"
     links.mkdir(parents=True)
     assert links in paths.tool_dirs()
+
+
+def _codex_on(monkeypatch):
+    from loadout import codex
+    monkeypatch.setattr(codex, "open_steps", lambda plugins=True: [])
+    monkeypatch.setattr(codex, "enabled", lambda: True)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CODEX_API_KEY", raising=False)
+
+
+def _codex_cli(monkeypatch, fake_runner):
+    _codex_on(monkeypatch)
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
+
+
+def test_still_to_do_names_codex_login(fake_home, fake_runner, monkeypatch):
+    _codex_cli(monkeypatch, fake_runner)
+    fake_runner.responses[("codex", "login", "status")] = runner.Result(1, "", "Not logged in")
+    assert b.CODEX_LOGIN in b.still_to_do("linux")
+
+
+def test_still_to_do_quiet_when_codex_is_logged_in(fake_home, fake_runner, monkeypatch):
+    _codex_cli(monkeypatch, fake_runner)
+    fake_runner.responses[("codex", "login", "status")] = runner.Result(0, "", "Logged in using ChatGPT")
+    assert not any("Codex" in l and ("log in" in l or "sign in" in l) for l in b.still_to_do("linux"))
+
+
+def test_still_to_do_codex_extension_login(codex_ext, fake_runner, monkeypatch):
+    _codex_on(monkeypatch)
+    fake_runner.responses[(str(codex_ext), "login", "status")] = runner.Result(1, "", "Not logged in")
+    lines = b.still_to_do("linux")
+    assert b.CODEX_LOGIN_EXTENSION in lines and b.CODEX_LOGIN not in lines
+
+
+def test_an_unusable_codex_cli_next_to_the_extension_asks_for_the_extension_login(codex_ext, fake_runner,
+                                                                                    monkeypatch):
+    _codex_on(monkeypatch)
+    fake_runner.missing.discard("codex")  # an old Codex CLI on PATH: loadout runs the extension's codex
+    fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.100.0\n", "")
+    fake_runner.responses[(str(codex_ext), "login", "status")] = runner.Result(1, "", "Not logged in")
+    lines = b.still_to_do("linux")
+    assert b.CODEX_LOGIN_EXTENSION in lines and b.CODEX_LOGIN not in lines
+    assert ("codex", "login", "status") not in map(tuple, fake_runner.calls)
+
+
+def test_an_api_key_counts_as_logged_in_to_codex(fake_home, fake_runner, monkeypatch):
+    _codex_cli(monkeypatch, fake_runner)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    fake_runner.responses[("codex", "login", "status")] = runner.Result(1, "", "Not logged in")
+    assert b.CODEX_LOGIN not in b.still_to_do("linux")
+
+
+def test_still_to_do_no_codex_login_for_the_windows_side(fake_home, fake_runner, monkeypatch):
+    _codex_cli(monkeypatch, fake_runner)
+    fake_runner.responses[("codex", "login", "status")] = runner.Result(1, "", "Not logged in")
+    assert b.CODEX_LOGIN not in b.still_to_do("linux", codex_here=False)
+
+
+def test_codex_off_no_codex_login(fake_home, fake_runner, monkeypatch):
+    from loadout import codex
+    monkeypatch.setattr(codex, "enabled", lambda: False)
+    assert not any("Codex" in l and "log in" in l for l in b.still_to_do("linux"))
+    assert ("codex", "login", "status") not in map(tuple, fake_runner.calls)
+
+
+def test_still_to_do_claude_extension_login(fake_home, fake_runner, monkeypatch):
+    from loadout import vscode
+    fake_runner.missing.add("claude")
+    monkeypatch.setattr(vscode, "bundled_claude", lambda: "/x/claude")
+    lines = b.still_to_do("linux")
+    assert b.CLAUDE_LOGIN_EXTENSION in lines and not any(l.startswith("log in to Claude Code") for l in lines)
 
 
 def test_still_to_do_lists_only_what_applies(fake_home, fake_runner):

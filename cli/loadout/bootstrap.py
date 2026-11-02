@@ -100,19 +100,39 @@ def _claude_logged_in() -> bool:
 
 PERSONAL_REPO_HOWTO = "docs/how-to/personal-repo.md"
 PLUGINS_SKIPPED = "plugins skipped (--no-plugins): run loadout bootstrap without it to add them"
+CODEX_LOGIN = "log in to Codex: codex login"
+CODEX_LOGIN_EXTENSION = "sign in to Codex in VS Code's Codex extension (it asks when you open it)"
+CLAUDE_LOGIN_EXTENSION = "sign in to Claude Code in VS Code's Claude Code extension (it asks when you open it)"
+
+
+def _codex_login_step() -> str:
+    """`codex login status` exits 1 when no account is set up; it changes nothing. It ignores an API key in the
+    environment, so a key there counts as logged in."""
+    from . import codex
+    if not codex.enabled() or os.environ.get("OPENAI_API_KEY") or os.environ.get("CODEX_API_KEY"):
+        return ""
+    current = codex.mode()  # the codex loadout uses: an old or Windows codex on PATH may lose to the extension's
+    if current is None or runner.run([codex.program(), "login", "status"], timeout=20).ok:
+        return ""
+    return CODEX_LOGIN_EXTENSION if current == "extension" else CODEX_LOGIN
 
 
 def still_to_do(key: str, codex_here: bool = True, plugins: bool = True) -> list[str]:
     out = []
     if not runner.have("git"):
         out.append(f"install git: {MANUAL_STEPS['git'][key]}")
-    from . import targets
-    if targets.claude_enabled() and runner.have("claude") and not _claude_logged_in():
-        out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
+    from . import targets, vscode
+    if targets.claude_enabled() and not _claude_logged_in():
+        if runner.have("claude"):
+            out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
+        elif vscode.bundled_claude() is not None:  # the extension shares ~/.claude.json's login
+            out.append(CLAUDE_LOGIN_EXTENSION)
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    out += codex.open_steps(plugins=plugins) if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
+    if codex_here:  # the Windows side: its steps belong to bootstrap.ps1
+        login = _codex_login_step()
+        out += ([login] if login else []) + codex.open_steps(plugins=plugins)
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
@@ -166,6 +186,19 @@ _FOOTER = re.compile(r"^(mise ERROR )?(Version: |Run with --verbose|Run with RUS
                      r"Location:)")
 LIBATOMIC_FIX = ("fix: {name} needs the system library libatomic1: sudo apt install libatomic1 (Fedora: sudo dnf "
                  "install libatomic; Arch: sudo pacman -S gcc-libs), then run this again")
+# a system Node (apt, pacman): npm's global folder belongs to root, or the distro split npm into its own package
+NPM_PREFIX_FIX = ("fix: npm cannot write its global folder (a system Node's npm): npm config set prefix ~/.local, "
+                  "then run this again")
+NPM_MISSING_FIX = ("fix: {name} needs npm, which this Node came without: sudo apt install npm (Fedora: sudo dnf "
+                   "install npm; Arch: sudo pacman -S npm), then run this again")
+
+
+def _npm_fix(name: str, cmd: list[str], res: runner.Result) -> str:
+    if cmd[0] != "npm" or paths.platform_key() == "windows":
+        return ""
+    if res.returncode == 127:
+        return NPM_MISSING_FIX.format(name=name)
+    return NPM_PREFIX_FIX if "EACCES" in res.stderr + res.stdout else ""
 
 
 def _tail(res: runner.Result, limit: int = 400) -> str:
@@ -276,7 +309,8 @@ def install_tool(entry: dict, cmds: list[list[str]], on_problem=None) -> tuple[b
         res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
         if not res.ok:
             found = [f"failed to install {name}: {_tail(res)}", _open_local_bin_hint(),
-                     LIBATOMIC_FIX.format(name=name) if "libatomic.so.1" in res.stderr + res.stdout else ""]
+                     LIBATOMIC_FIX.format(name=name) if "libatomic.so.1" in res.stderr + res.stdout else "",
+                     _npm_fix(name, cmd, res)]
             for line in filter(None, found):
                 lines.append(line)
                 if on_problem is not None:
@@ -622,6 +656,17 @@ def _path_block(dirs: list[Path]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _fish_path_block(dirs: list[Path]) -> str:
+    """The same folders for fish, which reads none of the POSIX profiles."""
+    home = paths.home()
+    lines = [PATH_MARKER]
+    for d in reversed(dirs):
+        rel = d.relative_to(home).as_posix()
+        lines.append(f'contains -- "$HOME/{rel}" $PATH; or set -gx PATH "$HOME/{rel}" $PATH')
+    lines.append(PATH_END)
+    return "\n".join(lines) + "\n"
+
+
 def _refresh_path_block(rc: Path, block: str, bk: Backup | None) -> str | None:
     """A profile that already has our block gets it replaced when the content differs; the rest stays as is."""
     raw = rc.read_bytes() if rc.exists() else b""
@@ -668,8 +713,13 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
     login = home / ".bash_profile" if (home / ".bash_profile").exists() else home / ".profile"
     targets.append(login)
     block = _path_block(dirs)
+    files = {rc: block for rc in targets}
+    xdg = os.environ.get("XDG_CONFIG_HOME", "")
+    fish = (Path(xdg) if os.path.isabs(xdg) else home / ".config") / "fish"  # where fish reads conf.d from
+    if shell == "fish" or fish.is_dir():  # also a fish config next to another login shell
+        files[fish / "conf.d" / "loadout.fish"] = _fish_path_block(dirs)
     out = []
-    for rc in dict.fromkeys(targets):
+    for rc, block in files.items():
         line = _refresh_path_block(rc, block, bk)
         if line is None:
             line = _add_block(rc, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH")
@@ -786,8 +836,12 @@ def choose_agents(ask, interactive: bool, flag) -> dict:
 
 
 def _codex_seen() -> bool:
-    """A Codex on PATH, or (in WSL) a Windows codex.exe: worth asking which agents to set up."""
-    return runner.have("codex") or (wsl.detect() is not None and bool(runner.which("codex.exe")))
+    """A Codex on PATH, (in WSL) a Windows codex.exe, or VS Code's Codex extension (any version: the question only
+    needs to know Codex is used): worth asking which agents to set up."""
+    if runner.have("codex") or (wsl.detect() is not None and bool(runner.which("codex.exe"))):
+        return True
+    from . import vscode  # in WSL also VS Code on Windows (one cmd.exe lookup; only before an agent choice exists)
+    return bool(vscode.extensions({"codex": True}, look=wsl.detect() is not None))
 
 
 CODEX_SIDE_QUESTION = ("Your Codex runs on Windows. Set loadout up for:  1) Codex in WSL (installs Codex here; switch the "

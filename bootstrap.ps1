@@ -61,7 +61,11 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
     if ($LASTEXITCODE -ne 0) { Fail "could not check out '$ref' in $kit"; return }
   }
 }
-if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
+# Git for Windows puts only Git\cmd on PATH, and System32\bash.exe is WSL's: look for Git\bin\bash.exe itself
+$gitBash = @($env:CLAUDE_CODE_GIT_BASH_PATH, "$env:ProgramFiles\Git\bin\bash.exe")
+$gitExe = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($gitExe) { $gitBash += Join-Path (Split-Path (Split-Path $gitExe.Source)) 'bin\bash.exe' }
+if (-not ($gitBash | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) })) {
   Write-Warning 'Git Bash not found: Claude Code hooks need Git for Windows.'
 }
 $env:Path = "$HOME\.local\bin;$env:Path"

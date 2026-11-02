@@ -246,6 +246,43 @@ def test_a_missing_libatomic_names_the_package(fake_home, fake_runner):
     assert any(l.startswith("fix: ") and "sudo apt install libatomic1" in l for l in lines)
 
 
+NPM_PLAYWRIGHT = [["npm", "install", "-g", "@playwright/cli@latest"]]
+
+
+def test_npm_eacces_names_the_prefix_fix(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(b.paths, "platform_key", lambda: "linux")
+    fake_runner.missing.add("playwright-cli")
+    fake_runner.responses[("npm",)] = runner.Result(
+        243, "", "npm error code EACCES\nnpm error syscall mkdir\nnpm error path /usr/lib/node_modules/@playwright")
+    _, lines = b.install_tool(_bin("playwright-cli"), NPM_PLAYWRIGHT)
+    assert any(l.startswith("fix: ") and "npm config set prefix ~/.local" in l for l in lines)
+
+
+def test_missing_npm_says_install_npm(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(b.paths, "platform_key", lambda: "linux")
+    fake_runner.missing.update({"playwright-cli", "npm"})
+    fake_runner.responses[("npm",)] = runner.Result(127, "", "npm: not found")  # runner.run for a missing program
+    _, lines = b.install_tool(_bin("playwright-cli"), NPM_PLAYWRIGHT)
+    assert any(l.startswith("fix: ") and "sudo apt install npm" in l for l in lines)
+
+
+def test_other_npm_failures_get_no_fix_line(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(b.paths, "platform_key", lambda: "linux")
+    fake_runner.missing.add("playwright-cli")
+    fake_runner.responses[("npm",)] = runner.Result(1, "", "npm error code ETIMEDOUT")
+    _, lines = b.install_tool(_bin("playwright-cli"), NPM_PLAYWRIGHT)
+    assert not any(l.startswith("fix: ") for l in lines)
+
+
+def test_windows_npm_eacces_gets_no_posix_fix(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(b.paths, "platform_key", lambda: "windows")
+    monkeypatch.setattr(b, "npm_global_dir", lambda: None)
+    fake_runner.missing.add("playwright-cli")
+    fake_runner.responses[("npm",)] = runner.Result(243, "", "npm error code EACCES")
+    _, lines = b.install_tool(_bin("playwright-cli"), NPM_PLAYWRIGHT)
+    assert not any("~/.local" in l for l in lines)
+
+
 def test_codex_step_passes_command_and_on_wait_to_the_lock(fake_home, fake_runner, monkeypatch):
     from loadout import locks
     _codex_parts(monkeypatch)
