@@ -800,8 +800,12 @@ def choose_agents(ask, interactive: bool, flag) -> dict:
 
 
 def _codex_seen() -> bool:
-    """A Codex on PATH, or (in WSL) a Windows codex.exe: worth asking which agents to set up."""
-    return runner.have("codex") or (wsl.detect() is not None and bool(runner.which("codex.exe")))
+    """A Codex on PATH, (in WSL) a Windows codex.exe, or VS Code's Codex extension (any version: the question only
+    needs to know Codex is used): worth asking which agents to set up."""
+    if runner.have("codex") or (wsl.detect() is not None and bool(runner.which("codex.exe"))):
+        return True
+    from . import vscode
+    return bool(vscode.extensions({"codex": True}, look=False))
 
 
 CODEX_SIDE_QUESTION = ("Your Codex runs on Windows. Set loadout up for:  1) Codex in WSL (installs Codex here; switch the "
