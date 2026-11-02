@@ -297,6 +297,52 @@ def test_tool_dirs_on_windows_include_winget_links(fake_home, monkeypatch):
     assert links in paths.tool_dirs()
 
 
+def _codex_on(monkeypatch):
+    from loadout import codex
+    monkeypatch.setattr(codex, "open_steps", lambda plugins=True: [])
+    monkeypatch.setattr(codex, "enabled", lambda: True)
+
+
+def test_still_to_do_names_codex_login(fake_home, fake_runner, monkeypatch):
+    _codex_on(monkeypatch)
+    fake_runner.responses[("codex", "login", "status")] = runner.Result(1, "", "Not logged in")
+    assert b.CODEX_LOGIN in b.still_to_do("linux")
+
+
+def test_still_to_do_quiet_when_codex_is_logged_in(fake_home, fake_runner, monkeypatch):
+    _codex_on(monkeypatch)
+    fake_runner.responses[("codex", "login", "status")] = runner.Result(0, "", "Logged in using ChatGPT")
+    assert not any("Codex" in l and ("log in" in l or "sign in" in l) for l in b.still_to_do("linux"))
+
+
+def test_still_to_do_codex_extension_login(codex_ext, fake_runner, monkeypatch):
+    _codex_on(monkeypatch)
+    fake_runner.responses[(str(codex_ext), "login", "status")] = runner.Result(1, "", "Not logged in")
+    lines = b.still_to_do("linux")
+    assert b.CODEX_LOGIN_EXTENSION in lines and b.CODEX_LOGIN not in lines
+
+
+def test_still_to_do_no_codex_login_for_the_windows_side(fake_home, fake_runner, monkeypatch):
+    _codex_on(monkeypatch)
+    fake_runner.responses[("codex", "login", "status")] = runner.Result(1, "", "Not logged in")
+    assert b.CODEX_LOGIN not in b.still_to_do("linux", codex_here=False)
+
+
+def test_codex_off_no_codex_login(fake_home, fake_runner, monkeypatch):
+    from loadout import codex
+    monkeypatch.setattr(codex, "enabled", lambda: False)
+    assert not any("Codex" in l and "log in" in l for l in b.still_to_do("linux"))
+    assert ("codex", "login", "status") not in map(tuple, fake_runner.calls)
+
+
+def test_still_to_do_claude_extension_login(fake_home, fake_runner, monkeypatch):
+    from loadout import vscode
+    fake_runner.missing.add("claude")
+    monkeypatch.setattr(vscode, "bundled_claude", lambda: "/x/claude")
+    lines = b.still_to_do("linux")
+    assert b.CLAUDE_LOGIN_EXTENSION in lines and not any(l.startswith("log in to Claude Code") for l in lines)
+
+
 def test_still_to_do_lists_only_what_applies(fake_home, fake_runner):
     fake_runner.missing.add("git")
     fake_runner.responses[("gh", "auth", "status")] = runner.Result(1, "", "not logged in")

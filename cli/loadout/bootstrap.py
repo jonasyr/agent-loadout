@@ -100,19 +100,37 @@ def _claude_logged_in() -> bool:
 
 PERSONAL_REPO_HOWTO = "docs/how-to/personal-repo.md"
 PLUGINS_SKIPPED = "plugins skipped (--no-plugins): run loadout bootstrap without it to add them"
+CODEX_LOGIN = "log in to Codex: codex login"
+CODEX_LOGIN_EXTENSION = "sign in to Codex in VS Code's Codex extension (it asks when you open it)"
+CLAUDE_LOGIN_EXTENSION = "sign in to Claude Code in VS Code's Claude Code extension (it asks when you open it)"
+
+
+def _codex_login_step() -> str:
+    """`codex login status` exits 1 when no account is set up; it changes nothing."""
+    from . import codex
+    if not codex.enabled() or not codex.has_codex():
+        return ""
+    cli = runner.have("codex")
+    if runner.run(["codex" if cli else codex.program(), "login", "status"], timeout=20).ok:
+        return ""
+    return CODEX_LOGIN if cli else CODEX_LOGIN_EXTENSION
 
 
 def still_to_do(key: str, codex_here: bool = True, plugins: bool = True) -> list[str]:
     out = []
     if not runner.have("git"):
         out.append(f"install git: {MANUAL_STEPS['git'][key]}")
-    from . import targets
-    if targets.claude_enabled() and runner.have("claude") and not _claude_logged_in():
-        out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
+    from . import targets, vscode
+    if targets.claude_enabled() and not _claude_logged_in():
+        if runner.have("claude"):
+            out.append("log in to Claude Code: claude   (or set ANTHROPIC_API_KEY)")
+        elif vscode.bundled_claude() is not None:  # the extension shares ~/.claude.json's login
+            out.append(CLAUDE_LOGIN_EXTENSION)
     if runner.have("gh") and not runner.run(["gh", "auth", "status"], timeout=20).ok:
         out.append("log in to GitHub: `gh auth login`, then `gh auth setup-git`")
     from . import codex
-    out += codex.open_steps(plugins=plugins) if codex_here else []  # the Windows side: its steps belong to bootstrap.ps1
+    if codex_here:  # the Windows side: its steps belong to bootstrap.ps1
+        out += list(filter(None, [_codex_login_step()])) + codex.open_steps(plugins=plugins)
     if paths.personal_root().is_dir() and not (paths.personal_root() / ".git").exists():
         out.append(f"optional: keep your personal layer in a private git repo to sync it: {_tilde(paths.kit_root() / PERSONAL_REPO_HOWTO)}")
     return out
