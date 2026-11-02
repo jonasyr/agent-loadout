@@ -12,6 +12,17 @@ def test_ps1_warning_names_the_full_wsl_url():
             "Windows: https://github.com/jonasyr/agent-loadout/blob/main/docs/how-to/wsl.md'") in PS1.read_text()
 
 
+def test_ps1_finds_git_bash_next_to_git_not_wsl_bash():
+    text = PS1.read_text()
+    assert "Get-Command bash" not in text  # WSL's System32\bash.exe would count as Git Bash
+    assert "bin\\bash.exe" in text and "CLAUDE_CODE_GIT_BASH_PATH" in text
+
+
+def test_sh_stops_when_git_cannot_run():
+    text = (paths.kit_root() / "bootstrap.sh").read_text()
+    assert "git --version >/dev/null 2>&1" in text  # macOS: /usr/bin/git without Command Line Tools
+
+
 def test_ps1_never_exits_when_run_as_a_scriptblock():
     """The one-liner runs the script as a scriptblock: `exit` there closes the user's PowerShell window."""
     text = PS1.read_text()
