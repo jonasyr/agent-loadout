@@ -327,6 +327,22 @@ SERENA_OWN_LINE = ("Serena: yours is kept: it could not be put back exactly if l
                    "config.toml yourself to remove it ([mcp_servers.{name}])")
 
 
+def _serena_verdicts() -> list[Verdict]:
+    from . import codex
+    return [v for v in inventory.classify(inventory.collect(with_versions=False), use_loadout=True)
+            if v.item.kind == "mcp" and (v.item.extra.get("serena") or (
+                not own.is_codex(v.item) and isinstance(v.item.extra.get("config"), dict)
+                and codex.is_serena(v.item.extra["config"])))]
+
+
+def serena_duplicate_left() -> bool:
+    """A plain copy of loadout's Serena still runs next to loadout's (`--use-loadout` would remove it)."""
+    try:
+        return any(v.action == "migrate" for v in _serena_verdicts())
+    except Exception:  # a report line never breaks the run
+        return False
+
+
 def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep_own: bool) -> tuple[list[str], list[str]]:
     """loadout's Serena replaces the user's own one, only with a yes. Returns (lines to print, the removed Codex
     table texts for a rollback). A Codex Serena is asked about interactively; a Claude Code one is removed only
@@ -336,11 +352,7 @@ def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep
         return [], []
     lines: list[str] = []
     texts: list[str] = []
-    verdicts = [v for v in inventory.classify(inventory.collect(with_versions=False), use_loadout=True)
-                if v.item.kind == "mcp" and (v.item.extra.get("serena") or (
-                    not own.is_codex(v.item) and isinstance(v.item.extra.get("config"), dict)
-                    and codex.is_serena(v.item.extra["config"])))]
-    for v in verdicts:
+    for v in _serena_verdicts():
         item, codex_side = v.item, own.is_codex(v.item)
         if v.action == "keep":
             if v.reason == own.LEFT_REASON:
