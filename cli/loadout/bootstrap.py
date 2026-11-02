@@ -166,6 +166,19 @@ _FOOTER = re.compile(r"^(mise ERROR )?(Version: |Run with --verbose|Run with RUS
                      r"Location:)")
 LIBATOMIC_FIX = ("fix: {name} needs the system library libatomic1: sudo apt install libatomic1 (Fedora: sudo dnf "
                  "install libatomic; Arch: sudo pacman -S gcc-libs), then run this again")
+# a system Node (apt, pacman): npm's global folder belongs to root, or the distro split npm into its own package
+NPM_PREFIX_FIX = ("fix: npm cannot write its global folder (a system Node's npm): npm config set prefix ~/.local, "
+                  "then run this again")
+NPM_MISSING_FIX = ("fix: {name} needs npm, which this Node came without: sudo apt install npm (Fedora: sudo dnf "
+                   "install npm; Arch: sudo pacman -S npm), then run this again")
+
+
+def _npm_fix(name: str, cmd: list[str], res: runner.Result) -> str:
+    if cmd[0] != "npm" or paths.platform_key() == "windows":
+        return ""
+    if res.returncode == 127:
+        return NPM_MISSING_FIX.format(name=name)
+    return NPM_PREFIX_FIX if "EACCES" in res.stderr + res.stdout else ""
 
 
 def _tail(res: runner.Result, limit: int = 400) -> str:
@@ -276,7 +289,8 @@ def install_tool(entry: dict, cmds: list[list[str]], on_problem=None) -> tuple[b
         res = runner.run(cmd, cwd=pkgmgr.run_cwd(cmd), timeout=900)
         if not res.ok:
             found = [f"failed to install {name}: {_tail(res)}", _open_local_bin_hint(),
-                     LIBATOMIC_FIX.format(name=name) if "libatomic.so.1" in res.stderr + res.stdout else ""]
+                     LIBATOMIC_FIX.format(name=name) if "libatomic.so.1" in res.stderr + res.stdout else "",
+                     _npm_fix(name, cmd, res)]
             for line in filter(None, found):
                 lines.append(line)
                 if on_problem is not None:
