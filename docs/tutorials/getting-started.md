@@ -32,7 +32,7 @@ Prefer to read the code first? Clone it and run the same script:
 git clone https://github.com/jonasyr/agent-loadout && cd agent-loadout && ./bootstrap.sh --install
 ```
 
-Keep the clone where it is. The installed links point into it. `~/.local/bin/loadout` is a small launcher script. Bootstrap adds `~/.local/bin` and the folders of the tools it installed to your shell profile (block `# loadout PATH`), so open a new terminal when it is done. It ends with the steps still open on your machine.
+Keep the clone where it is. The installed links point into it. `~/.local/bin/loadout` is a small launcher script. Bootstrap adds `~/.local/bin` and the folders of the tools it installed to your shell profile (block `# loadout PATH`; fish: `~/.config/fish/conf.d/loadout.fish`), so open a new terminal when it is done. It ends with the steps still open on your machine.
 
 On Windows, use WSL 2: open a WSL terminal, not PowerShell, and run the steps above inside WSL. Then read [Use loadout on Windows with WSL 2](../how-to/wsl.md); `loadout check` warns about each problem from that page it can see.
 
