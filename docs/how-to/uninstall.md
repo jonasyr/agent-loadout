@@ -57,7 +57,7 @@ rm -r ~/.local/state/loadout       # loadout's state (snapshots, timestamps) and
 # if you set XDG_STATE_HOME: rm -r "$XDG_STATE_HOME/loadout"
 ```
 
-Remove the block between `# loadout PATH` and `# loadout PATH end` from `~/.bashrc`, `~/.zshrc` and `~/.profile` (or `~/.bash_profile`).
+Remove the block between `# loadout PATH` and `# loadout PATH end` from `~/.bashrc`, `~/.zshrc` and `~/.profile` (or `~/.bash_profile`). With fish, delete `~/.config/fish/conf.d/loadout.fish`.
 
 In WSL with VS Code, two more things may be there:
 

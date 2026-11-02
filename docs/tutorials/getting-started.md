@@ -1,6 +1,6 @@
 # Getting started
 
-This tutorial takes you from nothing to a first session in Claude Code or Codex with loadout. It follows one path: Linux, macOS or WSL 2, in a terminal, with bootstrap asking its questions. To choose your platform, agents and surface (terminal, VS Code or both) first, read [Pick your setup](../reference/setup-matrix.md); it names the flags for each path. For details on any step, follow the links.
+This tutorial takes you from nothing to a first session in Claude Code or Codex with loadout. It follows one path: Linux, macOS or WSL 2, in a terminal, with bootstrap asking its questions. To choose your platform, agents and surface (terminal, VS Code or both) first, read [Pick your setup](../how-to/setups.md); it names the flags for each path. For details on any step, follow the links.
 
 ## Before you start
 

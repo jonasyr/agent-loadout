@@ -19,6 +19,7 @@ Both extensions bring their own copy of the agent and do not use the `claude` or
 | Reads | `~/.claude` and `~/.claude.json`, like the CLI: rules, settings, plugins, hooks, MCP servers, `CLAUDE.md`, your login | `~/.codex` (or `$CODEX_HOME`), like the CLI: `config.toml`, `AGENTS.md`, `hooks.json`, plugins, MCP servers, your login; skills in `~/.agents/skills` |
 | Lacks | Little: it does not run in VS Code's Restricted Mode | Nothing loadout sets up. It has its own hook review instead of `/hooks`, and it does not run in VS Code's Restricted Mode |
 | Step 1 | Trust the workspace (Restricted Mode: Trust Folder & Continue) | Trust the workspace (Trust Folder & Continue), then approve the hooks: the hooks icon in the prompt bar, then Allow all |
+| Login without the CLI | Sign in when the extension asks; bootstrap's "Still to do" names it until you have | The same; "Still to do" checks it with the extension's own `codex login status` |
 
 ### The Codex CLI alongside VS Code
 
