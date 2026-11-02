@@ -195,8 +195,18 @@ def test_one_liner_hands_the_terminal_to_bootstrap(env, tmp_path):
     """curl | bash: stdin is the script, so bootstrap must get /dev/tty to ask its questions."""
     import fcntl
     import termios
+    import threading
     work, script = _piped_clone(env, tmp_path)
     master, slave = os.openpty()
+
+    def drain():  # macOS: a full pty buffer blocks the writer, and its exit waits for the output to drain
+        try:
+            while os.read(master, 4096):
+                pass
+        except OSError:
+            pass
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
     try:
         with open(script) as stdin:
             # stdin is the script; the pseudo-terminal becomes the controlling terminal of a new session
@@ -204,7 +214,8 @@ def test_one_liner_hands_the_terminal_to_bootstrap(env, tmp_path):
                                stdout=slave, stderr=slave, start_new_session=True, timeout=60,
                                preexec_fn=lambda: fcntl.ioctl(1, termios.TIOCSCTTY, 0))
     finally:
-        os.close(slave)
+        os.close(slave)  # the reader then gets EIO (or EOF) and ends
+        reader.join(timeout=5)
         os.close(master)
     assert p.returncode == 0
     assert "python bin/loadout bootstrap --install [tty=yes]" in env["log"].read_text()
