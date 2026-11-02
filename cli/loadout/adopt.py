@@ -313,7 +313,7 @@ def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> s
         where = _manual(bk, f"mcp {v.item.name}: remove", [remove], undo=[undo])
         return NotDone(f"mcp {v.item.name}: not removed, its undo cannot run through this claude (Windows .cmd shim); "
                        f"commands are in {where}")
-    bk.record_command(f"mcp {v.item.name}", undo)
+    bk.record_mcp_add(f"mcp {v.item.name}", v.item.name, v.item.extra.get("config", {}))
     return _claude_line(f"mcp {v.item.name}: ", ["mcp", "remove", "-s", "user", v.item.name])
 
 

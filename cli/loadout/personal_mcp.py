@@ -80,7 +80,7 @@ def replace_user_server(name: str, original: dict, new: dict, bk) -> str:
         where = runner.write_manual_commands(bk.root, f"mcp {name} (full commands, contains secrets)", [remove, add_new])
         return f"manual: {where}"
     # reverse replay: remove the new server first, then re-add the original
-    bk.record_command(f"mcp {name} (original)", ["claude", "mcp", "add-json", "-s", "user", name, json.dumps(original)])
+    bk.record_mcp_add(f"mcp {name} (original)", name, original)
     bk.record_command(f"mcp {name} (remove rewritten)", remove)
     runner.run(remove)
     res = runner.run(add_new)

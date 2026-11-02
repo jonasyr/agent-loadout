@@ -27,7 +27,7 @@ Undo any time: loadout restore --list
 backup: ~/.local/state/loadout/backups/loadout-20261010-093000  (undo: loadout restore ~/.local/state/loadout/backups/loadout-20261010-093000)
 ```
 
-Backups can hold old configs and undo commands with secrets in them. On Linux and macOS the folder is private (0700); saved copies and the manifest are 0600, and moved items keep their own mode. Delete old ones when you no longer need them.
+The manifest of a new backup holds no secret values. Saved copies, copied files and the config of a removed MCP server (a file in `files/`) can hold secrets. On Linux and macOS the folder is private (0700); saved copies, MCP configs and the manifest are 0600, and moved items keep their own mode. Backups made before this change can still carry secrets in the manifest. A restore passes an MCP server's config to `claude` on the command line for that one call. Delete old backups when you no longer need them.
 
 ## List and restore
 
@@ -82,4 +82,4 @@ Bootstrap and adopt save the snapshot in the backup, so restoring `settings.json
 | Bring back one tool I removed | Restore replays a whole backup; it cannot pick single items. Reinstall one tool with its own command if you do not want the rest back |
 | Undo what `init`, `profile` or `configure new skill --to repo` wrote in a repo | `loadout restore --repo PATH` and pick the backup (recommended: it shows what goes back before it asks), or `loadout restore <dir>` with the `undo:` path the command printed (a profile's `commands` stay done) |
 | Undo a restore | `loadout restore <pre-restore backup path>` (it is printed), or pick it in `loadout restore` |
-| See what a backup holds | Open `~/.local/state/loadout/backups/loadout-<timestamp>/manifest.json`. Do not share it: it can contain secrets |
+| See what a backup holds | Open `~/.local/state/loadout/backups/loadout-<timestamp>/manifest.json`. A new backup's manifest holds no secrets, but the `files/` folder next to it can, and older manifests can too. Do not share the folder |
