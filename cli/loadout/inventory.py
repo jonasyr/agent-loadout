@@ -165,7 +165,7 @@ BUNDLED_CLAUDE = ("a claude on PATH for the terminal (VS Code's Claude Code exte
                   "commands now)")
 
 
-def classify(items: list[Item]) -> list[Verdict]:
+def classify(items: list[Item], use_loadout: bool = False) -> list[Verdict]:
     from . import codex, own
 
     kit = load_json(paths.kit_root() / "settings.base.json")
@@ -244,7 +244,7 @@ def classify(items: list[Item]) -> list[Verdict]:
         else:
             action, reason = "keep", _why(entry)
         out.append(Verdict(item, action, reason, entry["id"]))
-    return out + _codex_cbm_verdicts(left)
+    return out + _codex_cbm_verdicts(left) + (_codex_serena_verdicts(left) if use_loadout else [])
 
 
 CBM_PROVIDED = "Provided by loadout's Codex plugin; this table starts a second codebase-memory server."
@@ -252,6 +252,9 @@ CBM_OWN_CLAUDE = ("It starts codebase-memory with settings of its own (env or ar
                   "loadout's plugin should serve it.")
 SERENA_OWN_CLAUDE = ("It starts Serena with settings of its own (command, args or env); kept on --yes. Remove it "
                      "with: loadout adopt --apply --own {name}=remove")
+SERENA_PROVIDED = "Provided by loadout's Codex setup; this table starts a second Serena."
+SERENA_OWN_CODEX = ("It starts Serena with settings of its own (command, args or env); kept on --yes. Remove it "
+                    "with: loadout adopt --apply --own {name}=remove")
 CBM_ONLY = ("Codex's only codebase-memory server here: loadout's plugin does not serve it (not installed, or "
             "switched off); keep it, or turn the plugin on first.")
 CBM_OWN = ("It starts codebase-memory with settings of its own (env, args or a fixed path); remove it yourself if "
@@ -282,4 +285,25 @@ def _codex_cbm_verdicts(left: dict) -> list[Verdict]:
             out.append(Verdict(item, "keep", CBM_OWN, "mcp-codebase-memory"))
         else:
             out.append(Verdict(item, "migrate", CBM_PROVIDED, "mcp-codebase-memory"))
+    return out
+
+
+def _codex_serena_verdicts(left: dict) -> list[Verdict]:
+    """A user's Codex table that starts Serena (never an item in collect: `_codex_items` skips it), offered only in
+    use_loadout mode: a plain duplicate of loadout's migrates, one with settings of its own is kept."""
+    from . import codex, own, targets
+    if not targets.codex_enabled():
+        return []
+    out = []
+    for name, table in codex.user_servers().items():  # loadout's own table is recorded, so never listed here
+        if not codex.is_serena(table) or table.get("enabled") is False:  # switched off: it starts nothing
+            continue
+        item = Item("mcp", name, " ".join([str(table.get("command") or ""), *map(str, table.get("args") or [])]).strip(),
+                    codex.CONFIG_LOCATION, {"config": None, "problem": "", "serena": True})
+        if own.decided(left, item) == "leave":
+            out.append(Verdict(item, "keep", own.LEFT_REASON))
+        elif codex.serena_has_own_settings(table, "codex"):
+            out.append(Verdict(item, "keep", SERENA_OWN_CODEX.format(name=name), "mcp-serena"))
+        else:
+            out.append(Verdict(item, "migrate", SERENA_PROVIDED, "mcp-serena"))
     return out

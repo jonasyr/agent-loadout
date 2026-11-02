@@ -106,3 +106,42 @@ def test_a_server_with_odd_args_is_listed_not_a_crash(codex_on):
 def test_a_non_table_mcp_servers_value_is_not_a_crash(codex_on):
     _config("mcp_servers = 1\n")
     assert codex.user_servers() == {}
+
+
+PLAIN = '[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--context=codex", "--project-from-cwd"]\n'
+TUNED = '[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--context=ide", "--project-from-cwd"]\n'
+
+
+def _serena_verdicts(**kw):
+    return [v for v in inventory.classify(inventory.collect(with_versions=False), **kw) if v.item.extra.get("serena")]
+
+
+def test_codex_serena_is_no_item_without_use_loadout(codex_on):
+    _config(PLAIN)
+    assert not _serena_verdicts()
+
+
+def test_use_loadout_makes_a_plain_codex_serena_migrate(codex_on):
+    _config(PLAIN)
+    v = _serena_verdicts(use_loadout=True)
+    assert [(x.item.name, x.action) for x in v] == [("serena", "migrate")]
+    assert v[0].item.location == codex.CONFIG_LOCATION
+
+
+def test_use_loadout_keeps_a_tuned_codex_serena(codex_on):
+    _config(TUNED)
+    v = _serena_verdicts(use_loadout=True)
+    assert v[0].action == "keep" and "--own serena=remove" in v[0].reason
+
+
+def test_a_left_codex_serena_stays_kept(codex_on):
+    _config(PLAIN)
+    own.remember_leave(inventory.Item("mcp", "serena", "", codex.CONFIG_LOCATION, {}))
+    v = _serena_verdicts(use_loadout=True)
+    assert v[0].action == "keep" and v[0].reason == own.LEFT_REASON
+
+
+def test_codex_off_reads_no_codex_serena(codex_on, monkeypatch):
+    _config(PLAIN)
+    monkeypatch.setattr(targets, "codex_enabled", lambda: False)
+    assert not _serena_verdicts(use_loadout=True)
