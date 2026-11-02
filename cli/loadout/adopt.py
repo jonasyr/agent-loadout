@@ -289,6 +289,8 @@ def _manual(bk: Backup, title: str, cmds: list[list[str]], undo: list[list[str]]
 def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> str:
     from . import codex, own
     if own.is_codex(v.item):
+        if v.item.extra.get("serena") and codex.table_source(v.item.name) is None:
+            return NotDone(SERENA_OWN_LINE.format(name=v.item.name))
         line = codex.remove_server(v.item.name, bk)
         return NotDone(line) if ": failed:" in line else line
     if v.item.location == "~/.claude/.mcp.json":
@@ -321,8 +323,8 @@ SERENA_QUESTION = (
     'Serena: yours (Codex config.toml "{name}") runs next to loadout\'s.\n'
     "Use loadout's and remove yours? Backed up; `loadout restore` brings it back.\n"
     "[y] use loadout's (recommended)  [n] keep mine, don't ask again  Enter: decide later ")
-SERENA_OWN_LINE = ("Serena: yours is kept (it can not be put back exactly if removed here); remove it yourself "
-                   "with: loadout adopt --apply --own {name}=remove")
+SERENA_OWN_LINE = ("Serena: yours is kept: it could not be put back exactly if loadout removed it, so edit "
+                   "config.toml yourself to remove it ([mcp_servers.{name}])")
 
 
 def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep_own: bool) -> tuple[list[str], list[str]]:
@@ -356,7 +358,7 @@ def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep
                 lines.append("Serena: yours kept: loadout's plugin is not installed yet")
                 continue
             line = _apply_mcp(v, bk, set(), [v])
-            lines.append(redact(f"Serena: {line}"))
+            lines.append(_done(redact(f"Serena: {line}"), not isinstance(line, NotDone)))
             continue
         if not runner.have("serena"):
             lines.append("Serena: yours kept: loadout's needs the serena command, which is missing")
@@ -370,6 +372,7 @@ def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep
             continue
         if not use_loadout:
             answer = ask(SERENA_QUESTION.format(name=item.name)).strip().lower()
+            answer = {"yes": "y", "no": "n"}.get(answer, answer)
             if answer == "n":
                 own.remember_leave(item, bk)
                 lines.append("Serena: yours kept; loadout will not ask again")
@@ -377,7 +380,7 @@ def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep
             if answer != "y":
                 continue
         line = _apply_mcp(v, bk, set(), [v])
-        lines.append(redact(f"Serena: {line}"))
+        lines.append(_done(redact(f"Serena: {line}"), not isinstance(line, NotDone)))
         if not isinstance(line, NotDone):
             texts.append(text)
     return lines, texts
@@ -588,16 +591,19 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
         return 2
     if interactive is None:
         interactive = ui.is_interactive()
+    pass_failed = False
     if use_loadout and apply_changes:  # before the verdicts: a Serena removed here must not be offered again
         pass_bk = Backup(description="adopt serena")
         try:
             for line in serena_pass(pass_bk, ask, False, True, False)[0]:
                 print(line)
+                pass_failed = pass_failed or isinstance(line, NotDone)
         finally:
             if not pass_bk.empty:
                 LAST_BACKUP = pass_bk.root
                 print(f"{UNDO_LINE} (backup: {pass_bk.root}; it holds old configs, keep it private)")
-    verdicts = inventory.classify(inventory.collect(with_versions=with_versions))
+    items = inventory.collect(with_versions=with_versions)
+    verdicts = inventory.classify(items)
     if keep_own:  # a Serena of the user's stays, even where adopt would call it a duplicate
         verdicts = [v for v in verdicts if not (v.item.kind == "mcp" and isinstance(v.item.extra.get("config"), dict)
                                                  and _is_serena_cfg(v.item.extra["config"]))]
@@ -606,7 +612,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     findings = (secrets.scan_all() if targets.claude_enabled() else secrets.scan_personal()) \
         + (secrets.scan_codex() if targets.codex_enabled() else [])
     try:
-        own_pairs = own.resolve(own.parse_spec(own_spec), verdicts) if own_spec is not None else None
+        own_pairs = own.resolve(own.parse_spec(own_spec), _with_serena(verdicts, items)) if own_spec is not None else None
     except ValueError as exc:
         print(f"loadout: {exc}", file=sys.stderr)
         return 2
@@ -647,11 +653,11 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     if (chosen or acting) and interactive and not yes:
         if not ui.confirm(ask, f"Apply {len(chosen) + len(acting)} change(s)? [y/N] "):
             print("nothing changed")
-            return 0
+            return 1 if pass_failed else 0
     elif not chosen and not own_pairs and not findings:
         if not quiet_yes:
             print("nothing selected")
-        return 0
+        return 1 if pass_failed else 0
     bk = Backup(description="adopt")
     if own_spec is not None:
         for note in own.profile_notes(own_pairs):
@@ -699,7 +705,20 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
                 out.detail(f"backup: {bk.root} (it holds old configs, keep it private)")
             else:
                 print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
-    return 1 if not_recorded else 0
+    return 1 if not_recorded or pass_failed else 0
+
+
+def _with_serena(verdicts: list[Verdict], items: list) -> list[Verdict]:
+    """For `--own NAME=...` only: a user's Serena (Codex's too, which the default view does not list) can be named,
+    as an unmanaged tool; one the user chose to leave stays as it is."""
+    from . import codex
+    extra = [v for v in inventory.classify(items, use_loadout=True)
+             if v.item.kind == "mcp" and (v.item.extra.get("serena") or (
+                 not own.is_codex(v.item) and isinstance(v.item.extra.get("config"), dict)
+                 and codex.is_serena(v.item.extra["config"])))]
+    keys = {(v.item.name, v.item.location) for v in extra}
+    kept = [v for v in verdicts if not (v.item.kind == "mcp" and (v.item.name, v.item.location) in keys)]
+    return kept + [v if v.reason == own.LEFT_REASON else Verdict(v.item, "own", v.reason, v.entry_id) for v in extra]
 
 
 def _is_serena_cfg(cfg: dict) -> bool:

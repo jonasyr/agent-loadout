@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from loadout import adopt, cbm_installer, codex, own, paths, targets
+from loadout import adopt, cbm_installer, codex, own, paths, runner, targets
 from loadout.backup import Backup
 from loadout.jsonio import save_json
 
@@ -154,7 +154,7 @@ def test_inline_table_is_not_removed(codex_on):
     bk = _bk()
     lines, texts = adopt.serena_pass(bk, lambda q: "y", False, True, False)
     assert not _removes(codex_on) and texts == [] and bk.empty
-    assert any("--own serena=remove" in ln for ln in lines)
+    assert any("edit config.toml yourself" in ln for ln in lines)
 
 
 def test_no_duplicate_no_output(codex_on):
@@ -179,3 +179,53 @@ def test_output_never_shows_env_values(both_on, monkeypatch, capsys):
     assert "s3cret" not in captured.out + captured.err
     lines, _ = adopt.serena_pass(_bk(), lambda q: "", False, True, False)
     assert "s3cret" not in "\n".join(lines)
+
+
+@pytest.mark.parametrize("answer,removed,left", [("Yes", True, False), (" YES ", True, False),
+                                                 ("NO", False, True), ("no", False, True)])
+def test_interactive_accepts_yes_and_no_words(codex_on, answer, removed, left):
+    _config(PLAIN)
+    adopt.serena_pass(_bk(), lambda q: answer, True, False, False)
+    assert bool(_removes(codex_on)) is removed
+    assert ("leave" in own.decisions().values()) is left
+
+
+def test_failed_codex_removal_fails_the_run(codex_on):
+    _config(PLAIN)
+    codex_on.responses[(codex.program(), "mcp", "remove")] = runner.Result(1, "", "boom")
+    lines, texts = adopt.serena_pass(_bk(), lambda q: "", False, True, False)
+    assert texts == [] and any(isinstance(ln, adopt.NotDone) for ln in lines)
+    assert adopt.run(True, None, set(), True, lambda q: "", with_versions=False, use_loadout=True) == 1
+
+
+def test_failed_claude_removal_fails_the_run(both_on, monkeypatch):
+    _claude_json({"serena": CLAUDE_PLAIN})
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", lambda: True)
+    both_on.responses[("claude", "mcp", "remove")] = runner.Result(1, "", "boom")
+    lines, _ = adopt.serena_pass(_bk(), lambda q: "", False, True, False)
+    assert any(isinstance(ln, adopt.NotDone) for ln in lines)
+    assert adopt.run(True, None, set(), True, lambda q: "", with_versions=False, use_loadout=True) == 1
+
+
+def test_own_remove_names_a_tuned_codex_serena(codex_on, capsys):
+    _config(TUNED)
+    rc = adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False,
+                   own_spec="serena=remove")
+    assert rc == 0, capsys.readouterr().out
+    assert _removes(codex_on) == [[codex.program(), "mcp", "remove", "serena"]]
+    assert any("config.toml" in p.name for p in adopt.LAST_BACKUP.rglob("*"))
+
+
+def test_own_remove_refuses_a_serena_that_cannot_be_put_back(codex_on, capsys):
+    _config('mcp_servers.serena = { command = "serena", args = ["start-mcp-server", "--context=ide"] }\n')
+    rc = adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False,
+                   own_spec="serena=remove")
+    assert rc == 1 and not _removes(codex_on)
+    assert "edit config.toml yourself" in capsys.readouterr().out
+
+
+def test_own_remove_names_a_tuned_claude_serena(both_on):
+    _claude_json({"serena": {**CLAUDE_PLAIN, "command": "/opt/fork/serena"}})
+    rc = adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False,
+                   own_spec="serena=remove")
+    assert rc == 0 and _removes(both_on) == [["claude", "mcp", "remove", "-s", "user", "serena"]]
