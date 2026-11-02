@@ -6,8 +6,10 @@ CLAUDE = {"claude": True, "codex": False}
 
 
 def _linux(monkeypatch):
+    from loadout import bootstrap
     monkeypatch.setattr(wsl, "detect", lambda: None)
     monkeypatch.setattr(paths, "platform_key", lambda: "posix")
+    monkeypatch.setattr(bootstrap, "os_key", lambda: "linux")  # the real one says macos on a Mac
 
 
 def _wsl(monkeypatch):

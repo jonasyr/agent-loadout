@@ -8,12 +8,13 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv run --python 3.12 --with pytest pytest -q
+      - run: uv run --python 3.12 --with pytest pytest -q -o faulthandler_timeout=120  # a hung test prints its stack
       - name: repo skill links on Windows (shows whether the link-target test ran or why it skipped)
         if: runner.os == 'Windows'
         run: uv run --python 3.12 --with pytest pytest -q -rs tests/test_skill_link_target.py tests/test_broken_skill_links.py
