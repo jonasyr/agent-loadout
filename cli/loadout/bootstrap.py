@@ -1185,32 +1185,42 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if result.lines:
             _step("codebase-memory")
             _report(result.name, result.summary, result.lines)
-    pass_bk, removed = Backup(description="use loadout's Serena"), []
-    if personal_ok and (claude_on or chosen["codex"]):  # loadout's Serena replaces yours, only with a yes; backed up
-        pass_lines, removed = adopt.serena_pass(pass_bk, ask, interactive and not yes, use_loadout, keep_own)
-        if pass_lines:
-            _step("Serena")
-            for line in pass_lines:
-                out.problem(line)
-    result = apply.rtk_step(bk)  # also with Claude Code off: removes loadout's line when it no longer provides the hook
-    if result.lines:
-        _step("rtk")
-        _report(result.name, result.summary, result.lines)
-    if chosen["codex"]:
-        _step("Codex")
-        problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())
-        if problem:
-            out.status("Codex", problem, "warn")
-        else:
-            result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True,
-                                     plugins=plugins)
-            out.end_progress()
+    pass_bk, removed, pass_failed, codex_wrote = Backup(description="use loadout's Serena"), [], False, False
+    codex_problem = None
+    if chosen["codex"]:  # decided before the pass: a Codex that cannot be set up in this run keeps yours
+        codex_problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())
+    try:
+        if personal_ok and (claude_on or chosen["codex"]):  # loadout's Serena replaces yours, only with a yes; backed up
+            pass_lines, removed = adopt.serena_pass(pass_bk, ask, interactive and not yes, use_loadout, keep_own,
+                                                    skip_codex=bool(codex_problem))
+            if pass_lines:
+                _step("Serena")
+                for line in pass_lines:
+                    out.problem(line)
+                    pass_failed = pass_failed or isinstance(line, adopt.NotDone)
+        result = apply.rtk_step(bk)  # also with Claude Code off: removes loadout's line when it no longer provides the hook
+        if result.lines:
+            _step("rtk")
             _report(result.name, result.summary, result.lines)
-            if codex.own_serena() is not None:  # loadout wrote no serena of its own: say why, once per bootstrap
-                out.problem(codex.SERENA_KEPT)
-    if removed and "serena" not in codex.read_record()["tables"]:  # loadout's Serena was not written: yours comes back
-        for text in removed:
-            out.problem(codex.reinsert_table(text).replace("<dir>", str(pass_bk.root)))
+        if chosen["codex"]:
+            _step("Codex")
+            if codex_problem:
+                out.status("Codex", codex_problem, "warn")
+            else:
+                result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True,
+                                         plugins=plugins)
+                out.end_progress()
+                _report(result.name, result.summary, result.lines)
+                codex_wrote = result.level != "fail" and "skipped:codex" not in result.facts
+                if codex.own_serena() is not None:  # loadout wrote no serena of its own: say why, once per bootstrap
+                    out.problem(codex.SERENA_KEPT)
+    finally:
+        # yours comes back unless this run really wrote loadout's table (the record may be stale)
+        if removed and not (codex_wrote and codex.table_source("serena") is not None):
+            for text in removed:
+                line = codex.reinsert_table(text).replace("<dir>", str(pass_bk.root))
+                out.problem(line)
+                pass_failed = pass_failed or "could not put" in line
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
         if yes:  # nothing to report: no heading and no blank lines
@@ -1220,7 +1230,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             try:
                 with contextlib.redirect_stdout(buf):
                     adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask,
-                              interactive=interactive, embedded=True)
+                              interactive=interactive, embedded=True, keep_own=keep_own)
             finally:  # also when adopt raised partway: what it applied or found stays on screen
                 if buf.getvalue().strip():
                     _step("Adopt existing setup")
@@ -1234,7 +1244,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             else:
                 print()
                 adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
-                          embedded=True)
+                          embedded=True, keep_own=keep_own)
                 print()
     _step("Secrets")
     _report("Secrets", f"{_tilde(paths.secrets_file())} ready", setup_secrets(bk))
@@ -1265,6 +1275,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             print(text)
     if hidden:
         out.problem(PLUGINS_SKIPPED)
+    if pass_failed:  # a Serena removal or its rollback failed: the run did not end well, whatever the health check says
+        code = 1
     here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
     todo = still_to_do(os_key(), codex_here=here["codex"], plugins=plugins)
     if personal_ok and not use_loadout and not keep_own and (not interactive or yes) and adopt.serena_duplicate_left():

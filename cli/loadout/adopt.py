@@ -343,7 +343,8 @@ def serena_duplicate_left() -> bool:
         return False
 
 
-def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep_own: bool) -> tuple[list[str], list[str]]:
+def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep_own: bool,
+                skip_codex: bool = False) -> tuple[list[str], list[str]]:
     """loadout's Serena replaces the user's own one, only with a yes. Returns (lines to print, the removed Codex
     table texts for a rollback). A Codex Serena is asked about interactively; a Claude Code one is removed only
     under use_loadout (interactively it stays in adopt's `migrate` group)."""
@@ -362,6 +363,11 @@ def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep
                 lines.append(f"Serena: {v.reason}")
             continue
         if v.action != "migrate":
+            continue
+        if codex_side and skip_codex:  # this run cannot set Codex up: yours is the only Serena it would have
+            line = "Serena: yours kept: Codex is not set up in this run"
+            if line not in lines:
+                lines.append(line)
             continue
         if not codex_side:
             if not use_loadout:

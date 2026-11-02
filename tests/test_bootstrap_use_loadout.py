@@ -132,3 +132,74 @@ def test_check_fix_names_use_loadout(fake_home, fake_runner, tmp_path, monkeypat
         "command": "uvx", "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server"]}}}))
     [r] = [r for r in check.run_checks() if r.name == "Serena servers"]
     assert "loadout adopt --apply --use-loadout" in r.fix
+
+
+# --- review fixes: rollback on what config.toml holds, no removal without Codex, exceptions, exit code ---
+def _reinsert_fails(monkeypatch):
+    monkeypatch.setattr(codex, "reinsert_table", lambda text: "Serena: could not put your server back (X); "
+                                                              "restore it with: loadout restore <dir>")
+
+
+def test_stale_record_does_not_stop_the_rollback(fake_home, fake_runner, monkeypatch, capsys):
+    _plain(fake_home, fake_runner)
+    _fake_remove(monkeypatch, [])
+    save_json(codex.record_path(), {"tables": {"serena": "[mcp_servers.serena]\n"}})  # left by an earlier run
+    monkeypatch.setattr(apply, "codex_step",
+                        lambda *a, **k: apply.StepResult("Codex", "skipped", [], facts={"skipped:codex"}))
+    _boot(use_loadout=True)
+    assert (paths.codex_home() / "config.toml").read_text(encoding="utf-8").strip() == PLAIN.strip()
+    assert "put your server back" in capsys.readouterr().out
+
+
+def test_rollback_when_apply_config_skips_its_write(fake_home, fake_runner, monkeypatch):
+    _plain(fake_home, fake_runner)
+    _fake_remove(monkeypatch, [])
+    monkeypatch.setattr(codex, "apply_config", lambda *a, **k: [])
+    _boot(use_loadout=True)
+    assert "my-serena" in (paths.codex_home() / "config.toml").read_text(encoding="utf-8")
+
+
+def test_keep_own_reaches_adopt(fake_home, fake_runner, monkeypatch):
+    _plain(fake_home, fake_runner)
+    seen = []
+    monkeypatch.setattr(bootstrap.adopt, "run", lambda *a, **k: seen.append(k) or 0)
+    _boot(keep_own=True, adopt_step=True, agents="claude,codex")
+    assert seen and all(k.get("keep_own") is True for k in seen)
+
+
+def test_no_codex_removal_when_codex_cannot_be_set_up(fake_home, fake_runner, monkeypatch, capsys):
+    _plain(fake_home, fake_runner)
+    events = []
+    _fake_remove(monkeypatch, events)
+    monkeypatch.setattr(codex, "unavailable", lambda *a, **k: "Codex is not installed")
+    _boot(use_loadout=True)
+    assert events == []
+    assert "Serena: yours kept: Codex is not set up in this run" in capsys.readouterr().out
+    assert "my-serena" in (paths.codex_home() / "config.toml").read_text(encoding="utf-8")
+
+
+def test_exception_after_removal_still_rolls_back(fake_home, fake_runner, monkeypatch, capsys):
+    _plain(fake_home, fake_runner)
+    _fake_remove(monkeypatch, [])
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(apply, "codex_step", boom)
+    with pytest.raises(RuntimeError):
+        _boot(use_loadout=True)
+    assert (paths.codex_home() / "config.toml").read_text(encoding="utf-8").strip() == PLAIN.strip()
+    assert "put your server back" in capsys.readouterr().out
+
+
+def test_failed_removal_makes_bootstrap_return_1(fake_home, fake_runner, monkeypatch):
+    _plain(fake_home, fake_runner)
+    monkeypatch.setattr(codex, "remove_server", lambda name, bk: f"mcp {name}: failed: nope")
+    assert _boot(use_loadout=True) == 1
+
+
+def test_failed_rollback_makes_bootstrap_return_1(fake_home, fake_runner, monkeypatch):
+    _plain(fake_home, fake_runner)
+    _fake_remove(monkeypatch, [])
+    monkeypatch.setattr(apply, "codex_step", lambda *a, **k: apply.StepResult("Codex", "failed", []))
+    _reinsert_fails(monkeypatch)
+    assert _boot(use_loadout=True) == 1
