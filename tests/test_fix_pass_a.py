@@ -105,7 +105,7 @@ def test_helpers_are_not_offered_as_updates(fake_home, fake_runner, monkeypatch,
 def test_fresh_machine_workflow_fails_on_fail_lines_and_never_interpolates_the_branch():
     text = (paths.kit_root() / ".github/workflows/fresh-machine.yml").read_text()
     assert "! printf" not in text  # `! cmd` never fails a bash -e step
-    assert text.count("""if printf '%s\\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi""") == 2
+    assert text.count("""if printf '%s\\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi""") == 3  # linux clone, linux one-liner, macos
     for path in ("bin/loadout", "cli/loadout/**", "settings.base.json", "plugins/loadout/hooks/**"):
         assert f'"{path}"' in text, path
     for module in sorted((paths.kit_root() / "cli/loadout").glob("*.py")):

@@ -51,6 +51,37 @@ jobs:
           out="$(su - oneliner -c 'loadout check' || true)"; printf '%s\n' "$out"
           if printf '%s\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi
 
+  # The runner has Homebrew, Node, Python and gh; an empty HOME and the system PATH hide them, like a new Mac
+  # with the Command Line Tools (README: run xcode-select --install first).
+  macos:
+    name: fresh-machine (macos, experimental)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      FRESH: /Users/runner/fresh
+      SYS_PATH: /usr/bin:/bin:/usr/sbin:/sbin
+    steps:
+      - uses: actions/checkout@v4
+      - name: bootstrap from a clone, empty home, system PATH only
+        run: |
+          mkdir -p "$FRESH"
+          cp -R "$GITHUB_WORKSPACE" "$FRESH/agent-loadout"
+          cd "$FRESH/agent-loadout"
+          env -i HOME="$FRESH" USER="$USER" PATH="$SYS_PATH" SHELL=/bin/zsh TERM=dumb \
+            bash bootstrap.sh --install --yes --no-plugins
+      - name: a new login zsh finds everything, check has no FAIL
+        run: |
+          fresh() { env -i HOME="$FRESH" USER="$USER" PATH="$SYS_PATH" SHELL=/bin/zsh TERM=dumb zsh -lic "$1"; }
+          fresh 'claude --version && serena --version && codebase-memory-mcp --version && node --version && loadout --help >/dev/null'
+          out="$(fresh 'loadout check' || true)"; printf '%s\n' "$out"
+          if printf '%s\n' "$out" | grep -qF '[FAIL]'; then exit 1; fi
+      - name: what bootstrap wrote (diagnostics)
+        if: always()
+        run: |
+          ls -la "$FRESH" "$FRESH/.local/bin" 2>&1 || true
+          for f in .zshrc .zprofile .profile .bash_profile; do echo "== $f"; cat "$FRESH/$f" 2>/dev/null || true; done
+
   windows:
     name: fresh-machine (windows, experimental)
     runs-on: windows-latest
