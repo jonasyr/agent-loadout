@@ -714,8 +714,10 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
     targets.append(login)
     block = _path_block(dirs)
     files = {rc: block for rc in targets}
-    if shell == "fish" or (home / ".config/fish").is_dir():  # also a fish config next to another login shell
-        files[home / ".config/fish/conf.d/loadout.fish"] = _fish_path_block(dirs)
+    xdg = os.environ.get("XDG_CONFIG_HOME", "")
+    fish = (Path(xdg) if os.path.isabs(xdg) else home / ".config") / "fish"  # where fish reads conf.d from
+    if shell == "fish" or fish.is_dir():  # also a fish config next to another login shell
+        files[fish / "conf.d" / "loadout.fish"] = _fish_path_block(dirs)
     out = []
     for rc, block in files.items():
         line = _refresh_path_block(rc, block, bk)

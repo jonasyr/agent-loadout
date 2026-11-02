@@ -126,6 +126,15 @@ def test_an_existing_fish_config_gets_the_block_too(fake_home, fake_runner, monk
     assert b.PATH_MARKER in (fake_home / ".bashrc").read_text()
 
 
+def test_fish_follows_xdg_config_home(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch, "/usr/bin/fish")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / "dotfiles"))
+    b.setup_path(None)
+    assert (fake_home / "dotfiles/fish/conf.d/loadout.fish").is_file()
+    assert not (fake_home / ".config/fish").exists()
+
+
 def test_no_fish_no_fish_file(fake_home, fake_runner, monkeypatch):
     _posix(monkeypatch)
     (fake_home / ".local/bin").mkdir(parents=True)
