@@ -105,6 +105,47 @@ def test_path_block_goes_to_rc_and_login_profile(fake_home, fake_runner, monkeyp
     assert b.setup_path(None) == ([], False)  # idempotent: nothing changed, nothing to say
 
 
+def test_fish_gets_its_own_path_file(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch, "/usr/bin/fish")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    out, changed = b.setup_path(None)
+    fish = fake_home / ".config/fish/conf.d/loadout.fish"
+    text = fish.read_text()
+    assert changed and str(fish) in "\n".join(out)
+    assert text.startswith(b.PATH_MARKER + "\n") and b.PATH_END in text
+    assert 'set -gx PATH "$HOME/.local/bin" $PATH' in text and "contains --" in text
+    assert b.setup_path(None) == ([], False)
+
+
+def test_an_existing_fish_config_gets_the_block_too(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch)
+    (fake_home / ".local/bin").mkdir(parents=True)
+    (fake_home / ".config/fish").mkdir(parents=True)
+    b.setup_path(None)
+    assert (fake_home / ".config/fish/conf.d/loadout.fish").is_file()
+    assert b.PATH_MARKER in (fake_home / ".bashrc").read_text()
+
+
+def test_no_fish_no_fish_file(fake_home, fake_runner, monkeypatch):
+    _posix(monkeypatch)
+    (fake_home / ".local/bin").mkdir(parents=True)
+    b.setup_path(None)
+    assert not (fake_home / ".config/fish").exists()
+
+
+def test_fish_block_changes_are_replaced_and_backed_up(fake_home, fake_runner, monkeypatch):
+    from loadout.backup import Backup
+    _posix(monkeypatch, "/usr/bin/fish")
+    (fake_home / ".local/bin").mkdir(parents=True)
+    bk = Backup(description="test")
+    b.setup_path(bk)
+    assert any("loadout.fish" in str(s) for s in bk.steps)
+    fish = fake_home / ".config/fish/conf.d/loadout.fish"
+    fish.write_text(fish.read_text().replace(".local/bin", ".local/old"))
+    out, changed = b.setup_path(None)
+    assert changed and ".local/old" not in fish.read_text()
+
+
 def test_path_block_prefers_existing_bash_profile(fake_home, fake_runner, monkeypatch):
     _posix(monkeypatch)
     (fake_home / ".local/bin").mkdir(parents=True)

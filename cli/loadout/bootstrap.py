@@ -622,6 +622,17 @@ def _path_block(dirs: list[Path]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _fish_path_block(dirs: list[Path]) -> str:
+    """The same folders for fish, which reads none of the POSIX profiles."""
+    home = paths.home()
+    lines = [PATH_MARKER]
+    for d in reversed(dirs):
+        rel = d.relative_to(home).as_posix()
+        lines.append(f'contains -- "$HOME/{rel}" $PATH; or set -gx PATH "$HOME/{rel}" $PATH')
+    lines.append(PATH_END)
+    return "\n".join(lines) + "\n"
+
+
 def _refresh_path_block(rc: Path, block: str, bk: Backup | None) -> str | None:
     """A profile that already has our block gets it replaced when the content differs; the rest stays as is."""
     raw = rc.read_bytes() if rc.exists() else b""
@@ -668,8 +679,11 @@ def setup_path(bk: Backup | None = None) -> tuple[list[str], bool]:
     login = home / ".bash_profile" if (home / ".bash_profile").exists() else home / ".profile"
     targets.append(login)
     block = _path_block(dirs)
+    files = {rc: block for rc in targets}
+    if shell == "fish" or (home / ".config/fish").is_dir():  # also a fish config next to another login shell
+        files[home / ".config/fish/conf.d/loadout.fish"] = _fish_path_block(dirs)
     out = []
-    for rc in dict.fromkeys(targets):
+    for rc, block in files.items():
         line = _refresh_path_block(rc, block, bk)
         if line is None:
             line = _add_block(rc, block, bk, False, marker=PATH_MARKER, what="the tool folders to PATH")
