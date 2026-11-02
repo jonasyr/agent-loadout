@@ -145,6 +145,11 @@ def _claude_plugin_on() -> bool:
         return False
 
 
+def claude_plugin_on() -> bool:
+    """Public name of `_claude_plugin_on` (the Serena pass uses it too)."""
+    return _claude_plugin_on()
+
+
 def _codex_config() -> dict | None:
     """config.toml as data, or None when it cannot be read."""
     import tomllib

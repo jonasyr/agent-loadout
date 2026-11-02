@@ -42,6 +42,9 @@ def _register_adopt(sub):
                         "A hook is named Event:matcher (Stop: has no matcher); add #n when several hooks "
                         "share a name (names: loadout configure own)")
     p.add_argument("--no-versions", action="store_true", help="skip network version checks")
+    p.add_argument("--use-loadout", action="store_true",
+                   help="remove your own Serena (a plain copy of loadout's; a tuned one stays) so loadout's runs; backed up")
+    p.add_argument("--keep-own", action="store_true", help="keep your own Serena and ask nothing about it")
     p.add_argument("--verbose", action="store_true", help="full detail: commands, long reasons, the items that stay")
 
     def run(a):
@@ -49,7 +52,8 @@ def _register_adopt(sub):
             out.VERBOSE = True
         groups = {g.strip() for g in a.groups.split(",") if g.strip()} if a.groups else None
         skip = {s.strip() for s in a.skip.split(",") if s.strip()}
-        return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions, own_spec=a.own)
+        return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions, own_spec=a.own,
+                         use_loadout=a.use_loadout, keep_own=a.keep_own)
 
     p.set_defaults(func=run)
 

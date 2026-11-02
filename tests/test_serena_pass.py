@@ -1,0 +1,181 @@
+"""The Serena pass: loadout's Serena replaces a user's own one, only with a yes, backed up (spec start-clean)."""
+import json
+
+import pytest
+
+from loadout import adopt, cbm_installer, codex, own, paths, targets
+from loadout.backup import Backup
+from loadout.jsonio import save_json
+
+PLAIN = ('[mcp_servers.serena]\ncommand = "serena"\n'
+         'args = ["start-mcp-server", "--project-from-cwd", "--context=codex"]\nstartup_timeout_sec = 15\n')
+TUNED = '[mcp_servers.serena]\ncommand = "serena"\nargs = ["start-mcp-server", "--context=ide"]\n'
+CLAUDE_PLAIN = {"type": "stdio", "command": "serena",
+                "args": ["start-mcp-server", "--context=claude-code", "--project-from-cwd"]}
+
+
+@pytest.fixture
+def codex_on(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": False, "codex": True})
+    monkeypatch.setattr(codex, "_plugin_servers", lambda: {"codebase-memory-mcp"})
+    return fake_runner
+
+
+@pytest.fixture
+def both_on(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": True})
+    monkeypatch.setattr(codex, "_plugin_servers", lambda: {"codebase-memory-mcp"})
+    return fake_runner
+
+
+def _config(text):
+    cfg = paths.codex_home() / "config.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(text)
+    return cfg
+
+
+def _claude_json(servers):
+    save_json(paths.claude_json(), {"mcpServers": servers})
+
+
+def _removes(runner_):
+    return [c for c in runner_.calls if c[1:3] == ["mcp", "remove"]]
+
+
+def _bk():
+    return Backup(description="test")
+
+
+def test_flag_removes_a_plain_codex_serena_with_backup(codex_on):
+    _config(PLAIN)
+    bk = _bk()
+    lines, texts = adopt.serena_pass(bk, lambda q: "", False, True, False)
+    assert _removes(codex_on) == [[codex.program(), "mcp", "remove", "serena"]]
+    assert texts == [PLAIN]
+    assert any(s["label"].startswith("Codex config.toml before removing mcp serena") for s in bk.steps)
+    assert any("removed" in ln for ln in lines)
+
+
+@pytest.mark.parametrize("answer,removed,left", [("y", True, False), ("n", False, True), ("", False, False),
+                                                 ("later", False, False)])
+def test_interactive_y_removes_n_remembers_enter_does_nothing(codex_on, answer, removed, left):
+    _config(PLAIN)
+    asked = []
+    lines, texts = adopt.serena_pass(_bk(), lambda q: asked.append(q) or answer, True, False, False)
+    assert len(asked) == 1
+    assert 'Codex config.toml "serena"' in asked[0] and "Use loadout's and remove yours?" in asked[0]
+    assert bool(_removes(codex_on)) is removed and bool(texts) is removed
+    assert ("leave" in own.decisions().values()) is left
+
+
+def test_tuned_codex_serena_is_kept_under_the_flag(codex_on):
+    _config(TUNED)
+    lines, texts = adopt.serena_pass(_bk(), lambda q: "", False, True, False)
+    assert not _removes(codex_on) and texts == []
+    assert any("--own serena=remove" in ln for ln in lines)
+
+
+def test_missing_serena_command_keeps_the_codex_table(codex_on):
+    _config(PLAIN)
+    codex_on.missing.add("serena")
+    bk = _bk()
+    lines, texts = adopt.serena_pass(bk, lambda q: "y", True, True, False)
+    assert not _removes(codex_on) and texts == [] and bk.empty
+    assert lines == ["Serena: yours kept: loadout's needs the serena command, which is missing"]
+
+
+def test_leave_beats_the_flag(codex_on):
+    _config(PLAIN)
+    adopt.serena_pass(_bk(), lambda q: "n", True, False, False)  # remembers a leave
+    codex_on.calls.clear()
+    lines, texts = adopt.serena_pass(_bk(), lambda q: "y", False, True, False)
+    assert lines == ["Serena: kept (you chose leave)"] and texts == []
+    assert not _removes(codex_on)
+
+
+def test_keep_own_does_nothing_and_stores_nothing(codex_on):
+    _config(PLAIN)
+    asked = []
+    bk = _bk()
+    assert adopt.serena_pass(bk, lambda q: asked.append(q) or "y", True, True, True) == ([], [])
+    assert not asked and not codex_on.calls and bk.empty and own.decisions() == {}
+
+
+def test_claude_serena_only_with_the_flag_and_the_plugin(both_on, monkeypatch):
+    _claude_json({"serena": CLAUDE_PLAIN})
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", lambda: False)
+    lines, _ = adopt.serena_pass(_bk(), lambda q: "y", True, False, False)  # no flag: not touched
+    assert lines == [] and not _removes(both_on)
+    lines, _ = adopt.serena_pass(_bk(), lambda q: "", False, True, False)  # flag, no plugin
+    assert lines == ["Serena: yours kept: loadout's plugin is not installed yet"] and not _removes(both_on)
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", lambda: True)
+    bk = _bk()
+    lines, texts = adopt.serena_pass(bk, lambda q: "", False, True, False)
+    assert _removes(both_on) == [["claude", "mcp", "remove", "-s", "user", "serena"]] and texts == []
+    step = bk.steps[0]
+    assert step["undo"]["run"][:5] == ["claude", "mcp", "add-json", "-s", "user"]
+    assert json.loads(open(step["undo"]["config-file"]).read())["command"] == "serena"
+
+
+def test_claude_off_reads_nothing_of_claude(codex_on, monkeypatch):
+    _claude_json({"serena": CLAUDE_PLAIN})
+    before = paths.claude_json().read_bytes()
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", lambda: pytest.fail("read Claude's plugins"))
+    lines, _ = adopt.serena_pass(_bk(), lambda q: "y", False, True, False)
+    assert lines == [] and not codex_on.calls and paths.claude_json().read_bytes() == before
+
+
+def test_codex_off_reads_nothing_of_codex(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(targets, "OVERRIDE", {"claude": True, "codex": False})
+    cfg = _config(PLAIN)
+    monkeypatch.setattr(codex, "table_source", lambda n: pytest.fail("read Codex's config"))
+    monkeypatch.setattr(codex, "user_servers", lambda: pytest.fail("read Codex's config"))
+    lines, texts = adopt.serena_pass(_bk(), lambda q: "y", True, True, False)
+    assert (lines, texts) == ([], []) and not fake_runner.calls and cfg.read_text() == PLAIN
+
+
+def test_symlinked_config_toml_is_skipped(codex_on, tmp_path):
+    real = tmp_path / "dotfiles" / "config.toml"
+    real.parent.mkdir()
+    real.write_text(PLAIN)
+    cfg = paths.codex_home() / "config.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.symlink_to(real)
+    bk = _bk()
+    lines, texts = adopt.serena_pass(bk, lambda q: "y", True, True, False)
+    assert not _removes(codex_on) and texts == [] and bk.empty
+    assert len(lines) == 1 and "symlink" in lines[0]
+
+
+def test_inline_table_is_not_removed(codex_on):
+    _config('mcp_servers.serena = { command = "serena", args = ["start-mcp-server", "--project-from-cwd", '
+            '"--context=codex"] }\n')
+    bk = _bk()
+    lines, texts = adopt.serena_pass(bk, lambda q: "y", False, True, False)
+    assert not _removes(codex_on) and texts == [] and bk.empty
+    assert any("--own serena=remove" in ln for ln in lines)
+
+
+def test_no_duplicate_no_output(codex_on):
+    _config('[mcp_servers.other]\ncommand = "x"\n')
+    asked = []
+    assert adopt.serena_pass(_bk(), lambda q: asked.append(q) or "y", True, True, False) == ([], [])
+    assert not asked and not codex_on.calls
+
+
+def test_adopt_rejects_both_flags(fake_home, fake_runner, capsys):
+    rc = adopt.run(True, None, set(), True, lambda q: "", with_versions=False, use_loadout=True, keep_own=True)
+    assert rc == 2
+    assert "--use-loadout and --keep-own exclude each other" in capsys.readouterr().out
+    assert not fake_runner.calls
+
+
+def test_output_never_shows_env_values(both_on, monkeypatch, capsys):
+    _claude_json({"serena": {**CLAUDE_PLAIN, "env": {"TOKEN": "s3cret"}}})
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", lambda: True)
+    adopt.run(True, {"migrate"}, set(), True, lambda q: "", with_versions=False, use_loadout=True)
+    captured = capsys.readouterr()
+    assert "s3cret" not in captured.out + captured.err
+    lines, _ = adopt.serena_pass(_bk(), lambda q: "", False, True, False)
+    assert "s3cret" not in "\n".join(lines)

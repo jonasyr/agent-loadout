@@ -317,6 +317,72 @@ def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> s
     return _claude_line(f"mcp {v.item.name}: ", ["mcp", "remove", "-s", "user", v.item.name])
 
 
+SERENA_QUESTION = (
+    'Serena: yours (Codex config.toml "{name}") runs next to loadout\'s.\n'
+    "Use loadout's and remove yours? Backed up; `loadout restore` brings it back.\n"
+    "[y] use loadout's (recommended)  [n] keep mine, don't ask again  Enter: decide later ")
+SERENA_OWN_LINE = ("Serena: yours is kept (it can not be put back exactly if removed here); remove it yourself "
+                   "with: loadout adopt --apply --own {name}=remove")
+
+
+def serena_pass(bk: Backup, ask: Ask, interactive: bool, use_loadout: bool, keep_own: bool) -> tuple[list[str], list[str]]:
+    """loadout's Serena replaces the user's own one, only with a yes. Returns (lines to print, the removed Codex
+    table texts for a rollback). A Codex Serena is asked about interactively; a Claude Code one is removed only
+    under use_loadout (interactively it stays in adopt's `migrate` group)."""
+    from . import cbm_installer, codex
+    if keep_own or not (use_loadout or interactive):
+        return [], []
+    lines: list[str] = []
+    texts: list[str] = []
+    verdicts = [v for v in inventory.classify(inventory.collect(with_versions=False), use_loadout=True)
+                if v.item.kind == "mcp" and (v.item.extra.get("serena") or (
+                    not own.is_codex(v.item) and isinstance(v.item.extra.get("config"), dict)
+                    and codex.is_serena(v.item.extra["config"])))]
+    for v in verdicts:
+        item, codex_side = v.item, own.is_codex(v.item)
+        if v.action == "keep":
+            if v.reason == own.LEFT_REASON:
+                if use_loadout:
+                    lines.append("Serena: kept (you chose leave)")
+            elif use_loadout or interactive:
+                lines.append(f"Serena: {v.reason}")
+            continue
+        if v.action != "migrate":
+            continue
+        if not codex_side:
+            if not use_loadout:
+                continue
+            if not cbm_installer.claude_plugin_on():
+                lines.append("Serena: yours kept: loadout's plugin is not installed yet")
+                continue
+            line = _apply_mcp(v, bk, set(), [v])
+            lines.append(redact(f"Serena: {line}"))
+            continue
+        if not runner.have("serena"):
+            lines.append("Serena: yours kept: loadout's needs the serena command, which is missing")
+            continue
+        if (paths.codex_home() / "config.toml").is_symlink():
+            lines.append("Serena: yours kept: config.toml is a symlink, loadout does not edit through it")
+            continue
+        text = codex.table_source(item.name)
+        if text is None:  # a dotted, inline or split table: it could not be put back exactly
+            lines.append(SERENA_OWN_LINE.format(name=item.name))
+            continue
+        if not use_loadout:
+            answer = ask(SERENA_QUESTION.format(name=item.name)).strip().lower()
+            if answer == "n":
+                own.remember_leave(item, bk)
+                lines.append("Serena: yours kept; loadout will not ask again")
+                continue
+            if answer != "y":
+                continue
+        line = _apply_mcp(v, bk, set(), [v])
+        lines.append(redact(f"Serena: {line}"))
+        if not isinstance(line, NotDone):
+            texts.append(text)
+    return lines, texts
+
+
 def _apply_plugin(v: Verdict, bk: Backup) -> str:
     if v.action == "scope-down":
         bk.record_command(f"plugin {v.item.name}", ["claude", "plugin", "enable", v.item.name, "--scope", "user"])
@@ -509,16 +575,32 @@ def apply(selected: list[Verdict], bk: Backup, ask: Ask = lambda q: "", confirm_
 
 
 def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask, with_versions: bool = True,
-        interactive: bool | None = None, own_spec: str | None = None, embedded: bool = False) -> int:
+        interactive: bool | None = None, own_spec: str | None = None, embedded: bool = False,
+        use_loadout: bool = False, keep_own: bool = False) -> int:
     """embedded: called by bootstrap, which prints the restart and undo lines once for the whole run."""
     import sys
 
     global LAST_BACKUP
     LAST_BACKUP = None
 
+    if use_loadout and keep_own:
+        print("--use-loadout and --keep-own exclude each other")
+        return 2
     if interactive is None:
         interactive = ui.is_interactive()
+    if use_loadout and apply_changes:  # before the verdicts: a Serena removed here must not be offered again
+        pass_bk = Backup(description="adopt serena")
+        try:
+            for line in serena_pass(pass_bk, ask, False, True, False)[0]:
+                print(line)
+        finally:
+            if not pass_bk.empty:
+                LAST_BACKUP = pass_bk.root
+                print(f"{UNDO_LINE} (backup: {pass_bk.root}; it holds old configs, keep it private)")
     verdicts = inventory.classify(inventory.collect(with_versions=with_versions))
+    if keep_own:  # a Serena of the user's stays, even where adopt would call it a duplicate
+        verdicts = [v for v in verdicts if not (v.item.kind == "mcp" and isinstance(v.item.extra.get("config"), dict)
+                                                 and _is_serena_cfg(v.item.extra["config"]))]
     from . import targets
     # each agent's own files only while it is on; the personal layer's mcp.json belongs to neither
     findings = (secrets.scan_all() if targets.claude_enabled() else secrets.scan_personal()) \
@@ -618,6 +700,11 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
             else:
                 print(f"\nbackup: {bk.root}  (undo: loadout restore {bk.root}; it holds old configs, keep it private)")
     return 1 if not_recorded else 0
+
+
+def _is_serena_cfg(cfg: dict) -> bool:
+    from . import codex
+    return codex.is_serena(cfg)
 
 
 def _offer_profiles(new_profiles: dict, ask: Ask) -> None:
