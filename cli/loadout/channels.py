@@ -16,7 +16,8 @@ KIT_MARKET = "agent-loadout"
 DEFAULT_SLUG = "jonasyr/agent-loadout"
 CHANNELS = ("stable", "dev")
 
-_TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
+_NUM = "(0|[1-9][0-9]*)"
+_TAG = re.compile(rf"v{_NUM}\.{_NUM}\.{_NUM}", re.ASCII)
 _SHA = re.compile(r"[0-9a-f]{40}")
 _SLUG = re.compile(r"(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)([\w.-]+/[\w.-]+?)(?:\.git)?/?")
 
@@ -45,8 +46,11 @@ def set_channel(name: str, bk: Backup | None = None) -> None:
     if name not in CHANNELS:
         raise ValueError(f"unknown channel {name!r}; use stable or dev")
     path = _channel_path()
-    if bk is not None and path.exists():
-        bk.save_copy(path, "release channel")
+    if bk is not None:  # manifest first, so restore returns to the old state (or to unset)
+        if path.exists():
+            bk.save_copy(path, "release channel")
+        else:
+            bk.record_created(path, "release channel")
     save_json(path, {"channel": name})
 
 

@@ -37,10 +37,13 @@ def test_set_channel_saves_a_copy_of_the_old_file(fake_home):
     assert not bk.empty
 
 
-def test_set_channel_without_old_file_saves_nothing(fake_home):
+def test_set_channel_without_old_file_restores_to_unset(fake_home):
+    from loadout import backup
     bk = Backup(description="channel")
     channels.set_channel("stable", bk)
-    assert bk.empty
+    assert [s["undo"] for s in bk.steps] == [{"created": str(paths.state_dir() / "channel.json")}]
+    backup.restore(bk.root, force=True)
+    assert channels.get() is None
 
 
 @pytest.mark.parametrize("name,want", [("v0.2.0", (0, 2, 0)), ("v1.10.3", (1, 10, 3))])
@@ -48,7 +51,7 @@ def test_parse_tag_accepts_release_names(name, want):
     assert channels.parse_tag(name) == want
 
 
-@pytest.mark.parametrize("name", ["v0.1.0", "0.2.0", "v0.2", "v0.2.0-rc1", "v0.2.0\n", "v0.2.0; rm -rf ~"])
+@pytest.mark.parametrize("name", ["v0.1.0", "0.2.0", "v0.2", "v0.2.0-rc1", "v0.2.0\n", "v0.2.0; rm -rf ~", "v٠.٢.٠", "v01.2.0"])
 def test_parse_tag_rejects_the_rest(name):
     assert channels.parse_tag(name) is None
 
