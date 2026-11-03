@@ -252,7 +252,7 @@ CBM_OWN_CLAUDE = ("It starts codebase-memory with settings of its own (env or ar
                   "loadout's plugin should serve it.")
 SERENA_OWN_CLAUDE = ("It starts Serena with settings of its own (command, args or env); kept on --yes. Remove it "
                      "with: loadout adopt --apply --own {name}=remove")
-SERENA_PROVIDED = "Provided by loadout's Codex setup; this table starts a second Serena."
+SERENA_PROVIDED = "A plain copy of the Serena loadout's Codex setup provides; loadout leaves its own out while it is there."
 SERENA_OWN_CODEX = ("It starts Serena with settings of its own (command, args or env); kept on --yes. Remove it "
                     "with: loadout adopt --apply --own {name}=remove")
 CBM_ONLY = ("Codex's only codebase-memory server here: loadout's plugin does not serve it (not installed, or "

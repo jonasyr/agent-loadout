@@ -9,7 +9,7 @@ from loadout.jsonio import save_json
 
 PLAIN = ('[mcp_servers.my-serena]\ncommand = "serena"\n'
          'args = ["start-mcp-server", "--project-from-cwd", "--context=codex"]\nstartup_timeout_sec = 15\n')
-TWICE = "Serena runs twice: loadout adopt --apply --use-loadout (or leave yours: loadout configure own)"
+TWICE = "Serena: yours is a plain copy of loadout's; switch with loadout adopt --apply --use-loadout (or keep yours: loadout configure own)"
 
 
 def _plain(fake_home, fake_runner):
@@ -122,7 +122,7 @@ def test_no_next_step_without_a_duplicate(fake_home, fake_runner, capsys):
     codex.set_enabled(True)
     fake_runner.responses[("codex", "--version")] = runner.Result(0, "codex-cli 0.162.1\n", "")
     _boot()
-    assert "Serena runs twice" not in capsys.readouterr().out
+    assert "yours is a plain copy" not in capsys.readouterr().out
 
 
 def test_check_fix_names_use_loadout(fake_home, fake_runner, tmp_path, monkeypatch):

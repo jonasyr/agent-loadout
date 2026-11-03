@@ -1279,7 +1279,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
     todo = still_to_do(os_key(), codex_here=here["codex"], plugins=plugins)
     if personal_ok and not use_loadout and not keep_own and (not interactive or yes) and adopt.serena_duplicate_left():
-        todo.append("Serena runs twice: loadout adopt --apply --use-loadout (or leave yours: loadout configure own)")
+        todo.append("Serena: yours is a plain copy of loadout's; switch with loadout adopt --apply --use-loadout (or keep yours: loadout configure own)")
     from . import steps
     try:  # the steps visible without a run's facts (hooks, plugin copy), as `loadout update` leaves them: shown at that agent's next session until done
         steps.save(steps.derive(set(), [], here["claude"], here["codex"]))

@@ -320,7 +320,7 @@ def _apply_mcp(v: Verdict, bk: Backup, moved: set, selected: list[Verdict]) -> s
 
 
 SERENA_QUESTION = (
-    'Serena: yours (Codex config.toml "{name}") runs next to loadout\'s.\n'
+    'Serena: yours (Codex config.toml "{name}") is a plain copy of loadout\'s, so loadout leaves its own out.\n'
     "Use loadout's and remove yours? Backed up; `loadout restore` brings it back.\n"
     "[y] use loadout's (recommended)  [n] keep mine, don't ask again  Enter: decide later ")
 SERENA_OWN_LINE = ("Serena: yours is kept: it could not be put back exactly if loadout removed it, so edit "
