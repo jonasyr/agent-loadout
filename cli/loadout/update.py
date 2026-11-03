@@ -439,13 +439,16 @@ def _pull(summary: Summary, start: str | None = None, yes: bool = False,
     """Pull the kit and the personal layer (each only as a git checkout), as the daily sync does; a pull git
     refuses is recorded (sync-paused.json) and listed, a later one clears it. True when the kit moved: by this pull,
     or since start (the kit's HEAD before this run took the lock: another run pulled meanwhile).
-    On stable the kit is never pulled: it moves to an eligible release after its plan and yes (summary.moved_to)."""
+    On stable the kit is never pulled: it moves to an eligible release after its plan and yes (summary.moved_to),
+    also with LOADOUT_NO_AUTO_PULL=1 (that stops pulls; this move is the explicit step the release notice names)."""
+    stable = channels.effective() == "stable"
     if os.environ.get("LOADOUT_NO_AUTO_PULL") == "1":
         out.status("Pull", "skipped (LOADOUT_NO_AUTO_PULL=1)")
-        return False
+        if stable and (paths.kit_root() / ".git").exists():
+            _follow_release(summary, paths.kit_root(), yes, ask)
+        return bool(summary.moved_to)
     kit_moved = False
     attempted = offline = False
-    stable = channels.effective() == "stable"
     for label, root in (("kit", paths.kit_root()), ("personal layer", paths.personal_root())):
         if not (root / ".git").exists() or (label == "kit" and stable):
             continue

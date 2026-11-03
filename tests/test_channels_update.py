@@ -368,3 +368,23 @@ def test_reopen_takes_only_a_kit_move_backup(fake_home):
         bk = backup.Backup(description=description)
         bk.record_created(fake_home / "y", "y")
         assert backup.Backup.reopen(bk.root) is not None
+
+
+def test_update_on_stable_follows_releases_with_no_auto_pull(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    """LOADOUT_NO_AUTO_PULL stops automatic pulls; update is the explicit step the release notice points to."""
+    _world(monkeypatch)
+    monkeypatch.delenv(PULLED, raising=False)
+    monkeypatch.setenv("LOADOUT_NO_AUTO_PULL", "1")
+    kit = _kit(tmp_path, monkeypatch)
+    (paths.personal_root() / ".git").mkdir(parents=True)
+    pulled = []
+    monkeypatch.setattr(maintenance, "pull", lambda root: pulled.append(root))
+    channels.set_channel("stable")
+    _git(fake_runner, kit)
+    _soaked("v0.3.0")
+    seen = _restarts(monkeypatch)
+    assert update.run(True, lambda q: "", argv=["--yes"]) == 0
+    text = capsys.readouterr().out
+    assert "Pull skipped (LOADOUT_NO_AUTO_PULL=1)" in " ".join(text.split()) and pulled == []  # the personal layer
+    assert [c for c in fake_runner.calls if c[3:4] == ["checkout"]] == [[*_g(kit), "checkout", "--detach", SHA3]]
+    assert len(seen) == 1 and seen[0][1] == "release:v0.3.0"
