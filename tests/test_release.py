@@ -29,7 +29,7 @@ class Repo:
         self.respond(*self.git("rev-parse", "HEAD"), result=R(0, SHA + "\n", ""))
         self.respond(*self.git("rev-parse", "origin/main"), result=R(0, SHA + "\n", ""))
         self.respond(*self.git("tag", "--list"), result=R(0, "v0.1.0\nv0.2.0\nnot-a-tag\n", ""))
-        self.respond(*self.git("log"), result=R(0, "feat(cli): add x\nchore: tidy\nfix(y): repair\nrefactor!: break\ndocs: words\n", ""))
+        self.respond(*self.git("log"), result=R(0, "feat(cli): add x (#11)\nchore: tidy (#12)\nfix(y): repair (#13)\nrefactor!: break (#14)\ndocs: words (#15)\n", ""))
         self.respond(*self.git("diff", "--cached", "--name-only"), result=R(0, RELEASE_FILES, ""))
         self.respond("gh", "auth", "status", result=R(0, "", ""))
         self.respond("gh", "run", "list", result=R(0, json.dumps([{"status": "completed", "conclusion": "success"}]), ""))
@@ -168,11 +168,10 @@ def test_cut_writes_version_changelog_and_tags_in_order(repo):
     assert 'version = "0.3.0"' in text and "0.2.0" not in text
     log = repo.read("CHANGELOG.md")
     assert log.startswith("# Changelog\n")
-    section = log.split("## 0.3.0", 1)[1]
-    assert section.startswith(" (")
-    for bullet in ("- feat(cli): add x", "- fix(y): repair", "- refactor!: break"):
+    section = log.split("## [0.3.0] - ", 1)[1]
+    for bullet in ("- add x (#11)", "- repair (#13)", "- break (#14)"):
         assert bullet in section
-    assert "chore: tidy" not in section and "docs: words" not in section
+    assert "tidy" not in section and "words" not in section
     wanted = [
         list(repo.git("add", "--", "pyproject.toml", "CHANGELOG.md", "release-status.json")),
         list(repo.git("commit", "-m", "chore(release): v0.3.0")),
@@ -210,7 +209,7 @@ def test_edit_runs_the_editor_on_the_terminal(repo, monkeypatch):
 
     def editor(cmd, timeout=None):
         seen["cmd"] = list(cmd)
-        Path(cmd[-1]).write_text("## 0.3.0 (edited)\n\n- hand written\n", encoding="utf-8")
+        Path(cmd[-1]).write_text("## [0.3.0] - 2026-11-03 (edited)\n\n- hand written\n", encoding="utf-8")
         return 0
 
     monkeypatch.setattr(runner, "run_interactive", editor)
@@ -256,6 +255,191 @@ def test_a_failing_push_stops_before_the_github_release(repo, capsys):
     assert cut() == 1
     assert not any(c[:3] == ["gh", "release", "create"] for c in repo.fr.calls)
     assert "rejected" in capsys.readouterr().out
+
+
+# release notes
+
+def sh(*subjects):
+    return R(0, "".join(s + "\n" for s in subjects), "")
+
+
+def test_only_first_parent_pr_subjects_count(repo):
+    repo.respond(*repo.git("log"), result=sh("feat: add a (#5)", "Merge branch 'x'", "fix: direct push",
+                                             "fix(b): repair (#6)", "docs: no number (#x)"))
+    assert release.pr_subjects(repo.root, "v0.2.0") == [("feat: add a", 5), ("fix(b): repair", 6)]
+    log = next(c for c in repo.fr.calls if c[3:4] == ["log"])
+    assert log[4:] == ["--first-parent", "--format=%s", "v0.2.0..HEAD"]
+
+
+def test_without_a_previous_tag_the_whole_history_is_searched(repo):
+    release.pr_subjects(repo.root, None)
+    log = next(c for c in repo.fr.calls if c[3:4] == ["log"])
+    assert log[-1] == "HEAD"
+
+
+def test_a_failing_git_log_raises(repo):
+    repo.respond(*repo.git("log"), result=R(1, "", "boom"))
+    with pytest.raises(RuntimeError):
+        release.pr_subjects(repo.root, None)
+
+
+def test_range_starts_at_the_newest_tag_of_any_version(repo):
+    repo.respond(*repo.git("tag", "--list"), result=R(0, "v0.1.0\nnot-a-tag\nv0.01.0\n", ""))
+    assert release.base_tag(repo.root) == "v0.1.0"
+    repo.respond(*repo.git("tag", "--list"), result=R(0, "v0.1.0\nv0.10.0\nv0.9.0\n", ""))
+    assert release.base_tag(repo.root) == "v0.10.0"
+    repo.respond(*repo.git("tag", "--list"), result=R(0, "", ""))
+    assert release.base_tag(repo.root) is None
+
+
+def test_cut_logs_from_a_tag_below_the_floor(repo):
+    repo.respond(*repo.git("tag", "--list"), result=R(0, "v0.1.0\n", ""))
+    assert cut(version="0.2.0") == 0
+    log = next(c for c in repo.fr.calls if c[3:4] == ["log"])
+    assert log[-1] == "v0.1.0..HEAD"
+
+
+PRS = [("feat(cli): add x", 1), ("fix(y): repair", 2), ("fix(security): close hole", 3), ("feat!: new shape", 4),
+       ("docs: words", 5), ("refactor(z): tidy up", 6), ("chore: bump", 7), ("fix: rotate secret", 8)]
+SUMMARY = "<!-- one to three sentences for users: what this release brings -->"
+
+
+def test_sections_follow_keep_a_changelog():
+    text = release.notes_section("0.3.0", "2026-11-03", PRS, "o/r", "v0.2.0")
+    assert text == f"""## [0.3.0] - 2026-11-03
+
+{SUMMARY}
+
+### Breaking
+
+- new shape (#4)
+
+### Added
+
+- add x (#1)
+
+### Changed
+
+- tidy up (#6)
+
+### Fixed
+
+- repair (#2)
+
+### Security
+
+- close hole (#3)
+- rotate secret (#8)
+
+[0.3.0]: https://github.com/o/r/compare/v0.2.0...v0.3.0
+"""
+
+
+def test_a_breaking_footer_and_a_first_release_link():
+    text = release.notes_section("0.2.0", "2026-11-03", [("feat: gone BREAKING CHANGE", 9)], "o/r", None)
+    assert "### Breaking\n\n- gone BREAKING CHANGE (#9)" in text and "### Added" not in text
+    assert text.endswith("[0.2.0]: https://github.com/o/r/releases/tag/v0.2.0\n")
+
+
+def test_no_user_facing_prs_says_so():
+    text = release.notes_section("0.3.0", "2026-11-03", [("docs: x", 1)], "o/r", "v0.2.0")
+    assert f"{SUMMARY}\n\n- No user-facing changes.\n" in text and "###" not in text
+
+
+def test_long_section_is_capped_at_15():
+    prs = [(f"feat: item {i}", i) for i in range(1, 21)]
+    text = release.notes_section("0.3.0", "2026-11-03", prs, "o/r", "v0.2.0")
+    assert text.count("\n- item") == 15
+    assert "- item 15 (#15)" in text and "item 16" not in text
+    assert "- …and 5 more (see the compare link)" in text
+
+
+def test_pr_subjects_are_printable_in_the_plan(repo, capsys):
+    repo.respond(*repo.git("log"), result=sh("feat: evil \x1b[31mred (#9)"))
+    assert cut(yes=False, ask=no) == 1
+    out = capsys.readouterr().out
+    assert "\x1b" not in out and "\\x1b[31mred" in out
+
+
+def draft_file(repo):
+    return repo.root.parent / "draft.md"
+
+
+def test_draft_notes_runs_the_checks_and_changes_nothing(repo, capsys):
+    out_file = draft_file(repo)
+    repo.respond(*repo.git("status", "--porcelain"), result=R(0, " M x\n", ""))
+    assert cut(draft_notes=out_file) == 1
+    assert not out_file.exists()
+    repo.respond(*repo.git("status", "--porcelain"), result=R(0, "", ""))
+    capsys.readouterr()
+    assert cut(draft_notes=out_file, yes=False, ask=lambda q: pytest.fail("asked")) == 0
+    assert capsys.readouterr().out.strip() == f"draft notes for v0.3.0 written to {out_file}; nothing else changed"
+    text = out_file.read_text(encoding="utf-8")
+    assert text.startswith("## [0.3.0] - ") and "- add x (#11)" in text
+    assert repo.mutating() == []
+    heads = {c[3] for c in repo.fr.calls if c[0] == "git" and len(c) > 3}
+    assert not heads & {"add", "commit", "push", "restore"}
+    assert not any(c[3:5] == ["tag", "-a"] for c in repo.fr.calls)
+    assert not any(c[:3] == ["gh", "release", "create"] for c in repo.fr.calls)
+    assert repo.read("pyproject.toml").count('version = "0.2.0"') == 1
+    assert repo.read("CHANGELOG.md") == "# Changelog\n"
+    assert repo.read("release-status.json") == '{"urgent": [], "withdrawn": []}\n'
+
+
+def test_draft_notes_refuses_a_red_ci_run(repo):
+    repo.respond("gh", "run", "list", result=R(0, json.dumps([]), ""))
+    assert cut(draft_notes=draft_file(repo)) == 1
+    assert not draft_file(repo).exists()
+
+
+def write_notes(repo, text):
+    path = repo.root.parent / "notes.md"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("text", [
+    "## [0.4.0] - 2026-11-03\n\nhello\n",
+    "",
+    "no heading\n\nhello\n",
+    "## [0.3.0] - 2026-11-03\n\n\n",
+    "## 0.3.0 (2026-11-03)\n\nhello\n",
+])
+def test_notes_file_must_carry_this_version(repo, capsys, text):
+    refuses(repo, capsys, "notes", notes=write_notes(repo, text))
+
+
+def test_notes_file_must_exist(repo, capsys):
+    refuses(repo, capsys, "notes", notes=repo.root.parent / "missing.md")
+
+
+def test_notes_file_is_used_for_changelog_and_release_body(repo, monkeypatch):
+    section = ("## [0.3.0] - 2026-11-03\n\nWhat is new.\n\n### Added\n\n- thing (#1)\n\n"
+               "[0.3.0]: https://github.com/o/r/compare/v0.2.0...v0.3.0\n")
+    seen = {}
+    fake = runner.run
+
+    def spy(cmd, **kw):
+        if cmd[:3] == ["gh", "release", "create"]:
+            seen["body"] = Path(cmd[cmd.index("--notes-file") + 1]).read_text(encoding="utf-8")
+        return fake(cmd, **kw)
+
+    monkeypatch.setattr(runner, "run", spy)
+    assert cut(notes=write_notes(repo, section)) == 0
+    assert repo.read("CHANGELOG.md").startswith("# Changelog\n\n" + section.strip())
+    assert not any(c[3:4] == ["log"] for c in repo.fr.calls)
+    body = seen["body"]
+    assert "## [" not in body and "[0.3.0]: " not in body and "- thing (#1)" in body
+    assert body.endswith("**Full changelog:** https://github.com/o/r/compare/v0.2.0...v0.3.0\n")
+
+
+def test_edit_and_notes_exclude_each_other(repo, capsys):
+    refuses(repo, capsys, "--edit", edit=True, notes=write_notes(repo, "## [0.3.0] - 2026-11-03\n\nx\n"))
+
+
+def test_draft_notes_and_notes_exclude_each_other(repo, capsys):
+    refuses(repo, capsys, "--draft-notes", draft_notes=draft_file(repo),
+            notes=write_notes(repo, "## [0.3.0] - 2026-11-03\n\nx\n"))
 
 
 # withdraw

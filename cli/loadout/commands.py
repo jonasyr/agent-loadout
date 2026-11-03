@@ -207,16 +207,19 @@ def _register_release(sub):
     p.add_argument("words", nargs="+", metavar="[withdraw] X.Y.Z")
     p.add_argument("--urgent", action="store_true")
     p.add_argument("--edit", action="store_true")
+    p.add_argument("--draft-notes", type=Path, metavar="FILE")
+    p.add_argument("--notes", type=Path, metavar="FILE")
     p.add_argument("--reason")
     p.add_argument("--use", metavar="A.B.C")
     p.add_argument("--yes", action="store_true")
 
     def release_cmd(a):
         if len(a.words) == 1 and not (a.reason or a.use):
-            return release.cut(a.words[0], urgent=a.urgent, yes=a.yes, edit=a.edit, ask=_ask)
-        if len(a.words) == 2 and a.words[0] == "withdraw" and a.reason and not (a.urgent or a.edit):
+            return release.cut(a.words[0], urgent=a.urgent, yes=a.yes, edit=a.edit, ask=_ask,
+                               draft_notes=a.draft_notes, notes=a.notes)
+        if len(a.words) == 2 and a.words[0] == "withdraw" and a.reason and not (a.urgent or a.edit or a.draft_notes or a.notes):
             return release.withdraw(a.words[1], a.reason, a.use, yes=a.yes, ask=_ask)
-        print("usage: loadout release X.Y.Z [--urgent] [--edit] [--yes]\n"
+        print("usage: loadout release X.Y.Z [--urgent] [--edit | --notes FILE | --draft-notes FILE] [--yes]\n"
               "       loadout release withdraw X.Y.Z --reason TEXT [--use A.B.C] [--yes]")
         return 2
 

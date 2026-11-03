@@ -18,7 +18,13 @@ from .out import printable
 RELEASE_FILES = ("pyproject.toml", "CHANGELOG.md", "release-status.json")
 ASSETS = ("bootstrap.sh", "bootstrap.ps1")
 _VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", re.ASCII)
-_NOTABLE = re.compile(r"(feat|fix)(\([^)]*\))?!?:|[a-z]+(\([^)]*\))?!:")  # feat, fix and any breaking subject
+_ANY_TAG = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", re.ASCII)  # below the floor too
+_PR = re.compile(r"(.*\S)\s+\(#([0-9]+)\)")
+_CONVENTIONAL = re.compile(r"([a-z]+)(?:\(([^)]*)\))?(!)?:\s*(.*)", re.DOTALL)
+_SUMMARY = "<!-- one to three sentences for users: what this release brings -->"
+_SECTIONS = ("Breaking", "Added", "Changed", "Fixed", "Security")
+_LEFT_OUT = ("docs", "chore", "test", "ci", "build", "style")
+_CAP = 15
 
 
 def _say(text: str) -> int:
@@ -106,12 +112,95 @@ def _gh_ready() -> str | None:
     return None
 
 
-def _bullets(root: Path, prev: str | None) -> list[str]:
-    span = [f"{prev}..HEAD"] if prev else ["HEAD"]
-    res = _git(root, "log", *span, "--format=%s")
+def base_tag(root: Path) -> str | None:
+    """The newest vX.Y.Z tag of any version (also one below the release floor), local or on origin."""
+    local = _git(root, "tag", "--list")
+    remote = channels.remote_tags(root)
+    names = {*(local.stdout.split() if local.ok else ()), *(remote or ())}
+    found = [(tuple(int(g) for g in m.groups()), n) for n in names if (m := _ANY_TAG.fullmatch(n))]
+    return max(found)[1] if found else None
+
+
+def pr_subjects(root: Path, prev: str | None) -> list[tuple[str, int]]:
+    """(subject, PR number) of the merged PRs on main since prev: first-parent subjects that end in (#N)."""
+    span = f"{prev}..HEAD" if prev else "HEAD"
+    res = _git(root, "log", "--first-parent", "--format=%s", span)
     if not res.ok:
-        raise RuntimeError(f"git log {span[0]} failed: {printable(res.stderr.strip())}")
-    return [f"- {s.strip()}" for s in res.stdout.splitlines() if _NOTABLE.match(s.strip())]
+        raise RuntimeError(f"git log {span} failed: {printable(res.stderr.strip())}")
+    found = []
+    for line in res.stdout.splitlines():
+        m = _PR.fullmatch(line.strip())
+        if m:
+            found.append((m[1], int(m[2])))
+    return found
+
+
+def _classify(subject: str) -> tuple[str | None, str]:
+    """(section or None when left out, description) of one PR subject."""
+    m = _CONVENTIONAL.fullmatch(subject)
+    if not m:
+        return "Changed", subject
+    kind, scope, bang, desc = m[1], m[2] or "", m[3], m[4].strip() or subject
+    if bang or "BREAKING CHANGE" in subject:
+        return "Breaking", desc
+    if kind == "feat":
+        return "Added", desc
+    if kind == "fix":
+        secure = scope == "security" or re.search(r"secret|security", subject, re.IGNORECASE)
+        return ("Security" if secure else "Fixed"), desc
+    if kind in ("refactor", "perf"):
+        return "Changed", desc
+    return (None if kind in _LEFT_OUT else "Changed"), desc
+
+
+def _compare_link(version: str, slug: str, prev: str | None) -> str:
+    base = f"https://github.com/{slug}"
+    return f"{base}/compare/{prev}...v{version}" if prev else f"{base}/releases/tag/v{version}"
+
+
+def notes_section(version: str, today: str, prs: list[tuple[str, int]], slug: str, prev: str | None) -> str:
+    """The Keep a Changelog section for the merged PRs."""
+    groups: dict[str, list[str]] = {name: [] for name in _SECTIONS}
+    for subject, number in prs:
+        name, desc = _classify(subject)
+        if name:
+            groups[name].append(f"- {printable(desc)} (#{number})")
+    parts = [f"## [{version}] - {today}", _SUMMARY]
+    shown = [(name, bullets) for name, bullets in groups.items() if bullets]
+    if not shown:
+        parts.append("- No user-facing changes.")
+    for name, bullets in shown:
+        if len(bullets) > _CAP:
+            bullets = [*bullets[:_CAP], f"- \u2026and {len(bullets) - _CAP} more (see the compare link)"]
+        parts.append(f"### {name}\n\n" + "\n".join(bullets))
+    parts.append(f"[{version}]: {_compare_link(version, slug, prev)}")
+    return "\n\n".join(parts) + "\n"
+
+
+def _link_line(version: str) -> re.Pattern:
+    return re.compile(rf"\[{re.escape(version)}\]: (\S+)\s*")
+
+
+def _release_body(section: str, version: str, fallback_link: str) -> str:
+    """The GitHub Release body: the section without its heading and compare-link line, plus the changelog link."""
+    link, lines = fallback_link, []
+    pattern = _link_line(version)
+    for line in section.strip().splitlines()[1:]:
+        m = pattern.fullmatch(line)
+        if m:
+            link = m[1]
+        else:
+            lines.append(line)
+    return "\n".join(lines).strip() + f"\n\n**Full changelog:** {link}\n"
+
+
+def _notes_problem(text: str, version: str) -> str | None:
+    lines = text.strip().splitlines()
+    if not lines or not lines[0].startswith(f"## [{version}] - "):
+        return f"the notes file must start with '## [{version}] - '"
+    if not any(line.strip() for line in lines[1:]):
+        return "the notes file has nothing under its heading"
+    return None
 
 
 def _edit(section: str, tmp: Path) -> str | None:
@@ -150,7 +239,10 @@ def _step(root: Path, what: str, res: runner.Result, where: str) -> int | None:
     return _say(f"{what} failed: {printable((res.stderr or res.stdout).strip())}; {where}")
 
 
-def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], str]) -> int:
+def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], str],
+        draft_notes: Path | None = None, notes: Path | None = None) -> int:
+    if notes is not None and (edit or draft_notes is not None):
+        return _say("--notes cannot be combined with --edit or --draft-notes; nothing changed")
     root = paths.kit_root()
     refusal = _checkout(root)
     if refusal:
@@ -173,12 +265,31 @@ def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], 
         return _say(f"the newest ci.yml run for {sha[:7]} is not completed and successful")
     if edit and not os.environ.get("EDITOR", "").strip():
         return _say("--edit needs $EDITOR")
-    try:
-        bullets = _bullets(root, newest)
-    except RuntimeError as exc:
-        return _say(str(exc))
     tag = f"v{version}"
-    section = f"## {version} ({datetime.date.today().isoformat()})\n\n" + "\n".join(bullets or ["- No user-facing changes."])
+    prev = base_tag(root)
+    slug = channels.kit_slug(root)
+    link = _compare_link(version, slug, prev)
+    if notes is not None:
+        try:
+            section = notes.read_text(encoding="utf-8").strip()
+        except (OSError, ValueError):
+            return _say(f"could not read the notes file {printable(str(notes))}; nothing changed")
+        problem = _notes_problem(section, version)
+        if problem:
+            return _say(f"{problem}; nothing changed")
+    else:
+        try:
+            prs = pr_subjects(root, prev)
+        except RuntimeError as exc:
+            return _say(str(exc))
+        section = notes_section(version, datetime.date.today().isoformat(), prs, slug, prev).strip()
+    if draft_notes is not None:
+        try:
+            draft_notes.write_text(section + "\n", encoding="utf-8")
+        except OSError as exc:
+            return _say(f"could not write {printable(str(draft_notes))}: {printable(str(exc))}")
+        print(f"draft notes for {tag} written to {printable(str(draft_notes))}; nothing else changed")
+        return 0
     with tempfile.TemporaryDirectory() as tmp:
         if edit:
             try:
@@ -197,8 +308,8 @@ def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], 
         print(f"  then: commit, tag {tag}, git push --atomic origin main {tag}, gh release create (with {' and '.join(ASSETS)})")
         if not yes and ask("Release now? [y/N] ").strip().lower() not in ("y", "yes"):
             return _say("cancelled; nothing changed")
-        notes = Path(tmp) / "notes.md"
-        notes.write_text(section.partition("\n")[2].strip() + "\n", encoding="utf-8")
+        body = Path(tmp) / "notes.md"
+        body.write_text(_release_body(section, version, link), encoding="utf-8")
         _set_version(root, version)
         _prepend_changelog(root, section)
         if urgent:
@@ -226,7 +337,7 @@ def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], 
         if failed:
             return failed
         res = runner.run(["gh", "release", "create", tag, "--title", f"loadout {version}", "--notes-file",
-                          str(notes), *ASSETS], cwd=str(root), timeout=120)
+                          str(body), *ASSETS], cwd=str(root), timeout=120)
         failed = _step(root, "gh release create", res,
                        f"{tag} is pushed; create the release by hand (gh release create {tag} {' '.join(ASSETS)})")
         if failed:
