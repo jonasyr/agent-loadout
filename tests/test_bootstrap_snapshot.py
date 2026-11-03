@@ -188,3 +188,45 @@ def test_later_snapshot_is_not_the_first_install_one(fake_home, fake_runner):
     assert snapshot.first() == first
     assert len(list(paths.backups_root().glob("snapshot-*.tar.gz"))) == 1
     assert len(archives()) == 1
+
+
+def test_cli_stopped_at_the_snapshot_is_asked_again(fake_home, fake_runner, monkeypatch):
+    seed(fake_home)
+    real = snapshot.create
+
+    def boom(roots, agents, **kw):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(snapshot, "create", boom)
+    log = cli(monkeypatch)  # the snapshot fails, the follow-up question defaults to no: stopped
+    assert question_in(log) and archives() == []
+    monkeypatch.setattr(snapshot, "create", real)
+    log = cli(monkeypatch)
+    assert question_in(log) and len(archives()) == 1
+    assert not question_in(cli(monkeypatch))  # now decided
+
+
+def test_cli_no_snapshot_flag_counts_as_declined(fake_home, fake_runner, monkeypatch):
+    seed(fake_home)
+    cli(monkeypatch, "--no-snapshot")
+    assert not question_in(cli(monkeypatch))
+
+
+def test_cli_decision_is_recorded(fake_home, fake_runner, monkeypatch):
+    import json
+    seed(fake_home)
+    cli(monkeypatch)
+    rec = json.loads((paths.state_dir() / "first-install.json").read_text())
+    assert rec["decided"] == "taken" and rec["archive"] == str(archives()[0]) and rec["at"]
+
+
+def test_links_among_the_roots_are_noted_before_the_question(fake_home, fake_runner, capsys):
+    seed(fake_home)
+    dot = fake_home / "dotfiles"
+    dot.mkdir()
+    (dot / "zshrc").write_text("x")
+    (fake_home / ".zshrc").symlink_to(dot / "zshrc")
+    run(asked([]))
+    out = capsys.readouterr().out
+    assert "note: 1 of these are links (" in out and ".zshrc" in out
+    assert "keep those in your dotfiles' git" in out

@@ -89,3 +89,45 @@ def test_restore_uses_the_first_snapshot_not_a_later_one(fake_home, capsys):
     assert snapshot.first() == archive
     restore_cmd.run_first_install(True, lambda q: "", False)
     assert (fake_home / ".claude" / "settings.json").read_text() == "old"
+
+
+def test_links_are_put_back_but_reported_as_not_rolled_back(fake_home, capsys):
+    dot = fake_home / "dotfiles"
+    dot.mkdir()
+    (dot / "bashrc").write_text("mine")
+    (fake_home / ".bashrc").symlink_to(dot / "bashrc")
+    (fake_home / ".claude").mkdir()
+    (fake_home / ".claude" / "settings.json").write_text("old")
+    archive = snapshot.create(snapshot.roots(AGENTS), AGENTS)
+    assert snapshot.links(snapshot.roots(AGENTS)) == [(fake_home / ".bashrc", str(dot / "bashrc"))]
+    assert ".bashrc" not in snapshot.contents(archive)
+    assert restore_cmd.run_first_install(True, None, False) == 0
+    out = capsys.readouterr().out
+    note = f"not rolled back: {fake_home / '.bashrc'} is a link to {dot / 'bashrc'}"
+    assert out.count(note) == 2  # in the preview and in the result
+    assert "restored 2 item(s)" in out  # .claude and settings.json, not the link
+    assert (fake_home / ".bashrc").is_symlink()
+
+
+def test_launcher_and_codex_skill_links_are_rolled_back(fake_home):
+    codex = {"claude": True, "codex": True}
+    (fake_home / ".claude").mkdir()
+    (fake_home / ".claude" / "settings.json").write_text("old")
+    archive = snapshot.create(snapshot.roots(codex), codex)
+    (fake_home / ".local" / "bin").mkdir(parents=True)
+    (fake_home / ".local" / "bin" / "loadout").write_text("#!/bin/sh\n")
+    (fake_home / ".agents" / "skills").mkdir(parents=True)
+    (fake_home / ".agents" / "skills" / "mine").symlink_to(fake_home)
+    assert snapshot.restore(archive)[1]
+    assert not (fake_home / ".local" / "bin" / "loadout").exists()
+    assert not (fake_home / ".agents" / "skills" / "mine").exists()
+
+
+def test_existing_launcher_is_restored(fake_home):
+    (fake_home / ".local" / "bin").mkdir(parents=True)
+    launcher = fake_home / ".local" / "bin" / "loadout"
+    launcher.write_text("old")
+    archive = snapshot.create(snapshot.roots(AGENTS), AGENTS)
+    launcher.write_text("new")
+    assert snapshot.restore(archive)[1]
+    assert launcher.read_text() == "old"

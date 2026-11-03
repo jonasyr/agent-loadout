@@ -144,6 +144,8 @@ def run_first_install(yes: bool, ask, interactive: bool) -> int:
     when = f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]} {stamp[9:11]}:{stamp[11:13]}" if stamp[:8].isdigit() else archive.name
     _names(f"The snapshot from {when} puts back", snapshot.contents(archive))
     _names("Moved aside first (added since; kept in the pre-restore backup)", snapshot.moved_aside(archive))
+    for path, target in snapshot.links_in(archive):
+        print(f"not rolled back: {printable(path)} is a link to {target}")
     for line in snapshot.skipped(archive):
         print(printable(line))
     if not yes:

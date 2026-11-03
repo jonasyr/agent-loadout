@@ -6,6 +6,7 @@ import json
 import locale
 import os
 import re
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -1027,41 +1028,64 @@ def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -
 SNAPSHOT_QUESTION = "\nSave a snapshot of your current setup first ({size}, into {where})? [Y/n] "
 
 
+def _decision_file() -> Path:
+    return paths.state_dir() / "first-install.json"
+
+
 def _first_install() -> bool:
-    """No earlier loadout setup on this machine. The state folder itself is no sign (main() creates it before any
-    command runs); a snapshot, a recorded setup (managed-settings.json, channel.json) or a bootstrap backup is."""
-    state = paths.state_dir()
-    if snap.first() is not None or any((state / n).exists() for n in ("managed-settings.json", "channel.json")):
-        return False
+    """No answer to the snapshot question yet and no recorded setup. The state folder itself is no sign (main()
+    creates it before any command runs), and neither is a bootstrap backup (a run that stopped at the snapshot
+    step has written one already); the decision file is."""
+    return not (_decision_file().exists() or (paths.state_dir() / "managed-settings.json").exists())
+
+
+def _record_decision(decided: str, archive: Path | None = None) -> None:
+    """Remember that the snapshot question is answered (taken or declined), so a re-run does not ask again."""
     try:
-        from . import backup
-        return not any((b.description or "").startswith("bootstrap") for b in backup.backups())
-    except Exception:
-        return False
+        target = _decision_file()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"decided": decided, "at": time.time(), "archive": str(archive) if archive else None},
+                                     indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass  # the question is asked again at worst
 
 
 def _size(n: int) -> str:
     return f"{n / (1024 * 1024):.1f} MB" if n >= 1024 * 1024 else f"{max(1, round(n / 1024))} KB"
 
 
-def _snapshot_step(chosen: dict, ask: Ask, may_ask: bool, first: bool = True) -> tuple[str | None, bool]:
+def _snapshot_step(chosen: dict, ask: Ask, may_ask: bool, first: bool = True,
+                   record: bool = False) -> tuple[str | None, bool]:
     """Archive the setup of the chosen agents (spec: first-install snapshot). Returns (the line saying where, whether
     to go on). Without a terminal, with --yes, or with --snapshot the question is not asked and the answer is yes."""
     found = snap.roots(chosen)
     if not found:
+        if record:
+            _record_decision("declined")
         return None, True
+    linked = snap.links(found)
+    if linked:
+        names = ", ".join(_tilde(p) for p, _ in linked[:3]) + (", ..." if len(linked) > 3 else "")
+        print(f"note: {len(linked)} of these are links ({names}); a rollback puts the links back but not what loadout "
+              "writes into their targets: keep those in your dotfiles' git")
     if may_ask and ask is not _no_question:
         where = _tilde(paths.backups_root())
         if not ui.confirm(lambda q: ask(q) or "y", SNAPSHOT_QUESTION.format(size=_size(snap.estimate(found)), where=where)):
+            if record:
+                _record_decision("declined")
             return None, True
     try:
         archive = snap.create(found, chosen, first=first)
     except OSError as exc:
         print(f"snapshot failed: {exc}")
         if ask is not _no_question and ui.confirm(ask, "Go on without a snapshot? [y/N] "):
+            if record:
+                _record_decision("declined")
             return None, True
-        print("stopped before changing anything; fix the problem or run again with --no-snapshot")
+        print("stopped before changing your agent setup; fix the problem or run again with --no-snapshot")
         return None, False
+    if record:
+        _record_decision("taken", archive)
     line = f"snapshot: {archive} (undo everything: loadout restore --first-install)"
     print(line)
     for skipped in snap.skipped(archive):
@@ -1249,9 +1273,12 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     chosen, store = decided["choice"]
     snapshot_line = None
     if snapshot is not False and (snapshot or first_install):  # before the first write to an agent folder or startup file
-        snapshot_line, proceed = _snapshot_step(chosen, ask, snapshot is None, first=snap.first() is None)
+        snapshot_line, proceed = _snapshot_step(chosen, ask, snapshot is None, first=snap.first() is None,
+                                                record=first_install)
         if not proceed:
             return 1
+    elif snapshot is False and first_install:
+        _record_decision("declined")  # --no-snapshot is an answer too
     if personal_ok and store:
         targets.set_agents(chosen)
     # in WSL the Codex side is settled first: a Windows-side choice installs no Linux Codex (ADR 0029)

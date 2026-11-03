@@ -287,7 +287,7 @@ def test_restore_refuses_members_outside_home(fake_home, tmp_path, monkeypatch, 
         assert not (fake_home / ".claude" / bad).exists()
     assert not (fake_home / ".bashrc-not-a-root").exists()
     assert sum(1 for line in lines if line.startswith("refused")) >= 10
-    assert snapshot.contents(archive) == [".claude/ok.md", ".claude/sneaky"]
+    assert snapshot.contents(archive) == [".claude/ok.md"]  # a link is listed apart (links_in), not as put back
 
 
 def test_restore_refuses_a_root_it_would_not_have_chosen(fake_home, tmp_path):

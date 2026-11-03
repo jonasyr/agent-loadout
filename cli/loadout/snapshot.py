@@ -50,6 +50,7 @@ def _candidates() -> list[tuple[str | None, Path]]:
     fish = (Path(xdg) if os.path.isabs(xdg) else home / ".config") / "fish"
     found: list[tuple[str | None, Path]] = [
         ("claude", paths.claude_home()), ("claude", paths.claude_json()), ("codex", paths.codex_home())]
+    found += [("codex", paths.agents_skills()), (None, paths.bin_dir() / "loadout")]  # links and launcher bootstrap adds
     found += [(None, home / name) for name in _SHELL_FILES]
     found += [(None, fish / "config.fish"), (None, fish / "conf.d")]
     if sys.platform == "win32":
@@ -122,6 +123,13 @@ def _entries(root: Path, skipped: list[str], strict: bool = True):
                 raise
 
     yield from visit(root, "")
+
+
+def links(roots: list[Path]) -> list[tuple[Path, str]]:
+    """Every symlink among the places to snapshot, with its target: a rollback puts the link back, not what was
+    written into the target."""
+    return [(path, os.readlink(path)) for root in roots for path, st in _entries(root, [], strict=False)
+            if stat.S_ISLNK(st.st_mode)]
 
 
 def estimate(roots: list[Path]) -> int:
@@ -305,7 +313,17 @@ def contents(archive: Path) -> list[str]:
     """The HOME-relative names a restore would put back (files and symlinks), after the safety checks."""
     try:
         with _open(archive) as tar:
-            return ["/".join(parts) for info, parts, _ in _plan(tar).safe if not info.isdir()]
+            return ["/".join(parts) for info, parts, _ in _plan(tar).safe if info.isreg()]
+    except _Damaged:
+        return []
+
+
+def links_in(archive: Path) -> list[tuple[str, str]]:
+    """(absolute path, target) of the symlinks a restore puts back as links, after the safety checks."""
+    try:
+        with _open(archive) as tar:
+            return [(str(paths.home().joinpath(*parts)), printable(info.linkname))
+                    for info, parts, _ in _plan(tar).safe if info.issym()]
     except _Damaged:
         return []
 
@@ -452,7 +470,10 @@ def restore(archive: Path) -> tuple[list[str], bool, Path | None]:
                     raise
                 label = f"{dest} (from the snapshot)"
                 (pre.record_created_dir if info.isdir() else pre.record_created)(dest, label)
-                done += 1
+                if info.issym():  # the link is back, what loadout wrote into its target is not
+                    lines.append(f"not rolled back: {printable(str(dest))} is a link to {printable(info.linkname)}")
+                else:
+                    done += 1
             except (tarfile.TarError, OSError) as exc:
                 lines.append(f"failed: {name}: {printable(str(exc))}")
                 failed += 1
