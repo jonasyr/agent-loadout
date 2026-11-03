@@ -54,7 +54,7 @@ Type "cd ~"
 Sleep 300ms
 Enter
 Sleep 500ms
-Type "curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install"
+Type "curl -fsSL https://github.com/jonasyr/agent-loadout/releases/latest/download/bootstrap.sh | bash -s -- --install"
 Sleep 700ms
 Enter
 # answers in the order bootstrap asks (VHS's Wait reads the top of the scrollback, so it cannot follow a

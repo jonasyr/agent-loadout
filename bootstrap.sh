@@ -41,20 +41,48 @@ is_clone() {  # exact origin, bin/loadout present, and the folder itself is the 
   [ -n "$top" ] && [ "$top" = "$phys" ]
 }
 
+pick_tag() {  # the newest annotated vX.Y.Z tag at or above 0.2.0 whose tagger date is 3 days old; same rule as channels.py
+  local dir="$1" now name type when LC_ALL=C
+  now="$(date +%s)"
+  while read -r name type when; do
+    name="${name#refs/tags/}"
+    [[ "$name" =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || continue
+    [ "$type" = tag ] || continue
+    [ "${BASH_REMATCH[1]}" -gt 0 ] || [ "${BASH_REMATCH[2]}" -ge 2 ] || continue
+    case "$when" in ''|*[!0-9]*) continue ;; esac
+    [ $((now - when)) -ge 259200 ] || continue
+    printf '%s' "$name"
+    return 0
+  done < <(git -C "$dir" for-each-ref --sort=-v:refname --format='%(refname) %(objecttype) %(taggerdate:unix)' refs/tags 2>/dev/null)
+  return 1
+}
+
+no_release() {
+  echo "no stable release is ready yet; wait a few days, or install dev:" >&2
+  echo "  curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install --channel dev" >&2
+  exit 1
+}
+
 main() {
   local repo_url="${LOADOUT_REPO_URL:-https://github.com/jonasyr/agent-loadout}"  # LOADOUT_REPO_URL/LOADOUT_REF: tests only
   local ref="${LOADOUT_REF:-main}"
 
-  local dir="" piped=0 src kit
+  local dir="" piped=0 src kit channel=stable tag given=0
   local args=()
   while [ $# -gt 0 ]; do
     case "$1" in
+      --channel) channel="${2:?--channel needs stable or dev}"; given=1; args+=("$1" "$2"); shift 2 ;;
+      --channel=*) channel="${1#--channel=}"; given=1; args+=("$1"); shift ;;
       --dir) dir="${2:?--dir needs a path}"; shift 2 ;;
       --dir=*) dir="${1#--dir=}"; shift ;;
       *) args+=("$1"); shift ;;
     esac
   done
 
+  case "$channel" in stable|dev) ;; *) echo "--channel: use stable or dev" >&2; exit 2 ;; esac
+
+  # Only a fresh clone picks a release here. An existing clone stays where it is: `loadout bootstrap --channel
+  # stable`, `loadout channel stable` and `loadout update` move it, with the undo in a backup.
   # run from a file, $0 is that file; piped, bash 5.2 sets BASH_SOURCE to "main" and 5.3 leaves it empty
   src="${BASH_SOURCE[0]:-}"
   if [ -n "$src" ] && [ "$src" = "$0" ] && [ -f "$src" ] && [ -f "$(dirname "$src")/bin/loadout" ]; then
@@ -80,10 +108,23 @@ main() {
       fi
     else
       echo "cloning agent-loadout into $kit"
-      git clone -q "$repo_url" "$kit" && git -C "$kit" checkout -q "$ref" || {
+      git clone -q "$repo_url" "$kit" || {
         echo "could not download agent-loadout from $repo_url (offline?). Check your connection and run this again." >&2
         exit 1
       }
+      if [ -n "${LOADOUT_REF:-}" ] || [ "$channel" = dev ]; then
+        git -C "$kit" checkout -q "$ref" || {
+          echo "could not download agent-loadout from $repo_url (offline?). Check your connection and run this again." >&2
+          exit 1
+        }
+      elif tag="$(pick_tag "$kit")"; then
+        git -C "$kit" checkout -q --detach "refs/tags/$tag" || { echo "could not check out $tag in $kit" >&2; exit 1; }
+        echo "using release $tag"
+        [ "$given" = 1 ] || args+=(--channel stable)  # a new install records its channel; a re-run forwards nothing
+      else
+        rm -rf "$kit"  # the clone this run just made; nothing of the user's
+        no_release
+      fi
     fi
   fi
 

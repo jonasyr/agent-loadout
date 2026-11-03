@@ -13,14 +13,42 @@ function Fail($msg) {
 }
 $repoUrl = if ($env:LOADOUT_REPO_URL) { $env:LOADOUT_REPO_URL } else { 'https://github.com/jonasyr/agent-loadout' }
 $ref = if ($env:LOADOUT_REF) { $env:LOADOUT_REF } else { 'main' }
-$dir = $null; $rest = @()
+$dir = $null; $rest = @(); $channel = 'stable'; $given = $false
 for ($i = 0; $i -lt $args.Count; $i++) {
   if ($args[$i] -eq '--dir') {
     if ($i + 1 -ge $args.Count) { Fail '--dir needs a path'; return }
     $dir = $args[$i + 1]; $i++
   }
   elseif ($args[$i] -like '--dir=*') { $dir = $args[$i].Substring(6) }
+  elseif ($args[$i] -eq '--channel') {
+    if ($i + 1 -ge $args.Count) { Fail '--channel needs stable or dev'; return }
+    $channel = $args[$i + 1]; $given = $true; $rest += $args[$i], $args[$i + 1]; $i++
+  }
+  elseif ($args[$i] -like '--channel=*') { $channel = $args[$i].Substring(10); $given = $true; $rest += $args[$i] }
   else { $rest += $args[$i] }
+}
+if ($channel -cnotin 'stable', 'dev') { Fail '--channel: use stable or dev'; return }
+# The newest annotated vX.Y.Z tag at or above 0.2.0 whose tagger date is 3 days old; same rule as bootstrap.sh and channels.py.
+function Get-ReleaseTag($d) {
+  $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { $lines = @(git -C $d for-each-ref --sort=-v:refname --format='%(refname) %(objecttype) %(taggerdate:unix)' refs/tags 2>$null) }
+  finally { $ErrorActionPreference = $prev }
+  foreach ($line in $lines) {
+    $p = "$line" -split ' '
+    if ($p.Count -lt 3 -or $p[1] -cne 'tag') { continue }
+    if ($p[0] -cnotmatch '^refs/tags/(v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8}))$') { continue }
+    $name = $Matches[1]; $major = [int64]$Matches[2]; $minor = [int64]$Matches[3]
+    if ($major -eq 0 -and $minor -lt 2) { continue }
+    if ($p[2] -cnotmatch '^[0-9]+$') { continue }
+    if ($now - [int64]$p[2] -lt 259200) { continue }
+    return $name
+  }
+  return $null
+}
+function Fail-NoRelease {
+  Fail ("no stable release is ready yet; wait a few days, or install dev:`n" +
+        "  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install --channel dev")
 }
 function Normalize-Origin($o) { ("$o").Trim().TrimEnd('/') -replace '\.git$', '' -replace '/$', '' }
 function Test-Clone($d) {
@@ -35,7 +63,9 @@ function Test-Clone($d) {
   if (-not $top) { return $false }
   return ([IO.Path]::GetFullPath($top).TrimEnd('\', '/') -ieq [IO.Path]::GetFullPath((Resolve-Path $d).Path).TrimEnd('\', '/'))
 }
-# Run inside an existing clone, the one-liner uses that clone instead of cloning again.
+# Run inside an existing clone, the one-liner uses that clone instead of cloning again. Only a fresh clone picks a
+# release here; an existing one stays where it is (loadout bootstrap --channel stable, loadout channel stable and
+# loadout update move it, with the undo in a backup).
 if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
   $kit = $PSScriptRoot
 } else {
@@ -57,8 +87,20 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
     Write-Host "cloning agent-loadout into $kit"
     git clone -q $repoUrl $kit
     if ($LASTEXITCODE -ne 0) { Fail "could not download agent-loadout from $repoUrl (offline?). Check your connection and run this again."; return }
-    git -C $kit checkout -q $ref
-    if ($LASTEXITCODE -ne 0) { Fail "could not check out '$ref' in $kit"; return }
+    if ($env:LOADOUT_REF -or $channel -eq 'dev') {
+      git -C $kit checkout -q $ref
+      if ($LASTEXITCODE -ne 0) { Fail "could not check out '$ref' in $kit"; return }
+    } else {
+      $tag = Get-ReleaseTag $kit
+      if (-not $tag) {
+        Remove-Item -Recurse -Force $kit  # the clone this run just made; nothing of the user's
+        Fail-NoRelease; return
+      }
+      git -C $kit checkout -q --detach "refs/tags/$tag"
+      if ($LASTEXITCODE -ne 0) { Fail "could not check out $tag in $kit"; return }
+      Write-Host "using release $tag"
+      if (-not $given) { $rest += '--channel', 'stable' }  # a new install records its channel; a re-run forwards nothing
+    }
   }
 }
 # Git for Windows puts only Git\cmd on PATH, and System32\bash.exe is WSL's: look for Git\bin\bash.exe itself

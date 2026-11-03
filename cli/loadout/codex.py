@@ -7,7 +7,7 @@ import os
 import re
 from pathlib import Path
 
-from . import paths, runner
+from . import channels, paths, runner
 from .jsonio import InvalidJSON, get_dict, get_list, load_json, save_json
 
 MIN_VERSION = (0, 161)
@@ -1414,6 +1414,16 @@ def remote_head(url: str, ref: str | None) -> str | None:
     return first if re.fullmatch(r"[0-9a-fA-F]{7,64}", first) else None
 
 
+def _kit_pin(src: str) -> str | None:
+    """The ref the kit's marketplace is pinned to (the release commit on stable), None for any other source."""
+    return channels.codex_pin() if channels.codex_source(src) != src else None
+
+
+def _pinned_head(url: str, ref: str | None) -> str | None:
+    """The commit a pin resolves to: a commit pin is itself (Codex never asks the remote for it, nor does loadout)."""
+    return ref if channels.is_sha(ref) else remote_head(url, ref)
+
+
 def _record_file() -> Path:
     return paths.state_dir() / "codex-marketplaces.json"
 
@@ -1495,8 +1505,9 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
         market = entry.get("name") if isinstance(entry, dict) else None
         if not url or not isinstance(market, str) or market not in listed or not _same_source(listed[market], url):
             continue  # a marketplace of that name from another source is refreshed as before
-        head = remote_head(url, None)
-        if head is None or head != entry.get("head"):
+        tag = _kit_pin(src)
+        head = _pinned_head(url, tag)
+        if head is None or head != entry.get("head") or entry.get("ref") != tag:  # a channel switch moves the pin
             continue
         pids = [f"{n}@{market}" for n in names]
         if any(pid not in installed for pid in pids):
@@ -1520,16 +1531,18 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
     return skip_m, skip_p
 
 
-def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str, str, str | None, str | None] | None = None):
-    """Record (after a success) that loadout refreshed marketplace src at head, or plugin (pid, url, ref, head)."""
+def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str, str, str | None, str | None] | None = None,
+              ref: str | None = None):
+    """Record (after a success) that loadout refreshed marketplace src at head (of ref: the kit's release on stable,
+    else the default branch), or plugin (pid, url, ref, head)."""
     try:
         import time
         record = _load_record()
         entry = record.get(src) if isinstance(record.get(src), dict) else {}
         entry = {"name": market, "url": _src_url(src), "head": entry.get("head"), "at": entry.get("at", 0),
-                 "plugins": get_dict(entry, "plugins")}
+                 "ref": entry.get("ref"), "plugins": get_dict(entry, "plugins")}
         if head:
-            entry.update(head=head, at=int(time.time()))
+            entry.update(head=head, at=int(time.time()), ref=ref)
         if plugin and plugin[3]:
             entry["plugins"][plugin[0]] = {"url": plugin[1], "ref": plugin[2], "head": plugin[3]}
         if entry["head"]:
@@ -1714,7 +1727,8 @@ def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
     res = runner.run([exe, "plugin", "marketplace", "remove", market], timeout=120)
     if res.ok:
         _keep_lock()
-        res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+        res = runner.run([exe, "plugin", "marketplace", "add", channels.codex_source(src), "--json"],
+                         timeout=CLONE_TIMEOUT)
         info = _json(res.stdout) if res.ok else None
         if isinstance(info, dict) and "marketplaceName" in info:
             if saved is not None:
@@ -1765,9 +1779,19 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             step += 1
             say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
-            head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
+            tag = _kit_pin(src)  # stable: the kit's release commit
+            held = channels.held_add(channels.codex_source(src), "@") if tag and not channels.is_sha(tag) else None
+            if held:  # only the tag name (git could not name HEAD), and the remote moved that tag
+                lines.append(held)
+                continue
+            head = _pinned_head(url, tag) if url else None  # before the clone: never newer than what Codex got
+            pin_move = tag is not None or get_dict(_load_record(), src).get("ref") != tag  # the kit's pin may move
+            cfg = paths.codex_home() / "config.toml"
+            if pin_move and bk is not None and cfg.is_file():  # the add rewrites the user's table: restore puts the old pin back
+                bk.save_copy(cfg, "Codex config.toml before moving the kit marketplace pin")
             _keep_lock()
-            res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+            res = runner.run([exe, "plugin", "marketplace", "add", channels.codex_source(src), "--json"],
+                             timeout=CLONE_TIMEOUT)
             if not res.ok and _NO_PLUGIN_COMMAND in res.stderr:  # an extension codex from before `codex plugin`
                 return lines + [PLUGINS_OLD], installed
             info = _json(res.stdout) if res.ok else None
@@ -1775,7 +1799,21 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
                 continue
             market = info["marketplaceName"]
-            if not info.get("alreadyAdded") and listed is not None:
+            readded = False
+            table = _market_table(market) if pin_move and bk is not None else None  # no table: nothing to check
+            if table is not None and table.get("ref") != tag:  # Codex kept the old pin
+                ok, why = _readd(exe, src, market, bk)
+                now = (_market_table(market) or {}).get("ref")
+                if not ok or now != tag:
+                    lines.append(f"marketplace {market}: failed to move its pin: it is on "
+                                 f"{now or 'the default branch'}, not {tag or 'the default branch'}"
+                                 + (f" ({why})" if why else "")
+                                 + f"; your config.toml from before is in {bk.root} (loadout restore puts it back)")
+                    continue
+                readded = True
+            if readded:
+                refreshed = True
+            elif not info.get("alreadyAdded") and listed is not None:
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:
@@ -1785,7 +1823,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                     line = (f"marketplace {market}: failed to upgrade ({_tail(up)}); its installed plugins stay "
                             "at the previous version")
                     if _codex_timed_out(up):  # Codex's fixed 30 s clone limit: `add` has none (ADR 0042)
-                        blockers, running = _table_blockers(market, src), None
+                        blockers, running = _table_blockers(market, channels.codex_source(src)), None
                         if not blockers and _table_text_kept(market):
                             running = codex_running()
                         if blockers:
@@ -1809,7 +1847,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             elif not info.get("alreadyAdded"):
                 refreshed = True
             if refreshed:
-                _remember(src, market, head)
+                _remember(src, market, head, ref=tag)
         own = None
         for name in plugins:
             pid = f"{name}@{market}"

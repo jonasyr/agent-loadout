@@ -44,7 +44,7 @@ def test_demo_claude_edits_the_sandbox_like_the_real_cli(tmp_path):
                    env={**os.environ, "HOME": str(tmp_path)}, check=True, timeout=30)
     assert '"x"' not in (tmp_path / ".claude.json").read_text(encoding="utf-8") and '"y"' in (tmp_path / ".claude.json").read_text(encoding="utf-8")
 
-README_URL = "https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh"
+README_URL = "https://github.com/jonasyr/agent-loadout/releases/latest/download/bootstrap.sh"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="sh stubs")

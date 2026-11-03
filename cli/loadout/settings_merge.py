@@ -16,7 +16,7 @@ import json
 from typing import Any, Iterator
 
 from . import paths
-from .jsonio import deep_merge, load_json, save_json
+from .jsonio import deep_merge, get_dict, load_json, save_json
 
 MISSING = object()
 # Snapshot key for the tombstones: desired hooks the kit applied and the user then deleted (see merge_settings).
@@ -296,7 +296,16 @@ def _normalised(data: dict) -> dict:
 def desired_settings() -> dict:
     base = _normalised(load_json(paths.kit_root() / "settings.base.json"))
     personal = _normalised(load_json(paths.personal_root() / "settings.json"))
-    return deep_merge(base, personal)
+    merged = deep_merge(base, personal)
+    from . import channels
+    tag = channels.pin()
+    kit = get_dict(get_dict(merged, "extraKnownMarketplaces"), channels.KIT_MARKET)
+    source = kit.get("source")
+    if tag and isinstance(source, dict) and source.get("source") == "github" \
+            and source.get("repo") == channels.kit_slug(paths.kit_root()):
+        source["ref"] = tag  # stable: the marketplace is the release, not main
+        kit["autoUpdate"] = False  # Claude Code would follow the ref's latest commit: a moved tag; loadout refreshes
+    return merged
 
 
 def _target():

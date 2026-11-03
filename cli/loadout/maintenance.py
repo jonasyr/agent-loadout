@@ -101,7 +101,7 @@ def session_start(now: float, agent: str | None = None, source: str | None = Non
     if text is not None or extra:
         out = json.dumps({"systemMessage": "\n\n".join(p for p in (text, extra) if p)})
     pull_due = os.environ.get("LOADOUT_NO_AUTO_PULL") != "1" and is_due("last-pull", DAY, now)
-    if pull_due or is_due("last-update-check", WEEK, now):
+    if pull_due or is_due("last-update-check", WEEK, now) or is_due("last-release-check", DAY, now):
         try:
             _spawn_background()
         except Exception:  # the notice above was already taken: still show it
@@ -167,14 +167,15 @@ def _refusal(code: int, stderr: str) -> tuple[str, list[str]] | None:
         return None
     lines = stderr.splitlines()
     for i, line in enumerate(lines):
-        if "would be overwritten by merge:" in line:
+        if "would be overwritten by merge:" in line or "would be overwritten by checkout:" in line:
             files = []
             for item in lines[i + 1:]:
                 if not item.startswith("\t"):
                     break
                 files.append(redact(item[1:]))
             what = "untracked files" if "untracked working tree files" in line else "local changes"
-            return f"{what} the pull would overwrite", files
+            action = "checkout" if "by checkout:" in line else "pull"
+            return f"{what} the {action} would overwrite", files
     if "Not possible to fast-forward" in stderr or "diverg" in low:
         return "your branch and its upstream have diverged", []
     first = next((l.strip() for l in lines if l.strip()), "")
@@ -346,7 +347,9 @@ def _maintain(now: float) -> None:
         pass  # opt-out: no daily kit/personal sync (see README, Security & trust)
     elif is_due("last-pull", DAY, now):
         touch("last-pull", now)
-        pulled = [pull(root).pulled for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
+        from . import channels
+        roots = (paths.personal_root(),) if channels.effective() == "stable" else (paths.kit_root(), paths.personal_root())
+        pulled = [pull(root).pulled for root in roots if (root / ".git").exists()]  # stable moves only by `loadout update`
         if any(pulled):
             from . import targets
             from .jsonio import InvalidJSON
@@ -404,6 +407,15 @@ def _maintain(now: float) -> None:
                         notify(f"loadout: {line}")
             except Exception as exc:  # never crash in the background; surface next session
                 notify(f"loadout: could not refresh Codex after sync: {exc}")
+    _touch_lock()
+    try:
+        from . import channels
+        channels.migration_notice()
+        if is_due("last-release-check", DAY, now):
+            touch("last-release-check", now)  # offline: tried again tomorrow
+            channels.check_releases(now)
+    except Exception as exc:  # never crash in the background; surface next session
+        notify(f"loadout: could not check for releases: {exc}")
     _touch_lock()
     if is_due("last-update-check", WEEK, now):
         touch("last-update-check", now)

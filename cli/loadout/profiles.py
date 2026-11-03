@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from . import paths
+from . import channels, paths
 from .jsonio import get_dict, load_json
 from .secrets import redact
 
@@ -120,7 +120,11 @@ def marketplace_adds(profile: Profile) -> tuple[list[tuple[str, list[str]]], lis
         if not isinstance(origin, str) or not origin.strip() or origin.startswith("-"):
             bad.append(f"marketplace {name}: not added, profile {profile.name} names no usable repo or url for it")
             continue
-        cmds.append((name, ["claude", "plugin", "marketplace", "add", origin]))
+        held = channels.held_add(origin)
+        if held:
+            bad.append(held)
+            continue
+        cmds.append((name, ["claude", "plugin", "marketplace", "add", channels.claude_origin(origin)]))
     return cmds, bad
 
 

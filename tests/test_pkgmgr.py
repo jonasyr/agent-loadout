@@ -126,6 +126,8 @@ def test_refused_update_is_remembered_and_not_renotified(fake_home, fake_runner,
     assert state == {"uv": "0.9.0"}
 
     monkeypatch.setattr(m, "pull_if_clean", lambda root: False)
+    from loadout import channels
+    channels.set_channel("dev")  # no first-run channel notice
     m.maintain(100.0)
     assert not (paths.state_dir() / "pending-notice").exists()
 

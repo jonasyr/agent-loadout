@@ -614,6 +614,31 @@ def _repos() -> list[CheckResult]:
     return out
 
 
+def _channel() -> list[CheckResult]:
+    """The release channel and, from local state only (no network), whether a release is waiting, was withdrawn
+    or was changed after its release."""
+    import time
+    from . import channels
+    stable = channels.effective() == "stable"
+    current = channels.current_release(paths.kit_root())
+    label = f"stable, {current}" if stable and current else "stable" if stable else "dev, main"
+    moved = channels.moved_tags()
+    if moved:
+        return [CheckResult("Channel", False, f"release {moved[0]} was changed after it was released",
+                            "tell the maintainer; loadout never offers that release", "warn")]
+    if not stable:
+        return [CheckResult("Channel", True, info=label)]
+    status = channels.last_status()
+    if current and current[1:] in status.withdrawn:
+        reason = printable(status.withdrawn[current[1:]]["reason"])
+        return [CheckResult("Channel", False, f"{label} was withdrawn: {reason}",
+                            "loadout update (or loadout restore)", "warn")]
+    offer = channels.eligible(channels.parse_tag(current) if current else None, time.time(), status)
+    if offer:
+        return [CheckResult("Channel", False, f"{label}: {offer} is available", "loadout update", "warn")]
+    return [CheckResult("Channel", True, info=label)]
+
+
 def _repo_skill_links() -> list[CheckResult]:
     """The repo of the current folder: committed skill links this checkout wrote as plain files (spec Part 3)."""
     from . import skill_links
@@ -1094,7 +1119,7 @@ def run_checks(codex_windows: bool = False, say=None) -> list[CheckResult]:
             _connectors if on else none, codex_part(_own),
             lambda: _binaries(cs), _mcp_path, _cbm_auto_index, _tool_setups if on else none,
             codex_part(_cbm_installer), _cbm_refresh, _cbm_conflict, _cbm_binaries, codex_part(_cbm_cache_folders),
-            _gh, _secrets, _repos, _repo_skill_links, _repo_mcp_paths]
+            _gh, _secrets, _repos, _channel, _repo_skill_links, _repo_mcp_paths]
     return _run_rows(rows, say)
 
 

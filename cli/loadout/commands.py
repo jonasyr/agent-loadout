@@ -172,8 +172,58 @@ def _register_maintenance(sub):
 
     p.set_defaults(func=update_cmd)
 
+    p = sub.add_parser("channel", help="show or switch the release channel: stable (tested releases) or dev (main)",
+                       description="Without an argument: the channel and the release the kit is on. stable: move the "
+                                   "kit to a release that has been out 3 days; dev: back to main. Shows the move and "
+                                   "asks; loadout restore undoes it.")
+    p.add_argument("target", nargs="?", choices=("stable", "dev"), help="the channel to switch to")
+    p.add_argument("--yes", action="store_true", help="switch without asking (the move is still printed)")
+    p.add_argument("--verbose", action="store_true", help="full detail of the re-apply that follows")
+
+    def channel_cmd(a):
+        if a.verbose:
+            out.VERBOSE = True
+        return channel(a.target, yes=a.yes, verbose=a.verbose)
+
+    p.set_defaults(func=channel_cmd)
+
+
+def channel(target: str | None, yes: bool = False, ask=None, verbose: bool = False) -> int:
+    """`loadout channel [stable|dev]` (update.channel: the move, the setting, the re-apply in the new code)."""
+    from . import update
+    if ask is None:
+        from .__main__ import _ask as ask
+    return update.channel(target, yes, ask, verbose=verbose)
+
 
 EXTRA_COMMANDS.append(_register_maintenance)
+
+
+def _register_release(sub):
+    from . import out, release
+    from .__main__ import _ask
+
+    p = sub.add_parser("release")  # maintainer only: no help=, so it stays out of --help
+    p.add_argument("words", nargs="+", metavar="[withdraw] X.Y.Z")
+    p.add_argument("--urgent", action="store_true")
+    p.add_argument("--edit", action="store_true")
+    p.add_argument("--reason")
+    p.add_argument("--use", metavar="A.B.C")
+    p.add_argument("--yes", action="store_true")
+
+    def release_cmd(a):
+        if len(a.words) == 1 and not (a.reason or a.use):
+            return release.cut(a.words[0], urgent=a.urgent, yes=a.yes, edit=a.edit, ask=_ask)
+        if len(a.words) == 2 and a.words[0] == "withdraw" and a.reason and not (a.urgent or a.edit):
+            return release.withdraw(a.words[1], a.reason, a.use, yes=a.yes, ask=_ask)
+        print("usage: loadout release X.Y.Z [--urgent] [--edit] [--yes]\n"
+              "       loadout release withdraw X.Y.Z --reason TEXT [--use A.B.C] [--yes]")
+        return 2
+
+    p.set_defaults(func=release_cmd)
+
+
+EXTRA_COMMANDS.append(_register_release)
 
 
 def _register_bootstrap(sub):
@@ -201,6 +251,8 @@ def _register_bootstrap(sub):
     p.add_argument("--use-loadout", action="store_true",
                    help="remove your own Serena (a plain copy of loadout's; a tuned one stays) so loadout's runs; backed up")
     p.add_argument("--keep-own", action="store_true", help="keep your own Serena and ask nothing about it")
+    p.add_argument("--channel", choices=("stable", "dev"), default=None,
+                   help="stable follows tested releases (the default for a new install); dev follows main")
     p.add_argument("--without-claude-cli", action="store_true",
                    help="with VS Code's Claude Code extension: skip the optional Claude Code CLI (loadout sets Claude "
                         "Code up for the extension; the CLI is optional, the extension runs its own claude)")
@@ -222,7 +274,7 @@ def _register_bootstrap(sub):
                                    personal=a.personal, answers=a.answers, vscode_wsl=a.vscode_wsl,
                                    codex_cli=not a.without_codex_cli, vscode_path=a.vscode_path,
                                    claude_cli=not a.without_claude_cli, use_loadout=a.use_loadout,
-                                   keep_own=a.keep_own)
+                                   keep_own=a.keep_own, channel=a.channel)
 
     p.set_defaults(func=run)
 

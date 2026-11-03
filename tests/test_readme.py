@@ -71,7 +71,7 @@ def test_wordmark_numbers_are_rounded():
 
 
 README = ROOT / "README.md"
-CURL = "curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install"
+CURL = "curl -fsSL https://github.com/jonasyr/agent-loadout/releases/latest/download/bootstrap.sh | bash -s -- --install"
 CLONE = "git clone https://github.com/jonasyr/agent-loadout"
 
 

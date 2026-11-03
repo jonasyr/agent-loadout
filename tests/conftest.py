@@ -91,8 +91,10 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
     # program a test put in a temporary folder (a stub) runs, and so do the harmless ones below
     from loadout import runner
     real_run, base, real_subprocess_run = runner.run, str(tmp_path_factory.getbasetemp()), subprocess.run
+    real_interactive = runner.run_interactive
 
-    def guarded_run(cmd, *args, **kwargs):
+    def checked(cmd, via):
+        """cmd, or the hardened line to run instead; fails the test for a real program that is no stub."""
         exe = runner._resolve(cmd[0]) or runner._fallback(cmd[0]) if cmd else None
         name = os.path.basename(str(cmd[0])).lower().removesuffix(".exe") if cmd else ""
         real = exe is not None and os.path.exists(exe)  # a made-up path (a test that fakes subprocess) runs nothing
@@ -100,14 +102,21 @@ def never_the_real_home(tmp_path_factory, monkeypatch):
         line = (name, *(str(a) for a in cmd[1:]))
         faked = runner.subprocess.run is not real_subprocess_run  # the test replaced subprocess: nothing starts
         if real and not stub and not faked and not _harmless(line, base):
-            pytest.fail(f"a test ran the real `{name}` ({exe}) through runner.run: {line!r}; use fake_runner or a "
+            pytest.fail(f"a test ran the real `{name}` ({exe}) through {via}: {line!r}; use fake_runner or a "
                         "stub in tmp_path")
         if real and not stub and not faked and name in ("python", "python3"):
             cmd = [cmd[0], "-I", "-S", *cmd[1:]]  # isolated, and no `site` at all: no sitecustomize, user or system
         elif real and not stub and not faked and name == "git":
             cmd = [cmd[0], "-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}", *cmd[1:]]  # no hooks
-        return real_run(cmd, *args, **kwargs)
+        return cmd
+
+    def guarded_run(cmd, *args, **kwargs):
+        return real_run(checked(cmd, "runner.run"), *args, **kwargs)
+
+    def guarded_interactive(cmd, *args, **kwargs):  # an editor on the terminal: the same rule as runner.run
+        return real_interactive(checked(cmd, "runner.run_interactive"), *args, **kwargs)
     monkeypatch.setattr(runner, "run", guarded_run)
+    monkeypatch.setattr(runner, "run_interactive", guarded_interactive)
 
 
 @pytest.fixture

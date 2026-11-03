@@ -10,9 +10,10 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, NoReturn
 
-from . import apply, bootstrap, check, codex, locks, maintenance, out, paths, pkgmgr, runner, steps, targets, ui, versions
+from . import apply, bootstrap, channels, check, codex, locks, maintenance, out, paths, pkgmgr, runner, steps, targets, ui, versions
 from .backup import Backup
 from .jsonio import get_dict, load_json, write_atomic_bytes
 from .secrets import redact
@@ -80,13 +81,13 @@ def _codex_item(items: list) -> tuple | None:
             groups.append((f"skip marketplace {name} (unchanged since {_date(at)})", []))
         elif market is None:  # no record of it: Codex may have it already, and then upgrades it
             groups.append((f"add or refresh marketplace {name}",
-                           [[exe, "plugin", "marketplace", "add", name, "--json"],
+                           [[exe, "plugin", "marketplace", "add", out.printable(channels.codex_source(src)), "--json"],
                             [exe, "plugin", "marketplace", "upgrade", f"<{name}'s marketplace>",
                              "(only when Codex had it)"]]))
         else:
-            groups.append((f"refresh marketplace {name}", [[exe, "plugin", "marketplace", "add", name, "--json"],
-                                                           [exe, "plugin", "marketplace", "upgrade",
-                                                            out.printable(market)]]))
+            groups.append((f"refresh marketplace {name}",
+                           [[exe, "plugin", "marketplace", "add", out.printable(channels.codex_source(src)), "--json"],
+                            [exe, "plugin", "marketplace", "upgrade", out.printable(market)]]))
         for plugin in names:
             pid = f"{plugin}@{market}" if market else f"{plugin}@<{src}'s marketplace>"  # its name comes from the add
             if pid in skip_p:
@@ -115,11 +116,24 @@ def _claude_refresh_todo() -> list[str]:
             and any(isinstance(e, dict) and e.get("scope") == "user" for e in installed[pid])]
 
 
+def _claude_refresh_cmds(todo: list[str]) -> tuple[list[list[str]], list[str], str | None]:
+    """(the marketplace updates, the plugins, the held tag). On stable with the release's tag moved on the remote
+    (the daily check saw it), the kit's marketplace and its plugins are held: an update would fetch the moved commit,
+    whose hooks run every session. Only a verified move (loadout update's) changes the release."""
+    held = channels.pin_moved()
+    if held is None:
+        return [["claude", "plugin", "marketplace", "update"]], todo, None
+    from .settings_merge import desired_settings
+    names = [n for n in get_dict(desired_settings(), "extraKnownMarketplaces") if n != channels.KIT_MARKET]
+    return ([["claude", "plugin", "marketplace", "update", n] for n in names],
+            [p for p in todo if not p.endswith("@" + channels.KIT_MARKET)], held)
+
+
 def _claude_refresh_item(items: list) -> None:
-    todo = _claude_refresh_todo()
+    markets, todo, _ = _claude_refresh_cmds(_claude_refresh_todo())
     if not todo:
         return
-    cmds = [["claude", "plugin", "marketplace", "update"],
+    cmds = [*([*c[:4], *map(out.printable, c[4:])] for c in markets),
             *(["claude", "plugin", "update", out.printable(pid), "--scope", "user"] for pid in todo)]
     items.append(("claude-plugins-refresh", f"Claude Code plugins: refresh {len(todo)}", cmds, False, "", (), None, (),
                   "", tuple(todo)))
@@ -283,6 +297,7 @@ def confirm(plan: list[PlanItem], yes: bool, ask: Callable[[str], str], interact
 # --- the run: lock, pull, restart, plan, apply, report ----------------------------------------------------------
 
 PULLED = "LOADOUT_UPDATE_PULLED"  # set by the restart after a kit pull: the new process neither pulls nor restarts
+CONTINUED = "LOADOUT_UPDATE_BACKUP"  # the backup of a kit move: the restarted run adds the re-apply to it
 AGAIN = "run loadout update again"
 
 FACT_LINES = {  # one plain "What changed" line per fact a step reported
@@ -316,6 +331,8 @@ class Summary:
     upgraded: list[str] = field(default_factory=list)
     personal_offline: str | None = None  # the personal layer's pull could not reach its remote (redacted reason)
     personal_skipped: str | None = None  # the personal layer has nothing to follow (detached HEAD, no upstream)
+    moved_to: str | None = None  # stable: the release this run moved the kit to (it then restarts in it)
+    move_backup: Backup | None = None  # the backup holding that move's undo
 
 
 def _exec(argv: list[str], windows: bool | None = None) -> NoReturn:
@@ -341,17 +358,28 @@ def run(yes: bool, ask: Callable[[str], str], *, argv: list[str]) -> int:
         return 1
     try:
         summary = Summary()
-        if os.environ.get(PULLED):
-            _after_restart(summary, os.environ[PULLED])  # runner.run keeps it from every child (runner.PROCESS_ONLY)
-        elif _pull(summary, start):
+        if os.environ.get(PULLED):  # runner.run keeps it (and CONTINUED) from every child (runner.PROCESS_ONLY)
+            marker = os.environ[PULLED]
+            bk = Backup.reopen(Path(os.environ[CONTINUED])) if os.environ.get(CONTINUED) else None
+            _after_restart(summary, marker, bk)
+            _apply(yes, ask, summary, bk=bk, only_setup=marker.startswith("channel:"))
+            return 0
+        if _pull(summary, start, yes, ask) or summary.moved_to:
             maintenance._release_lock()  # the new process takes it again (POSIX keeps the pid, Windows gets a new one)
             # "1": the kit moved; "personal": the personal layer moved too (the new process names both);
             # "offline:<reason>": its pull could not reach the remote (the reason is redacted; children never see it);
-            # "skipped:<reason>": it has nothing to follow (detached HEAD, no upstream branch)
-            os.environ[PULLED] = ("personal" if "personal layer: pulled new commits" in summary.changed
-                                  else f"offline:{summary.personal_offline}" if summary.personal_offline
-                                  else f"skipped:{summary.personal_skipped}" if summary.personal_skipped else "1")
-            out.status("Restart", "continuing in the pulled code")
+            # "skipped:<reason>": it has nothing to follow (detached HEAD, no upstream branch);
+            # "release:<tag>[|<one of those>]": stable moved the kit to that release
+            personal = ("personal" if "personal layer: pulled new commits" in summary.changed
+                        else f"offline:{summary.personal_offline}" if summary.personal_offline
+                        else f"skipped:{summary.personal_skipped}" if summary.personal_skipped else "1")
+            if summary.moved_to:
+                os.environ[PULLED] = f"release:{summary.moved_to}" + ("" if personal == "1" else f"|{personal}")
+                os.environ[CONTINUED] = str(summary.move_backup.root)
+                out.status("Restart", f"continuing in {summary.moved_to}")
+            else:
+                os.environ[PULLED] = personal
+                out.status("Restart", "continuing in the pulled code")
             return _exec(["update", *argv])
         _apply(yes, ask, summary)
         return 0
@@ -377,10 +405,25 @@ def _skipped_fix(label: str, root, reason: str) -> tuple[str, str]:
             "check out a branch that has an upstream (git branch -u origin/<branch>), or ignore this if it is on purpose")
 
 
-def _after_restart(summary: Summary, marker: str) -> None:
-    """The restarted run: what the first process pulled (marker: the PULLED value), and every pull git refused
-    (sync-paused.json)."""
-    summary.changed.append("kit: pulled new commits (this run continued in them)")
+def _after_restart(summary: Summary, marker: str, bk: Backup | None = None) -> None:
+    """The restarted run: what the first process pulled or moved (marker: the PULLED value; bk: the move's backup,
+    which the re-apply joins), and every pull git refused (sync-paused.json)."""
+    undo = f"; undo: loadout restore {out.printable(str(bk.root))}" if bk is not None else ""
+    to = marker[len("channel:"):] if marker.startswith("channel:") else None
+    if marker.startswith("release:"):
+        tag, _, marker = marker[len("release:"):].partition("|")
+        shown = tag if channels.parse_tag(tag) else "a new release"  # only a valid tag name is ever printed
+        summary.changed.append(f"kit: moved to {shown} (this run continued in it{undo})")
+    elif to == "dev" or (to is not None and channels.parse_tag(to)):
+        marker = ""
+        moved = "back on main" if to == "dev" else f"moved to {to}"
+        summary.changed.append(f"channel: {'dev' if to == 'dev' else 'stable'}; kit: {moved} "
+                               f"(this run continued in it{undo})")
+    else:  # "1", the personal markers, and anything this code does not know
+        if to is not None:
+            marker = ""
+
+        summary.changed.append("kit: pulled new commits (this run continued in them)")
     if marker == "personal":
         summary.changed.append("personal layer: pulled new commits")
     elif marker.startswith("offline:"):
@@ -404,17 +447,23 @@ def _kit_head() -> str | None:
     return (res.stdout.strip() or None) if res.ok else None
 
 
-def _pull(summary: Summary, start: str | None = None) -> bool:
+def _pull(summary: Summary, start: str | None = None, yes: bool = False,
+          ask: Callable[[str], str] | None = None) -> bool:
     """Pull the kit and the personal layer (each only as a git checkout), as the daily sync does; a pull git
     refuses is recorded (sync-paused.json) and listed, a later one clears it. True when the kit moved: by this pull,
-    or since start (the kit's HEAD before this run took the lock: another run pulled meanwhile)."""
+    or since start (the kit's HEAD before this run took the lock: another run pulled meanwhile).
+    On stable the kit is never pulled: it moves to an eligible release after its plan and yes (summary.moved_to),
+    also with LOADOUT_NO_AUTO_PULL=1 (that stops pulls; this move is the explicit step the release notice names)."""
+    stable = channels.effective() == "stable"
     if os.environ.get("LOADOUT_NO_AUTO_PULL") == "1":
         out.status("Pull", "skipped (LOADOUT_NO_AUTO_PULL=1)")
-        return False
+        if stable and (paths.kit_root() / ".git").exists():
+            _follow_release(summary, paths.kit_root(), yes, ask)
+        return bool(summary.moved_to)
     kit_moved = False
     attempted = offline = False
     for label, root in (("kit", paths.kit_root()), ("personal layer", paths.personal_root())):
-        if not (root / ".git").exists():
+        if not (root / ".git").exists() or (label == "kit" and stable):
             continue
         res = maintenance.pull(root)
         attempted, offline = True, offline or bool(res.offline)
@@ -441,10 +490,55 @@ def _pull(summary: Summary, start: str | None = None) -> bool:
             out.status(label.capitalize(), "up to date")
     if attempted and not offline:  # one checkout offline: the daily sync tries again soon
         maintenance.touch("last-pull", time.time())
+    if stable and (paths.kit_root() / ".git").exists():
+        _follow_release(summary, paths.kit_root(), yes, ask)
+        if summary.moved_to:
+            return True
     if not kit_moved and start is not None:
         now = _kit_head()
         kit_moved = now is not None and now != start
     return kit_moved
+
+
+def _release_item(root: Path, current: str, tag: str, then: str) -> PlanItem:
+    """The plan item of a kit move to a release: its changelog lines and the exact commands (the checkout takes the
+    commit this machine recorded for the tag)."""
+    git = ["git", "-C", str(root)]
+    cmds = [[*git, "fetch", "origin", f"refs/tags/{tag}", "--no-tags"],
+            [*git, "checkout", "--detach", channels.recorded(tag) or tag]]
+    groups = tuple((f"- {line}", []) for line in channels.changelog_lines(root, tag))
+    return PlanItem(1, "kit-release", f"kit: {current} → {tag}", cmds,
+                    groups=(*groups, (f"move the kit checkout, then {then}", cmds)))
+
+
+def _follow_release(summary: Summary, root: Path, yes: bool, ask: Callable[[str], str] | None) -> None:
+    """Stable: move the kit to the newest release that soaked on this machine (channels.eligible), after the plan
+    and its yes. A detached checkout on a release is where stable is meant to be: never a failed pull."""
+    tag = channels.current_release(root)
+    offer, why = channels.find_offer(root, time.time(), channels.parse_tag(tag) if tag else None)
+    current = tag or "a development version"
+    if why:
+        summary.failed.append(_offline_fix("kit", root, why))
+        out.status("Kit", f"not refreshed ({why})", "warn")
+        return
+    if offer is None:
+        out.status("Kit", f"{current}; no newer release is ready")
+        return
+    item = _release_item(root, current, offer, "re-apply the setup in the release's code")
+    chosen = confirm([item], yes, ask or (lambda q: ""), interactive=None if ask else False)
+    if not chosen:
+        summary.changed.append(f"kit: stays on {current}; {offer} is available (loadout update moves to it)")
+        return
+    bk = Backup(description=f"loadout update: kit to {offer}")
+    refused = channels.move_to(root, offer, bk)
+    if refused:
+        fix = (f"commit or remove them in {out.printable(str(root))}, then run loadout update"
+               if refused.startswith("local changes") else AGAIN)
+        summary.failed.append((f"kit: not moved to {offer}: {out.printable(refused)}", fix))
+        out.status("Kit", f"not moved to {offer}", "warn")
+        return
+    summary.moved_to, summary.move_backup = offer, bk
+    out.status("Kit", f"moved to {offer}")
 
 
 def _show(result: apply.StepResult, summary: Summary) -> None:
@@ -512,8 +606,14 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem]
 
 def _refresh_claude_plugins(item: PlanItem, summary: Summary) -> None:
     """Exactly the plugins the plan showed (a plugin installed by this run is already current)."""
-    todo = list(item.ids)
-    market = runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)  # the marketplaces first
+    markets, todo, held = _claude_refresh_cmds(list(item.ids))
+    if held:
+        out.problem(f"release {out.printable(held)} was changed after it was released; the kit's marketplace is not "
+                    "refreshed. Tell the maintainer.")
+    market = runner.Result(0, "", "")
+    for cmd in markets:  # the marketplaces first
+        res = runner.run(cmd, timeout=300)
+        market = market if not market.ok else res
     stale = not market.ok  # offline or signed out: the plugin updates below can only use the cached catalog
     if stale:
         reason = out.printable(redact((market.stderr or market.stdout).strip()[:300])) or "no output"
@@ -619,7 +719,10 @@ def _install_tool(item: PlanItem, summary: Summary, failed: set[str]) -> None:
                                fix or AGAIN + ", or install it by hand"))
 
 
-def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
+def _apply(yes: bool, ask: Callable[[str], str], summary: Summary, bk: Backup | None = None,
+           only_setup: bool = False) -> Summary:
+    """bk: the backup a kit move started (the re-apply joins it: one restore point). only_setup (a channel switch):
+    the re-apply and plugin items, no tool updates or installs."""
     claude_on, codex_on = targets.claude_enabled(), targets.codex_enabled()
     codex_ok = codex_on
     if codex_on and (reason := codex.unavailable()) is not None:
@@ -629,11 +732,14 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
         codex_ok = False
     notes: list[str] = []
     plan = build_plan(claude_on, codex_ok, notes=notes)
+    if only_setup:  # tools come last in the plan: the numbers stay 1..n
+        plan, notes = [i for i in plan if i.kind not in ("tool-update", "tool-install")], []
     chosen = confirm(plan, yes, ask, notes=notes)
     if chosen is None:
         return summary
     kinds, in_plan = {i.kind for i in chosen}, {i.kind for i in plan}
-    bk = Backup(description="update: re-apply the setup")
+    continued = bk is not None  # "What changed" names that backup with the move
+    bk = bk if bk is not None else Backup(description="update: re-apply the setup")
     _reapply(bk, claude_on, codex_ok, chosen, in_plan, summary)
     for item in chosen:
         if claude_on and item.kind == "claude-plugins-refresh":
@@ -665,7 +771,7 @@ def _apply(yes: bool, ask: Callable[[str], str], summary: Summary) -> Summary:
             if not dupes.empty:
                 summary.changed.append(f"an installer's {len(removed)} re-registered duplicate(s) moved to a backup "
                                        f"(undo: loadout restore {out.printable(str(dupes.root))})")
-    if not bk.empty:
+    if not bk.empty and not continued:
         summary.changed.append(f"files the re-apply replaced are in a backup (undo: loadout restore {out.printable(str(bk.root))})")
     results = _health()
     try:  # a failure here must not hide the report
@@ -760,3 +866,102 @@ def report(summary: Summary) -> None:
     lines = steps.block(summary.steps, targets.claude_enabled(), targets.codex_enabled())
     if lines:
         print("\n" + "\n".join(lines))
+
+
+# --- `loadout channel`: switch between stable (releases) and dev (main) ----------------------------------------
+
+def channel(target: str | None, yes: bool, ask: Callable[[str], str], verbose: bool = False) -> int:
+    """No target: print the channel and where the kit is. stable/dev: show the move, ask, move the kit, write the
+    setting (only after the move worked) and continue in the new code with the re-apply. One backup holds the
+    move's undo, the old channel.json and the re-apply's backups (restore undoes the whole switch)."""
+    root = paths.kit_root()
+    if target is None:
+        if channels.effective() == "stable":
+            print(f"stable, {channels.current_release(root) or 'not on a release (run loadout update)'}")
+        else:
+            print("dev, main")
+        return 0
+    if target not in channels.CHANNELS:
+        print(f"loadout channel: unknown channel {out.printable(target)}; use stable or dev")
+        return 2
+    if not (root / ".git").exists():
+        print(f"loadout channel: the kit at {out.printable(str(root))} is not a git checkout, so it cannot follow a "
+              "channel; nothing changed")
+        return 1
+    if not maintenance._acquire_lock("channel", locks.foreground_wait()):
+        print(locks.busy_message(maintenance.LOCK))
+        return 1
+    try:
+        if target == "dev" and channels.effective() == "dev":
+            if channels.get() is None:  # dev already, only not written down
+                channels.set_channel("dev", Backup(description="loadout channel dev"))
+            print("channel: dev, main (already)")
+            return 0
+        if target == "stable" and channels.get() == "stable":
+            print(f"channel: stable, {channels.current_release(root) or 'not on a release'} (already); "
+                  "loadout update moves to newer releases")
+            return 0
+        moved = _to_stable(root, yes, ask) if target == "stable" else _to_dev(root, yes, ask)
+        if isinstance(moved, int):
+            return moved
+        to, bk = moved
+        maintenance._release_lock()  # the new process takes it again
+        os.environ[PULLED] = f"channel:{to}"
+        os.environ[CONTINUED] = str(bk.root)
+        out.status("Restart", "continuing in the new code to re-apply the setup")
+        return _exec(["update", "--yes", *(["--verbose"] if verbose else [])])
+    finally:
+        maintenance._release_lock()
+
+
+def _asked(item: PlanItem, target: str, yes: bool, ask: Callable[[str], str]) -> int | None:
+    """None when the move may go ahead; else the exit code (0: answered no; 1: no terminal and no --yes)."""
+    if not yes and not ui.is_interactive():
+        print("\n".join(render([item])))
+        print(f"nothing changed (run loadout channel {target} --yes to apply)")
+        return 1
+    chosen = confirm([item], yes, ask, interactive=True)
+    if chosen:
+        return None
+    if chosen is not None:
+        print("nothing changed")
+    return 0 if chosen is not None else 1
+
+
+def _to_stable(root: Path, yes: bool, ask: Callable[[str], str]) -> tuple[str, Backup] | int:
+    tag, why = channels.stable_target(root, time.time())
+    if why:
+        print(f"loadout channel: {why}; you stay on dev. Try again when online")
+        return 1
+    if tag is None:
+        print("no release is ready yet; you stay on dev")
+        return 1
+    stop = _asked(_release_item(root, "dev (main)", tag, "re-apply the setup in the release's code"), "stable", yes, ask)
+    if stop is not None:
+        return stop
+    bk = Backup(description=f"loadout channel stable: kit to {tag}")
+    refused = channels.move_to(root, tag, bk, base="origin/main")
+    if refused:
+        print(f"loadout channel: not moved: {out.printable(refused)}; you stay on dev")
+        return 1
+    channels.set_channel("stable", bk)
+    return tag, bk
+
+
+def _to_dev(root: Path, yes: bool, ask: Callable[[str], str]) -> tuple[str, Backup] | int:
+    git = ["git", "-C", str(root)]
+    cmds = [[*git, "fetch", "origin", "main"], [*git, "switch", "main"], [*git, "pull", "--ff-only"]]
+    current = channels.current_release(root) or "the current checkout"
+    item = PlanItem(1, "kit-dev", f"kit: {current} → main", cmds,
+                    groups=(("move the kit checkout onto main, then re-apply the setup without the release pins",
+                             cmds),))
+    stop = _asked(item, "dev", yes, ask)
+    if stop is not None:
+        return stop
+    bk = Backup(description="loadout channel dev: kit to main")
+    refused = channels.move_to_dev(root, bk)
+    if refused:
+        print(f"loadout channel: not moved: {out.printable(refused)}; you stay on stable")
+        return 1
+    channels.set_channel("dev", bk)
+    return "dev", bk

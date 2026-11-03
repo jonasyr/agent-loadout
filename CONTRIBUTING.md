@@ -98,6 +98,24 @@ Open an issue with one of the forms on the [New issue](https://github.com/jonasy
 
 Blank issues are off. Read command output before you paste it, and replace tokens and private paths. Security problems never go in an issue: use the private advisory form linked on the New issue page (details in [SECURITY.md](SECURITY.md)).
 
+## Releasing
+
+Only the maintainer releases ([ADR 0046](docs/adr/0046-release-channels.md)). Stable machines are offered a release 3 days after they first see its tag.
+
+```bash
+loadout release X.Y.Z [--urgent] [--edit] [--yes]
+```
+
+Run it from the kit checkout, on a clean `main` that equals `origin/main`. It refuses unless `X.Y.Z` is newer than every tag and at least 0.2.0, `gh` is signed in, and the newest `ci.yml` run for `HEAD` succeeded. It shows the plan (the changelog section built from the Conventional Commit subjects since the last tag; `--edit` opens it in `$EDITOR` first) and asks. After your yes it sets `version` in `pyproject.toml`, prepends the section to `CHANGELOG.md`, adds the version to `release-status.json` with `--urgent`, commits `chore(release): vX.Y.Z`, tags it (annotated), pushes `main` and the tag together, and runs `gh release create` with `bootstrap.sh` and `bootstrap.ps1` attached. The release commit may change only those three files. `--urgent` skips the 3-day wait for the notice; people still run `loadout update` themselves.
+
+To withdraw a bad release:
+
+```bash
+loadout release withdraw X.Y.Z --reason "why" [--use A.B.C]
+```
+
+Release the fix first, then withdraw: `--use` must name an existing newer release, and people on the withdrawn one are told to move to it. The command adds the version to `release-status.json` and pushes `main` after a yes. Tags are never deleted or moved. Details: [`loadout release`](docs/reference/cli.md#loadout-release).
+
 ## Commits and pull requests
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, for example `feat(catalog): add <tool>`, `fix(adopt): ...`, `docs: ...`, `test: ...`. The PR title follows the same format.

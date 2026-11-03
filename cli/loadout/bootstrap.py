@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, apply, catalog, check, out, paths, runner, secrets, settings_merge, ui, vscode, wsl
+from . import adopt, apply, catalog, channels, check, out, paths, runner, secrets, settings_merge, ui, vscode, wsl
 from .backup import Backup
 from .jsonio import get_dict, load_json
 from .secrets import redact
@@ -494,7 +494,11 @@ def plugins_plan() -> tuple[list[str], list[tuple[str, str]], list[str]]:
         if not isinstance(origin, str):
             out.append(f"marketplace {name}: skipped, no repo or url in its source (fix it in your personal settings.json)")
             continue
-        markets.append((name, origin))
+        held = channels.held_add(origin)
+        if held:  # the settings entry stays; only the add by the moved tag's name is left out
+            out.append(held)
+            continue
+        markets.append((name, channels.claude_origin(origin)))
     installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
     plugins = [pid for pid in enabled if pid not in installed]
     return out, markets, plugins
@@ -509,8 +513,12 @@ def setup_plugins(say=None, planned: tuple | None = None) -> list[str]:
     total, step = len(markets) + len(plugins), 0
     for name, origin in markets:
         step += 1
+        held = channels.held_add(origin)
+        if held:  # a plan from before the daily check marked the tag moved
+            out.append(held)
+            continue
         say(f"  adding marketplace {origin}, a git clone ({step} of {total})…")
-        res = runner.run(["claude", "plugin", "marketplace", "add", origin], timeout=300)
+        res = runner.run(["claude", "plugin", "marketplace", "add", channels.claude_origin(origin)], timeout=300)
         out.append(f"marketplace {name}: {'added' if res.ok else 'failed: ' + res.stderr.strip()}")
     for plugin_id in plugins:
         step += 1
@@ -1043,18 +1051,90 @@ def _this_machine(chosen: dict, gate, vscode_wsl: bool) -> None:
         out.problem(line)
 
 
+MOVED = "LOADOUT_BOOTSTRAP_MOVED"  # process-only marker: the run continued in a release it moved to; never again
+
+
+def _channel_step(channel: str | None, bk: Backup) -> None:
+    """Record the channel, seed releases.json with the tags the remote has now (first seen now), and on stable say
+    when the release you run was withdrawn (never move: loadout update plans that and asks). Nothing here stops the
+    run: offline, it only notes.
+    channel None (no --channel: a re-run) keeps the stored one; a machine without one stays as it is (dev).
+    --channel stable on a kit that is not stable yet and on no release moves it as loadout channel stable does."""
+    import time
+    root = paths.kit_root()
+    if channel is None:
+        channel = channels.get()
+        if channel is None:
+            return
+    elif channel == "stable" and channels.get() != "stable" and channels.current_release(root) is None:
+        _join_stable(root, bk)
+        return
+    elif channels.get() != channel:  # a re-run with the same channel makes no new backup
+        channels.set_channel(channel, bk)
+    tags = channels.remote_tags(root)
+    if tags is None:
+        if channel == "stable":
+            out.problem("could not read the release tags (offline?); loadout update checks again")
+        return
+    channels.alarm(channels.record_seen(tags, time.time()))
+    if channel != "stable":
+        return
+    current = channels.current_release(root)
+    status = channels.release_status(root)
+    if status is None or current is None:
+        return
+    entry = status.withdrawn.get(current[1:])
+    if entry is None:
+        return
+    channels.store_status(status)
+    out.problem(channels.withdrawn_notice(current, entry))  # never moved here: loadout update plans it and asks
+
+
+def _continue_once(root) -> None:
+    """After a kit move: continue this run in the code it moved to, once (MOVED stops a second re-exec)."""
+    if not os.environ.get(MOVED):
+        import sys
+        os.environ[MOVED] = "1"
+        runner.continue_in([sys.executable, str(root / "bin" / "loadout"), *sys.argv[1:]])
+
+
+def _join_stable(root, bk: Backup) -> None:
+    """An existing install asked for stable (the one-liner leaves a reused clone where it is): the move that
+    loadout channel stable makes, measured against main, with its undo in the run's backup. The channel is written
+    only after the move; without a ready release it stays as it was."""
+    import time
+    if not (root / ".git").exists():
+        out.problem(f"--channel stable: the kit at {out.printable(str(root))} is not a git checkout, so it cannot "
+                    "follow a channel; you stay on dev")
+        return
+    tag, why = channels.stable_target(root, time.time())
+    if why:
+        out.problem(f"--channel stable: {why}; you stay on dev. Run loadout channel stable when online")
+        return
+    if tag is None:
+        out.problem("no release is ready yet; you stay on dev")
+        return
+    refused = channels.move_to(root, tag, bk, base="origin/main")
+    if refused:
+        out.problem(f"--channel stable: not moved: {out.printable(refused)}; you stay on dev")
+        return
+    channels.set_channel("stable", bk)
+    out.status("Channel", f"stable; kit moved to {tag}")
+    _continue_once(root)
+
+
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
               vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
-              keep_own: bool = False) -> int:
+              keep_own: bool = False, channel: str | None = None) -> int:
     from . import targets
     if use_loadout and keep_own:
         print("--use-loadout and --keep-own exclude each other")
         return 2
     try:
         return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
-                          vscode_wsl, codex_cli, vscode_path, claude_cli, use_loadout, keep_own)
+                          vscode_wsl, codex_cli, vscode_path, claude_cli, use_loadout, keep_own, channel)
     finally:
         targets.OVERRIDE = None
 
@@ -1063,7 +1143,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
                answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
                vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
-               keep_own: bool = False) -> int:
+               keep_own: bool = False, channel: str | None = None) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -1158,6 +1238,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     for line in notes:
         out.problem(line)
     claude_on = chosen["claude"]
+    _channel_step(channel, bk)
     _step("Links")
     link_lines = apply.link_step(bk, claude_on, retry_symlinks=True).lines
     # after a failed clone nothing may write into the personal layer: a partial folder would stop the next run

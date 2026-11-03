@@ -18,7 +18,14 @@ def _version(capsys):
 
 def test_version_names_the_release_and_the_commit(fake_runner, capsys):
     fake_runner.responses[("git", "-C", str(paths.kit_root()), "rev-parse", "--short", "HEAD")] = runner.Result(0, "abc1234\n", "")
-    assert _version(capsys) == f"loadout {RELEASE} (abc1234)"
+    assert _version(capsys) == f"loadout {RELEASE} (dev, abc1234)"
+
+
+def test_version_on_a_release_tag_names_stable(fake_runner, capsys):
+    kit = str(paths.kit_root())
+    fake_runner.responses[("git", "-C", kit, "describe", "--tags", "--exact-match", "HEAD")] = runner.Result(0, "v0.3.0\n", "")
+    fake_runner.responses[("git", "-C", kit, "rev-parse", "--short", "HEAD")] = runner.Result(0, "abc1234\n", "")
+    assert _version(capsys) == f"loadout {RELEASE} (stable, v0.3.0)"
 
 
 def test_version_without_git_names_the_release(fake_runner, capsys):

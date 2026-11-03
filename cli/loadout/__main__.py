@@ -24,7 +24,11 @@ def kit_version() -> str:
     text = (paths.kit_root() / "pyproject.toml").read_text(encoding="utf-8")
     release = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
     head = runner.run(["git", "-C", str(paths.kit_root()), "rev-parse", "--short", "HEAD"], timeout=10)
-    return f"loadout {release} ({head.stdout.strip()})" if head.ok and head.stdout.strip() else f"loadout {release}"
+    if not (head.ok and head.stdout.strip()):
+        return f"loadout {release}"
+    from . import channels
+    tag = channels.current_release(paths.kit_root())
+    return f"loadout {release} ({'stable, ' + tag if tag else 'dev, ' + head.stdout.strip()})"
 
 
 class _Version(argparse.Action):

@@ -207,6 +207,18 @@ Native Windows (`bootstrap.ps1`), and repos checked out by a Git without symlink
 | `loadout configure set own` exits with code 1 and prints `skipped:` or `failed:` | Nothing was recorded for that item. The line says why. Typical causes: a secret or private file (see [Secret guard](../reference/own-tools.md#secret-guard)), a name that already exists in your personal layer with different content, or a file that could not be written. Fix it and run the command again. |
 | I left a tool and want to be asked about it again | See [Be asked again about a left item](your-own-tools.md#be-asked-again-about-a-left-item). |
 
+### Release channels
+
+| Symptom | Fix |
+|---|---|
+| The install says `no stable release is ready yet; wait a few days, or install dev` | No release at or above 0.2.0 is 3 days old yet. Run the command again later, or add `--channel dev` and use the script from `main`. |
+| `loadout channel stable` says `no release is ready yet` | Same: none exists that is 3 days old. Stay on dev for now. |
+| `loadout update` or `loadout channel` says `local changes in <kit>: …` | The kit checkout has tracked edits or commits that are in no release (stable) or not on `origin/main` (dev), named in the message. Commit them elsewhere, stash or remove them, or run loadout from a clean checkout; nothing was moved. |
+| `kit: not refreshed (the release tags could not be read)` | Offline or git failed. Run `loadout update` again when online. |
+| `kit: stays on v0.2.0; v0.3.0 is available` | The release is not yet 3 days old on this machine. It is offered when it is, or at once when it is urgent. |
+| `Channel: release vX.Y.Z was changed after it was released` (warn), or the notice `…was changed after it was released; it is not offered. Tell the maintainer.` | A tag now points at another commit than the one this machine first saw. loadout never offers it. Tell the maintainer; do not move to it by hand. |
+| `Channel: stable, vX.Y.Z was withdrawn: <reason>` | Run `loadout update` (the notice names the release to move to) or, when none is named, `loadout restore`. |
+
 ## Repos
 
 | Symptom | Fix |

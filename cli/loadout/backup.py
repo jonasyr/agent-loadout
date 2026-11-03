@@ -37,6 +37,34 @@ class Backup:
         self.repo = repo
         self.steps: list[dict] = []
 
+    @classmethod
+    def reopen(cls, root: Path) -> "Backup | None":
+        """A backup the first process of this run started (a kit move before its restart): what the restarted run
+        backs up joins the same restore point. None for anything that is not one of loadout's unrestored backups."""
+        try:
+            base = paths.backups_root().resolve()
+            if Path(root).is_symlink():
+                return None
+            real = Path(root).resolve()
+            if real == base or not real.is_relative_to(base):
+                return None
+            data = load_json(real / "manifest.json")
+        except Exception:
+            return None
+        steps = data.get("steps")
+        description = data.get("description")
+        if not isinstance(steps, list) or data.get("restored_at") or not isinstance(description, str) \
+                or not description.startswith(("loadout update: kit to", "loadout channel")):
+            return None  # only the backup of a kit move is continued
+        repo = data.get("repo")
+        bk = cls(root=real, description=str(data.get("description") or ""),
+                 repo=Path(repo) if isinstance(repo, str) else None)
+        bk.steps = [s for s in steps if isinstance(s, dict)]
+        created = data.get("created_at")
+        if isinstance(created, (int, float)) and not isinstance(created, bool):
+            bk._created_at = created
+        return bk
+
     @property
     def root(self) -> Path:
         return self._root
@@ -178,11 +206,34 @@ def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, st
     return skip
 
 
+_SHA40 = re.compile(r"[0-9a-f]{40}")
+_BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*", re.ASCII)
+
+
+def valid_branch(name) -> bool:
+    """A plain branch name that can never be read as an option or a path trick."""
+    return (isinstance(name, str) and bool(_BRANCH.fullmatch(name)) and ".." not in name and "//" not in name
+            and "/-" not in name and not name.endswith((".lock", "/", ".")))
+
+
+def _is_kit_root(root: str) -> bool:
+    try:
+        mine = os.path.normcase(str(Path(root).resolve()))
+        kit = os.path.normcase(str(paths.kit_root().resolve()))
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return bool(root) and mine == kit
+
+
 def _allowed_run(cmd) -> bool:
     """Only the undo commands loadout itself records; a manifest cannot make restore run anything else."""
     if not isinstance(cmd, list) or len(cmd) < 4 or not all(isinstance(a, str) for a in cmd):
         return False
     n = len(cmd)
+    if cmd[:2] == ["git", "-C"]:  # channels.move_to: back to the commit the kit checkout was on
+        if n == 6:
+            return cmd[3:5] == ["checkout", "--detach"] and bool(_SHA40.fullmatch(cmd[5])) and _is_kit_root(cmd[2])
+        return n == 5 and cmd[3] == "switch" and valid_branch(cmd[4]) and _is_kit_root(cmd[2])
     slot = {"add-json": 5, "remove": 5}.get(cmd[2]) if cmd[:2] == ["claude", "mcp"] and n > 2 else n - 1
     if cmd[:2] == ["claude", "plugin"] and n > 2 and cmd[2] in ("enable", "install"):
         slot = 3

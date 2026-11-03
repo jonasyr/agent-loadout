@@ -405,7 +405,8 @@ def _still_needed(change, missing: list[str], prof: profiles.Profile | None = No
     if cmd[:4] == ["claude", "plugin", "marketplace", "add"] and len(cmd) > 4:
         # needed only for a plugin still to install from that marketplace (named by its declared origin)
         declared = get_dict(prof.settings if prof else {}, "extraKnownMarketplaces")
-        names = {n for n, m in declared.items() if cmd[4] in (get_dict(m, "source").get("repo"),
+        origin = cmd[4].partition("#")[0]  # a pinned kit marketplace: owner/repo#tag
+        names = {n for n, m in declared.items() if origin in (get_dict(m, "source").get("repo"),
                                                                get_dict(m, "source").get("url"))}
         return any(m.startswith("plugin ") and m.rpartition("@")[2] in names for m in missing)
     return " ".join(cmd) in missing

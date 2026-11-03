@@ -206,6 +206,24 @@ def continue_in(cmd: list[str], windows: bool | None = None, on_error=None) -> N
         failed(exc)
 
 
+def run_interactive(cmd: list[str], timeout: float | None = None) -> int:
+    """Run cmd (an argument list) on the terminal: stdin, stdout and stderr are inherited, nothing is captured (an
+    editor). Returns the exit code; 127 when the program is missing, 126 when it cannot start or is refused,
+    124 on timeout."""
+    exe = _resolve(cmd[0]) or _fallback(cmd[0])
+    if exe is None:
+        return 127
+    if would_refuse(cmd):
+        return 126
+    env = {k: v for k, v in os.environ.items() if k not in PROCESS_ONLY}
+    try:
+        return subprocess.run([exe, *cmd[1:]], timeout=timeout, env=env).returncode
+    except subprocess.TimeoutExpired:
+        return 124
+    except OSError:
+        return 126
+
+
 def spawn_detached(cmd: list[str], cwd: str) -> None:
     """Start cmd (an argument list) in the background, detached from this session, with no input or output."""
     kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "cwd": cwd,
@@ -217,7 +235,7 @@ def spawn_detached(cmd: list[str], cwd: str) -> None:
     subprocess.Popen(cmd, **kwargs)
 
 
-PROCESS_ONLY = ("LOADOUT_UPDATE_PULLED",)  # loadout's own markers: never passed on to claude, codex or an installer
+PROCESS_ONLY = ("LOADOUT_UPDATE_PULLED", "LOADOUT_UPDATE_BACKUP", "LOADOUT_BOOTSTRAP_MOVED")  # loadout's own markers: never passed on to claude, codex or an installer
 
 
 def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict | None = None) -> Result:
