@@ -199,6 +199,33 @@ def channel(target: str | None, yes: bool = False, ask=None, verbose: bool = Fal
 EXTRA_COMMANDS.append(_register_maintenance)
 
 
+def _register_release(sub):
+    from . import out, release
+    from .__main__ import _ask
+
+    p = sub.add_parser("release")  # maintainer only: no help=, so it stays out of --help
+    p.add_argument("words", nargs="+", metavar="[withdraw] X.Y.Z")
+    p.add_argument("--urgent", action="store_true")
+    p.add_argument("--edit", action="store_true")
+    p.add_argument("--reason")
+    p.add_argument("--use", metavar="A.B.C")
+    p.add_argument("--yes", action="store_true")
+
+    def release_cmd(a):
+        if len(a.words) == 1 and not (a.reason or a.use):
+            return release.cut(a.words[0], urgent=a.urgent, yes=a.yes, edit=a.edit, ask=_ask)
+        if len(a.words) == 2 and a.words[0] == "withdraw" and a.reason and not (a.urgent or a.edit):
+            return release.withdraw(a.words[1], a.reason, a.use, yes=a.yes, ask=_ask)
+        print("usage: loadout release X.Y.Z [--urgent] [--edit] [--yes]\n"
+              "       loadout release withdraw X.Y.Z --reason TEXT [--use A.B.C] [--yes]")
+        return 2
+
+    p.set_defaults(func=release_cmd)
+
+
+EXTRA_COMMANDS.append(_register_release)
+
+
 def _register_bootstrap(sub):
     from . import bootstrap, out
     from .__main__ import _ask
