@@ -13,7 +13,7 @@ from loadout import configure, paths
 
 EVALS = paths.kit_root() / "plugins/loadout/evals"
 BROWSER_EVALS = paths.kit_root() / "plugins/loadout/evals-browser"  # opt-in suite
-SKILLS = ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor", "usage")
+SKILLS = ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor", "usage", "release")
 GRADER_TYPES = {"regex", "tool_used", "tool_order", "file_exists", "llm", "baseline"}
 # The stubs and scaffolds are bash scripts; Windows can't run them (same as tests/test_hooks.py).
 posix_only = pytest.mark.skipif(os.name == "nt", reason="bash scripts; not run on Windows")
@@ -234,3 +234,27 @@ def test_eval_stub_answers_kit_path_with_a_readable_copy(tmp_path):
     run_sh = (evals / "run.sh").read_text(encoding="utf-8")
     for part in ("rules", "docs/explanation/documentation-strategy.md"):
         assert part in run_sh, part  # run.sh copies what the doc skills read into $stub/kit
+
+
+@posix_only
+def test_stub_release_and_gh_answer_the_release_case(tmp_path):
+    draft = tmp_path / "draft.md"
+    out = subprocess.run([str(EVALS / "bin/loadout"), "release", "0.3.0", "--draft-notes", str(draft)],
+                         cwd=tmp_path, capture_output=True, text=True, check=True).stdout
+    assert out == f"draft notes for v0.3.0 written to {draft}; nothing else changed\n"
+    text = draft.read_text()
+    assert text.startswith("## [0.3.0] - ") and "(#41)" in text and "[0.3.0]: https://github.com/" in text
+    done = subprocess.run([str(EVALS / "bin/loadout"), "release", "0.3.0", "--notes", str(draft), "--yes"],
+                          cwd=tmp_path, capture_output=True, text=True, check=True).stdout
+    assert done == "Released v0.3.0.\n"
+    pr = subprocess.run([str(EVALS / "bin/gh"), "pr", "view", "41", "--json", "title,body"],
+                        cwd=tmp_path, capture_output=True, text=True, check=True).stdout
+    assert json.loads(pr)["title"].startswith("feat(adopt)")
+    bad = subprocess.run([str(EVALS / "bin/gh"), "pr", "merge", "41"], cwd=tmp_path, capture_output=True, text=True)
+    assert bad.returncode == 1
+    assert "pr merge 41" in (tmp_path / ".gh-calls.log").read_text()
+
+
+def test_run_sh_installs_the_gh_stub():
+    assert 'bin/gh' in (EVALS / "run.sh").read_text(encoding="utf-8")
+    assert os.name == "nt" or os.access(EVALS / "bin/gh", os.X_OK)

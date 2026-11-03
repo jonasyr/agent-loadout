@@ -15,7 +15,7 @@ def _frontmatter(name):
 
 
 def test_skills_have_frontmatter_and_short_descriptions():
-    for name in ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor", "usage"):
+    for name in ("onboard", "docs-sync", "docs-audit", "configure", "execution-advisor", "usage", "release"):
         got, description, extra, _ = _frontmatter(name)
         assert got == name
         assert len(description) <= 400, f"{name} description too long (loaded every session)"
@@ -25,7 +25,7 @@ def test_skills_have_frontmatter_and_short_descriptions():
 def test_heavy_skills_are_user_invoked_only():
     for name in ("onboard", "docs-audit"):
         assert _frontmatter(name)[2].get("disable-model-invocation") == "true", name
-    for name in ("docs-sync", "configure", "execution-advisor", "usage"):
+    for name in ("docs-sync", "configure", "execution-advisor", "usage", "release"):
         assert "disable-model-invocation" not in _frontmatter(name)[2], name
 
 
@@ -91,3 +91,12 @@ def test_workflow_rule_points_to_the_advisor():
     assert ("After writing an implementation plan, do not ask the planner's own execution question: run "
             "/loadout:execution-advisor in the same turn and ask only its question. If an execution question "
             "was already shown, state that the advisor's Recommended option supersedes it.") in rule
+
+
+def test_release_skill_asks_before_releasing_and_never_edits_the_changelog():
+    _, description, _, text = _frontmatter("release")
+    assert "release" in description and "release notes" in description
+    for part in ("--draft-notes", "gh pr view N --json title,body", "--notes <file> --yes",
+                 "Release vX.Y.Z with these notes? (yes/no)", "explicit yes", "Never edit `CHANGELOG.md`",
+                 "$loadout:release", "Never suggest a major"):
+        assert part in text, part

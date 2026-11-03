@@ -5,6 +5,7 @@
 #    `loadout` (bin/loadout): the plugin's SessionStart hook and the skills call it; the real
 #    CLI would read/write the user's setup and its session hook can spawn
 #    `loadout maintenance` (git pull on the kit and personal repos);
+#    gh (bin/gh): read-only `pr view` answers for the release case;
 #    playwright-cli and the browser binaries (bin/playwright-cli, bin/browser-stub);
 #  - a before/after checksum of the user's global state (global-state.sh), compared in an
 #    EXIT trap so it also runs on errors and interrupts; exits 3 if anything changed.
@@ -40,6 +41,7 @@ trap 'exit 130' INT TERM
 mkdir -p "$HOME/.cache"
 stub=$(mktemp -d "$HOME/.cache/loadout-eval-stub.XXXXXX")
 install -m 755 "$here/bin/loadout" "$stub/loadout"
+install -m 755 "$here/bin/gh" "$stub/gh"  # read-only stand-in: the release case must never reach GitHub
 # The doc skills read the kit's rules and writing guide from `loadout kit-path`; the sandbox can read the stub
 # directory, so a copy goes there and the stub prints it.
 kit=$(cd "$here/../../.." && pwd)
