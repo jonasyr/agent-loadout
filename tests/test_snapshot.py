@@ -439,3 +439,12 @@ def test_a_refused_member_leaves_the_current_file_in_place(fake_home, tmp_path):
     archive = forged(tmp_path, [member(".claude/f.txt", b"new")])
     lines, ok, _ = snapshot.restore(archive)
     assert not ok and target.read_text() == "mine"
+
+
+def test_link_targets_drop_the_windows_extended_prefix(fake_home, monkeypatch):
+    target = fake_home / "dotfiles" / "bashrc"
+    target.parent.mkdir()
+    target.write_text("mine")
+    (fake_home / ".bashrc").symlink_to(target)
+    monkeypatch.setattr(snapshot.os, "readlink", lambda p: "\\\\?\\C:\\Users\\me\\dotfiles\\bashrc")
+    assert snapshot.links([fake_home / ".bashrc"]) == [(fake_home / ".bashrc", "C:\\Users\\me\\dotfiles\\bashrc")]

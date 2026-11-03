@@ -130,7 +130,8 @@ def _entries(root: Path, skipped: list[str], strict: bool = True):
 def links(roots: list[Path]) -> list[tuple[Path, str]]:
     """Every symlink among the places to snapshot, with its target: a rollback puts the link back, not what was
     written into the target."""
-    return [(path, os.readlink(path)) for root in roots for path, st in _entries(root, [], strict=False)
+    from .own import _plain_link_target  # Windows readlink gives \\?\C:\...
+    return [(path, _plain_link_target(os.readlink(path))) for root in roots for path, st in _entries(root, [], strict=False)
             if stat.S_ISLNK(st.st_mode)]
 
 
