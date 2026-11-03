@@ -79,6 +79,10 @@ A refusal prints `skipped: ...` and changes nothing for that item. Move the secr
 
 How recorded hooks are merged into `settings.json` (identity, deleted hooks, hooks you edited) is in [settings merge](settings-merge.md#hook-merge).
 
+## Serena of your own
+
+loadout's catalog provides Serena, so a Serena of yours is a duplicate. Only a plain copy of loadout's (same command and arguments) is replaced with loadout's, through adopt's migrate group or `--use-loadout`. Both Claude Code's and Codex's Serena follow this. A Serena with settings of its own (another `--context`, `env` values, extra arguments, a path to a fork) is kept, also on `--yes`, and only `loadout adopt --apply --own NAME=remove` removes it. A plain Claude Code copy also stays while loadout's plugin is not installed, since nothing would replace it. The rule is in [ADR 0045](../adr/0045-a-tuned-serena-is-kept.md); the flags and the rollback are in [Your own Serena](cli.md#your-own-serena).
+
 ## Known limits
 
 - Windows: Claude Code runs hook commands through Git Bash, so a hook's script path must use forward slashes (`C:/Users/me/x.sh`) or quotes for loadout to recognise and copy the script. An unquoted backslash path is recorded as is (Git Bash would misread it too). Script detection is tested on Linux (CI).

@@ -1046,11 +1046,15 @@ def _this_machine(chosen: dict, gate, vscode_wsl: bool) -> None:
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
-              vscode_path: bool = False, claude_cli: bool = True) -> int:
+              vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
+              keep_own: bool = False) -> int:
     from . import targets
+    if use_loadout and keep_own:
+        print("--use-loadout and --keep-own exclude each other")
+        return 2
     try:
         return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
-                          vscode_wsl, codex_cli, vscode_path, claude_cli)
+                          vscode_wsl, codex_cli, vscode_path, claude_cli, use_loadout, keep_own)
     finally:
         targets.OVERRIDE = None
 
@@ -1058,7 +1062,8 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
 def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None,
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
                answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
-               vscode_path: bool = False, claude_cli: bool = True) -> int:
+               vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
+               keep_own: bool = False) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -1180,22 +1185,41 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         if result.lines:
             _step("codebase-memory")
             _report(result.name, result.summary, result.lines)
-    result = apply.rtk_step(bk)  # also with Claude Code off: removes loadout's line when it no longer provides the hook
-    if result.lines:
-        _step("rtk")
-        _report(result.name, result.summary, result.lines)
-    if chosen["codex"]:
-        _step("Codex")
-        problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())
-        if problem:
-            out.status("Codex", problem, "warn")
-        else:
-            result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True,
-                                     plugins=plugins)
-            out.end_progress()
+    pass_bk, removed, pass_failed, codex_wrote = Backup(description="use loadout's Serena"), [], False, False
+    codex_problem = None
+    if chosen["codex"]:  # decided before the pass: a Codex that cannot be set up in this run keeps yours
+        codex_problem = gate or (codex.unavailable(allow_shared_home=True) if codex_side == "wsl" else codex.unavailable())
+    try:
+        if personal_ok and (claude_on or chosen["codex"]):  # loadout's Serena replaces yours, only with a yes; backed up
+            pass_lines, removed = adopt.serena_pass(pass_bk, ask, interactive and not yes, use_loadout, keep_own,
+                                                    skip_codex=bool(codex_problem), removed=removed)
+            if pass_lines:
+                _step("Serena")
+                for line in pass_lines:
+                    out.problem(line)
+                    pass_failed = pass_failed or isinstance(line, adopt.NotDone)
+        result = apply.rtk_step(bk)  # also with Claude Code off: removes loadout's line when it no longer provides the hook
+        if result.lines:
+            _step("rtk")
             _report(result.name, result.summary, result.lines)
-            if codex.own_serena() is not None:  # loadout wrote no serena of its own: say why, once per bootstrap
-                out.problem(codex.SERENA_KEPT)
+        if chosen["codex"]:
+            _step("Codex")
+            if codex_problem:
+                out.status("Codex", codex_problem, "warn")
+            else:
+                result = apply.codex_step(bk, refresh_plugins=False, auto=False, keep=False, say=out.progress, on=True,
+                                         plugins=plugins)
+                out.end_progress()
+                _report(result.name, result.summary, result.lines)
+                codex_wrote = result.level != "fail" and "skipped:codex" not in result.facts
+                if codex.own_serena() is not None:  # loadout wrote no serena of its own: say why, once per bootstrap
+                    out.problem(codex.SERENA_KEPT)
+    finally:
+        # yours comes back unless this run really wrote loadout's table (the record may be stale)
+        back, failed = adopt.rollback_removed(removed, pass_bk, codex_wrote)
+        for line in back:
+            out.problem(line)
+        pass_failed = pass_failed or failed
     adopt.LAST_BACKUP = None
     if adopt_step and personal_ok and claude_on:
         if yes:  # nothing to report: no heading and no blank lines
@@ -1205,7 +1229,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             try:
                 with contextlib.redirect_stdout(buf):
                     adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask,
-                              interactive=interactive, embedded=True)
+                              interactive=interactive, embedded=True, keep_own=keep_own)
             finally:  # also when adopt raised partway: what it applied or found stays on screen
                 if buf.getvalue().strip():
                     _step("Adopt existing setup")
@@ -1219,7 +1243,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             else:
                 print()
                 adopt.run(apply_changes=True, groups=None, skip=set(), yes=yes, ask=ask, interactive=interactive,
-                          embedded=True)
+                          embedded=True, keep_own=keep_own)
                 print()
     _step("Secrets")
     _report("Secrets", f"{_tilde(paths.secrets_file())} ready", setup_secrets(bk))
@@ -1230,6 +1254,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     _vscode_path_step(ask, interactive and not yes, vscode_path, bk)
     if not bk.empty:
         out.detail(f"backup: {bk.root}  (undo: loadout restore {bk.root})")
+    if not pass_bk.empty:
+        out.detail(f"backup: {pass_bk.root}  (undo: loadout restore {pass_bk.root})")
     _step("Check")
     results = check.run_checks(codex_windows=True) if gate and WINDOWS_WAY in gate else check.run_checks()
     # --no-plugins: rows that only say the skipped plugins are missing are this run's choice, not problems
@@ -1248,15 +1274,19 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
             print(text)
     if hidden:
         out.problem(PLUGINS_SKIPPED)
+    if pass_failed:  # a Serena removal or its rollback failed: the run did not end well, whatever the health check says
+        code = 1
     here = {**chosen, "codex": chosen["codex"] and gate is None}  # agents this run set up on this side
     todo = still_to_do(os_key(), codex_here=here["codex"], plugins=plugins)
+    if personal_ok and not use_loadout and not keep_own and (not interactive or yes) and adopt.serena_duplicate_left():
+        todo.append("Serena: yours is a plain copy of loadout's; switch with loadout adopt --apply --use-loadout (or keep yours: loadout configure own)")
     from . import steps
     try:  # the steps visible without a run's facts (hooks, plugin copy), as `loadout update` leaves them: shown at that agent's next session until done
         steps.save(steps.derive(set(), [], here["claude"], here["codex"]))
         steps.settle(here["claude"], chosen["codex"], every)  # Codex on but set up on the Windows side keeps its steps
     except Exception:
         pass
-    if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None):
+    if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None or not pass_bk.empty):
         print(f"\n{adopt.UNDO_LINE}")
     if path_changed and out.VERBOSE:
         print("\nOpen a new terminal so the new PATH applies.")

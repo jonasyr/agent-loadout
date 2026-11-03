@@ -355,7 +355,9 @@ def _tool_setups() -> list[CheckResult]:
                 out.append(CheckResult(f"{label} servers", False,
                                        f"two {label} servers: the plugin's and yours ({n} in {f})",
                                        f"keep one: in Claude Code's /mcp, disable plugin:loadout:{tool}; or remove "
-                                       f"yours, or keep both (leave), with loadout configure own", "warn"))
+                                       f"yours, or keep both (leave), with loadout configure own"
+                                       + ("; a plain copy of loadout's goes with: loadout adopt --apply --use-loadout"
+                                          if tool == "serena" else ""), "warn"))
         n_cbm = [(f, 1) for ev, words, f in duplicates.user_hooks(str(cwd)) if "hook-augment" in words]
         if n_cbm:
             files = ", ".join(dict.fromkeys(f for f, _ in n_cbm))

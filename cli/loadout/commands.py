@@ -42,6 +42,9 @@ def _register_adopt(sub):
                         "A hook is named Event:matcher (Stop: has no matcher); add #n when several hooks "
                         "share a name (names: loadout configure own)")
     p.add_argument("--no-versions", action="store_true", help="skip network version checks")
+    p.add_argument("--use-loadout", action="store_true",
+                   help="remove your own Serena (a plain copy of loadout's; a tuned one stays) so loadout's runs; backed up")
+    p.add_argument("--keep-own", action="store_true", help="keep your own Serena and ask nothing about it")
     p.add_argument("--verbose", action="store_true", help="full detail: commands, long reasons, the items that stay")
 
     def run(a):
@@ -49,7 +52,8 @@ def _register_adopt(sub):
             out.VERBOSE = True
         groups = {g.strip() for g in a.groups.split(",") if g.strip()} if a.groups else None
         skip = {s.strip() for s in a.skip.split(",") if s.strip()}
-        return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions, own_spec=a.own)
+        return adopt.run(a.apply, groups, skip, a.yes, _ask, with_versions=not a.no_versions, own_spec=a.own,
+                         use_loadout=a.use_loadout, keep_own=a.keep_own)
 
     p.set_defaults(func=run)
 
@@ -194,6 +198,9 @@ def _register_bootstrap(sub):
     p.add_argument("--vscode-path", action="store_true",
                    help="in WSL with VS Code's Remote-WSL server: put loadout's tool folders on PATH in "
                         "~/.vscode-server/server-env-setup without asking (backup first)")
+    p.add_argument("--use-loadout", action="store_true",
+                   help="remove your own Serena (a plain copy of loadout's; a tuned one stays) so loadout's runs; backed up")
+    p.add_argument("--keep-own", action="store_true", help="keep your own Serena and ask nothing about it")
     p.add_argument("--without-claude-cli", action="store_true",
                    help="with VS Code's Claude Code extension: skip the optional Claude Code CLI (loadout sets Claude "
                         "Code up for the extension; the CLI is optional, the extension runs its own claude)")
@@ -202,6 +209,9 @@ def _register_bootstrap(sub):
                         "extension; the CLI is optional, VS Code's Codex extension runs its own codex)")
 
     def run(a):
+        if a.use_loadout and a.keep_own:
+            print("--use-loadout and --keep-own exclude each other")
+            return 2
         if a.verbose:
             out.VERBOSE = True
         if a.vscode_wsl:
@@ -211,7 +221,8 @@ def _register_bootstrap(sub):
         return bootstrap.bootstrap(a.install, a.yes, not a.no_plugins, not a.no_adopt, _ask, agents=a.agents, codex_side=a.codex_side,
                                    personal=a.personal, answers=a.answers, vscode_wsl=a.vscode_wsl,
                                    codex_cli=not a.without_codex_cli, vscode_path=a.vscode_path,
-                                   claude_cli=not a.without_claude_cli)
+                                   claude_cli=not a.without_claude_cli, use_loadout=a.use_loadout,
+                                   keep_own=a.keep_own)
 
     p.set_defaults(func=run)
 

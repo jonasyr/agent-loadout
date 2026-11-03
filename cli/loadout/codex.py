@@ -553,6 +553,26 @@ def cbm_has_own_settings(table: dict, path_counts: bool = True) -> bool:
                 or (path_counts and isinstance(command, str) and ("/" in command or "\\" in command)))
 
 
+_SERENA_PLAIN_KEYS = {"command", "args", "type", "enabled", "alwaysLoad", "startup_timeout_sec"}
+
+
+def serena_has_own_settings(cfg: dict, agent: str) -> bool:
+    """True when a Serena config is more than a plain duplicate of loadout's own for that agent ("claude" or
+    "codex"): the command is not `serena`, the argument set differs from loadout's (order does not matter), or a
+    key beyond command/args/type/enabled/alwaysLoad/startup_timeout_sec is set (env only when non-empty). Fails
+    closed: anything else is own settings (ADR 0045)."""
+    ours = SERENA["args"] if agent == "codex" else ["start-mcp-server", "--context=claude-code", "--project-from-cwd"]
+    command, args = cfg.get("command"), cfg.get("args")
+    if not isinstance(command, str) or re.split(r"[\\/]", command)[-1].lower().removesuffix(".exe") != "serena":
+        return True
+    if "/" in command or "\\" in command:  # a fixed path is a choice of its own
+        return True
+    if (not isinstance(args, list) or not all(isinstance(a, str) for a in args) or len(args) != len(ours)
+            or set(args) != set(ours)):
+        return True
+    return bool({k for k, v in cfg.items() if v not in ({}, [], "", None)} - _SERENA_PLAIN_KEYS)
+
+
 SERENA_KEPT = "Serena: your own server in config.toml kept"
 
 
@@ -2043,6 +2063,51 @@ def codex_only_skills() -> list[Path]:
     claude = _skill_names(paths.claude_home() / "skills") if targets.claude_enabled() else set()
     return [p for p in sorted(root.iterdir())
             if not p.name.startswith(".") and p.name != "synced" and p.name not in ours | claude]
+
+
+def table_source(name: str) -> str | None:
+    """The text of `[mcp_servers.NAME]` and its sub-tables in config.toml (LF endings, inner comments kept, trailing
+    blank lines dropped), for `reinsert_table`. None when there is no such header table (a dotted or inline form
+    included), the pieces are not one contiguous run, or the file is unreadable."""
+    try:
+        text = _read_exact(paths.codex_home() / "config.toml")
+        # split on "\n" only (splitlines() also breaks on U+2028, \x0c, ...); a CRLF's "\r" goes with its line end
+        lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
+        secs = _sections(lines, _tomllib())
+    except Exception:
+        return None
+    hit = [i for i, s in enumerate(secs) if isinstance(s[0], tuple) and s[0][:2] == ("mcp_servers", name)]
+    if not hit or secs[hit[0]][0] != ("mcp_servers", name) or hit != list(range(hit[0], hit[-1] + 1)):
+        return None
+    lines = [ln for i in hit for ln in secs[i][1]]
+    last = secs[hit[-1]]
+    n = len(last[1])  # the comments and blanks above the next table are its own, not ours
+    while n > 1 and last[2][n - 1] and (not last[1][n - 1].strip() or last[1][n - 1].lstrip().startswith("#")):
+        n -= 1
+    lines = lines[:len(lines) - len(last[1]) + n]
+    return "\n".join(lines) + "\n"
+
+
+def reinsert_table(text: str) -> str:
+    """Append a table text from `table_source` to config.toml atomically, in the file's line endings. Never raises;
+    the caller replaces <dir> with the backup folder."""
+    from .jsonio import write_atomic_bytes
+    try:
+        path = paths.codex_home() / "config.toml"
+        old = _read_exact(path) if path.exists() else ""
+        nl = "\r\n" if "\r\n" in old else "\n"
+        block = text.replace("\r\n", "\n").replace("\n", nl)
+        sep = "" if not old or old.endswith("\n") else nl
+        new = old + sep + block
+        try:
+            _tomllib().loads(new)
+        except Exception:  # a table of that name is already there, or the file is not valid TOML: write nothing
+            return ("Serena: could not put your server back (config.toml already has it or is not valid TOML); "
+                    "restore it with: loadout restore <dir>")
+        write_atomic_bytes(path, new.encode("utf-8"))
+        return "Serena: put your server back in config.toml"
+    except Exception as e:
+        return f"Serena: could not put your server back ({type(e).__name__}); restore it with: loadout restore <dir>"
 
 
 def remove_server(name: str, bk) -> str:

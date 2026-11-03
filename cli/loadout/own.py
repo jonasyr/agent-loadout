@@ -780,6 +780,8 @@ def _global_skill(v: Verdict, bk) -> Recorded:
 
 def options(item: Item) -> list[str]:
     """Choices that apply to this item, in prompt order."""
+    if item.kind == "mcp" and item.extra.get("serena"):  # a Codex Serena: only leave or remove make sense
+        return ["leave", "remove"]
     if is_codex(item):
         if item.kind == "skill" and Path(item.location).is_symlink():
             return ["global", "leave", "remove"]

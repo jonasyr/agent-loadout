@@ -47,7 +47,7 @@ Without a `claude` on `PATH`, and with Claude Code on, every loadout command run
 Set up or repair this machine. Safe to re-run.
 
 ```
-loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [--agents LIST]
+loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--use-loadout] [--keep-own] [--verbose] [--agents LIST]
                   [--codex-side wsl|windows] [--vscode-wsl] [--vscode-path] [--without-codex-cli] [--without-claude-cli]
                   [--personal new|URL] [--answers FILE]
 ```
@@ -58,6 +58,8 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--verbose] [-
 | `--yes` | Accept defaults without asking, also in a terminal (see [When bootstrap does not ask](#when-bootstrap-does-not-ask)). Adopt applies remove, migrate and scope-down; binary updates are never applied. Without `--agents`, a machine that has not chosen gets Claude Code. |
 | `--no-plugins` | Skip adding marketplaces and installing plugins (offline or CI), in Claude Code and in Codex. The health block, its "N of M OK" count, the exit code and "Still to do" then leave out rows that are not ok only because plugins or marketplaces are missing; one line, `plugins skipped (--no-plugins): run loadout bootstrap without it to add them`, says so (only when such a row was left out). Rows that stay: an undeclared marketplace, invalid JSON, a Codex too old to install plugins, a failed Codex plugin listing, stale `loadout plugin` copies and marketplace staging leftovers. Nothing is remembered: a later `loadout check` or `update` reports the missing plugins as before. |
 | `--no-adopt` | Skip reviewing the existing setup. |
+| `--use-loadout` | Replace your own Serena with loadout's when yours is a plain copy of it (same command and arguments; one with settings of its own is kept). Backed up, so `loadout restore` brings yours back. Claude Code: only when loadout's plugin is installed. Codex: only when the `serena` command exists and Codex is set up in this run. Over `--yes` it adds the Codex server, Codex-only machines and an explicit choice without a terminal. Not with `--keep-own`. Details: [Your own Serena](#your-own-serena). |
+| `--keep-own` | Keep your own Serena and ask nothing about it. Nothing is changed or remembered, and adopt's normal step does not remove a plain Claude Code Serena in this run either. Not with `--use-loadout`. |
 | `--agents LIST` | `claude`, `codex` or `claude,codex`: the coding agents to set up, without asking. Stored in `<personal>/targets.json`; it wins over the personal layer's choice. A typo stops bootstrap before any question or clone. Without it: [Which agents bootstrap sets up](#which-agents-bootstrap-sets-up). Which agents to pick for your platform: [Pick your setup](setup-matrix.md). |
 | `--codex-side wsl\|windows` | In WSL, with Codex on: set up the WSL Codex home (`wsl`) or leave Codex to `bootstrap.ps1` on Windows (`windows`), without asking. Needed without a terminal, or with `--yes`, when the only Codex is the Windows one, and always when `CODEX_HOME` points into Windows; otherwise the Codex step stops. Ignored outside WSL. With `wsl` in a terminal, bootstrap also asks whether to switch VS Code's Codex extension to WSL. In a terminal, bootstrap's own question defaults to `1` (WSL). Which side to pick: [Recommended setups](setup-matrix.md) ([Codex in WSL](../how-to/wsl.md#codex)). |
 | `--vscode-wsl` | In WSL with Codex: switch VS Code's Codex extension to WSL without asking. It edits only `chatgpt.runCodexInWindowsSubsystemForLinux` in VS Code's `settings.json` on Windows, saves a copy first, and `loadout restore` undoes it. Without it and without a terminal, bootstrap prints the manual step. A folder's `.vscode/settings.json` or a VS Code profile that sets the switch to `false` again is named as a warning (with or without the flag); loadout does not edit it. Outside WSL it changes nothing and prints one warning (`--vscode-wsl applies to loadout in WSL only; nothing changed`); in WSL, when Codex is off or its step stops (`--codex-side windows`, a skipped side question), it changes nothing and says so. The recommended way in WSL is a Remote-WSL window (`code .` from WSL); this flag is for a Windows window you open anyway ([Pick your setup](setup-matrix.md#wsl-2)). |
@@ -79,7 +81,8 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | 0 | Done, and the final check found no error. |
-| 1 | The personal-layer clone failed, or the final `loadout check` reported a failure (see [loadout check](#loadout-check)). |
+| 1 | The personal-layer clone failed, or the final `loadout check` reported a failure (see [loadout check](#loadout-check)). Also when a Serena removal failed, or its rollback did ([Your own Serena](#your-own-serena)). |
+| 2 | `--use-loadout` and `--keep-own` were given together. Nothing changed. |
 
 ### Which agents bootstrap sets up
 
@@ -103,10 +106,23 @@ Without a terminal (CI, `ssh host ./bootstrap.sh`, piped or closed input), or wi
 - **WSL:** the Codex side needs `--codex-side` when the only Codex is the Windows one (otherwise the Codex step stops and says so); the VS Code switch needs `--vscode-wsl` (otherwise bootstrap prints the manual step), and the Remote-WSL `PATH` block needs `--vscode-path`.
 - **Configure prompt** (`Customize preferences and global add-ons now?`): skipped. Without a terminal and without `--yes` bootstrap says so; run `loadout configure` later.
 - **Adopt step:** without a terminal and without `--yes`, skipped with a line naming `loadout adopt`. With `--yes`, it applies remove, migrate and scope-down. Inside bootstrap it prints one line, `Your existing setup: N tool updates (loadout update), …`, instead of the list.
+- **Your own Serena:** without a terminal, or with `--yes`, bootstrap never asks; it changes your Serena only with `--use-loadout` ([below](#your-own-serena)).
 
 It still runs `--install` when given, links files, merges settings, applies personal MCP servers and sets up plugins. The recommended way to run bootstrap from an agent or a script, with the flags it needs: [Set loadout up from inside an agent](../how-to/install-with-an-agent.md).
 
-The adopt step runs only with Claude Code on. A Codex-only bootstrap does not review the tools that only Codex has: run [`loadout adopt`](#loadout-adopt) for that.
+The adopt step runs only with Claude Code on. A Codex-only bootstrap does not review the tools that only Codex has: run [`loadout adopt`](#loadout-adopt) for that. The Serena step below is the exception: it also runs on a Codex-only machine.
+
+### Your own Serena
+
+loadout's plugin provides Serena, so a Serena of yours next to it means two servers in each session. Bootstrap's Serena step runs after the plugins are installed, when a personal layer exists and Claude Code or Codex is on, and it changes only a Serena that is yours:
+
+- **Asked, in a terminal, for a Codex Serena** (`[mcp_servers.NAME]` in `config.toml`): `[y] use loadout's (recommended)  [n] keep mine, don't ask again  Enter: decide later`. `y` replaces it. `n` is remembered, like "leave" in [`loadout configure own`](own-tools.md#choices), and it beats `--use-loadout`. Enter stores nothing and the question comes again next run. A plain Claude Code Serena is not asked here: it stays in adopt's `migrate` group, where Enter removes it as before.
+- **`--use-loadout`:** replaces a plain copy of loadout's Serena without asking. Claude Code: the user-scope servers in `~/.claude.json` and `~/.claude/.mcp.json`. Codex: the `config.toml` table, whatever its name. A plain copy has the command `serena` (or `serena.exe`) and loadout's arguments, in any order, and no setting beyond the ones loadout writes too (`type`, `enabled`, `alwaysLoad`, `startup_timeout_sec`, an empty `env`).
+- **`--keep-own`:** changes nothing and remembers nothing. It also keeps adopt's normal step from removing a plain Claude Code Serena in that run.
+- **A Serena with settings of its own** (another `--context`, `env` values, extra arguments, a path to a fork) is never removed by a flag. It is kept, and the line names `loadout adopt --apply --own NAME=remove`, which removes it when you run it ([ADR 0045](../adr/0045-a-tuned-serena-is-kept.md); works for Claude Code and Codex).
+- **Without a flag** in a run that asks nothing, nothing changes, and "Still to do" gets `Serena: yours is a plain copy of loadout's; switch with loadout adopt --apply --use-loadout (or keep yours: loadout configure own)` while a plain copy is left.
+- **Backup and rollback:** every removal is backed up and `loadout restore` brings it back. If the Codex Serena was removed and loadout's Codex table is not in `config.toml` at the end of the run (the Codex step failed or did not run, or the run stopped), bootstrap puts the removed table text back exactly and says so. If that fails, it prints the backup to restore (`loadout restore <dir>`) and exits 1. A removal that fails also exits 1.
+- **Not removed automatically:** a Codex Serena table written inline or with dotted keys cannot be put back exactly, so it is kept, and the line says to edit `config.toml` yourself. A `config.toml` that is a symlink is not edited either.
 
 ## loadout adopt
 
@@ -116,7 +132,7 @@ With Codex on, it also lists the MCP servers and skills that only Codex has; the
 
 ```
 loadout adopt [--apply] [--groups GROUPS] [--skip SKIP] [--yes]
-              [--own NAME=CHOICE,...] [--no-versions] [--verbose]
+              [--own NAME=CHOICE,...] [--no-versions] [--use-loadout] [--keep-own] [--verbose]
 ```
 
 | Flag | Meaning |
@@ -127,6 +143,8 @@ loadout adopt [--apply] [--groups GROUPS] [--skip SKIP] [--yes]
 | `--yes` | No questions: apply `--groups`, or `remove,migrate,scope-down` when no groups are given, and move secrets (with `--groups`, only when it includes `secrets`). Your own tools stay as they are. |
 | `--own NAME=CHOICE,...` | Decide for your own tools. Example: `my-db=project:mydb,foo@bar=global`. Choices: `global`, `project:<profile>`, `leave`, `remove`. Other items stay as they are. Hook naming: see [hooks](hooks.md#naming-hooks-of-your-own-tools). |
 | `--no-versions` | Skip network version checks. |
+| `--use-loadout` | With `--apply`: replace your own Serena with loadout's when yours is a plain copy of it, in Claude Code and in Codex, before the rest of the run. Backed up. It asks nothing, and a Serena with settings of its own stays (`--own NAME=remove` removes it). The same rules as bootstrap: [Your own Serena](#your-own-serena). |
+| `--keep-own` | Keep your own Serena and ask nothing about it; nothing is remembered. Also keeps a plain Claude Code Serena that this run would otherwise remove. Not with `--use-loadout`. |
 | `--verbose` | Full detail: each item's command line, long reason, replacement and notes, the items that stay, and the backup path. |
 
 By default adopt prints a count line (`Your existing setup: 7 suggestions (25 other items are fine)`), then each group under a plain heading (for example "Remove: superseded by something better") with one line per item and its short reason. With `--apply` in a terminal, each group is shown right before its question; then one `✓` line per group that was applied, or every result line when something did not complete.
