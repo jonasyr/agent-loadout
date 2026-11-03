@@ -7,6 +7,11 @@ from loadout import paths, release, runner
 
 SHA = "c" * 40
 R = runner.Result
+
+
+def log_out(*records):
+    """first-parent log output (%s%x00%b%x1e): (subject, body) pairs or bare subjects."""
+    return "".join(f"{r[0]}\0{r[1]}\x1e\n" if isinstance(r, tuple) else f"{r}\0\x1e\n" for r in records)
 RELEASE_FILES = "pyproject.toml\nCHANGELOG.md\nrelease-status.json\n"
 
 
@@ -29,7 +34,7 @@ class Repo:
         self.respond(*self.git("rev-parse", "HEAD"), result=R(0, SHA + "\n", ""))
         self.respond(*self.git("rev-parse", "origin/main"), result=R(0, SHA + "\n", ""))
         self.respond(*self.git("tag", "--list"), result=R(0, "v0.1.0\nv0.2.0\nnot-a-tag\n", ""))
-        self.respond(*self.git("log"), result=R(0, "feat(cli): add x (#11)\nchore: tidy (#12)\nfix(y): repair (#13)\nrefactor!: break (#14)\ndocs: words (#15)\n", ""))
+        self.respond(*self.git("log"), result=R(0, log_out("feat(cli): add x (#11)", "chore: tidy (#12)", "fix(y): repair (#13)", "refactor!: break (#14)", "docs: words (#15)"), ""))
         self.respond(*self.git("diff", "--cached", "--name-only"), result=R(0, RELEASE_FILES, ""))
         self.respond("gh", "auth", "status", result=R(0, "", ""))
         self.respond("gh", "run", "list", result=R(0, json.dumps([{"status": "completed", "conclusion": "success"}]), ""))
@@ -259,16 +264,41 @@ def test_a_failing_push_stops_before_the_github_release(repo, capsys):
 
 # release notes
 
-def sh(*subjects):
-    return R(0, "".join(s + "\n" for s in subjects), "")
+def sh(*records):
+    return R(0, log_out(*records), "")
 
 
 def test_only_first_parent_pr_subjects_count(repo):
     repo.respond(*repo.git("log"), result=sh("feat: add a (#5)", "Merge branch 'x'", "fix: direct push",
                                              "fix(b): repair (#6)", "docs: no number (#x)"))
-    assert release.pr_subjects(repo.root, "v0.2.0") == [("feat: add a", 5), ("fix(b): repair", 6)]
+    assert release.pr_subjects(repo.root, "v0.2.0") == [("feat: add a", 5), ("fix: direct push", None),
+                                                        ("fix(b): repair", 6), ("docs: no number (#x)", None)]
     log = next(c for c in repo.fr.calls if c[3:4] == ["log"])
-    assert log[4:] == ["--first-parent", "--format=%s", "v0.2.0..HEAD"]
+    assert log[4:] == ["--first-parent", "--format=%s%x00%b%x1e", "v0.2.0..HEAD"]
+
+
+def test_merge_pull_request_commits_take_the_title_from_the_body(repo):
+    repo.respond(*repo.git("log"), result=sh(("Merge pull request #29 from jonasyr/fix/x", "\n\nfix(security): harden things\n\nlonger text"),
+                                             ("Merge pull request #30 from o/b", "")))
+    assert release.pr_subjects(repo.root, None) == [("fix(security): harden things", 29)]
+
+
+def test_plain_conventional_commits_count_without_a_number(repo):
+    repo.respond(*repo.git("log"), result=sh("feat(wsl): Codex on WSL", "fix!: drop x", "Merge branch 'x'",
+                                             "update stuff", "Release things (#3)"))
+    assert release.pr_subjects(repo.root, None) == [("feat(wsl): Codex on WSL", None), ("fix!: drop x", None),
+                                                    ("Release things", 3)]
+
+
+def test_a_realistic_mixed_history_becomes_one_section(repo):
+    repo.respond(*repo.git("log"), result=sh(
+        "feat(release): notes (#81)", "Merge branch 'main' of github.com:o/r",
+        ("Merge pull request #29 from o/fix/h", "fix(security): hardening 1"),
+        "feat(wsl): Codex on Windows", "chore: tidy", "wip"))
+    prs = release.pr_subjects(repo.root, None)
+    text = release.notes_section("0.3.0", "2026-11-03", prs, "o/r", None)
+    assert "- notes (#81)" in text and "- hardening 1 (#29)" in text and "- Codex on Windows\n" in text
+    assert "tidy" not in text and "wip" not in text and "Merge" not in text
 
 
 def test_without_a_previous_tag_the_whole_history_is_searched(repo):
@@ -530,3 +560,20 @@ def test_parser_routes_cut_and_withdraw(monkeypatch):
     assert calls[1][1][:3] == ("0.2.0", "bad", "0.3.0")
     a = p.parse_args(["release", "withdraw", "0.2.0"])
     assert a.func(a) == 2
+
+
+def test_draft_notes_inside_the_checkout_is_refused(repo, capsys):
+    inside = repo.root / "sub" / "notes.md"
+    assert cut(draft_notes=inside) == 1
+    assert "write the draft outside the checkout" in capsys.readouterr().out
+    assert not inside.exists() and not inside.parent.exists()
+
+
+def test_notes_heading_gets_the_release_day(repo):
+    import datetime
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+    today = datetime.date.today().isoformat()
+    section = f"## [0.3.0] - {yesterday}\n\nWhat is new.\n\n- thing (#1)\n"
+    assert cut(notes=write_notes(repo, section)) == 0
+    changelog = repo.read("CHANGELOG.md")
+    assert f"## [0.3.0] - {today}\n" in changelog and yesterday not in changelog

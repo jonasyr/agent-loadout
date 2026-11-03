@@ -20,6 +20,7 @@ ASSETS = ("bootstrap.sh", "bootstrap.ps1")
 _VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", re.ASCII)
 _ANY_TAG = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", re.ASCII)  # below the floor too
 _PR = re.compile(r"(.*\S)\s+\(#([0-9]+)\)")
+_MERGE_PR = re.compile(r"Merge pull request #([0-9]+) from \S+")
 _CONVENTIONAL = re.compile(r"([a-z]+)(?:\(([^)]*)\))?(!)?:\s*(.*)", re.DOTALL)
 _SUMMARY = "<!-- one to three sentences for users: what this release brings -->"
 _SECTIONS = ("Breaking", "Added", "Changed", "Fixed", "Security")
@@ -121,17 +122,25 @@ def base_tag(root: Path) -> str | None:
     return max(found)[1] if found else None
 
 
-def pr_subjects(root: Path, prev: str | None) -> list[tuple[str, int]]:
-    """(subject, PR number) of the merged PRs on main since prev: first-parent subjects that end in (#N)."""
+def pr_subjects(root: Path, prev: str | None) -> list[tuple[str, int | None]]:
+    """(subject, PR number or None) of what landed on main since prev, first-parent: squash merges (`... (#N)`),
+    merge commits (`Merge pull request #N from ...`, the title is the first body line) and plain conventional commits."""
     span = f"{prev}..HEAD" if prev else "HEAD"
-    res = _git(root, "log", "--first-parent", "--format=%s", span)
+    res = _git(root, "log", "--first-parent", "--format=%s%x00%b%x1e", span)
     if not res.ok:
         raise RuntimeError(f"git log {span} failed: {printable(res.stderr.strip())}")
-    found = []
-    for line in res.stdout.splitlines():
-        m = _PR.fullmatch(line.strip())
-        if m:
+    found: list[tuple[str, int | None]] = []
+    for record in res.stdout.split("\x1e"):
+        subject, _, body = record.strip("\n").partition("\0")
+        subject = subject.strip()
+        if m := _PR.fullmatch(subject):
             found.append((m[1], int(m[2])))
+        elif m := _MERGE_PR.fullmatch(subject):
+            title = next((line.strip() for line in body.splitlines() if line.strip()), "")
+            if title:
+                found.append((title, int(m[1])))
+        elif _CONVENTIONAL.fullmatch(subject):
+            found.append((subject, None))
     return found
 
 
@@ -158,13 +167,13 @@ def _compare_link(version: str, slug: str, prev: str | None) -> str:
     return f"{base}/compare/{prev}...v{version}" if prev else f"{base}/releases/tag/v{version}"
 
 
-def notes_section(version: str, today: str, prs: list[tuple[str, int]], slug: str, prev: str | None) -> str:
+def notes_section(version: str, today: str, prs: list[tuple[str, int | None]], slug: str, prev: str | None) -> str:
     """The Keep a Changelog section for the merged PRs."""
     groups: dict[str, list[str]] = {name: [] for name in _SECTIONS}
     for subject, number in prs:
         name, desc = _classify(subject)
         if name:
-            groups[name].append(f"- {printable(desc)} (#{number})")
+            groups[name].append(f"- {printable(desc)}" + (f" (#{number})" if number else ""))
     parts = [f"## [{version}] - {today}", _SUMMARY]
     shown = [(name, bullets) for name, bullets in groups.items() if bullets]
     if not shown:
@@ -277,6 +286,8 @@ def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], 
         problem = _notes_problem(section, version)
         if problem:
             return _say(f"{problem}; nothing changed")
+        rest = section.partition("\n")[2]
+        section = f"## [{version}] - {datetime.date.today().isoformat()}\n{rest}"  # dated the day it is released
     else:
         try:
             prs = pr_subjects(root, prev)
@@ -284,6 +295,12 @@ def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], 
             return _say(str(exc))
         section = notes_section(version, datetime.date.today().isoformat(), prs, slug, prev).strip()
     if draft_notes is not None:
+        try:
+            inside = draft_notes.resolve().is_relative_to(root.resolve())
+        except OSError:
+            inside = False
+        if inside:
+            return _say("write the draft outside the checkout (e.g. /tmp/notes.md): a file in the checkout makes the release refuse")
         try:
             draft_notes.write_text(section + "\n", encoding="utf-8")
         except OSError as exc:
