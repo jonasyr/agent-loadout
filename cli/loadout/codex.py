@@ -1780,6 +1780,10 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
             tag = _kit_pin(src)  # stable: the kit's release commit
+            held = channels.held_add(channels.codex_source(src), "@") if tag and not channels.is_sha(tag) else None
+            if held:  # only the tag name (git could not name HEAD), and the remote moved that tag
+                lines.append(held)
+                continue
             head = _pinned_head(url, tag) if url else None  # before the clone: never newer than what Codex got
             pin_move = tag is not None or get_dict(_load_record(), src).get("ref") != tag  # the kit's pin may move
             cfg = paths.codex_home() / "config.toml"

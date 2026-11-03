@@ -243,6 +243,19 @@ def pin_moved() -> str | None:
     return tag if tag and tag in moved_tags() else None
 
 
+def held_add(origin, sep: str = "#") -> str | None:
+    """The line to say instead of adding the kit's marketplace by its release tag name (origin bare or already
+    pinned with sep) while the daily check marks that tag moved: an add would fetch the moved commit. None: add."""
+    tag = pin_moved()
+    if not tag or not isinstance(origin, str):
+        return None
+    slug = kit_slug(paths.kit_root())
+    if origin not in (slug, f"{slug}{sep}{tag}"):
+        return None
+    return (f"marketplace {KIT_MARKET}: not added: release {printable(tag)} was changed after it was released. "
+            "Tell the maintainer.")
+
+
 def codex_pin() -> str | None:
     """The commit the kit's Codex marketplace is pinned to on stable: the checked-out release's (move_to's record,
     which current_release checked against HEAD, else HEAD itself, which git describe found at the tag). Codex takes a

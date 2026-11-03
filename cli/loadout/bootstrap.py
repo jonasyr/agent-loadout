@@ -494,6 +494,10 @@ def plugins_plan() -> tuple[list[str], list[tuple[str, str]], list[str]]:
         if not isinstance(origin, str):
             out.append(f"marketplace {name}: skipped, no repo or url in its source (fix it in your personal settings.json)")
             continue
+        held = channels.held_add(origin)
+        if held:  # the settings entry stays; only the add by the moved tag's name is left out
+            out.append(held)
+            continue
         markets.append((name, channels.claude_origin(origin)))
     installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
     plugins = [pid for pid in enabled if pid not in installed]
@@ -509,6 +513,10 @@ def setup_plugins(say=None, planned: tuple | None = None) -> list[str]:
     total, step = len(markets) + len(plugins), 0
     for name, origin in markets:
         step += 1
+        held = channels.held_add(origin)
+        if held:  # a plan from before the daily check marked the tag moved
+            out.append(held)
+            continue
         say(f"  adding marketplace {origin}, a git clone ({step} of {total})…")
         res = runner.run(["claude", "plugin", "marketplace", "add", channels.claude_origin(origin)], timeout=300)
         out.append(f"marketplace {name}: {'added' if res.ok else 'failed: ' + res.stderr.strip()}")
