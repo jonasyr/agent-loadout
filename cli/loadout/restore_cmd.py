@@ -161,6 +161,7 @@ def run_first_install(yes: bool, ask, interactive: bool) -> int:
         print(printable(line))
     if pre is not None:
         kit = paths.kit_root() / "bin" / "loadout"  # the launcher on PATH may be what this restore moved aside
-        run = f'python "{kit}"' if os.name == "nt" else str(kit)
-        print(f"\nthe state this restore replaced is in {pre}  (undo this restore: {run} restore {pre})")
+        import shlex
+        run, where = (f'python "{kit}"', f'"{pre}"') if os.name == "nt" else (shlex.quote(str(kit)), shlex.quote(str(pre)))
+        print(f"\nthe state this restore replaced is in {pre}  (undo this restore: {run} restore {where})")
     return 0 if ok else 1

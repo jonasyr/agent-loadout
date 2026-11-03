@@ -130,8 +130,22 @@ def test_undo_line_uses_the_kit_launcher(fake_home, capsys):
     out = capsys.readouterr().out
     kit = snapshot.paths.kit_root() / "bin" / "loadout"
     line = next(x for x in out.splitlines() if "undo this restore:" in x)
-    prefix = f'python "{kit}"' if os.name == "nt" else str(kit)
+    import shlex
+    prefix = f'python "{kit}"' if os.name == "nt" else shlex.quote(str(kit))
     assert f"(undo this restore: {prefix} restore " in line
+
+
+def test_undo_line_quotes_a_kit_path_with_spaces(fake_home, capsys, monkeypatch, tmp_path):
+    import os
+    import shlex
+    kit = tmp_path / "my kit"
+    monkeypatch.setattr(snapshot.paths, "kit_root", lambda: kit)
+    make(fake_home)
+    restore_cmd.run_first_install(True, None, False)
+    line = next(x for x in capsys.readouterr().out.splitlines() if "undo this restore:" in x)
+    cmd = line.split("(undo this restore: ", 1)[1].rstrip(")")
+    if os.name != "nt":
+        assert shlex.split(cmd)[0] == str(kit / "bin" / "loadout")
 
 
 def test_windows_launcher_files_are_roots(fake_home, monkeypatch):
