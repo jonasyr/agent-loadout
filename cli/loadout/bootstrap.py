@@ -1027,11 +1027,24 @@ def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -
 SNAPSHOT_QUESTION = "\nSave a snapshot of your current setup first ({size}, into {where})? [Y/n] "
 
 
+def _first_install() -> bool:
+    """No earlier loadout setup on this machine. The state folder itself is no sign (main() creates it before any
+    command runs); a snapshot, a recorded setup (managed-settings.json, channel.json) or a bootstrap backup is."""
+    state = paths.state_dir()
+    if snap.first() is not None or any((state / n).exists() for n in ("managed-settings.json", "channel.json")):
+        return False
+    try:
+        from . import backup
+        return not any((b.description or "").startswith("bootstrap") for b in backup.backups())
+    except Exception:
+        return False
+
+
 def _size(n: int) -> str:
     return f"{n / (1024 * 1024):.1f} MB" if n >= 1024 * 1024 else f"{max(1, round(n / 1024))} KB"
 
 
-def _snapshot_step(chosen: dict, ask: Ask, may_ask: bool) -> tuple[str | None, bool]:
+def _snapshot_step(chosen: dict, ask: Ask, may_ask: bool, first: bool = True) -> tuple[str | None, bool]:
     """Archive the setup of the chosen agents (spec: first-install snapshot). Returns (the line saying where, whether
     to go on). Without a terminal, with --yes, or with --snapshot the question is not asked and the answer is yes."""
     found = snap.roots(chosen)
@@ -1042,7 +1055,7 @@ def _snapshot_step(chosen: dict, ask: Ask, may_ask: bool) -> tuple[str | None, b
         if not ui.confirm(lambda q: ask(q) or "y", SNAPSHOT_QUESTION.format(size=_size(snap.estimate(found)), where=where)):
             return None, True
     try:
-        archive = snap.create(found, chosen)
+        archive = snap.create(found, chosen, first=first)
     except OSError as exc:
         print(f"snapshot failed: {exc}")
         if ask is not _no_question and ui.confirm(ask, "Go on without a snapshot? [y/N] "):
@@ -1178,7 +1191,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
                keep_own: bool = False, channel: str | None = None, snapshot: bool | None = None) -> int:
     from . import codex, targets
-    first_install = not paths.state_dir().exists() and snap.latest() is None  # before anything creates loadout's state
+    first_install = _first_install()  # before this run writes anything
     if interactive is None:
         interactive = ui.is_interactive()
     if agents is not None:
@@ -1236,7 +1249,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     chosen, store = decided["choice"]
     snapshot_line = None
     if snapshot is not False and (snapshot or first_install):  # before the first write to an agent folder or startup file
-        snapshot_line, proceed = _snapshot_step(chosen, ask, snapshot is None)
+        snapshot_line, proceed = _snapshot_step(chosen, ask, snapshot is None, first=snap.first() is None)
         if not proceed:
             return 1
     if personal_ok and store:

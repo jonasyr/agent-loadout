@@ -148,8 +148,8 @@ def _anonymous(info: tarfile.TarInfo) -> tarfile.TarInfo:
     return info
 
 
-def create(roots: list[Path], agents: dict[str, bool]) -> Path:
-    """Write the archive into the backups folder and return it. Any failure removes the partial file and raises
+def create(roots: list[Path], agents: dict[str, bool], first: bool = True) -> Path:
+    """Write the archive into the backups folder and return it (`first`: the first-install one, else a later `snapshot-`). Any failure removes the partial file and raises
     OSError."""
     folder = paths.backups_root()
     skipped: list[str] = []
@@ -164,7 +164,7 @@ def create(roots: list[Path], agents: dict[str, bool]) -> Path:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
         n = 1
         while True:
-            candidate = folder / f"first-install-{stamp}{'' if n == 1 else f'-{n}'}.tar.gz"
+            candidate = folder / f"{'first-install' if first else 'snapshot'}-{stamp}{'' if n == 1 else f'-{n}'}.tar.gz"
             try:
                 fd = os.open(candidate, flags, backup.PRIVATE_FILE)
             except FileExistsError:
@@ -198,6 +198,12 @@ def create(roots: list[Path], agents: dict[str, bool]) -> Path:
         if isinstance(exc, (tarfile.TarError, zlib.error, ValueError)):
             raise OSError(str(exc)) from exc
         raise
+
+
+def first() -> Path | None:
+    """The oldest first-install snapshot: the state before loadout's first install (later snapshots are `snapshot-*`)."""
+    found = [p for p in paths.backups_root().glob(PATTERN) if p.is_file() and not p.is_symlink()]
+    return min(found, key=lambda p: p.name, default=None)
 
 
 def latest() -> Path | None:

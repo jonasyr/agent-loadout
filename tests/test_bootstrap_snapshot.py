@@ -74,7 +74,7 @@ def test_snapshot_flag_takes_one_on_a_rerun_without_asking(fake_home, fake_runne
     log = []
     run(asked(log), snapshot=True)
     assert not question_in(log)
-    assert len(archives()) == 2
+    assert len(archives()) == 1 and len(list(paths.backups_root().glob("snapshot-*.tar.gz"))) == 1
 
 
 @pytest.mark.parametrize("kw", [{"interactive": False}, {"yes": True}])
@@ -106,10 +106,10 @@ def test_snapshot_runs_before_any_agent_file_changes(fake_home, fake_runner, mon
     seen = {}
     real_create, real_link = snapshot.create, apply.link_step
 
-    def create(roots, agents):
+    def create(roots, agents, **kw):
         seen["at_create"] = digest()
         seen["claude_dir"] = sorted(p.name for p in (fake_home / ".claude").iterdir())
-        return real_create(roots, agents)
+        return real_create(roots, agents, **kw)
 
     def link_step(*a, **k):
         seen["archive_at_first_write"] = bool(archives())
@@ -125,7 +125,7 @@ def test_snapshot_runs_before_any_agent_file_changes(fake_home, fake_runner, mon
 def test_failed_snapshot_stops_before_changes(fake_home, fake_runner, monkeypatch, capsys):
     seed(fake_home)
 
-    def boom(roots, agents):
+    def boom(roots, agents, **kw):
         raise OSError("disk full")
 
     monkeypatch.setattr(snapshot, "create", boom)
@@ -138,7 +138,7 @@ def test_failed_snapshot_stops_before_changes(fake_home, fake_runner, monkeypatc
 def test_failed_snapshot_can_continue_with_a_yes(fake_home, fake_runner, monkeypatch):
     seed(fake_home)
 
-    def boom(roots, agents):
+    def boom(roots, agents, **kw):
         raise OSError("disk full")
 
     monkeypatch.setattr(snapshot, "create", boom)
@@ -150,3 +150,41 @@ def test_nothing_to_snapshot_asks_nothing(fake_home, fake_runner):
     log = []
     run(asked(log))
     assert not question_in(log) and archives() == []
+
+
+def cli(monkeypatch, *argv, ask=None):
+    """Through the real entry point: main() creates the state folder before bootstrap starts."""
+    from loadout import __main__ as main
+    log = []
+    monkeypatch.setattr(main, "_ask", ask or asked(log))
+    monkeypatch.setattr("loadout.ui.is_interactive", lambda: True)
+    main.main(["bootstrap", "--no-plugins", "--no-adopt", "--agents", "claude", *argv])
+    return log
+
+
+def test_cli_first_run_asks_and_snapshots_second_does_not(fake_home, fake_runner, monkeypatch):
+    seed(fake_home)
+    log = cli(monkeypatch)
+    assert question_in(log) and len(archives()) == 1
+    log = cli(monkeypatch)
+    assert not question_in(log) and len(archives()) == 1
+
+
+def test_cli_declined_first_run_is_not_asked_again(fake_home, fake_runner, monkeypatch):
+    seed(fake_home)
+    log = []
+    cli(monkeypatch, ask=asked(log, "n"))
+    assert question_in(log) and archives() == []
+    log = cli(monkeypatch)
+    assert not question_in(log)
+
+
+def test_later_snapshot_is_not_the_first_install_one(fake_home, fake_runner):
+    seed(fake_home)
+    run(asked([]))
+    first = archives()[0]
+    (fake_home / ".bashrc").write_text("export LATER=1\n")
+    run(asked([]), snapshot=True)
+    assert snapshot.first() == first
+    assert len(list(paths.backups_root().glob("snapshot-*.tar.gz"))) == 1
+    assert len(archives()) == 1

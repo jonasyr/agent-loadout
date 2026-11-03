@@ -136,7 +136,7 @@ def _names(title: str, names: list[str]) -> None:
 def run_first_install(yes: bool, ask, interactive: bool) -> int:
     """Put the first-install snapshot back: show what returns and what is moved aside, ask, restore."""
     from . import snapshot
-    archive = snapshot.latest()
+    archive = snapshot.first()
     if archive is None:
         print("no snapshot of your setup (loadout takes one at the first install; see loadout restore --list)")
         return 1

@@ -80,3 +80,12 @@ def test_bootstrap_snapshot_flags_reach_python(fake_home, monkeypatch):
     main.main(["bootstrap", "--snapshot"])
     main.main(["bootstrap"])
     assert seen == [False, True, None]
+
+
+def test_restore_uses_the_first_snapshot_not_a_later_one(fake_home, capsys):
+    archive = make(fake_home)  # old
+    (fake_home / ".claude" / "settings.json").write_text("later")
+    snapshot.create(snapshot.roots(AGENTS), AGENTS, first=False)
+    assert snapshot.first() == archive
+    restore_cmd.run_first_install(True, lambda q: "", False)
+    assert (fake_home / ".claude" / "settings.json").read_text() == "old"
