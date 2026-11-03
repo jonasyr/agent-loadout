@@ -448,3 +448,18 @@ def test_link_targets_drop_the_windows_extended_prefix(fake_home, monkeypatch):
     (fake_home / ".bashrc").symlink_to(target)
     monkeypatch.setattr(snapshot.os, "readlink", lambda p: "\\\\?\\C:\\Users\\me\\dotfiles\\bashrc")
     assert snapshot.links([fake_home / ".bashrc"]) == [(fake_home / ".bashrc", "C:\\Users\\me\\dotfiles\\bashrc")]
+
+
+def test_archived_link_targets_are_shown_without_the_windows_prefix(fake_home, monkeypatch):
+    target = fake_home / "dotfiles" / "bashrc"
+    target.parent.mkdir()
+    target.write_text("mine")
+    (fake_home / ".bashrc").symlink_to(target)
+    real = os.readlink
+
+    def fake(p, *a, **k):
+        return "\\\\?\\C:\\me\\bashrc" if str(p).endswith(".bashrc") else real(p, *a, **k)
+    monkeypatch.setattr(os, "readlink", fake)
+    archive = snapshot.create([fake_home / ".bashrc"], {"claude": True, "codex": False})
+    monkeypatch.setattr(os, "readlink", real)
+    assert [t for _, t in snapshot.links_in(archive)] == ["C:\\me\\bashrc"]

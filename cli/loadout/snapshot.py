@@ -127,11 +127,16 @@ def _entries(root: Path, skipped: list[str], strict: bool = True):
     yield from visit(root, "")
 
 
+def _plain_target(target: str) -> str:
+    """A link target as people read it: Windows' readlink adds the extended-path prefix \\\\?\\."""
+    from .own import _plain_link_target
+    return _plain_link_target(target)
+
+
 def links(roots: list[Path]) -> list[tuple[Path, str]]:
     """Every symlink among the places to snapshot, with its target: a rollback puts the link back, not what was
     written into the target."""
-    from .own import _plain_link_target  # Windows readlink gives \\?\C:\...
-    return [(path, _plain_link_target(os.readlink(path))) for root in roots for path, st in _entries(root, [], strict=False)
+    return [(path, _plain_target(os.readlink(path))) for root in roots for path, st in _entries(root, [], strict=False)
             if stat.S_ISLNK(st.st_mode)]
 
 
@@ -325,7 +330,7 @@ def links_in(archive: Path) -> list[tuple[str, str]]:
     """(absolute path, target) of the symlinks a restore puts back as links, after the safety checks."""
     try:
         with _open(archive) as tar:
-            return [(str(paths.home().joinpath(*parts)), printable(info.linkname))
+            return [(str(paths.home().joinpath(*parts)), printable(_plain_target(info.linkname)))
                     for info, parts, _ in _plan(tar).safe if info.issym()]
     except _Damaged:
         return []
@@ -474,7 +479,7 @@ def restore(archive: Path) -> tuple[list[str], bool, Path | None]:
                 label = f"{dest} (from the snapshot)"
                 (pre.record_created_dir if info.isdir() else pre.record_created)(dest, label)
                 if info.issym():  # the link is back, what loadout wrote into its target is not
-                    lines.append(f"not rolled back: {printable(str(dest))} is a link to {printable(info.linkname)}")
+                    lines.append(f"not rolled back: {printable(str(dest))} is a link to {printable(_plain_target(info.linkname))}")
                 else:
                     done += 1
             except (tarfile.TarError, OSError) as exc:
