@@ -157,3 +157,9 @@ def test_arg_order_and_type_do_not_count_as_own_settings():
     cfg = {"type": "stdio", "command": "serena", "args": ["start-mcp-server", "--project-from-cwd", "--context=claude-code"],
            "env": {}}
     assert not codex.serena_has_own_settings(cfg, "claude")
+
+
+def test_non_string_args_count_as_own_settings_instead_of_crashing():
+    cfg = {"command": "serena", "args": ["start-mcp-server", ["x"], "--project-from-cwd"]}
+    assert codex.serena_has_own_settings(cfg, "claude")
+    assert codex.serena_has_own_settings({"command": "serena", "args": [{"a": 1}, "x", "y"]}, "codex")

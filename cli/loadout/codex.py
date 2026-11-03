@@ -567,7 +567,8 @@ def serena_has_own_settings(cfg: dict, agent: str) -> bool:
         return True
     if "/" in command or "\\" in command:  # a fixed path is a choice of its own
         return True
-    if not isinstance(args, list) or len(args) != len(ours) or set(args) != set(ours):
+    if (not isinstance(args, list) or not all(isinstance(a, str) for a in args) or len(args) != len(ours)
+            or set(args) != set(ours)):
         return True
     return bool({k for k, v in cfg.items() if v not in ({}, [], "", None)} - _SERENA_PLAIN_KEYS)
 
