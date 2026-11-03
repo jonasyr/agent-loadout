@@ -101,7 +101,7 @@ def session_start(now: float, agent: str | None = None, source: str | None = Non
     if text is not None or extra:
         out = json.dumps({"systemMessage": "\n\n".join(p for p in (text, extra) if p)})
     pull_due = os.environ.get("LOADOUT_NO_AUTO_PULL") != "1" and is_due("last-pull", DAY, now)
-    if pull_due or is_due("last-update-check", WEEK, now):
+    if pull_due or is_due("last-update-check", WEEK, now) or is_due("last-release-check", DAY, now):
         try:
             _spawn_background()
         except Exception:  # the notice above was already taken: still show it
@@ -346,7 +346,9 @@ def _maintain(now: float) -> None:
         pass  # opt-out: no daily kit/personal sync (see README, Security & trust)
     elif is_due("last-pull", DAY, now):
         touch("last-pull", now)
-        pulled = [pull(root).pulled for root in (paths.kit_root(), paths.personal_root()) if (root / ".git").exists()]
+        from . import channels
+        roots = (paths.personal_root(),) if channels.effective() == "stable" else (paths.kit_root(), paths.personal_root())
+        pulled = [pull(root).pulled for root in roots if (root / ".git").exists()]  # stable moves only by `loadout update`
         if any(pulled):
             from . import targets
             from .jsonio import InvalidJSON
@@ -404,6 +406,15 @@ def _maintain(now: float) -> None:
                         notify(f"loadout: {line}")
             except Exception as exc:  # never crash in the background; surface next session
                 notify(f"loadout: could not refresh Codex after sync: {exc}")
+    _touch_lock()
+    try:
+        from . import channels
+        channels.migration_notice()
+        if is_due("last-release-check", DAY, now):
+            touch("last-release-check", now)  # offline: tried again tomorrow
+            channels.check_releases(now)
+    except Exception as exc:  # never crash in the background; surface next session
+        notify(f"loadout: could not check for releases: {exc}")
     _touch_lock()
     if is_due("last-update-check", WEEK, now):
         touch("last-update-check", now)

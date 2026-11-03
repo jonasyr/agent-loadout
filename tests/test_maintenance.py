@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from loadout import maintenance as m, paths, runner, versions
+from loadout import channels, maintenance as m, paths, runner, versions
 
 
 def test_is_due_and_touch(fake_home):
@@ -28,6 +28,7 @@ def test_session_start_spawns_only_when_due(fake_home, monkeypatch):
     assert spawned == [1]
     m.touch("last-pull", 5.0)
     m.touch("last-update-check", 5.0)
+    m.touch("last-release-check", 5.0)
     m.session_start(6.0)
     assert spawned == [1]
 
@@ -118,6 +119,7 @@ def test_maintain_survives_offline(fake_home, fake_runner, monkeypatch):
         raise OSError("offline")
 
     monkeypatch.setattr(versions, "_fetch_json", boom)
+    channels.set_channel("dev")  # no first-run channel notice
     monkeypatch.setattr("loadout.rtk_config.wanted", lambda: False)  # its sync notice is not what this test is about
     m.maintain(100.0)  # must not raise
     assert attempts, "latest_version never reached the network path"
@@ -244,6 +246,7 @@ def test_session_start_no_auto_pull_does_not_count_pull_as_due(fake_home, monkey
     monkeypatch.setattr(m, "_spawn_background", lambda: spawned.append(1))
     monkeypatch.setenv("LOADOUT_NO_AUTO_PULL", "1")
     m.touch("last-update-check", 5.0)  # weekly check fresh, last-pull never stamped
+    m.touch("last-release-check", 5.0)
     m.session_start(6.0)
     assert spawned == []
 
@@ -253,6 +256,7 @@ def test_session_start_no_auto_pull_still_spawns_for_weekly_check(fake_home, mon
     monkeypatch.setattr(m, "_spawn_background", lambda: spawned.append(1))
     monkeypatch.setenv("LOADOUT_NO_AUTO_PULL", "1")
     m.touch("last-update-check", 5.0)
+    m.touch("last-release-check", 5.0)
     m.session_start(5.0 + m.WEEK)
     assert spawned == [1]
 

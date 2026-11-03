@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import maintenance, paths, runner
 from .backup import Backup
 from .jsonio import load_json, save_json
+from .out import printable
 
 FLOOR = (0, 2, 0)
 SOAK = 3 * maintenance.DAY
@@ -203,3 +205,99 @@ def kit_slug(root: Path) -> str:
     res = runner.run(["git", "-C", str(root), "remote", "get-url", "origin"], timeout=30)
     m = _SLUG.fullmatch(res.stdout.strip()) if res.ok else None
     return m[1] if m else DEFAULT_SLUG
+
+
+def last_status() -> Status:
+    """The release status the last daily check fetched (empty when none): `loadout check` needs no network."""
+    raw = _load_releases().get("status")
+    status = Status()
+    if not isinstance(raw, dict):
+        return status
+    urgent = raw.get("urgent")
+    if isinstance(urgent, list):
+        status.urgent = {v for v in map(_version, urgent) if v}
+    withdrawn = raw.get("withdrawn")
+    for version, item in (withdrawn.items() if isinstance(withdrawn, dict) else []):
+        if _version(version) and isinstance(item, dict) and isinstance(item.get("reason"), str):
+            status.withdrawn[version] = {"reason": item["reason"], "use": _version(item.get("use"))}
+    return status
+
+
+def _store_status(status: Status) -> None:
+    data = _load_releases()
+    data["status"] = {"urgent": sorted(status.urgent), "withdrawn": status.withdrawn}
+    save_json(_releases_path(), data)
+
+
+def changelog_lines(root: Path, tag: str, limit: int = 3) -> list[str]:
+    """The first bullets of the tag's `## {version}` section in its CHANGELOG.md; [] on any failure."""
+    if parse_tag(tag) is None:
+        return []
+    git = ["git", "-C", str(root)]
+    env = _git_env()
+    if not runner.run([*git, "fetch", "origin", "tag", tag, "--no-tags"], timeout=60, env=env).ok:
+        return []
+    res = runner.run([*git, "show", f"{tag}:CHANGELOG.md"], timeout=60, env=env)
+    if not res.ok:
+        return []
+    heading, inside, out = "## " + tag[1:], False, []
+    for line in res.stdout.splitlines():
+        if line.startswith("## "):
+            if inside:
+                break
+            inside = line == heading or line.startswith(heading + " ")
+        elif inside and line.lstrip().startswith(("- ", "* ")):
+            text = printable(line.lstrip()[2:].strip())[:120]
+            if text:
+                out.append(text)
+                if len(out) >= limit:
+                    break
+    return out
+
+
+def migration_notice() -> None:
+    """Once, for a machine with no channel setting yet: it follows main, and stable is one command away."""
+    if _channel_path().exists() or maintenance._stamp("channel-notice").exists():
+        return
+    maintenance.touch("channel-notice", time.time())
+    maintenance.notify("loadout now has release channels: you are on dev (main). "
+                       "For tested releases only: loadout channel stable")
+
+
+def check_releases(now: float) -> None:
+    """The daily step: remember the release tags on origin, queue alarms for moved ones and, on stable only, one
+    notice per withdrawn current release or newly offered release. Offline: nothing recorded or said."""
+    root = paths.kit_root()
+    tags = remote_tags(root)
+    if tags is None:
+        return
+    for name in record_seen(tags, now):
+        maintenance.notify(f"loadout: release {printable(name)} was changed after it was released; it is not "
+                           "offered. Tell the maintainer.")
+    if effective() != "stable":
+        return
+    status = release_status(root)
+    _store_status(status)
+    tag = current_release(root)
+    current = parse_tag(tag) if tag else None
+    text = tag[1:] if tag and current else None
+    if text in status.withdrawn:
+        data = _load_releases()
+        done = data.get("withdrawn_notified")
+        done = done if isinstance(done, list) else []
+        if text not in done:
+            info = status.withdrawn[text]
+            fix = f"run loadout update (to {info['use']})" if info.get("use") else "run loadout restore"
+            maintenance.notify(f"loadout: the release you run ({tag}) was withdrawn: "
+                               f"{printable(info['reason'])}; {fix}")
+            data["withdrawn_notified"] = [*done, text]
+            save_json(_releases_path(), data)
+        return
+    offer = eligible(current, now, status)
+    if offer is None or notified(offer):
+        return
+    lines = changelog_lines(root, offer)
+    since = f"since {text or 'a development version'}"
+    detail = f"{since}: {'; '.join(lines)}" if lines else since
+    maintenance.notify(f"loadout {offer[1:]} is available ({detail}); run loadout update")
+    mark_notified(offer)
