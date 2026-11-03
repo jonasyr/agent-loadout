@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, NoReturn
 
-from . import apply, bootstrap, check, codex, locks, maintenance, out, paths, pkgmgr, runner, steps, targets, ui, versions
+from . import apply, bootstrap, channels, check, codex, locks, maintenance, out, paths, pkgmgr, runner, steps, targets, ui, versions
 from .backup import Backup
 from .jsonio import get_dict, load_json, write_atomic_bytes
 from .secrets import redact
@@ -80,13 +80,13 @@ def _codex_item(items: list) -> tuple | None:
             groups.append((f"skip marketplace {name} (unchanged since {_date(at)})", []))
         elif market is None:  # no record of it: Codex may have it already, and then upgrades it
             groups.append((f"add or refresh marketplace {name}",
-                           [[exe, "plugin", "marketplace", "add", name, "--json"],
+                           [[exe, "plugin", "marketplace", "add", out.printable(channels.codex_source(src)), "--json"],
                             [exe, "plugin", "marketplace", "upgrade", f"<{name}'s marketplace>",
                              "(only when Codex had it)"]]))
         else:
-            groups.append((f"refresh marketplace {name}", [[exe, "plugin", "marketplace", "add", name, "--json"],
-                                                           [exe, "plugin", "marketplace", "upgrade",
-                                                            out.printable(market)]]))
+            groups.append((f"refresh marketplace {name}",
+                           [[exe, "plugin", "marketplace", "add", out.printable(channels.codex_source(src)), "--json"],
+                            [exe, "plugin", "marketplace", "upgrade", out.printable(market)]]))
         for plugin in names:
             pid = f"{plugin}@{market}" if market else f"{plugin}@<{src}'s marketplace>"  # its name comes from the add
             if pid in skip_p:

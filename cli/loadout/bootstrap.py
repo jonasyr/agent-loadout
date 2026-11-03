@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import adopt, apply, catalog, check, out, paths, runner, secrets, settings_merge, ui, vscode, wsl
+from . import adopt, apply, catalog, channels, check, out, paths, runner, secrets, settings_merge, ui, vscode, wsl
 from .backup import Backup
 from .jsonio import get_dict, load_json
 from .secrets import redact
@@ -494,7 +494,7 @@ def plugins_plan() -> tuple[list[str], list[tuple[str, str]], list[str]]:
         if not isinstance(origin, str):
             out.append(f"marketplace {name}: skipped, no repo or url in its source (fix it in your personal settings.json)")
             continue
-        markets.append((name, origin))
+        markets.append((name, channels.claude_origin(origin)))
     installed = get_dict(load_json(paths.claude_home() / "plugins" / "installed_plugins.json"), "plugins")
     plugins = [pid for pid in enabled if pid not in installed]
     return out, markets, plugins
@@ -510,7 +510,7 @@ def setup_plugins(say=None, planned: tuple | None = None) -> list[str]:
     for name, origin in markets:
         step += 1
         say(f"  adding marketplace {origin}, a git clone ({step} of {total})…")
-        res = runner.run(["claude", "plugin", "marketplace", "add", origin], timeout=300)
+        res = runner.run(["claude", "plugin", "marketplace", "add", channels.claude_origin(origin)], timeout=300)
         out.append(f"marketplace {name}: {'added' if res.ok else 'failed: ' + res.stderr.strip()}")
     for plugin_id in plugins:
         step += 1

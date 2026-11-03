@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from . import catalog, inventory, out, own, paths, pkgmgr, runner, secrets, targets, ui
+from . import catalog, channels, inventory, out, own, paths, pkgmgr, runner, secrets, targets, ui
 from .backup import Backup
 from .inventory import BUNDLED_CLAUDE, Verdict
 from .jsonio import InvalidJSON, load_json, save_json
@@ -430,7 +430,8 @@ def _apply_marketplace(v: Verdict, bk: Backup) -> str:
     origin = src.get("repo") or src.get("url") or src.get("path")
     if not origin:
         return NotDone(f"marketplace {v.item.name}: skipped (no source to restore from)")
-    bk.record_command(f"marketplace {v.item.name}", ["claude", "plugin", "marketplace", "add", origin], source=src)
+    bk.record_command(f"marketplace {v.item.name}", ["claude", "plugin", "marketplace", "add", channels.claude_origin(origin)],
+                      source=src)
     extra = {k: val for k, val in src.items() if k not in ("source", "repo", "url", "path")}
     note = f" (restore re-adds {origin}; also recorded: {json.dumps(extra)})" if extra else ""
     return _claude_line(f"marketplace {v.item.name}: ", ["plugin", "marketplace", "remove", v.item.name], note)

@@ -210,6 +210,31 @@ def kit_slug(root: Path) -> str:
     return m[1] if m else DEFAULT_SLUG
 
 
+def pin() -> str | None:
+    """The release tag the kit's marketplaces are pinned to: the checked-out release on stable, else None."""
+    if effective() != "stable":
+        return None
+    return current_release(paths.kit_root())
+
+
+def _pinned(origin, sep: str) -> str:
+    if not isinstance(origin, str):
+        return origin
+    tag = pin()
+    return f"{origin}{sep}{tag}" if tag and origin == kit_slug(paths.kit_root()) else origin
+
+
+def claude_origin(origin: str) -> str:
+    """`owner/repo#tag` for the kit's own marketplace on stable (Claude Code refuses an add whose source differs
+    from the settings entry), the origin unchanged otherwise."""
+    return _pinned(origin, "#")
+
+
+def codex_source(src: str) -> str:
+    """`owner/repo@tag` for the kit's own marketplace on stable (Codex writes `ref = tag`), else unchanged."""
+    return _pinned(src, "@")
+
+
 def last_status() -> Status:
     """The release status the last daily check fetched (empty when none): `loadout check` needs no network."""
     raw = _load_releases().get("status")

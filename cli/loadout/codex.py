@@ -7,7 +7,7 @@ import os
 import re
 from pathlib import Path
 
-from . import paths, runner
+from . import channels, paths, runner
 from .jsonio import InvalidJSON, get_dict, get_list, load_json, save_json
 
 MIN_VERSION = (0, 161)
@@ -1495,7 +1495,7 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
         market = entry.get("name") if isinstance(entry, dict) else None
         if not url or not isinstance(market, str) or market not in listed or not _same_source(listed[market], url):
             continue  # a marketplace of that name from another source is refreshed as before
-        head = remote_head(url, None)
+        head = remote_head(url, channels.pin() if channels.codex_source(src) != src else None)
         if head is None or head != entry.get("head"):
             continue
         pids = [f"{n}@{market}" for n in names]
@@ -1714,7 +1714,8 @@ def _readd(exe: str, src: str, market: str, bk) -> tuple[bool, str]:
     res = runner.run([exe, "plugin", "marketplace", "remove", market], timeout=120)
     if res.ok:
         _keep_lock()
-        res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+        res = runner.run([exe, "plugin", "marketplace", "add", channels.codex_source(src), "--json"],
+                         timeout=CLONE_TIMEOUT)
         info = _json(res.stdout) if res.ok else None
         if isinstance(info, dict) and "marketplaceName" in info:
             if saved is not None:
@@ -1765,9 +1766,11 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             step += 1
             say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
-            head = remote_head(url, None) if url else None  # before the clone: never newer than what Codex got
+            tag = channels.pin() if channels.codex_source(src) != src else None  # stable: the kit's release
+            head = remote_head(url, tag) if url else None  # before the clone: never newer than what Codex got
             _keep_lock()
-            res = runner.run([exe, "plugin", "marketplace", "add", src, "--json"], timeout=CLONE_TIMEOUT)
+            res = runner.run([exe, "plugin", "marketplace", "add", channels.codex_source(src), "--json"],
+                             timeout=CLONE_TIMEOUT)
             if not res.ok and _NO_PLUGIN_COMMAND in res.stderr:  # an extension codex from before `codex plugin`
                 return lines + [PLUGINS_OLD], installed
             info = _json(res.stdout) if res.ok else None
@@ -1785,7 +1788,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                     line = (f"marketplace {market}: failed to upgrade ({_tail(up)}); its installed plugins stay "
                             "at the previous version")
                     if _codex_timed_out(up):  # Codex's fixed 30 s clone limit: `add` has none (ADR 0042)
-                        blockers, running = _table_blockers(market, src), None
+                        blockers, running = _table_blockers(market, channels.codex_source(src)), None
                         if not blockers and _table_text_kept(market):
                             running = codex_running()
                         if blockers:
