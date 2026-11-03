@@ -32,7 +32,7 @@ eval_guard() {
     *) echo "refusing to scaffold: the loadout-eval-stub directory is not first on PATH; run the suite only via plugins/loadout/evals/run.sh" >&2; return 1 ;;
   esac
   local tool
-  for tool in loadout playwright-cli chromium; do
+  for tool in loadout playwright-cli chromium gh; do
     if [ "$(command -v "$tool")" != "$first/$tool" ]; then
       echo "refusing to scaffold: $tool does not resolve to the eval stub in $first" >&2; return 1
     fi

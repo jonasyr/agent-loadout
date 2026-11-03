@@ -127,6 +127,7 @@ def _stub_dir(tmp_path, name="loadout-eval-stub.test"):
     shutil.copy(EVALS / "bin/loadout", stub / "loadout")
     shutil.copy(EVALS / "bin/playwright-cli", stub / "playwright-cli")
     shutil.copy(EVALS / "bin/browser-stub", stub / "chromium")
+    shutil.copy(EVALS / "bin/gh", stub / "gh")
     for f in stub.iterdir():
         f.chmod(0o755)
     return stub
