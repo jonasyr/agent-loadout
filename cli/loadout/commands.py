@@ -224,8 +224,8 @@ def _register_bootstrap(sub):
     p.add_argument("--use-loadout", action="store_true",
                    help="remove your own Serena (a plain copy of loadout's; a tuned one stays) so loadout's runs; backed up")
     p.add_argument("--keep-own", action="store_true", help="keep your own Serena and ask nothing about it")
-    p.add_argument("--channel", choices=("stable", "dev"), default="stable",
-                   help="stable follows tested releases (default); dev follows main")
+    p.add_argument("--channel", choices=("stable", "dev"), default=None,
+                   help="stable follows tested releases (the default for a new install); dev follows main")
     p.add_argument("--without-claude-cli", action="store_true",
                    help="with VS Code's Claude Code extension: skip the optional Claude Code CLI (loadout sets Claude "
                         "Code up for the extension; the CLI is optional, the extension runs its own claude)")

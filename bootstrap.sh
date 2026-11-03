@@ -67,12 +67,12 @@ main() {
   local repo_url="${LOADOUT_REPO_URL:-https://github.com/jonasyr/agent-loadout}"  # LOADOUT_REPO_URL/LOADOUT_REF: tests only
   local ref="${LOADOUT_REF:-main}"
 
-  local dir="" piped=0 src kit channel=stable tag
+  local dir="" piped=0 src kit channel=stable tag given=0
   local args=()
   while [ $# -gt 0 ]; do
     case "$1" in
-      --channel) channel="${2:?--channel needs stable or dev}"; args+=("$1" "$2"); shift 2 ;;
-      --channel=*) channel="${1#--channel=}"; args+=("$1"); shift ;;
+      --channel) channel="${2:?--channel needs stable or dev}"; given=1; args+=("$1" "$2"); shift 2 ;;
+      --channel=*) channel="${1#--channel=}"; given=1; args+=("$1"); shift ;;
       --dir) dir="${2:?--dir needs a path}"; shift 2 ;;
       --dir=*) dir="${1#--dir=}"; shift ;;
       *) args+=("$1"); shift ;;
@@ -133,6 +133,7 @@ main() {
       elif tag="$(pick_tag "$kit")"; then
         git -C "$kit" checkout -q --detach "refs/tags/$tag" || { echo "could not check out $tag in $kit" >&2; exit 1; }
         echo "using release $tag"
+        [ "$given" = 1 ] || args+=(--channel stable)  # a new install records its channel; a re-run forwards nothing
       else
         rm -rf "$kit"  # the clone this run just made; nothing of the user's
         no_release

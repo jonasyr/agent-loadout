@@ -13,7 +13,7 @@ function Fail($msg) {
 }
 $repoUrl = if ($env:LOADOUT_REPO_URL) { $env:LOADOUT_REPO_URL } else { 'https://github.com/jonasyr/agent-loadout' }
 $ref = if ($env:LOADOUT_REF) { $env:LOADOUT_REF } else { 'main' }
-$dir = $null; $rest = @(); $channel = 'stable'
+$dir = $null; $rest = @(); $channel = 'stable'; $given = $false
 for ($i = 0; $i -lt $args.Count; $i++) {
   if ($args[$i] -eq '--dir') {
     if ($i + 1 -ge $args.Count) { Fail '--dir needs a path'; return }
@@ -22,9 +22,9 @@ for ($i = 0; $i -lt $args.Count; $i++) {
   elseif ($args[$i] -like '--dir=*') { $dir = $args[$i].Substring(6) }
   elseif ($args[$i] -eq '--channel') {
     if ($i + 1 -ge $args.Count) { Fail '--channel needs stable or dev'; return }
-    $channel = $args[$i + 1]; $rest += $args[$i], $args[$i + 1]; $i++
+    $channel = $args[$i + 1]; $given = $true; $rest += $args[$i], $args[$i + 1]; $i++
   }
-  elseif ($args[$i] -like '--channel=*') { $channel = $args[$i].Substring(10); $rest += $args[$i] }
+  elseif ($args[$i] -like '--channel=*') { $channel = $args[$i].Substring(10); $given = $true; $rest += $args[$i] }
   else { $rest += $args[$i] }
 }
 if ($channel -cnotin 'stable', 'dev') { Fail '--channel: use stable or dev'; return }
@@ -119,6 +119,7 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
       git -C $kit checkout -q --detach "refs/tags/$tag"
       if ($LASTEXITCODE -ne 0) { Fail "could not check out $tag in $kit"; return }
       Write-Host "using release $tag"
+      if (-not $given) { $rest += '--channel', 'stable' }  # a new install records its channel; a re-run forwards nothing
     }
   }
 }

@@ -136,7 +136,7 @@ def test_unknown_moved_or_withdrawn_tag_is_refused(fake_home, fake_runner, tmp_p
     channels.record_seen({"v0.3.0": "e" * 40}, NOW + 1)  # moved
     assert "changed after" in channels.move_to(kit, "v0.3.0", bk)
     channels.record_seen({"v0.4.0": TAG_SHA}, NOW)
-    channels._store_status(channels.Status(withdrawn={"0.4.0": {"reason": "bad", "use": None}}))
+    channels.store_status(channels.Status(withdrawn={"0.4.0": {"reason": "bad", "use": None}}))
     assert "withdrawn" in channels.move_to(kit, "v0.4.0", bk)
     assert not bk.recorded and not {"fetch", "checkout"} & set(_verbs(fake_runner))
 

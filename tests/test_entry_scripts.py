@@ -347,7 +347,27 @@ def test_sh_picks_newest_soaked_annotated_tag(env, tmp_path):
     p, kit = _piped(env, tmp_path, "--install")
     assert p.returncode == 0, p.stderr
     assert (kit / "VERSION").read_text() == "v0.2.0"
-    assert "python bin/loadout bootstrap --install" in env["log"].read_text()
+    assert "python bin/loadout bootstrap --install --channel stable [tty=" in env["log"].read_text()
+
+
+def test_sh_from_an_existing_checkout_forwards_no_channel(env, tmp_path):
+    kit = tmp_path / "kit"
+    _fake_clone(kit)
+    shutil.copy(SCRIPT, kit / "bootstrap.sh")
+    env["stub"]("uv", env["uv_ok"])
+    assert _run(env, [str(kit / "bootstrap.sh"), "--install"], cwd=tmp_path).returncode == 0
+    assert "channel" not in env["log"].read_text()
+
+
+def test_sh_reused_clone_forwards_no_channel(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.1.0", False, 9), ("v0.2.0", True, 5)]))
+    env["vars"]["LOADOUT_REF"] = "v0.1.0"
+    _piped(env, tmp_path)
+    del env["vars"]["LOADOUT_REF"]
+    env["log"].unlink()
+    p, _ = _piped(env, tmp_path, "--install")
+    assert p.returncode == 0, p.stderr
+    assert "channel" not in env["log"].read_text()
 
 
 def test_sh_skips_lightweight_below_floor_and_unsoaked_tags(env, tmp_path):
@@ -415,7 +435,7 @@ def test_sh_reuse_leaves_a_clone_with_local_commits(env, tmp_path):
 @pytest.mark.skipif(not shutil.which("pwsh"), reason="needs PowerShell")
 def test_ps1_tag_pick_matches_sh(env, tmp_path):
     repo = _release_repo(tmp_path, MIXED)
-    text = (paths.kit_root() / "bootstrap.ps1").read_text()
+    text = (paths.kit_root() / "bootstrap.ps1").read_bytes().decode().replace("\r\n", "\n")  # a CRLF checkout cuts the same
     start = text.index("function Get-ReleaseTag")
     end = text.index("\n}\n", start) + 3
     p = subprocess.run(["pwsh", "-NoProfile", "-Command", text[start:end] + f"\nGet-ReleaseTag '{repo}'"],

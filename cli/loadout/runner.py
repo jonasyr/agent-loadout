@@ -217,7 +217,7 @@ def spawn_detached(cmd: list[str], cwd: str) -> None:
     subprocess.Popen(cmd, **kwargs)
 
 
-PROCESS_ONLY = ("LOADOUT_UPDATE_PULLED", "LOADOUT_UPDATE_BACKUP")  # loadout's own markers: never passed on to claude, codex or an installer
+PROCESS_ONLY = ("LOADOUT_UPDATE_PULLED", "LOADOUT_UPDATE_BACKUP", "LOADOUT_BOOTSTRAP_MOVED")  # loadout's own markers: never passed on to claude, codex or an installer
 
 
 def run(cmd: list[str], cwd: str | None = None, timeout: float = 300, env: dict | None = None) -> Result:

@@ -257,7 +257,7 @@ def last_status() -> Status:
     return status
 
 
-def _store_status(status: Status) -> None:
+def store_status(status: Status) -> None:
     data = _load_releases()
     data["status"] = {"urgent": sorted(status.urgent), "withdrawn": status.withdrawn}
     save_json(_releases_path(), data)
@@ -298,7 +298,7 @@ def migration_notice() -> None:
                        "For tested releases only: loadout channel stable")
 
 
-def _alarm(moved: list[str]) -> None:
+def alarm(moved: list[str]) -> None:
     for name in moved:
         maintenance.notify(f"loadout: release {printable(name)} was changed after it was released; it is not "
                            "offered. Tell the maintainer.")
@@ -311,11 +311,11 @@ def find_offer(root: Path, now: float, current: tuple[int, int, int] | None) -> 
     tags = remote_tags(root)
     if tags is None:
         return None, "the release tags could not be read"
-    _alarm(record_seen(tags, now))
+    alarm(record_seen(tags, now))
     status = release_status(root)
     if status is None:
         return None, "the release status could not be read"
-    _store_status(status)
+    store_status(status)
     return eligible(current, now, status), None
 
 
@@ -355,13 +355,13 @@ def check_releases(now: float) -> None:
     tags = remote_tags(root)
     if tags is None:
         return
-    _alarm(record_seen(tags, now))
+    alarm(record_seen(tags, now))
     if effective() != "stable":
         return
     status = release_status(root)
     if status is None:  # unknown: keep the stored status, offer nothing
         return
-    _store_status(status)
+    store_status(status)
     tag = current_release(root)
     current = parse_tag(tag) if tag else None
     text = tag[1:] if tag and current else None

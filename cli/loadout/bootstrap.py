@@ -1043,19 +1043,27 @@ def _this_machine(chosen: dict, gate, vscode_wsl: bool) -> None:
         out.problem(line)
 
 
-def _channel_step(channel: str, bk: Backup) -> None:
+MOVED = "LOADOUT_BOOTSTRAP_MOVED"  # process-only marker: the run continued in a release it moved to; never again
+
+
+def _channel_step(channel: str | None, bk: Backup) -> None:
     """Record the channel, seed releases.json with the tags the remote has now (first seen now), and on stable leave
-    a withdrawn release for the one its status names. Nothing here stops the run: offline, it only notes."""
+    a withdrawn release for the one its status names. Nothing here stops the run: offline, it only notes.
+    channel None (no --channel: a re-run) keeps the stored one; a machine without one stays as it is (dev)."""
     import time
     root = paths.kit_root()
-    if channels.get() != channel:  # a re-run with the same channel makes no new backup
+    if channel is None:
+        channel = channels.get()
+        if channel is None:
+            return
+    elif channels.get() != channel:  # a re-run with the same channel makes no new backup
         channels.set_channel(channel, bk)
     tags = channels.remote_tags(root)
     if tags is None:
         if channel == "stable":
             out.problem("could not read the release tags (offline?); loadout update checks again")
         return
-    channels.record_seen(tags, time.time())
+    channels.alarm(channels.record_seen(tags, time.time()))
     if channel != "stable":
         return
     current = channels.current_release(root)
@@ -1065,7 +1073,7 @@ def _channel_step(channel: str, bk: Backup) -> None:
     entry = status.withdrawn.get(current[1:])
     if entry is None:
         return
-    channels._store_status(status)  # move_to checks the target against the stored status
+    channels.store_status(status)  # move_to checks the target against the stored status
     use = entry.get("use")
     if not use:
         out.problem(f"release {current} was withdrawn ({entry['reason']}) and no other release is named; "
@@ -1076,13 +1084,17 @@ def _channel_step(channel: str, bk: Backup) -> None:
         out.problem(f"release {current} was withdrawn ({entry['reason']}); {problem}")
     else:
         out.problem(f"release {current} was withdrawn ({entry['reason']}); moved to v{use}")
+        if not os.environ.get(MOVED):  # the code that is running is the withdrawn release: continue in the new one
+            import sys
+            os.environ[MOVED] = "1"
+            runner.continue_in([sys.executable, str(root / "bin" / "loadout"), *sys.argv[1:]])
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
               vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
-              keep_own: bool = False, channel: str = "stable") -> int:
+              keep_own: bool = False, channel: str | None = None) -> int:
     from . import targets
     if use_loadout and keep_own:
         print("--use-loadout and --keep-own exclude each other")
@@ -1098,7 +1110,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
                answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
                vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
-               keep_own: bool = False, channel: str = "stable") -> int:
+               keep_own: bool = False, channel: str | None = None) -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
