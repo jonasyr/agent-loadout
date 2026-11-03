@@ -22,7 +22,7 @@ Codex's source shows a way around it:
   - a marketplace frozen by `autoUpdate: false` (daily sync);
   - Codex turned off in `targets.json`.
 - **When a table is left alone:** loadout says so and leaves the table in two cases:
-  - your `[marketplaces.<name>]` sets `ref_name` or `sparse_paths` that `add` would not write again;
+  - your `[marketplaces.<name>]` sets `ref` (the pin `add <source>@<ref>` or `--ref` writes; also the older spelling `ref_name`) or `sparse_paths` that `add` would not write again;
   - the table is not a plain header table (an inline table, dotted keys), so its text could not be put back byte for byte. Any quoting of the header (`["marketplaces".name]`) is fine.
 - **Never while Codex runs.** During the re-add the table is missing for a while, and a running Codex could clone the marketplace itself or rewrite `config.toml`. `codex.codex_running()` checks processes on this OS:
   - Linux: `/proc`;

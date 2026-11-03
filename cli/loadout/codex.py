@@ -1594,9 +1594,10 @@ def _table_blockers(market: str, src: str) -> list[str]:
     """The keys of the user's table that `marketplace add <src>` would not write again (sorted)."""
     table = _market_table(market) or {}
     out = []
-    ref = table.get("ref_name")
-    if ref and not src.endswith(f"@{ref}"):
-        out.append("ref_name")
+    for key in ("ref", "ref_name"):  # Codex writes `ref`; `ref_name` is kept as an older spelling
+        ref = table.get(key)
+        if ref and not src.endswith(f"@{ref}"):
+            out.append(key)
     if table.get("sparse_paths"):
         out.append("sparse_paths")
     return sorted(out)
