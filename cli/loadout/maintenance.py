@@ -167,14 +167,15 @@ def _refusal(code: int, stderr: str) -> tuple[str, list[str]] | None:
         return None
     lines = stderr.splitlines()
     for i, line in enumerate(lines):
-        if "would be overwritten by merge:" in line:
+        if "would be overwritten by merge:" in line or "would be overwritten by checkout:" in line:
             files = []
             for item in lines[i + 1:]:
                 if not item.startswith("\t"):
                     break
                 files.append(redact(item[1:]))
             what = "untracked files" if "untracked working tree files" in line else "local changes"
-            return f"{what} the pull would overwrite", files
+            action = "checkout" if "by checkout:" in line else "pull"
+            return f"{what} the {action} would overwrite", files
     if "Not possible to fast-forward" in stderr or "diverg" in low:
         return "your branch and its upstream have diverged", []
     first = next((l.strip() for l in lines if l.strip()), "")

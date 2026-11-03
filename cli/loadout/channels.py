@@ -306,3 +306,78 @@ def check_releases(now: float) -> None:
     detail = f"{since}: {'; '.join(lines)}" if lines else since
     maintenance.notify(f"loadout {offer[1:]} is available ({detail}); run loadout update")
     mark_notified(offer)
+
+
+def local_changes(root: Path, base: str) -> list[str]:
+    """What a checkout would leave behind or fight with: tracked edits (untracked files never block; git refuses
+    itself when one is in the way) and the commits not reachable from `base` (`--tags` or `origin/main`)."""
+    git, env = ["git", "-C", str(root)], _git_env()
+    out = []
+    res = runner.run([*git, "status", "--porcelain", "--untracked-files=no"], timeout=60, env=env)
+    for line in res.stdout.splitlines():
+        if len(line) > 3 and not line.startswith("??"):
+            out.append(printable(line[3:]))
+    res = runner.run([*git, "log", "--format=%h %s", "HEAD", "--not", base], timeout=60, env=env)
+    out += [f"commit {printable(line)}" for line in res.stdout.splitlines() if line.strip()]
+    return out
+
+
+def _refuse_text(root: Path, found: list[str]) -> str:
+    return (f"local changes in {root}: {', '.join(found)}; commit, stash or remove them, "
+            "or run loadout from a clean checkout")
+
+
+def _record_undo(root: Path, bk: Backup) -> str | None:
+    old = runner.run(["git", "-C", str(root), "rev-parse", "HEAD"], timeout=30).stdout.strip()
+    if not _SHA.fullmatch(old):
+        return f"could not read the current commit of {root}"
+    bk.record_command("kit checkout", ["git", "-C", str(root), "checkout", "--detach", old])
+    return None
+
+
+def _failed(res, what: str) -> str:
+    found = maintenance._refusal(res.returncode, res.stderr or "")
+    if found is None:
+        first = next((l.strip() for l in (res.stderr or res.stdout or "").splitlines() if l.strip()), "")
+        return f"{what} failed: {printable(maintenance.redact(first))[:300] or 'the remote could not be reached'}"
+    reason, files = found
+    return f"{printable(reason)}: {', '.join(map(printable, files))}" if files else printable(reason)
+
+
+def move_to(root: Path, tag: str, bk: Backup) -> str | None:
+    """Check out a release tag (detached). None on success, else why not; the undo is recorded before anything moves."""
+    if parse_tag(tag) is None:
+        return f"{printable(str(tag))} is not a release tag"
+    found = local_changes(root, "--tags")
+    if found:
+        return _refuse_text(root, found)
+    problem = _record_undo(root, bk)
+    if problem:
+        return problem
+    git, env = ["git", "-C", str(root)], _git_env()
+    res = runner.run([*git, "fetch", "origin", "tag", tag, "--no-tags"], timeout=120, env=env)
+    if not res.ok:
+        return _failed(res, f"fetching {tag}")
+    res = runner.run([*git, "checkout", "--detach", tag], timeout=120, env=env)
+    return None if res.ok else _failed(res, f"checking out {tag}")
+
+
+def move_to_dev(root: Path, bk: Backup) -> str | None:
+    """Back onto main, fast-forwarded to origin. None on success, else why not."""
+    found = local_changes(root, "origin/main")
+    if found:
+        return _refuse_text(root, found)
+    problem = _record_undo(root, bk)
+    if problem:
+        return problem
+    git, env = ["git", "-C", str(root)], _git_env()
+    res = runner.run([*git, "fetch", "origin", "main"], timeout=120, env=env)
+    if not res.ok:
+        return _failed(res, "fetching main")
+    local = runner.run([*git, "rev-parse", "--verify", "--quiet", "refs/heads/main"], timeout=30, env=env).ok
+    switch = ["switch", "main"] if local else ["switch", "-c", "main", "--track", "origin/main"]
+    res = runner.run([*git, *switch], timeout=120, env=env)
+    if not res.ok:
+        return _failed(res, "switching to main")
+    res = runner.run([*git, "pull", "--ff-only"], timeout=120, env=env)
+    return None if res.ok else _failed(res, "pulling main")

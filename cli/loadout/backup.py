@@ -178,11 +178,25 @@ def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, st
     return skip
 
 
+_SHA40 = re.compile(r"[0-9a-f]{40}")
+
+
+def _is_kit_root(root: str) -> bool:
+    try:
+        mine = os.path.normcase(str(Path(root).resolve()))
+        kit = os.path.normcase(str(paths.kit_root().resolve()))
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return bool(root) and mine == kit
+
+
 def _allowed_run(cmd) -> bool:
     """Only the undo commands loadout itself records; a manifest cannot make restore run anything else."""
     if not isinstance(cmd, list) or len(cmd) < 4 or not all(isinstance(a, str) for a in cmd):
         return False
     n = len(cmd)
+    if cmd[:2] == ["git", "-C"]:  # channels.move_to: back to the commit the kit checkout was on
+        return n == 6 and cmd[3:5] == ["checkout", "--detach"] and bool(_SHA40.fullmatch(cmd[5])) and _is_kit_root(cmd[2])
     slot = {"add-json": 5, "remove": 5}.get(cmd[2]) if cmd[:2] == ["claude", "mcp"] and n > 2 else n - 1
     if cmd[:2] == ["claude", "plugin"] and n > 2 and cmd[2] in ("enable", "install"):
         slot = 3
