@@ -335,10 +335,20 @@ def _serena_verdicts() -> list[Verdict]:
                 and codex.is_serena(v.item.extra["config"])))]
 
 
+def _waits_for_plugin(v: Verdict) -> bool:
+    """A plain Claude Code Serena while loadout's plugin is not installed: nothing of loadout's would replace it.
+    Claude Code's plugin list is read only for such a verdict, so with Claude Code off nothing of it is read."""
+    if not (v.action == "migrate" and v.item.kind == "mcp" and not own.is_codex(v.item)
+            and isinstance(v.item.extra.get("config"), dict) and _is_serena_cfg(v.item.extra["config"])):
+        return False
+    from . import cbm_installer
+    return not cbm_installer.claude_plugin_on()
+
+
 def serena_duplicate_left() -> bool:
     """A plain copy of loadout's Serena still runs next to loadout's (`--use-loadout` would remove it)."""
     try:
-        return any(v.action == "migrate" for v in _serena_verdicts())
+        return any(v.action == "migrate" and not _waits_for_plugin(v) for v in _serena_verdicts())
     except Exception:  # a report line never breaks the run
         return False
 
@@ -661,11 +671,7 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     if keep_own:  # a Serena of the user's stays, even where adopt would call it a duplicate
         verdicts = [v for v in verdicts if not (v.item.kind == "mcp" and isinstance(v.item.extra.get("config"), dict)
                                                  and _is_serena_cfg(v.item.extra["config"]))]
-    from . import cbm_installer
-    if not cbm_installer.claude_plugin_on():  # nothing of loadout's would replace a removed Claude Code Serena
-        verdicts = [v for v in verdicts if not (v.action == "migrate" and v.item.kind == "mcp" and not own.is_codex(v.item)
-                                                 and isinstance(v.item.extra.get("config"), dict)
-                                                 and _is_serena_cfg(v.item.extra["config"]))]
+    verdicts = [v for v in verdicts if not _waits_for_plugin(v)]
     from . import targets
     # each agent's own files only while it is on; the personal layer's mcp.json belongs to neither
     findings = (secrets.scan_all() if targets.claude_enabled() else secrets.scan_personal()) \

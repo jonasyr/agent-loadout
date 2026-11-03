@@ -217,6 +217,21 @@ def test_yes_keeps_a_claude_serena_while_loadouts_plugin_is_missing(both_on, mon
     assert [c for c in _removes(both_on) if c[0] == "claude"] == []
 
 
+def test_codex_only_adopt_does_not_ask_about_claudes_plugin(codex_on, monkeypatch):
+    def boom():
+        raise AssertionError("read Claude Code's plugin list with Claude Code off")
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", boom)
+    adopt.run(False, None, set(), False, lambda q: "", with_versions=False, interactive=False)
+
+
+def test_no_duplicate_left_while_loadouts_plugin_is_missing(both_on, monkeypatch):
+    _claude_json({"serena": CLAUDE_PLAIN})
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", lambda: False)
+    assert not adopt.serena_duplicate_left()
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", lambda: True)
+    assert adopt.serena_duplicate_left()
+
+
 def test_own_remove_names_a_tuned_codex_serena(codex_on, capsys):
     _config(TUNED)
     rc = adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False,
