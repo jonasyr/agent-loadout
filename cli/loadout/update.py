@@ -396,15 +396,20 @@ def _after_restart(summary: Summary, marker: str, bk: Backup | None = None) -> N
     """The restarted run: what the first process pulled or moved (marker: the PULLED value; bk: the move's backup,
     which the re-apply joins), and every pull git refused (sync-paused.json)."""
     undo = f"; undo: loadout restore {out.printable(str(bk.root))}" if bk is not None else ""
+    to = marker[len("channel:"):] if marker.startswith("channel:") else None
     if marker.startswith("release:"):
         tag, _, marker = marker[len("release:"):].partition("|")
-        summary.changed.append(f"kit: moved to {out.printable(tag)} (this run continued in it{undo})")
-    elif marker.startswith("channel:"):
-        to, marker = marker[len("channel:"):], ""
-        moved = "back on main" if to == "dev" else f"moved to {out.printable(to)}"
+        shown = tag if channels.parse_tag(tag) else "a new release"  # only a valid tag name is ever printed
+        summary.changed.append(f"kit: moved to {shown} (this run continued in it{undo})")
+    elif to == "dev" or (to is not None and channels.parse_tag(to)):
+        marker = ""
+        moved = "back on main" if to == "dev" else f"moved to {to}"
         summary.changed.append(f"channel: {'dev' if to == 'dev' else 'stable'}; kit: {moved} "
                                f"(this run continued in it{undo})")
-    else:
+    else:  # "1", the personal markers, and anything this code does not know
+        if to is not None:
+            marker = ""
+
         summary.changed.append("kit: pulled new commits (this run continued in them)")
     if marker == "personal":
         summary.changed.append("personal layer: pulled new commits")

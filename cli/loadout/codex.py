@@ -1771,6 +1771,10 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             url = _src_url(src)
             tag = channels.pin() if channels.codex_source(src) != src else None  # stable: the kit's release
             head = remote_head(url, tag) if url else None  # before the clone: never newer than what Codex got
+            pin_move = tag is not None or get_dict(_load_record(), src).get("ref") != tag  # the kit's pin may move
+            cfg = paths.codex_home() / "config.toml"
+            if pin_move and bk is not None and cfg.is_file():  # the add rewrites the user's table: restore puts the old pin back
+                bk.save_copy(cfg, "Codex config.toml before moving the kit marketplace pin")
             _keep_lock()
             res = runner.run([exe, "plugin", "marketplace", "add", channels.codex_source(src), "--json"],
                              timeout=CLONE_TIMEOUT)
@@ -1781,7 +1785,21 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
                 lines.append(f"marketplace {src}: failed: {_tail(res)}")
                 continue
             market = info["marketplaceName"]
-            if not info.get("alreadyAdded") and listed is not None:
+            readded = False
+            table = _market_table(market) if pin_move and bk is not None else None  # no table: nothing to check
+            if table is not None and table.get("ref") != tag:  # Codex kept the old pin
+                ok, why = _readd(exe, src, market, bk)
+                now = (_market_table(market) or {}).get("ref")
+                if not ok or now != tag:
+                    lines.append(f"marketplace {market}: failed to move its pin: it is on "
+                                 f"{now or 'the default branch'}, not {tag or 'the default branch'}"
+                                 + (f" ({why})" if why else "")
+                                 + f"; your config.toml from before is in {bk.root} (loadout restore puts it back)")
+                    continue
+                readded = True
+            if readded:
+                refreshed = True
+            elif not info.get("alreadyAdded") and listed is not None:
                 bk.record_command(f"codex marketplace {market}", ["codex", "plugin", "marketplace", "remove", market])
                 refreshed = True
             elif refresh and market not in frozen:

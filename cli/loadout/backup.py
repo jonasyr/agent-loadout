@@ -52,8 +52,10 @@ class Backup:
         except Exception:
             return None
         steps = data.get("steps")
-        if not isinstance(steps, list) or data.get("restored_at"):
-            return None
+        description = data.get("description")
+        if not isinstance(steps, list) or data.get("restored_at") or not isinstance(description, str) \
+                or not description.startswith(("loadout update: kit to", "loadout channel")):
+            return None  # only the backup of a kit move is continued
         repo = data.get("repo")
         bk = cls(root=real, description=str(data.get("description") or ""),
                  repo=Path(repo) if isinstance(repo, str) else None)

@@ -260,3 +260,111 @@ def test_codex_kit_marketplace_is_refreshed_when_its_pin_changes(fake_home, fake
     assert codex.unchanged_routes(routes, installed)[0] == {SLUG}
     channels.set_channel("dev")
     assert codex.unchanged_routes(routes, installed)[0] == set()
+
+
+PINNED = ('[marketplaces.agent-loadout]\nsource_type = "git"\nsource = "https://github.com/jonasyr/agent-loadout.git"\n'
+          'ref = "v0.3.0"\n')
+UNPINNED = PINNED.replace('ref = "v0.3.0"\n', "")
+REAL_APPLY_PLUGINS = codex.apply_plugins
+
+
+def _codex_world(fake, monkeypatch, add_drops_ref=True):
+    """codex as faked answers: `marketplace add` of the kit's source without @tag rewrites the table without its
+    ref (add_drops_ref), or keeps it until the marketplace is removed and added again."""
+    cfg = paths.codex_home() / "config.toml"
+    removed = []
+
+    def run(cmd, cwd=None, timeout=300, env=None):
+        if cmd[:4] == ["codex", "plugin", "marketplace", "add"]:
+            fake.calls.append(list(cmd))
+            if cmd[4] == SLUG and (add_drops_ref or removed):
+                cfg.write_text(UNPINNED)
+            name = "agent-loadout" if cmd[4].startswith(SLUG) else cmd[4].split("/")[-1].split("@")[0]
+            return runner.Result(0, json.dumps({"marketplaceName": name, "alreadyAdded": not removed}), "")
+        if cmd[:4] == ["codex", "plugin", "marketplace", "remove"]:
+            fake.calls.append(list(cmd))
+            removed.append(cmd[4])
+            return runner.Result(0, "", "")
+        return fake(cmd, cwd, timeout, env)
+    monkeypatch.setattr(runner, "run", run)
+    monkeypatch.setattr(codex, "program", lambda: "codex")
+    return cfg, removed
+
+
+def _pinned_codex(fake, kit, monkeypatch, add_drops_ref=True):
+    channels.set_channel("stable")
+    _git(fake, kit, current="v0.3.0")
+    cfg, removed = _codex_world(fake, monkeypatch, add_drops_ref)
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(PINNED)
+    codex._remember(SLUG, "agent-loadout", "f" * 40, ref="v0.3.0")
+    return cfg, removed
+
+
+@pytest.mark.parametrize("drops", [True, False])
+def test_codex_pin_move_is_backed_up_and_verified(fake_home, fake_runner, tmp_path, monkeypatch, drops):
+    kit = _kit(tmp_path, monkeypatch)
+    cfg, removed = _pinned_codex(fake_runner, kit, monkeypatch, add_drops_ref=drops)
+    channels.set_channel("dev")
+    bk = backup.Backup(description="test")
+    lines, _ = codex._install_routes({SLUG: ["loadout"]}, bk, True, lambda line: None, {"loadout@agent-loadout"})
+    assert cfg.read_text() == UNPINNED, lines
+    assert removed == ([] if drops else ["agent-loadout"])  # only a kept ref is removed and added again
+    assert not [l for l in lines if "agent-loadout" in l and "fail" in l], lines
+    msgs, ok, _ = backup.restore(bk.root)
+    assert ok, msgs
+    assert cfg.read_text() == PINNED
+
+
+def test_codex_pin_still_wrong_after_readd_names_the_backup(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    _pinned_codex(fake_runner, kit, monkeypatch, add_drops_ref=False)
+    channels.set_channel("dev")
+    monkeypatch.setattr(codex, "_readd", lambda exe, src, market, bk: (True, ""))  # Codex keeps the ref anyway
+    bk = backup.Backup(description="test")
+    lines, _ = codex._install_routes({SLUG: ["loadout"]}, bk, True, lambda line: None, {"loadout@agent-loadout"})
+    line = next(l for l in lines if "agent-loadout" in l and "v0.3.0" in l)
+    assert str(bk.root) in line
+
+
+def test_restore_after_switch_with_codex_on_brings_back_the_pinned_table(fake_home, fake_runner, tmp_path,
+                                                                        monkeypatch, capsys):
+    _world(monkeypatch, claude=False, codex_on=True)
+    monkeypatch.setattr(codex, "apply_plugins", REAL_APPLY_PLUGINS)
+    kit = _kit(tmp_path, monkeypatch)
+    cfg, _ = _pinned_codex(fake_runner, kit, monkeypatch)
+
+    def restarted(argv):
+        fake_runner.responses[_g(kit, "describe")] = runner.Result(128, "", "no tag")
+        return update.run(True, lambda q: "", argv=argv[1:])
+    monkeypatch.setattr(update, "_exec", restarted)
+    assert commands.channel("dev", yes=True) == 0
+    assert 'ref = "v0.3.0"' not in cfg.read_text()
+    [root] = [b.path for b in backup.backups() if b.description.startswith("loadout channel dev")]
+    msgs, ok, _ = backup.restore(root)
+    assert ok, msgs
+    assert 'ref = "v0.3.0"' in cfg.read_text()
+
+
+def test_restart_markers_show_only_valid_tags(fake_home):
+    for marker, want in (("release:v0.3.0", "kit: moved to v0.3.0"),
+                         ("release:evil\x1b[2J", "kit: moved to a new release"),
+                         ("channel:dev", "channel: dev"), ("channel:v0.3.0", "channel: stable; kit: moved to v0.3.0"),
+                         ("channel:bogus", "kit: pulled new commits"), ("1", "kit: pulled new commits"),
+                         ("personal", "personal layer: pulled new commits")):
+        summary = update.Summary()
+        update._after_restart(summary, marker)
+        text = "\n".join(summary.changed)
+        assert want in text, (marker, text)
+        assert "bogus" not in text and "evil" not in text
+        assert marker == "channel:v0.3.0" or "stable" not in text
+
+
+def test_reopen_takes_only_a_kit_move_backup(fake_home):
+    other = backup.Backup(description="update: re-apply the setup")
+    other.record_created(fake_home / "x", "x")
+    assert backup.Backup.reopen(other.root) is None
+    for description in ("loadout update: kit to v0.3.0", "loadout channel dev: kit to main"):
+        bk = backup.Backup(description=description)
+        bk.record_created(fake_home / "y", "y")
+        assert backup.Backup.reopen(bk.root) is not None
