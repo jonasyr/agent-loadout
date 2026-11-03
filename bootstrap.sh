@@ -41,19 +41,58 @@ is_clone() {  # exact origin, bin/loadout present, and the folder itself is the 
   [ -n "$top" ] && [ "$top" = "$phys" ]
 }
 
+pick_tag() {  # the newest annotated vX.Y.Z tag at or above 0.2.0 whose tagger date is 3 days old; same rule as channels.py
+  local dir="$1" now name type when LC_ALL=C
+  now="$(date +%s)"
+  while read -r name type when; do
+    name="${name#refs/tags/}"
+    [[ "$name" =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || continue
+    [ "$type" = tag ] || continue
+    [ "${BASH_REMATCH[1]}" -gt 0 ] || [ "${BASH_REMATCH[2]}" -ge 2 ] || continue
+    case "$when" in ''|*[!0-9]*) continue ;; esac
+    [ $((now - when)) -ge 259200 ] || continue
+    printf '%s' "$name"
+    return 0
+  done < <(git -C "$dir" for-each-ref --sort=-v:refname --format='%(refname) %(objecttype) %(taggerdate:unix)' refs/tags 2>/dev/null)
+  return 1
+}
+
+no_release() {
+  echo "no stable release is ready yet; wait a few days, or install dev:" >&2
+  echo "  curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install --channel dev" >&2
+  exit 1
+}
+
 main() {
   local repo_url="${LOADOUT_REPO_URL:-https://github.com/jonasyr/agent-loadout}"  # LOADOUT_REPO_URL/LOADOUT_REF: tests only
   local ref="${LOADOUT_REF:-main}"
 
-  local dir="" piped=0 src kit
+  local dir="" piped=0 src kit channel=stable tag
   local args=()
   while [ $# -gt 0 ]; do
     case "$1" in
+      --channel) channel="${2:?--channel needs stable or dev}"; args+=("$1" "$2"); shift 2 ;;
+      --channel=*) channel="${1#--channel=}"; args+=("$1"); shift ;;
       --dir) dir="${2:?--dir needs a path}"; shift 2 ;;
       --dir=*) dir="${1#--dir=}"; shift ;;
       *) args+=("$1"); shift ;;
     esac
   done
+
+  case "$channel" in stable|dev) ;; *) echo "--channel: use stable or dev" >&2; exit 2 ;; esac
+
+  reuse_to_release() {  # an existing clone on stable moves to the release only when that loses no local commit
+    [ -z "${LOADOUT_REF:-}" ] && [ "$channel" = stable ] || return 0
+    git -C "$kit" fetch -q --tags origin 2>/dev/null || true
+    tag="$(pick_tag "$kit")" || no_release
+    [ "$(git -C "$kit" rev-parse HEAD 2>/dev/null)" = "$(git -C "$kit" rev-parse "refs/tags/$tag^{commit}" 2>/dev/null)" ] && return 0
+    if [ "$(git -C "$kit" rev-list --count "refs/tags/$tag..HEAD" 2>/dev/null || echo 1)" = 0 ] \
+       && git -C "$kit" checkout -q --detach "refs/tags/$tag" 2>/dev/null; then
+      echo "moved the clone to release $tag"
+    else
+      echo "the clone has changes of its own, so it is left as it is (release $tag was not checked out)"
+    fi
+  }
 
   # run from a file, $0 is that file; piped, bash 5.2 sets BASH_SOURCE to "main" and 5.3 leaves it empty
   src="${BASH_SOURCE[0]:-}"
@@ -71,19 +110,33 @@ main() {
     if [ -z "$dir" ] && is_clone "$PWD"; then
       kit="$PWD"
       echo "using the clone in $kit"
+      reuse_to_release
     elif [ -e "$kit" ]; then
       if is_clone "$kit"; then
         echo "using the existing clone in $kit"
+        reuse_to_release
       else
         echo "$kit exists and is not a clone of agent-loadout; choose another folder with --dir PATH" >&2
         exit 1
       fi
     else
       echo "cloning agent-loadout into $kit"
-      git clone -q "$repo_url" "$kit" && git -C "$kit" checkout -q "$ref" || {
+      git clone -q "$repo_url" "$kit" || {
         echo "could not download agent-loadout from $repo_url (offline?). Check your connection and run this again." >&2
         exit 1
       }
+      if [ -n "${LOADOUT_REF:-}" ] || [ "$channel" = dev ]; then
+        git -C "$kit" checkout -q "$ref" || {
+          echo "could not download agent-loadout from $repo_url (offline?). Check your connection and run this again." >&2
+          exit 1
+        }
+      elif tag="$(pick_tag "$kit")"; then
+        git -C "$kit" checkout -q --detach "refs/tags/$tag" || { echo "could not check out $tag in $kit" >&2; exit 1; }
+        echo "using release $tag"
+      else
+        rm -rf "$kit"  # the clone this run just made; nothing of the user's
+        no_release
+      fi
     fi
   fi
 

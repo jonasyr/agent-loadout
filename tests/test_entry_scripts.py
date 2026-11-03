@@ -24,7 +24,7 @@ def env(tmp_path):
         f.write_text(f'#!/bin/sh\necho "{name} $* [UV_NO_MODIFY_PATH=$UV_NO_MODIFY_PATH] [pwd=$(pwd)]" >> "{log}"\n{body}\n')
         f.chmod(0o755)
 
-    for tool in ("dirname", "uname", "grep", "cat", "mkdir", "cp", "chmod"):
+    for tool in ("dirname", "uname", "grep", "cat", "mkdir", "cp", "chmod", "date", "rm"):
         if shutil.which(tool):
             (stubs / tool).symlink_to(shutil.which(tool))
     # the interpreter uv finds (from / only); it logs like the stubs do
@@ -34,7 +34,7 @@ def env(tmp_path):
     py.chmod(0o755)
     uv_ok = f'case "$1 $2" in "python find") [ "$(pwd)" = / ] && echo "{py}";; esac; exit 0'
     return {"stubs": stubs, "home": home, "log": log, "stub": stub, "py": py, "uv_ok": uv_ok,
-            "vars": {"HOME": str(home), "PATH": str(stubs)}}
+            "vars": {"HOME": str(home), "PATH": str(stubs), "LOADOUT_REF": "main"}}
 
 
 def _run(env, args, cwd, stdin=None):
@@ -292,3 +292,132 @@ def test_uv_install_creates_local_bin_owner_writable_only(env, tmp_path):
                        env=env["vars"], capture_output=True, text=True, timeout=60)
     assert p.returncode == 0, p.stderr
     assert (env["home"] / ".local/bin").stat().st_mode & 0o777 == 0o755
+
+
+# --- release channels: the newest soaked annotated tag, never main, on stable ---
+
+def _git(repo, *args, days=None):
+    e = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+         "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+         "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+    if days is not None:
+        import time
+        e["GIT_AUTHOR_DATE"] = e["GIT_COMMITTER_DATE"] = f"@{int(time.time() - days * 86400)} +0000"
+    subprocess.run(["git", "-C", str(repo), *args], env=e, check=True, capture_output=True)
+
+
+def _release_repo(tmp_path, tags):
+    """tags: [(name, annotated, age in days)] in order; each tag has its own commit, VERSION says which."""
+    repo = tmp_path / "upstream"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "bin").mkdir()
+    (repo / "bin/loadout").write_text("")
+    for name, annotated, days in [*tags, ("main", False, 0)]:
+        (repo / "VERSION").write_text(name)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", name, days=days)
+        if name != "main":
+            _git(repo, "tag", *(["-a", name, "-m", name] if annotated else [name]), days=days)
+    return repo
+
+
+def _stable_env(env, repo):
+    (env["stubs"] / "git").symlink_to(shutil.which("git"))
+    env["stub"]("uv", env["uv_ok"])
+    env["vars"].pop("LOADOUT_REF", None)
+    env["vars"]["LOADOUT_REPO_URL"] = str(repo)
+    env["vars"]["GIT_CONFIG_GLOBAL"] = "/dev/null"
+
+
+def _piped(env, tmp_path, *args):
+    work = tmp_path / "work"
+    work.mkdir(exist_ok=True)
+    p = _run(env, ["-s", "--", *args], cwd=work, stdin=SCRIPT.read_text())
+    return p, work / "agent-loadout"
+
+
+MIXED = [("v0.1.9", True, 40), ("v0.2.0", True, 20), ("v0.2.1", False, 10), ("v0.9.0", True, 6),
+         ("v0.10.0", True, 4), ("v0.11.0", True, 0)]
+
+
+def test_sh_picks_newest_soaked_annotated_tag(env, tmp_path):
+    repo = _release_repo(tmp_path, [("v0.1.0", False, 30), ("v0.2.0", True, 5), ("v0.3.0", True, 0)])
+    _stable_env(env, repo)
+    p, kit = _piped(env, tmp_path, "--install")
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "v0.2.0"
+    assert "python bin/loadout bootstrap --install" in env["log"].read_text()
+
+
+def test_sh_skips_lightweight_below_floor_and_unsoaked_tags(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, MIXED))
+    p, kit = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "v0.10.0"  # versions sort numerically
+
+
+def test_sh_stops_when_no_release_is_ready(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.1.0", False, 30), ("v0.3.0", True, 0)]))
+    p, kit = _piped(env, tmp_path, "--install")
+    assert p.returncode == 1
+    assert "no stable release is ready yet; wait a few days, or install dev:" in p.stderr
+    assert "--channel dev" in p.stderr
+    assert not kit.exists() and not env["log"].exists()
+
+
+def test_sh_channel_dev_checks_out_main(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.2.0", True, 5)]))
+    p, kit = _piped(env, tmp_path, "--install", "--channel", "dev")
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "main"
+    assert "python bin/loadout bootstrap --install --channel dev" in env["log"].read_text()
+
+
+def test_sh_rejects_an_unknown_channel(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.2.0", True, 5)]))
+    p, kit = _piped(env, tmp_path, "--channel=nightly")
+    assert p.returncode != 0 and "stable or dev" in p.stderr and not kit.exists()
+
+
+def test_sh_loadout_ref_wins(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.2.0", True, 5)]))
+    env["vars"]["LOADOUT_REF"] = "main"
+    p, kit = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "main"
+
+
+def test_sh_reuse_moves_a_clone_without_local_commits_to_the_release(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.1.0", False, 9), ("v0.2.0", True, 5)]))
+    env["vars"]["LOADOUT_REF"] = "v0.1.0"
+    p, kit = _piped(env, tmp_path)
+    assert p.returncode == 0 and (kit / "VERSION").read_text() == "v0.1.0"
+    del env["vars"]["LOADOUT_REF"]
+    p, _ = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "v0.2.0"
+
+
+def test_sh_reuse_leaves_a_clone_with_local_commits(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.2.0", True, 5)]))
+    env["vars"]["LOADOUT_REF"] = "main"
+    p, kit = _piped(env, tmp_path)
+    (kit / "VERSION").write_text("mine")
+    _git(kit, "add", "-A")
+    _git(kit, "commit", "-q", "-m", "mine")
+    del env["vars"]["LOADOUT_REF"]
+    p, _ = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "mine" and "left as it is" in p.stdout
+
+
+@pytest.mark.skipif(not shutil.which("pwsh"), reason="needs PowerShell")
+def test_ps1_tag_pick_matches_sh(env, tmp_path):
+    repo = _release_repo(tmp_path, MIXED)
+    text = (paths.kit_root() / "bootstrap.ps1").read_text()
+    start = text.index("function Get-ReleaseTag")
+    end = text.index("\n}\n", start) + 3
+    p = subprocess.run(["pwsh", "-NoProfile", "-Command", text[start:end] + f"\nGet-ReleaseTag '{repo}'"],
+                       capture_output=True, text=True, timeout=60)
+    assert p.stdout.strip() == "v0.10.0", p.stderr

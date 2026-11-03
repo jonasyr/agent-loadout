@@ -1043,18 +1043,53 @@ def _this_machine(chosen: dict, gate, vscode_wsl: bool) -> None:
         out.problem(line)
 
 
+def _channel_step(channel: str, bk: Backup) -> None:
+    """Record the channel, seed releases.json with the tags the remote has now (first seen now), and on stable leave
+    a withdrawn release for the one its status names. Nothing here stops the run: offline, it only notes."""
+    import time
+    root = paths.kit_root()
+    if channels.get() != channel:  # a re-run with the same channel makes no new backup
+        channels.set_channel(channel, bk)
+    tags = channels.remote_tags(root)
+    if tags is None:
+        if channel == "stable":
+            out.problem("could not read the release tags (offline?); loadout update checks again")
+        return
+    channels.record_seen(tags, time.time())
+    if channel != "stable":
+        return
+    current = channels.current_release(root)
+    status = channels.release_status(root)
+    if status is None or current is None:
+        return
+    entry = status.withdrawn.get(current[1:])
+    if entry is None:
+        return
+    channels._store_status(status)  # move_to checks the target against the stored status
+    use = entry.get("use")
+    if not use:
+        out.problem(f"release {current} was withdrawn ({entry['reason']}) and no other release is named; "
+                    "run loadout update later")
+        return
+    problem = channels.move_to(root, "v" + use, bk)
+    if problem:
+        out.problem(f"release {current} was withdrawn ({entry['reason']}); {problem}")
+    else:
+        out.problem(f"release {current} was withdrawn ({entry['reason']}); moved to v{use}")
+
+
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
               vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
-              keep_own: bool = False) -> int:
+              keep_own: bool = False, channel: str = "stable") -> int:
     from . import targets
     if use_loadout and keep_own:
         print("--use-loadout and --keep-own exclude each other")
         return 2
     try:
         return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
-                          vscode_wsl, codex_cli, vscode_path, claude_cli, use_loadout, keep_own)
+                          vscode_wsl, codex_cli, vscode_path, claude_cli, use_loadout, keep_own, channel)
     finally:
         targets.OVERRIDE = None
 
@@ -1063,7 +1098,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
                answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
                vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
-               keep_own: bool = False) -> int:
+               keep_own: bool = False, channel: str = "stable") -> int:
     from . import codex, targets
     if interactive is None:
         interactive = ui.is_interactive()
@@ -1158,6 +1193,7 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
     for line in notes:
         out.problem(line)
     claude_on = chosen["claude"]
+    _channel_step(channel, bk)
     _step("Links")
     link_lines = apply.link_step(bk, claude_on, retry_symlinks=True).lines
     # after a failed clone nothing may write into the personal layer: a partial folder would stop the next run
