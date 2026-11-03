@@ -304,6 +304,7 @@ def desired_settings() -> dict:
     if tag and isinstance(source, dict) and source.get("source") == "github" \
             and source.get("repo") == channels.kit_slug(paths.kit_root()):
         source["ref"] = tag  # stable: the marketplace is the release, not main
+        kit["autoUpdate"] = False  # Claude Code would follow the ref's latest commit: a moved tag; loadout refreshes
     return merged
 
 

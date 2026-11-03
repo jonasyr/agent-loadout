@@ -227,7 +227,7 @@ def test_a_move_names_its_release_without_a_local_tag(fake_home, fake_runner, tm
     assert channels.current_release(kit) == "v0.3.0"
     assert channels.pin() == "v0.3.0"
     assert channels.claude_origin(channels.DEFAULT_SLUG) == channels.DEFAULT_SLUG + "#v0.3.0"
-    assert channels.codex_source(channels.DEFAULT_SLUG) == channels.DEFAULT_SLUG + "@v0.3.0"
+    assert channels.codex_source(channels.DEFAULT_SLUG) == channels.DEFAULT_SLUG + "@" + TAG_SHA  # the commit
 
 
 def test_after_a_restore_the_recorded_release_no_longer_counts(fake_home, fake_runner, tmp_path, monkeypatch):

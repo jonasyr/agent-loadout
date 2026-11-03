@@ -1414,6 +1414,16 @@ def remote_head(url: str, ref: str | None) -> str | None:
     return first if re.fullmatch(r"[0-9a-fA-F]{7,64}", first) else None
 
 
+def _kit_pin(src: str) -> str | None:
+    """The ref the kit's marketplace is pinned to (the release commit on stable), None for any other source."""
+    return channels.codex_pin() if channels.codex_source(src) != src else None
+
+
+def _pinned_head(url: str, ref: str | None) -> str | None:
+    """The commit a pin resolves to: a commit pin is itself (Codex never asks the remote for it, nor does loadout)."""
+    return ref if channels.is_sha(ref) else remote_head(url, ref)
+
+
 def _record_file() -> Path:
     return paths.state_dir() / "codex-marketplaces.json"
 
@@ -1495,8 +1505,8 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
         market = entry.get("name") if isinstance(entry, dict) else None
         if not url or not isinstance(market, str) or market not in listed or not _same_source(listed[market], url):
             continue  # a marketplace of that name from another source is refreshed as before
-        tag = channels.pin() if channels.codex_source(src) != src else None
-        head = remote_head(url, tag)
+        tag = _kit_pin(src)
+        head = _pinned_head(url, tag)
         if head is None or head != entry.get("head") or entry.get("ref") != tag:  # a channel switch moves the pin
             continue
         pids = [f"{n}@{market}" for n in names]
@@ -1769,8 +1779,8 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             step += 1
             say(f"  adding marketplace {src}, a git clone ({step} of {total}; {LARGE_CLONE})…")
             url = _src_url(src)
-            tag = channels.pin() if channels.codex_source(src) != src else None  # stable: the kit's release
-            head = remote_head(url, tag) if url else None  # before the clone: never newer than what Codex got
+            tag = _kit_pin(src)  # stable: the kit's release commit
+            head = _pinned_head(url, tag) if url else None  # before the clone: never newer than what Codex got
             pin_move = tag is not None or get_dict(_load_record(), src).get("ref") != tag  # the kit's pin may move
             cfg = paths.codex_home() / "config.toml"
             if pin_move and bk is not None and cfg.is_file():  # the add rewrites the user's table: restore puts the old pin back

@@ -116,11 +116,24 @@ def _claude_refresh_todo() -> list[str]:
             and any(isinstance(e, dict) and e.get("scope") == "user" for e in installed[pid])]
 
 
+def _claude_refresh_cmds(todo: list[str]) -> tuple[list[list[str]], list[str], str | None]:
+    """(the marketplace updates, the plugins, the held tag). On stable with the release's tag moved on the remote
+    (the daily check saw it), the kit's marketplace and its plugins are held: an update would fetch the moved commit,
+    whose hooks run every session. Only a verified move (loadout update's) changes the release."""
+    held = channels.pin_moved()
+    if held is None:
+        return [["claude", "plugin", "marketplace", "update"]], todo, None
+    from .settings_merge import desired_settings
+    names = [n for n in get_dict(desired_settings(), "extraKnownMarketplaces") if n != channels.KIT_MARKET]
+    return ([["claude", "plugin", "marketplace", "update", n] for n in names],
+            [p for p in todo if not p.endswith("@" + channels.KIT_MARKET)], held)
+
+
 def _claude_refresh_item(items: list) -> None:
-    todo = _claude_refresh_todo()
+    markets, todo, _ = _claude_refresh_cmds(_claude_refresh_todo())
     if not todo:
         return
-    cmds = [["claude", "plugin", "marketplace", "update"],
+    cmds = [*([*c[:4], *map(out.printable, c[4:])] for c in markets),
             *(["claude", "plugin", "update", out.printable(pid), "--scope", "user"] for pid in todo)]
     items.append(("claude-plugins-refresh", f"Claude Code plugins: refresh {len(todo)}", cmds, False, "", (), None, (),
                   "", tuple(todo)))
@@ -593,8 +606,14 @@ def _reapply(bk: Backup, claude_on: bool, codex_ok: bool, chosen: list[PlanItem]
 
 def _refresh_claude_plugins(item: PlanItem, summary: Summary) -> None:
     """Exactly the plugins the plan showed (a plugin installed by this run is already current)."""
-    todo = list(item.ids)
-    market = runner.run(["claude", "plugin", "marketplace", "update"], timeout=300)  # the marketplaces first
+    markets, todo, held = _claude_refresh_cmds(list(item.ids))
+    if held:
+        out.problem(f"release {out.printable(held)} was changed after it was released; the kit's marketplace is not "
+                    "refreshed. Tell the maintainer.")
+    market = runner.Result(0, "", "")
+    for cmd in markets:  # the marketplaces first
+        res = runner.run(cmd, timeout=300)
+        market = market if not market.ok else res
     stale = not market.ok  # offline or signed out: the plugin updates below can only use the cached catalog
     if stale:
         reason = out.printable(redact((market.stderr or market.stdout).strip()[:300])) or "no output"

@@ -230,28 +230,54 @@ def kit_slug(root: Path) -> str:
 
 
 def pin() -> str | None:
-    """The release tag the kit's marketplaces are pinned to: the checked-out release on stable, else None."""
+    """The release tag the kit's marketplaces are pinned to: the checked-out release on stable, else None. A tag
+    the remote moved stays the pin (None would drop it and follow main); pin_moved() tells the refresh to hold."""
     if effective() != "stable":
         return None
     return current_release(paths.kit_root())
 
 
-def _pinned(origin, sep: str) -> str:
+def pin_moved() -> str | None:
+    """The pinned release tag when the daily check saw the remote move it (local state only), else None."""
+    tag = pin()
+    return tag if tag and tag in moved_tags() else None
+
+
+def codex_pin() -> str | None:
+    """The commit the kit's Codex marketplace is pinned to on stable: the checked-out release's (move_to's record,
+    which current_release checked against HEAD, else HEAD itself, which git describe found at the tag). Codex takes a
+    40-hex ref as the commit and never asks the remote, so a moved tag cannot reach it. The tag name only when git
+    cannot name HEAD."""
+    tag = pin()
+    if tag is None:
+        return None
+    rec = _load_releases().get("current")
+    if isinstance(rec, dict) and rec.get("tag") == tag and _SHA.fullmatch(str(rec.get("sha"))):
+        return rec["sha"]
+    head = runner.run(["git", "-C", str(paths.kit_root()), "rev-parse", "HEAD"], timeout=30)
+    sha = head.stdout.strip() if head.ok else ""
+    return sha if _SHA.fullmatch(sha) else tag
+
+
+def is_sha(ref) -> bool:
+    return isinstance(ref, str) and _SHA.fullmatch(ref) is not None
+
+
+def _pinned(origin, sep: str, ref) -> str:
     if not isinstance(origin, str):
         return origin
-    tag = pin()
-    return f"{origin}{sep}{tag}" if tag and origin == kit_slug(paths.kit_root()) else origin
+    return f"{origin}{sep}{ref}" if ref and origin == kit_slug(paths.kit_root()) else origin
 
 
 def claude_origin(origin: str) -> str:
     """`owner/repo#tag` for the kit's own marketplace on stable (Claude Code refuses an add whose source differs
     from the settings entry), the origin unchanged otherwise."""
-    return _pinned(origin, "#")
+    return _pinned(origin, "#", pin() if isinstance(origin, str) else None)
 
 
 def codex_source(src: str) -> str:
-    """`owner/repo@tag` for the kit's own marketplace on stable (Codex writes `ref = tag`), else unchanged."""
-    return _pinned(src, "@")
+    """`owner/repo@<sha>` for the kit's own marketplace on stable (Codex writes `ref = <sha>`), else unchanged."""
+    return _pinned(src, "@", codex_pin() if isinstance(src, str) else None)
 
 
 def last_status() -> Status:

@@ -253,9 +253,9 @@ def test_codex_kit_marketplace_is_refreshed_when_its_pin_changes(fake_home, fake
     _git(fake_runner, kit, current="v0.3.0")
     monkeypatch.setattr(codex, "marketplaces",
                         lambda: {"agent-loadout": {"source": f"https://github.com/{SLUG}.git"}})
-    monkeypatch.setattr(codex, "remote_head", lambda url, ref: "f" * 40)
+    monkeypatch.setattr(codex, "remote_head", lambda url, ref: SHA)
     monkeypatch.setattr(codex, "_sha_less_plugins", lambda info: {})
-    codex._remember(SLUG, "agent-loadout", "f" * 40, ref="v0.3.0")
+    codex._remember(SLUG, "agent-loadout", SHA, ref=SHA)  # stable: the pin is the release commit (HEAD)
     routes, installed = {SLUG: ["loadout"]}, {"loadout@agent-loadout"}
     assert codex.unchanged_routes(routes, installed)[0] == {SLUG}
     channels.set_channel("dev")
@@ -297,7 +297,7 @@ def _pinned_codex(fake, kit, monkeypatch, add_drops_ref=True):
     cfg, removed = _codex_world(fake, monkeypatch, add_drops_ref)
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(PINNED)
-    codex._remember(SLUG, "agent-loadout", "f" * 40, ref="v0.3.0")
+    codex._remember(SLUG, "agent-loadout", SHA, ref=SHA)  # stable: the pin is the release commit (HEAD)
     return cfg, removed
 
 
