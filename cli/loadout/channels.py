@@ -371,6 +371,13 @@ def recorded(tag: str) -> str | None:
     return sha if isinstance(sha, str) and _SHA.fullmatch(sha) else None
 
 
+def withdrawn_notice(tag: str, info: dict) -> str:
+    """What the daily check and a bootstrap re-run say when the release you run was withdrawn. Neither moves:
+    the move is loadout update's, with its plan and yes."""
+    fix = f"run loadout update (to {info['use']})" if info.get("use") else "run loadout restore"
+    return f"the release you run ({tag}) was withdrawn: {printable(info['reason'][:200])}; {fix}"
+
+
 def check_releases(now: float) -> None:
     """The daily step: remember the release tags on origin, queue alarms for moved ones and, on stable only, one
     notice per withdrawn current release or newly offered release. Offline: nothing recorded or said."""
@@ -393,10 +400,7 @@ def check_releases(now: float) -> None:
         done = data.get("withdrawn_notified")
         done = done if isinstance(done, list) else []
         if text not in done:
-            info = status.withdrawn[text]
-            fix = f"run loadout update (to {info['use']})" if info.get("use") else "run loadout restore"
-            maintenance.notify(f"loadout: the release you run ({tag}) was withdrawn: "
-                               f"{printable(info['reason'][:200])}; {fix}")
+            maintenance.notify("loadout: " + withdrawn_notice(tag, status.withdrawn[text]))
             data["withdrawn_notified"] = [*done, text]
             save_json(_releases_path(), data)
         return

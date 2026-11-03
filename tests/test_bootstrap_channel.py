@@ -71,18 +71,13 @@ def test_offline_explicit_stable_off_a_release_stays_dev(fake_home, fake_runner,
     assert "you stay on dev" in capsys.readouterr().out and channels.get() is None
 
 
-def test_bootstrap_moves_off_a_withdrawn_release(fake_home, fake_runner, tmp_path, monkeypatch):
+def test_bootstrap_never_follows_a_withdrawal_on_its_own(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    """A withdrawal names a release to use; the move goes through loadout update's plan and yes, never bootstrap."""
     kit = _kit(tmp_path, monkeypatch)
-    status = {"withdrawn": [{"version": "0.3.0", "reason": "broken", "use": "0.2.0"}]}
-    fake_runner.responses[_git(kit, "ls-remote")] = runner.Result(0, LS, "")
-    fake_runner.responses[_git(kit, "describe")] = runner.Result(0, "v0.3.0\n", "")
-    fake_runner.responses[_git(kit, "show")] = runner.Result(0, json.dumps(status), "")
-    fake_runner.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, NEW + "\n", "")
-    fake_runner.responses[_git(kit, "rev-parse", "FETCH_HEAD^{commit}")] = runner.Result(0, OLD + "\n", "")
-    fake_runner.responses[_git(kit, "symbolic-ref")] = runner.Result(1, "", "")
-    monkeypatch.setenv(bootstrap.MOVED, "1")  # the restart itself is tested below
-    bootstrap._channel_step("stable", Backup(description="bootstrap"))
-    assert ["git", "-C", str(kit), "checkout", "--detach", OLD] in fake_runner.calls
+    _withdrawn(fake_runner, kit)
+    bootstrap._channel_step("stable", Backup(description="bootstrap"))  # the autouse fixture fails on a restart
+    assert not [c for c in fake_runner.calls if c[3:4] == ["checkout"]]
+    assert "the release you run (v0.3.0) was withdrawn: broken; run loadout update (to 0.2.0)" in capsys.readouterr().out
 
 
 def test_a_current_release_is_not_moved(fake_home, fake_runner, tmp_path, monkeypatch):
@@ -123,20 +118,16 @@ def _withdrawn(fake_runner, kit):
 def test_after_a_move_bootstrap_continues_in_the_new_code_once(fake_home, fake_runner, tmp_path, monkeypatch):
     import sys
     kit = _kit(tmp_path, monkeypatch)
-    _withdrawn(fake_runner, kit)
     monkeypatch.setattr(sys, "argv", ["loadout", "bootstrap", "--yes"])
-    monkeypatch.delenv(bootstrap.MOVED, raising=False)
     calls = []
     monkeypatch.setattr(runner, "continue_in", lambda cmd, **k: calls.append(cmd) or (_ for _ in ()).throw(SystemExit(0)))
-    try:
-        bootstrap._channel_step("stable", Backup(description="bootstrap"))
-    except SystemExit:
-        pass
+    with pytest.raises(SystemExit):
+        bootstrap._continue_once(kit)
     assert calls == [[sys.executable, str(kit / "bin" / "loadout"), "bootstrap", "--yes"]]
     assert bootstrap.MOVED in runner.PROCESS_ONLY
     # the continued process sees the marker: no second re-exec
     calls.clear()
-    bootstrap._channel_step("stable", Backup(description="bootstrap"))
+    bootstrap._continue_once(kit)
     assert calls == []
 
 

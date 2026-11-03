@@ -1047,8 +1047,9 @@ MOVED = "LOADOUT_BOOTSTRAP_MOVED"  # process-only marker: the run continued in a
 
 
 def _channel_step(channel: str | None, bk: Backup) -> None:
-    """Record the channel, seed releases.json with the tags the remote has now (first seen now), and on stable leave
-    a withdrawn release for the one its status names. Nothing here stops the run: offline, it only notes.
+    """Record the channel, seed releases.json with the tags the remote has now (first seen now), and on stable say
+    when the release you run was withdrawn (never move: loadout update plans that and asks). Nothing here stops the
+    run: offline, it only notes.
     channel None (no --channel: a re-run) keeps the stored one; a machine without one stays as it is (dev).
     --channel stable on a kit that is not stable yet and on no release moves it as loadout channel stable does."""
     import time
@@ -1077,18 +1078,8 @@ def _channel_step(channel: str | None, bk: Backup) -> None:
     entry = status.withdrawn.get(current[1:])
     if entry is None:
         return
-    channels.store_status(status)  # move_to checks the target against the stored status
-    use = entry.get("use")
-    if not use:
-        out.problem(f"release {current} was withdrawn ({entry['reason']}) and no other release is named; "
-                    "run loadout update later")
-        return
-    problem = channels.move_to(root, "v" + use, bk)
-    if problem:
-        out.problem(f"release {current} was withdrawn ({entry['reason']}); {problem}")
-    else:
-        out.problem(f"release {current} was withdrawn ({entry['reason']}); moved to v{use}")
-        _continue_once(root)  # the code that is running is the withdrawn release: continue in the new one
+    channels.store_status(status)
+    out.problem(channels.withdrawn_notice(current, entry))  # never moved here: loadout update plans it and asks
 
 
 def _continue_once(root) -> None:
