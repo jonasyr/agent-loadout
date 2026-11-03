@@ -50,17 +50,19 @@ def member(name: str, data: bytes = b"evil", type=tarfile.REGTYPE, link: str = "
     return info, (data if type == tarfile.REGTYPE else None)
 
 
-def test_roots_follow_agents_and_include_shell_files(fake_home):
+def test_roots_follow_agents_and_include_shell_files(fake_home, monkeypatch):
+    monkeypatch.setattr(snapshot.sys, "platform", "linux")  # VS Code's settings path differs per platform
     write(fake_home / ".claude" / "settings.json")
     write(fake_home / ".claude.json")
     write(fake_home / ".codex" / "config.toml")
     write(fake_home / ".bashrc")
     write(fake_home / ".zshrc")
     write(fake_home / ".config" / "fish" / "conf.d" / "a.fish")
-    write(fake_home / ".config" / "Code" / "User" / "settings.json")
+    code = fake_home / ".config" / "Code" / "User" / "settings.json"
+    write(code)
     both = {p.relative_to(fake_home).as_posix() for p in snapshot.roots(BOTH)}
     assert {".claude", ".claude.json", ".codex", ".bashrc", ".zshrc", ".config/fish/conf.d",
-            ".config/Code/User/settings.json"} <= both
+            code.relative_to(fake_home).as_posix()} <= both
     claude_only = {p.relative_to(fake_home).as_posix() for p in snapshot.roots({"claude": True, "codex": False})}
     assert ".codex" not in claude_only and ".claude" in claude_only and ".bashrc" in claude_only
     codex_only = {p.relative_to(fake_home).as_posix() for p in snapshot.roots({"claude": False, "codex": True})}
