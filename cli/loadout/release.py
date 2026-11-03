@@ -119,7 +119,7 @@ def _edit(section: str, tmp: Path) -> str | None:
     path = tmp / "section.md"
     path.write_text(section, encoding="utf-8")
     cmd = shlex.split(os.environ["EDITOR"]) + [str(path)]
-    if not runner.run(cmd, timeout=3600).ok:
+    if runner.run_interactive(cmd, timeout=3600) != 0:
         return None
     return path.read_text(encoding="utf-8")
 
@@ -194,7 +194,7 @@ def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], 
             print(f"    {printable(line)}")
         if urgent:
             print("  release-status.json marks it urgent")
-        print(f"  then: commit, tag {tag}, git push origin main {tag}, gh release create (with {' and '.join(ASSETS)})")
+        print(f"  then: commit, tag {tag}, git push --atomic origin main {tag}, gh release create (with {' and '.join(ASSETS)})")
         if not yes and ask("Release now? [y/N] ").strip().lower() not in ("y", "yes"):
             return _say("cancelled; nothing changed")
         notes = Path(tmp) / "notes.md"
@@ -221,7 +221,7 @@ def cut(version: str, urgent: bool, yes: bool, edit: bool, ask: Callable[[str], 
         failed = _step(root, "git tag", _git(root, "tag", "-a", tag, "-m", f"loadout {version}"), where)
         if failed:
             return failed
-        failed = _step(root, "git push", _git(root, "push", "origin", "main", tag, timeout=120),
+        failed = _step(root, "git push", _git(root, "push", "--atomic", "origin", "main", tag, timeout=120),
                        f"commit and tag {tag} exist locally only")
         if failed:
             return failed

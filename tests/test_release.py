@@ -177,7 +177,7 @@ def test_cut_writes_version_changelog_and_tags_in_order(repo):
         list(repo.git("add", "--", "pyproject.toml", "CHANGELOG.md", "release-status.json")),
         list(repo.git("commit", "-m", "chore(release): v0.3.0")),
         list(repo.git("tag", "-a", "v0.3.0", "-m", "loadout 0.3.0")),
-        list(repo.git("push", "origin", "main", "v0.3.0")),
+        list(repo.git("push", "--atomic", "origin", "main", "v0.3.0")),
     ]
     calls = [c for c in repo.fr.calls if c in wanted or c[:3] == ["gh", "release", "create"]]
     assert calls[:4] == wanted
@@ -205,22 +205,45 @@ def test_cut_refuses_a_diff_outside_release_files(repo, capsys):
     assert list(repo.git("restore", "--source=HEAD", "--staged", "--worktree", "--", *release.RELEASE_FILES)) in repo.fr.calls
 
 
-def test_edit_opens_the_editor_on_the_section(repo, monkeypatch):
+def test_edit_runs_the_editor_on_the_terminal(repo, monkeypatch):
     seen = {}
-    fake = repo.fr
 
-    def editor(cmd, cwd=None, timeout=300, env=None):
-        if cmd[0] == "myeditor":
-            seen["cmd"] = list(cmd)
-            Path(cmd[-1]).write_text("## 0.3.0 (edited)\n\n- hand written\n", encoding="utf-8")
-            return R(0, "", "")
-        return fake(cmd, cwd=cwd, timeout=timeout, env=env)
+    def editor(cmd, timeout=None):
+        seen["cmd"] = list(cmd)
+        Path(cmd[-1]).write_text("## 0.3.0 (edited)\n\n- hand written\n", encoding="utf-8")
+        return 0
 
-    monkeypatch.setattr(runner, "run", editor)
+    monkeypatch.setattr(runner, "run_interactive", editor)
     assert cut(edit=True) == 0
     assert seen["cmd"][:2] == ["myeditor", "--wait"]
     assert not Path(seen["cmd"][-1]).is_relative_to(repo.root)
+    assert ["myeditor"] not in [c[:1] for c in repo.fr.calls]  # never through the capturing runner.run
     assert "- hand written" in repo.read("CHANGELOG.md")
+
+
+def test_a_failing_editor_aborts_before_anything_is_written(repo, capsys, monkeypatch):
+    monkeypatch.setattr(runner, "run_interactive", lambda cmd, timeout=None: 1)
+    refuses(repo, capsys, "editor", edit=True)
+
+
+def test_run_interactive_passes_no_capture(monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"], seen["kw"] = cmd, kw
+        return type("P", (), {"returncode": 3})()
+
+    monkeypatch.setattr(runner, "_resolve", lambda b: "/bin/" + b)
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    assert runner.run_interactive(["ed", "f"], timeout=5) == 3
+    assert seen["cmd"] == ["/bin/ed", "f"]
+    assert not {"capture_output", "stdout", "stderr", "stdin"} & set(seen["kw"])
+
+
+def test_run_interactive_missing_binary_is_127(monkeypatch):
+    monkeypatch.setattr(runner, "_resolve", lambda b: None)
+    monkeypatch.setattr(runner, "_fallback", lambda b: None)
+    assert runner.run_interactive(["nope"]) == 127
 
 
 def test_edit_without_editor_refuses_before_anything(repo, capsys, monkeypatch):
