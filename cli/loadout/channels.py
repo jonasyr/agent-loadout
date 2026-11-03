@@ -204,6 +204,12 @@ def current_release(root: Path) -> str | None:
     return name if parse_tag(name) else None
 
 
+def moved_tags() -> list[str]:
+    """Release tags the daily check saw point at another commit (local state only), newest first."""
+    names = [n for n, e in _tags(_load_releases()).items() if parse_tag(n) and isinstance(e, dict) and e.get("moved")]
+    return sorted(names, key=parse_tag, reverse=True)
+
+
 def kit_slug(root: Path) -> str:
     res = runner.run(["git", "-C", str(root), "remote", "get-url", "origin"], timeout=30)
     m = _SLUG.fullmatch(res.stdout.strip()) if res.ok else None
