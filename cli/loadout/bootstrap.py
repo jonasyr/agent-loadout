@@ -1035,8 +1035,12 @@ def _decision_file() -> Path:
 def _first_install() -> bool:
     """No answer to the snapshot question yet and no recorded setup. The state folder itself is no sign (main()
     creates it before any command runs), and neither is a bootstrap backup (a run that stopped at the snapshot
-    step has written one already); the decision file is."""
-    return not (_decision_file().exists() or (paths.state_dir() / "managed-settings.json").exists())
+    step has written one already); the decision file is. So are the signs of an earlier install: the Claude Code
+    record, the Codex record (a Codex-only machine has no managed-settings.json) and loadout's launcher."""
+    state = paths.state_dir()
+    signs = [_decision_file(), state / "managed-settings.json", state / "codex-config.json",
+             paths.bin_dir() / "loadout", paths.bin_dir() / "loadout.cmd"]
+    return not any(p.exists() or p.is_symlink() for p in signs)
 
 
 def _record_decision(decided: str, archive: Path | None = None) -> None:

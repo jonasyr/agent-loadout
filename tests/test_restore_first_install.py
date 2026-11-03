@@ -123,6 +123,27 @@ def test_launcher_and_codex_skill_links_are_rolled_back(fake_home):
     assert not (fake_home / ".agents" / "skills" / "mine").exists()
 
 
+def test_undo_line_uses_the_kit_launcher(fake_home, capsys):
+    import os
+    make(fake_home)
+    restore_cmd.run_first_install(True, None, False)
+    out = capsys.readouterr().out
+    kit = snapshot.paths.kit_root() / "bin" / "loadout"
+    line = next(x for x in out.splitlines() if "undo this restore:" in x)
+    prefix = f'python "{kit}"' if os.name == "nt" else str(kit)
+    assert f"(undo this restore: {prefix} restore " in line
+
+
+def test_windows_launcher_files_are_roots(fake_home, monkeypatch):
+    monkeypatch.setattr(snapshot.sys, "platform", "win32")
+    bin_dir = fake_home / ".local" / "bin"
+    bin_dir.mkdir(parents=True)
+    for name in ("loadout", "loadout.cmd"):
+        (bin_dir / name).write_text("x")
+    names = {p.name for p in snapshot.roots(AGENTS)}
+    assert {"loadout", "loadout.cmd"} <= names
+
+
 def test_existing_launcher_is_restored(fake_home):
     (fake_home / ".local" / "bin").mkdir(parents=True)
     launcher = fake_home / ".local" / "bin" / "loadout"

@@ -50,7 +50,9 @@ def _candidates() -> list[tuple[str | None, Path]]:
     fish = (Path(xdg) if os.path.isabs(xdg) else home / ".config") / "fish"
     found: list[tuple[str | None, Path]] = [
         ("claude", paths.claude_home()), ("claude", paths.claude_json()), ("codex", paths.codex_home())]
-    found += [("codex", paths.agents_skills()), (None, paths.bin_dir() / "loadout")]  # links and launcher bootstrap adds
+    found += [("codex", paths.agents_skills())]  # links and launcher files bootstrap adds
+    found += [(None, paths.bin_dir() / name) for name in (("loadout", "loadout.cmd") if sys.platform == "win32"
+                                                          else ("loadout",))]
     found += [(None, home / name) for name in _SHELL_FILES]
     found += [(None, fish / "config.fish"), (None, fish / "conf.d")]
     if sys.platform == "win32":

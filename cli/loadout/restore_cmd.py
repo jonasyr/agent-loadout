@@ -1,9 +1,10 @@
 """`loadout restore`: a path, --last, --list, or (in a terminal) a numbered pick of recent backups (spec Part 6)."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from . import backup, ui
+from . import backup, paths, ui
 from .out import printable as _printable
 from .secrets import redact
 
@@ -159,5 +160,7 @@ def run_first_install(yes: bool, ask, interactive: bool) -> int:
     for line in lines:
         print(printable(line))
     if pre is not None:
-        print(f"\nthe state this restore replaced is in {pre}  (undo this restore: loadout restore {pre})")
+        kit = paths.kit_root() / "bin" / "loadout"  # the launcher on PATH may be what this restore moved aside
+        run = f'python "{kit}"' if os.name == "nt" else str(kit)
+        print(f"\nthe state this restore replaced is in {pre}  (undo this restore: {run} restore {pre})")
     return 0 if ok else 1

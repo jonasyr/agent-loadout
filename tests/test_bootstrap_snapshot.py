@@ -230,3 +230,15 @@ def test_links_among_the_roots_are_noted_before_the_question(fake_home, fake_run
     out = capsys.readouterr().out
     assert "note: 1 of these are links (" in out and ".zshrc" in out
     assert "keep those in your dotfiles' git" in out
+
+
+@pytest.mark.parametrize("sign", ["codex-config.json", "managed-settings.json", "launcher"])
+def test_cli_machine_with_an_earlier_setup_is_not_a_first_install(fake_home, fake_runner, monkeypatch, sign):
+    seed(fake_home)
+    if sign == "launcher":
+        (fake_home / ".local" / "bin").mkdir(parents=True)
+        (fake_home / ".local" / "bin" / "loadout").write_text("#!/bin/sh\n")
+    else:
+        paths.state_dir().mkdir(parents=True, exist_ok=True)
+        (paths.state_dir() / sign).write_text("{}")
+    assert not question_in(cli(monkeypatch)) and archives() == []
