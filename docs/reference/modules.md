@@ -103,7 +103,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 |---|---|
 | `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json` | The plugin's manifests for Claude Code and Codex. The marketplace that lists it is `.claude-plugin/marketplace.json` at the repo root. |
 | `.mcp.json`, `.codex-mcp.json` | The plugin's MCP servers: Serena and codebase-memory in Claude Code; only codebase-memory in Codex, where loadout writes Serena into `config.toml` instead. |
-| `skills/` | The plugin's skills: `configure`, `docs-audit`, `docs-sync`, `execution-advisor`, `onboard`, `usage`. |
+| `skills/` | The plugin's skills: `configure`, `docs-audit`, `docs-sync`, `execution-advisor`, `onboard`, `release`, `usage`. |
 | `hooks/hooks.json`, `hooks/codex.json` | The hooks for Claude Code and for Codex ([Hooks](hooks.md)). |
 | `hooks/run.sh` | Runs a hook command only when its program is on `PATH`; `--soft` and `--python` as described in [Hooks](hooks.md). |
 | `hooks/tool_hint.sh`, `hooks/tool_hint.py` | The docs hint for library-docs web lookups (Claude Code): a fast bash filter, then the Python script. Code searches are Serena's `remind` hook. |

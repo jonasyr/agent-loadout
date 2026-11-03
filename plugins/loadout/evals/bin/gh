@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Stand-in for the real `gh` during evals (run.sh puts it first on PATH). Read-only: it logs each
+# call to ./.gh-calls.log and answers only `pr view N --json title,body` with fixed text.
+printf '%s\n' "$*" >> "${PWD}/.gh-calls.log" 2>/dev/null || true
+case "${1:-} ${2:-} ${4:-}" in
+  "pr view --json")
+    case "${3:-}" in
+      41) echo '{"title":"feat(adopt): start clean with loadout'"'"'s Serena","body":"Adds --use-loadout and --keep-own to adopt, so a machine with its own Serena can switch to loadout'"'"'s setup in one step."}' ;;
+      42) echo '{"title":"fix(codex): keep a marketplace table that pins a ref","body":"Codex setups that pin a marketplace ref lost the pin on update. The table is kept now."}' ;;
+      43) echo '{"title":"refactor(check): split the report builder","body":"Internal only. No change in output."}' ;;
+      *) echo "no pull request #${3:-}" >&2; exit 1 ;;
+    esac ;;
+  *) echo "gh stub: only 'pr view N --json title,body' is available in evals" >&2; exit 1 ;;
+esac

@@ -1,6 +1,8 @@
 # Run the skill evals
 
-Use this page to check that the plugin's skills (onboard, configure, docs-audit, docs-sync, execution-advisor, usage) still behave after you changed them. The evals are in `plugins/loadout/evals/`. Each case has a prompt, a scaffold that builds a fixture repo, and graders.
+Use this page to check that the plugin's skills (onboard, configure, docs-audit, docs-sync, execution-advisor, release, usage) still behave after you changed them. The evals are in `plugins/loadout/evals/`. Each case has a prompt, a scaffold that builds a fixture repo, and graders.
+
+The release case (`release-notes/`) checks that the skill runs `loadout release 0.3.0 --draft-notes`, reads PRs with `gh pr view`, and asks for a yes before any `--notes ... --yes`. Both commands are stubs: `evals/bin/loadout` logs its calls to `.loadout-calls.log`, and `evals/bin/gh` is read-only, answers `pr view N --json title,body` for three fixed PR numbers and fails on anything else, so the case never reaches GitHub.
 
 ## Run them
 

@@ -103,10 +103,14 @@ Blank issues are off. Read command output before you paste it, and replace token
 Only the maintainer releases ([ADR 0046](docs/adr/0046-release-channels.md)). Stable machines are offered a release 3 days after they first see its tag.
 
 ```bash
-loadout release X.Y.Z [--urgent] [--edit] [--yes]
+loadout release X.Y.Z [--urgent] [--edit | --notes FILE | --draft-notes FILE] [--yes]
 ```
 
-Run it from the kit checkout, on a clean `main` that equals `origin/main`. It refuses unless `X.Y.Z` is newer than every tag and at least 0.2.0, `gh` is signed in, and the newest `ci.yml` run for `HEAD` succeeded. It shows the plan (the changelog section built from the Conventional Commit subjects since the last tag; `--edit` opens it in `$EDITOR` first) and asks. After your yes it sets `version` in `pyproject.toml`, prepends the section to `CHANGELOG.md`, adds the version to `release-status.json` with `--urgent`, commits `chore(release): vX.Y.Z`, tags it (annotated), pushes `main` and the tag together, and runs `gh release create` with `bootstrap.sh` and `bootstrap.ps1` attached. The release commit may change only those three files. `--urgent` skips the 3-day wait for the notice; people still run `loadout update` themselves.
+The easy way is the skill: say "release 0.3.0" to Claude Code (`/loadout:release`) or Codex (`$loadout:release`). It drafts the notes from the merged PRs, rewrites them for people who use loadout, and runs the release only after you answer yes to the notes.
+
+By hand: `loadout release X.Y.Z --draft-notes <file>` (a path outside the checkout, e.g. `/tmp/notes.md`) writes the draft and stops, you edit the file, then `loadout release X.Y.Z --notes <file>` releases with that text. `--edit` opens the generated section in `$EDITOR` before the plan instead.
+
+Run it from the kit checkout, on a clean `main` that equals `origin/main`. It refuses unless `X.Y.Z` is newer than every tag and at least 0.2.0, `gh` is signed in, and the newest `ci.yml` run for `HEAD` succeeded. It shows the plan (the changelog section built from the merged PRs since the last tag; the format is in [the CLI reference](docs/reference/cli.md#loadout-release)) and asks. After your yes it sets `version` in `pyproject.toml`, prepends the section to `CHANGELOG.md`, adds the version to `release-status.json` with `--urgent`, commits `chore(release): vX.Y.Z`, tags it (annotated), pushes `main` and the tag together, and runs `gh release create` with `bootstrap.sh` and `bootstrap.ps1` attached. The release commit may change only those three files. `--urgent` skips the 3-day wait for the notice; people still run `loadout update` themselves.
 
 To withdraw a bad release:
 

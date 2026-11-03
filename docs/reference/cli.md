@@ -513,7 +513,7 @@ The setting is written only after the move worked. The move, the setting (`chann
 For the maintainer; it is not in `loadout --help`. How and when: [CONTRIBUTING](../../CONTRIBUTING.md#releasing).
 
 ```
-loadout release X.Y.Z [--urgent] [--edit] [--yes]
+loadout release X.Y.Z [--urgent] [--edit | --notes FILE | --draft-notes FILE] [--yes]
 loadout release withdraw X.Y.Z --reason TEXT [--use A.B.C] [--yes]
 ```
 
@@ -521,9 +521,20 @@ loadout release withdraw X.Y.Z --reason TEXT [--use A.B.C] [--yes]
 |---|---|
 | `--urgent` | List the version as urgent in `release-status.json`: stable offers it without the 3-day wait. The person still has to run `loadout update`. |
 | `--edit` | Open the changelog section in `$EDITOR` (run on the terminal) before the plan. |
+| `--draft-notes FILE` | Write the drafted section to `FILE`, a path outside the checkout, and stop. Nothing else is written, committed, tagged or pushed. Every check still runs. |
+| `--notes FILE` | Use the section in `FILE` (a reviewed draft) instead of the one built from the commits; the heading's date becomes the day of the release (the version must match). Cannot be combined with `--edit` or `--draft-notes`. |
 | `--yes` | Skip the question. |
 | `--reason TEXT` | `withdraw` only, needed: shown to people who run the withdrawn release. |
 | `--use A.B.C` | `withdraw` only: the release to move to. It must be an existing tag newer than the withdrawn one. Without it people are told to run `loadout restore`. |
+
+The changelog section and the GitHub Release body follow one format, built from what landed on `main` since the newest `vX.Y.Z` tag of any version (first-parent commits: squash merges whose subject ends in `(#N)`, `Merge pull request #N` commits with the PR title from the body, and plain Conventional Commits without a number, which get a bullet without `(#N)`; other commits are left out):
+
+- A heading `## [X.Y.Z] - YYYY-MM-DD`, a one-line comment for the summary, then the groups `### Breaking`, `### Added`, `### Changed`, `### Fixed` and `### Security`, in that order; a group with no entries is left out, and a release with none says `- No user-facing changes.`. The group of a PR subject: `!` or `BREAKING CHANGE` gives Breaking; `feat` gives Added; `fix` gives Security when its scope is `security` or the subject says secret or security, else Fixed; `refactor` and `perf` give Changed; `docs`, `chore`, `test`, `ci`, `build` and `style` are left out; any other type, and a subject that is not Conventional, gives Changed.
+- At most 15 bullets per group; the rest is one line `…and N more (see the compare link)`.
+- A compare link `[X.Y.Z]: <repo>/compare/<previous tag>...vX.Y.Z` at the end of the section (the release page when there is no earlier tag).
+- The GitHub Release body is the same bullets followed by `**Full changelog:** <compare link>`.
+
+The skill [`/loadout:release`](../../plugins/loadout/skills/release/SKILL.md) (in Codex `$loadout:release`) uses `--draft-notes` and `--notes` to rewrite the draft for users and asks before it releases. Maintainer steps: [CONTRIBUTING](../../CONTRIBUTING.md#releasing).
 
 ## loadout restore
 

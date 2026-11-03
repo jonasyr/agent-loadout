@@ -44,6 +44,11 @@ Every machine pulled the kit's `main` once a day and re-applied the setup withou
 - Releasing becomes a deliberate step with a changelog.
 - Third-party marketplaces (claude-plugins-official and others) are not pinned.
 
+## Release notes (addendum)
+
+- **Keep a Changelog.** The `CHANGELOG.md` section and the GitHub Release body use the same format, generated from the merged PRs on `main` since the newest tag. The format is in [the CLI reference](../reference/cli.md#loadout-release).
+- **Generated, then rewritten.** `loadout release` builds the section from PR subjects only; it never calls an AI model and never writes prose on its own. The `/loadout:release` skill (Claude Code and Codex) drafts the notes for users from the PR titles and bodies, shows the file, and releases only after an explicit yes. `--draft-notes` and `--notes` are the hand-driven path to the same result.
+
 ## In the code
 
 - `cli/loadout/channels.py` (the setting, tags, eligibility, moves), `cli/loadout/release.py` (`loadout release`), `cli/loadout/update.py` (`update` and `channel` on stable), `cli/loadout/maintenance.py` (the daily check), `cli/loadout/check.py` (the Channel row), `bootstrap.sh` and `bootstrap.ps1` (the first install)
