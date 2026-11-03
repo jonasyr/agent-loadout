@@ -179,6 +179,13 @@ def _refused_pairs(ordered: list[dict], root: Path, force: bool) -> dict[int, st
 
 
 _SHA40 = re.compile(r"[0-9a-f]{40}")
+_BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*", re.ASCII)
+
+
+def valid_branch(name) -> bool:
+    """A plain branch name that can never be read as an option or a path trick."""
+    return (isinstance(name, str) and bool(_BRANCH.fullmatch(name)) and ".." not in name and "//" not in name
+            and "/-" not in name and not name.endswith((".lock", "/", ".")))
 
 
 def _is_kit_root(root: str) -> bool:
@@ -196,7 +203,9 @@ def _allowed_run(cmd) -> bool:
         return False
     n = len(cmd)
     if cmd[:2] == ["git", "-C"]:  # channels.move_to: back to the commit the kit checkout was on
-        return n == 6 and cmd[3:5] == ["checkout", "--detach"] and bool(_SHA40.fullmatch(cmd[5])) and _is_kit_root(cmd[2])
+        if n == 6:
+            return cmd[3:5] == ["checkout", "--detach"] and bool(_SHA40.fullmatch(cmd[5])) and _is_kit_root(cmd[2])
+        return n == 5 and cmd[3] == "switch" and valid_branch(cmd[4]) and _is_kit_root(cmd[2])
     slot = {"add-json": 5, "remove": 5}.get(cmd[2]) if cmd[:2] == ["claude", "mcp"] and n > 2 else n - 1
     if cmd[:2] == ["claude", "plugin"] and n > 2 and cmd[2] in ("enable", "install"):
         slot = 3

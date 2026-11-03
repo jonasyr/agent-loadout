@@ -3,6 +3,8 @@ import os
 from loadout import backup, channels, runner
 
 SHA = "c" * 40
+TAG_SHA = "d" * 40
+NOW = 1_800_000_000.0
 
 
 def _kit(tmp_path, monkeypatch):
@@ -30,9 +32,18 @@ def _verbs(fake):
     return [c[3] if c[:2] == ["git", "-C"] else c[0] for c in fake.calls]
 
 
+def _ready(fake, kit, tag="v0.3.0", recorded=TAG_SHA, fetched=TAG_SHA, branch=""):
+    channels.record_seen({tag: recorded}, NOW)
+    fake.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, SHA + "\n", "")
+    fake.responses[_git(kit, "rev-parse", "FETCH_HEAD^{commit}")] = runner.Result(0, fetched + "\n", "")
+    fake.responses[_git(kit, "symbolic-ref")] = (runner.Result(0, branch + "\n", "") if branch
+                                                 else runner.Result(1, "", "not a symbolic ref"))
+
+
 def test_move_refuses_local_commits_and_edits(fake_home, fake_runner, tmp_path, monkeypatch):
     kit = _kit(tmp_path, monkeypatch)
     bk = RecordingBackup(fake_runner)
+    _ready(fake_runner, kit)
     fake_runner.responses[_git(kit, "status")] = runner.Result(0, " M cli/x.py\n?? stray.txt\n", "")
     text = channels.move_to(kit, "v0.3.0", bk)
     assert text.startswith("local changes") and "cli/x.py" in text and "stray.txt" not in text
@@ -48,20 +59,101 @@ def test_move_refuses_local_commits_and_edits(fake_home, fake_runner, tmp_path, 
 def test_move_records_undo_before_checkout(fake_home, fake_runner, tmp_path, monkeypatch):
     kit = _kit(tmp_path, monkeypatch)
     bk = RecordingBackup(fake_runner)
-    fake_runner.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, SHA + "\n", "")
+    _ready(fake_runner, kit)
     assert channels.move_to(kit, "v0.3.0", bk) is None
     steps = [c for c in fake_runner.calls if c[3:4] not in (["status"], ["log"])]
     order = [c[3] if c[0] == "git" else c[0] for c in steps]
-    assert order == ["rev-parse", "RECORD", "fetch", "checkout"]
+    assert order.index("fetch") < order.index("RECORD") < order.index("checkout")
+    assert order[-1] == "checkout" and order.count("checkout") == 1
     assert bk.recorded == [("kit checkout", ["git", "-C", str(kit), "checkout", "--detach", SHA])]
-    assert steps[-1][3:] == ["checkout", "--detach", "v0.3.0"]
+    assert steps[-1][3:] == ["checkout", "--detach", TAG_SHA]  # the verified sha, not the tag name
+    assert ["git", "-C", str(kit), "fetch", "origin", "refs/tags/v0.3.0", "--no-tags"] in fake_runner.calls
     assert backup._allowed_run(bk.recorded[0][1])
+
+
+def test_undo_on_a_branch_is_a_switch(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    bk = RecordingBackup(fake_runner)
+    _ready(fake_runner, kit, branch="main")
+    assert channels.move_to(kit, "v0.3.0", bk, base="origin/main") is None
+    assert bk.recorded == [("kit checkout", ["git", "-C", str(kit), "switch", "main"])]
+    assert backup._allowed_run(bk.recorded[0][1])
+    bk.recorded.clear()
+    _ready(fake_runner, kit, branch="--force")  # an odd name falls back to the detached commit
+    assert channels.move_to(kit, "v0.3.0", bk) is None
+    assert bk.recorded[0][1][3:] == ["checkout", "--detach", SHA]
+
+
+def test_switch_allowlist(fake_home, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    k = str(kit)
+    assert backup._allowed_run(["git", "-C", k, "switch", "main"])
+    assert backup._allowed_run(["git", "-C", k, "switch", "feat/x-1.2"])
+    assert not backup._allowed_run(["git", "-C", str(tmp_path), "switch", "main"])
+    for bad in ("-f", "--detach", "../x", "a..b", "x.lock", "x/", "-c", "", "a b", "a//b", "a/-b"):
+        assert not backup._allowed_run(["git", "-C", k, "switch", bad]), bad
+    assert not backup._allowed_run(["git", "-C", k, "switch", "-f", "main"])
+    assert not backup._allowed_run(["git", "-C", k, "switch", "main", "x"])
+    assert not backup._allowed_run(["git", "-C", k, "switch"])
+
+
+def test_dev_checkout_ahead_of_last_tag_is_not_refused_with_origin_main_base(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    bk = RecordingBackup(fake_runner)
+    _ready(fake_runner, kit, branch="main")
+    assert channels.move_to(kit, "v0.3.0", bk, base="origin/main") is None
+    log = [c for c in fake_runner.calls if c[3:4] == ["log"]]
+    assert log and log[0][-3:] == ["HEAD", "--not", "origin/main"]
+    # origin/main is fetched first so the base is current
+    fetch_main = fake_runner.calls.index(["git", "-C", str(kit), "fetch", "origin", "main"])
+    assert fetch_main < fake_runner.calls.index(log[0])
+    fake_runner.calls.clear()
+    assert channels.move_to(kit, "v0.3.0", bk) is None  # the default base needs no fetch of main
+    assert ["git", "-C", str(kit), "fetch", "origin", "main"] not in fake_runner.calls
+    assert [c for c in fake_runner.calls if c[3:4] == ["log"]][0][-3:] == ["HEAD", "--not", "--tags"]
+
+
+def test_change_check_fails_closed(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    for verb in ("status", "log"):
+        bk = RecordingBackup(fake_runner)
+        _ready(fake_runner, kit)
+        fake_runner.responses[_git(kit, "status")] = runner.Result(0, "", "")
+        fake_runner.responses[_git(kit, "log")] = runner.Result(0, "", "")
+        fake_runner.responses[_git(kit, verb)] = runner.Result(128, "", "fatal: broken")
+        text = channels.move_to(kit, "v0.3.0", bk)
+        assert text.startswith("could not check") and "local changes" in text
+        assert not bk.recorded and "checkout" not in _verbs(fake_runner)
+        assert channels.move_to_dev(kit, bk).startswith("could not check") and not bk.recorded
+
+
+def test_unknown_moved_or_withdrawn_tag_is_refused(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    bk = RecordingBackup(fake_runner)
+    fake_runner.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, SHA + "\n", "")
+    assert "not" in channels.move_to(kit, "v0.3.0", bk)  # never seen
+    channels.record_seen({"v0.3.0": TAG_SHA}, NOW)
+    channels.record_seen({"v0.3.0": "e" * 40}, NOW + 1)  # moved
+    assert "changed after" in channels.move_to(kit, "v0.3.0", bk)
+    channels.record_seen({"v0.4.0": TAG_SHA}, NOW)
+    channels._store_status(channels.Status(withdrawn={"0.4.0": {"reason": "bad", "use": None}}))
+    assert "withdrawn" in channels.move_to(kit, "v0.4.0", bk)
+    assert not bk.recorded and not {"fetch", "checkout"} & set(_verbs(fake_runner))
+
+
+def test_sha_mismatch_is_refused_and_nothing_moves(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    bk = RecordingBackup(fake_runner)
+    _ready(fake_runner, kit, fetched="e" * 40)
+    text = channels.move_to(kit, "v0.3.0", bk)
+    assert text == "release v0.3.0 does not match what this machine recorded; not moved"
+    assert not bk.recorded and "checkout" not in _verbs(fake_runner)
 
 
 def test_checkout_refusal_is_reported(fake_home, fake_runner, tmp_path, monkeypatch):
     kit = _kit(tmp_path, monkeypatch)
     bk = RecordingBackup(fake_runner)
-    fake_runner.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, SHA + "\n", "")
+    _ready(fake_runner, kit)
     err = "error: Your local changes to the following files would be overwritten by checkout:\n\tREADME.md\nAborting"
     fake_runner.responses[_git(kit, "checkout")] = runner.Result(1, "", err)
     text = channels.move_to(kit, "v0.3.0", bk)
@@ -94,11 +186,13 @@ def test_move_to_dev_creates_main_tracking_origin(fake_home, fake_runner, tmp_pa
     kit = _kit(tmp_path, monkeypatch)
     bk = RecordingBackup(fake_runner)
     fake_runner.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, SHA + "\n", "")
+    fake_runner.responses[_git(kit, "symbolic-ref")] = runner.Result(1, "", "")
     fake_runner.responses[_git(kit, "rev-parse", "--verify")] = runner.Result(1, "", "")
     assert channels.move_to_dev(kit, bk) is None
     calls = [c[3:] for c in fake_runner.calls if c[0] == "git"]
     assert ["switch", "-c", "main", "--track", "origin/main"] in calls
     assert calls[-1] == ["pull", "--ff-only"]
+    assert calls.index(["fetch", "origin", "main"]) < [c[0] for c in calls].index("log")
     assert bk.recorded[0][0] == "kit checkout"
 
     fake_runner.calls.clear()

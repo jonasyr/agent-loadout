@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import maintenance, paths, runner
-from .backup import Backup
+from .backup import Backup, valid_branch
 from .jsonio import load_json, save_json
 from .out import printable
 
@@ -308,30 +308,52 @@ def check_releases(now: float) -> None:
     mark_notified(offer)
 
 
+
+class CheckFailed(Exception):
+    """git could not tell whether the kit checkout has local work: the caller refuses (fail closed)."""
+
+
 def local_changes(root: Path, base: str) -> list[str]:
     """What a checkout would leave behind or fight with: tracked edits (untracked files never block; git refuses
-    itself when one is in the way) and the commits not reachable from `base` (`--tags` or `origin/main`)."""
+    itself when one is in the way) and the commits not reachable from `base` (`--tags` or `origin/main`).
+    Raises CheckFailed when git cannot answer."""
     git, env = ["git", "-C", str(root)], _git_env()
     out = []
     res = runner.run([*git, "status", "--porcelain", "--untracked-files=no"], timeout=60, env=env)
+    if not res.ok:
+        raise CheckFailed(root)
     for line in res.stdout.splitlines():
         if len(line) > 3 and not line.startswith("??"):
             out.append(printable(line[3:]))
     res = runner.run([*git, "log", "--format=%h %s", "HEAD", "--not", base], timeout=60, env=env)
+    if not res.ok:
+        raise CheckFailed(root)
     out += [f"commit {printable(line)}" for line in res.stdout.splitlines() if line.strip()]
     return out
 
 
-def _refuse_text(root: Path, found: list[str]) -> str:
-    return (f"local changes in {root}: {', '.join(found)}; commit, stash or remove them, "
-            "or run loadout from a clean checkout")
+def _dirty(root: Path, base: str) -> str | None:
+    """The refusal text when the checkout has local work or cannot be checked; None when it is clean."""
+    try:
+        found = local_changes(root, base)
+    except CheckFailed:
+        return f"could not check {root} for local changes; nothing was moved"
+    if found:
+        return (f"local changes in {root}: {', '.join(found)}; commit, stash or remove them, "
+                "or run loadout from a clean checkout")
+    return None
 
 
 def _record_undo(root: Path, bk: Backup) -> str | None:
-    old = runner.run(["git", "-C", str(root), "rev-parse", "HEAD"], timeout=30).stdout.strip()
+    """Record how to return to where the checkout is now: its branch when it is on one, else its commit."""
+    git = ["git", "-C", str(root)]
+    old = runner.run([*git, "rev-parse", "HEAD"], timeout=30).stdout.strip()
     if not _SHA.fullmatch(old):
         return f"could not read the current commit of {root}"
-    bk.record_command("kit checkout", ["git", "-C", str(root), "checkout", "--detach", old])
+    res = runner.run([*git, "symbolic-ref", "-q", "--short", "HEAD"], timeout=30)
+    branch = res.stdout.strip() if res.ok else ""
+    undo = [*git, "switch", branch] if valid_branch(branch) else [*git, "checkout", "--detach", old]
+    bk.record_command("kit checkout", undo)
     return None
 
 
@@ -344,36 +366,58 @@ def _failed(res, what: str) -> str:
     return f"{printable(reason)}: {', '.join(map(printable, files))}" if files else printable(reason)
 
 
-def move_to(root: Path, tag: str, bk: Backup) -> str | None:
-    """Check out a release tag (detached). None on success, else why not; the undo is recorded before anything moves."""
-    if parse_tag(tag) is None:
-        return f"{printable(str(tag))} is not a release tag"
-    found = local_changes(root, "--tags")
-    if found:
-        return _refuse_text(root, found)
+def _verify_release(tag: str) -> tuple[str | None, str | None]:
+    """(recorded commit, None) for a release this machine saw and may still offer; (None, why not) otherwise."""
+    entry = _tags(_load_releases()).get(tag) if parse_tag(tag) else None
+    if not isinstance(entry, dict) or not _SHA.fullmatch(str(entry.get("sha"))):
+        return None, f"{printable(str(tag))} is not a release this machine has seen"
+    if entry.get("moved"):
+        return None, f"release {tag} was changed after it was released; not moved"
+    if tag[1:] in last_status().withdrawn:
+        return None, f"release {tag} was withdrawn; not moved"
+    return entry["sha"], None
+
+
+def move_to(root: Path, tag: str, bk: Backup, base: str = "--tags") -> str | None:
+    """Check out a recorded, unmoved, not withdrawn release (detached, at the verified commit). None on success,
+    else why not. `base` is what local commits are measured against (`--tags` on stable, `origin/main` from dev).
+    The undo is recorded before the checkout moves."""
+    git, env = ["git", "-C", str(root)], _git_env()
+    expected, why = _verify_release(tag)
+    if why:
+        return why
+    if base == "origin/main":
+        res = runner.run([*git, "fetch", "origin", "main"], timeout=120, env=env)
+        if not res.ok:
+            return _failed(res, "fetching main")
+    problem = _dirty(root, base)
+    if problem:
+        return problem
+    res = runner.run([*git, "fetch", "origin", f"refs/tags/{tag}", "--no-tags"], timeout=120, env=env)
+    if not res.ok:
+        return _failed(res, f"fetching {tag}")
+    got = runner.run([*git, "rev-parse", "FETCH_HEAD^{commit}"], timeout=30, env=env).stdout.strip()
+    if got != expected:
+        return f"release {tag} does not match what this machine recorded; not moved"
     problem = _record_undo(root, bk)
     if problem:
         return problem
-    git, env = ["git", "-C", str(root)], _git_env()
-    res = runner.run([*git, "fetch", "origin", "tag", tag, "--no-tags"], timeout=120, env=env)
-    if not res.ok:
-        return _failed(res, f"fetching {tag}")
-    res = runner.run([*git, "checkout", "--detach", tag], timeout=120, env=env)
+    res = runner.run([*git, "checkout", "--detach", expected], timeout=120, env=env)
     return None if res.ok else _failed(res, f"checking out {tag}")
 
 
 def move_to_dev(root: Path, bk: Backup) -> str | None:
     """Back onto main, fast-forwarded to origin. None on success, else why not."""
-    found = local_changes(root, "origin/main")
-    if found:
-        return _refuse_text(root, found)
-    problem = _record_undo(root, bk)
-    if problem:
-        return problem
     git, env = ["git", "-C", str(root)], _git_env()
     res = runner.run([*git, "fetch", "origin", "main"], timeout=120, env=env)
     if not res.ok:
         return _failed(res, "fetching main")
+    problem = _dirty(root, "origin/main")
+    if problem:
+        return problem
+    problem = _record_undo(root, bk)
+    if problem:
+        return problem
     local = runner.run([*git, "rev-parse", "--verify", "--quiet", "refs/heads/main"], timeout=30, env=env).ok
     switch = ["switch", "main"] if local else ["switch", "-c", "main", "--track", "origin/main"]
     res = runner.run([*git, *switch], timeout=120, env=env)
