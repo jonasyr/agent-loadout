@@ -51,7 +51,7 @@ Set up or repair this machine. Safe to re-run.
 ```
 loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--use-loadout] [--keep-own] [--verbose] [--agents LIST]
                   [--codex-side wsl|windows] [--vscode-wsl] [--vscode-path] [--without-codex-cli] [--without-claude-cli]
-                  [--personal new|URL] [--answers FILE] [--channel stable|dev]
+                  [--personal new|URL] [--answers FILE] [--channel stable|dev] [--snapshot | --no-snapshot]
 ```
 
 | Flag | Meaning |
@@ -71,6 +71,8 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--use-loadout
 | `--personal new\|URL` | The personal layer without asking: `new` creates a starter layer, a git URL is cloned. Used only when no personal layer exists yet; otherwise bootstrap says so and keeps the one there. |
 | `--answers FILE` | A JSON file with the starter layer's answers: `about` (`name`, `role`, `languages`, `preferences`) and `preferences` (ids and values as in [Preferences format](preferences-format.md), free text as `other:<text>`). Give an absolute path: `bootstrap.sh` and `bootstrap.ps1` run bootstrap from the kit's folder. Every value is text. Checked before anything changes: an unknown key or value, a value that is not text, a value that looks like a secret, or a preference that needs a terminal (one that shows a draft to confirm, such as the auto mode preference: `--answers: <id> needs a terminal; run loadout configure prefs after setup`) stops bootstrap. Used only for a new personal layer; otherwise bootstrap says the flag was not used. Format and example: [Set loadout up from inside an agent](../how-to/install-with-an-agent.md#3-show-the-answers-file). |
 | `--channel stable\|dev` | The release channel to record ([`loadout channel`](#loadout-channel)). Without it a new install is stable (the scripts check out the newest release that is 3 days old and stop when there is none), a re-run keeps the stored channel, and a machine with no setting stays dev. The scripts never move an existing clone; `--channel stable` on an install that is not stable yet and on no release moves the kit as [`loadout channel stable`](#loadout-channel) does (the newest eligible release, else the one-time tag-date rule; refused on local changes; the undo in the run's backup; the channel is written only after the move; `no release is ready yet; you stay on dev` when there is none) and continues the run in the release's code. `stable` seeds `releases.json` with the current tags as first seen now and, when the release you run was withdrawn, says so (`the release you run (vX.Y.Z) was withdrawn: <reason>; run loadout update (to X.Y.Z)`) but never moves it: the move is `loadout update`'s, with its plan and yes; `dev` follows `main`. |
+| `--snapshot` | Save a [snapshot of your agent setup](../how-to/undo-and-restore.md#roll-back-the-first-install) before the run, without asking, also on a re-run. Ignored when there is nothing to save. |
+| `--no-snapshot` | Save no snapshot before the run, not even on a first install (which otherwise asks, or takes one without a terminal). |
 | `--verbose` | Print every detail of every step (links, commands, the full check list, the backup path). |
 
 By default bootstrap prints one status line per step (`✓`, `!` for a warning, `✗` for a failure), the adopt questions, and at the end the health-check count, `Undo any time: loadout restore --list` when it made a backup, and the next step. Problem lines (a failed install or plugin, a check that failed) are always printed in full. Without a terminal, colour is off (also with `NO_COLOR` or `TERM=dumb`, see [Environment variables](#environment-variables)); where the console cannot show `✓`, ASCII stands in.
@@ -84,7 +86,7 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | 0 | Done, and the final check found no error. |
-| 1 | The personal-layer clone failed, or the final `loadout check` reported a failure (see [loadout check](#loadout-check)). Also when a Serena removal failed, or its rollback did ([Your own Serena](#your-own-serena)). |
+| 1 | The personal-layer clone failed, or the final `loadout check` reported a failure (see [loadout check](#loadout-check)). Also when a Serena removal failed, or its rollback did ([Your own Serena](#your-own-serena)). Also when the first-install snapshot could not be written and you did not go on without it ([Roll back the first install](../how-to/undo-and-restore.md#roll-back-the-first-install)). |
 | 2 | `--use-loadout` and `--keep-own` were given together. Nothing changed. |
 
 ### Which agents bootstrap sets up
@@ -107,6 +109,7 @@ Without a terminal (CI, `ssh host ./bootstrap.sh`, piped or closed input), or wi
 - **Agents:** as in [Which agents bootstrap sets up](#which-agents-bootstrap-sets-up): `--agents`, else the layer's choice, else Claude Code.
 - **Codex CLI next to VS Code's Codex extension:** optional. With `--install`, a terminal is asked (default No); without a terminal or with `--yes` it is installed, unless `--without-codex-cli` is given. The same holds for the Claude Code CLI next to VS Code's Claude Code extension and `--without-claude-cli`.
 - **WSL:** the Codex side needs `--codex-side` when the only Codex is the Windows one (otherwise the Codex step stops and says so); the VS Code switch needs `--vscode-wsl` (otherwise bootstrap prints the manual step), and the Remote-WSL `PATH` block needs `--vscode-path`.
+- **First-install snapshot:** without a terminal, or with `--yes`, bootstrap takes it without asking; `--no-snapshot` skips it. A re-run takes none unless you pass `--snapshot`. Details: [Roll back the first install](../how-to/undo-and-restore.md#roll-back-the-first-install).
 - **Configure prompt** (`Customize preferences and global add-ons now?`): skipped. Without a terminal and without `--yes` bootstrap says so; run `loadout configure` later.
 - **Adopt step:** without a terminal and without `--yes`, skipped with a line naming `loadout adopt`. With `--yes`, it applies remove, migrate and scope-down. Inside bootstrap it prints one line, `Your existing setup: N tool updates (loadout update), …`, instead of the list.
 - **Your own Serena:** without a terminal, or with `--yes`, bootstrap never asks; it changes your Serena only with `--use-loadout` ([below](#your-own-serena)).
@@ -542,10 +545,13 @@ Undo a backup. What it replaces goes into a new backup, so a restore can be undo
 
 ```
 loadout restore [--list] [--last] [--repo PATH] [--show] [--force] [BACKUP_DIR]
+loadout restore --first-install [--yes]
 ```
 
 | Flag | Meaning |
 |---|---|
+| `--first-install` | Put back the oldest first-install snapshot archive (`first-install-<timestamp>.tar.gz`) instead of a backup: it shows what comes back and what is moved aside, then asks `Put your setup from <date> back? [y/N]`. Without a terminal and without `--yes` it changes nothing and exits 1. The other restore flags and `BACKUP_DIR` are ignored with it. The steps: [Roll back the first install](../how-to/undo-and-restore.md#roll-back-the-first-install). |
+| `--yes` | With `--first-install`: do not ask. |
 | `BACKUP_DIR` | A directory a loadout command printed (`backup: …` or `undo: loadout restore …`; bootstrap and adopt in their default output print only `Undo any time: loadout restore --list`, and the folder with `--verbose`), for example `~/.local/state/loadout/backups/loadout-<timestamp>` (under `$XDG_STATE_HOME/loadout/backups` when that is set). Commands that print one include bootstrap, adopt, `configure` (the wizard, `prefs`, `set …`, `new skill`), `init`, `profile` and `update`. `loadout restore --list` lists them all. A path from before the move, `~/.claude/backups/loadout-<timestamp>`, still works. |
 | `--list` | List backups, newest first, with their paths (for agents and scripts). |
 | `--last` | Restore the newest backup of any kind (a later command's backup, or a restore's own, is newer than the one you may mean); it first prints what goes back and, in a terminal, asks `Restore this? [y/N]`; without a terminal it restores without asking, so show the user `--list` first. |

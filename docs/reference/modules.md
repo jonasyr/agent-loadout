@@ -31,6 +31,7 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | `personal_mcp.py` | Adds your personal `mcp.json` servers to Claude Code at user scope; touches only servers it added. |
 | `secrets.py` | Finds, redacts and stores plaintext secrets (values go to `secrets.env`, only names elsewhere). |
 | `backup.py` | Timestamped backups with an undo manifest; restore first backs up what it would overwrite (`pre-restore`). |
+| `snapshot.py` | The first-install snapshot: one 0600 archive (`first-install-<timestamp>.tar.gz`) of the chosen agents' config, shell startup files and VS Code's user settings, and the rollback that puts it back (`loadout restore --first-install`). [Roll back the first install](../how-to/undo-and-restore.md#roll-back-the-first-install). |
 | `restore_cmd.py` | `loadout restore`: a path, `--list`, `--last`, `--show`, or a numbered pick in a terminal. |
 
 ### Keeping it current and checking it

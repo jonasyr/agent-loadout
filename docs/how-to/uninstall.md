@@ -44,6 +44,8 @@ Then continue with [Remove the kit](#remove-the-kit), which deletes `~/.local/st
 
 ## Remove the kit
 
+If you want the machine back as it was before the first install, [roll back the first install](undo-and-restore.md#roll-back-the-first-install) first. It needs the snapshot archive, so do it before you delete the state folder below.
+
 1. Remove `loadout@agent-loadout` from `enabledPlugins` and `agent-loadout` from `extraKnownMarketplaces` in `~/.claude/settings.json` (and in your personal `settings.json` if you keep it). Otherwise Claude Code clones the marketplace and installs the plugin again at its next start.
 2. Uninstall the plugin and remove the links and state.
 
@@ -77,7 +79,7 @@ You can then delete the clone: the folder `loadout kit-path` printed at the star
 - **Tools bootstrap installed** (uv, Claude Code, mise and what mise installed such as Codex, Node and gh, Serena, codebase-memory-mcp, rtk, the npm tools) stay. Serena is a uv tool: remove it with `uv tool uninstall serena-agent` before you remove uv. Serena keeps its own settings and logs in `~/.serena`; delete that folder if you want. Leave a repo's `.serena/` folder alone if it is committed (it can hold the project's memories). Remove the others with their own uninstall steps: see the docs of [uv](https://docs.astral.sh/uv/), [Claude Code](https://code.claude.com/docs/en/setup) and [mise](https://mise.jdx.dev/).
 - **The shell startup file** keeps the "# loadout secrets" block that bootstrap added. Delete it if you want.
 - **Your personal layer and `secrets.env`** under `~/.config/loadout/` are never touched. Delete them yourself if you want them gone.
-- **Backups** in `~/.local/state/loadout/backups/` stay unless you deleted the whole state folder above. They can hold old configs with secrets, so delete them when you no longer need them.
+- **Backups** in `~/.local/state/loadout/backups/` stay unless you deleted the whole state folder above. They can hold old configs with secrets, so delete them when you no longer need them. This includes the first-install snapshot archive (`first-install-<timestamp>.tar.gz`), which holds your Claude Code and Codex logins; see [Roll back the first install](undo-and-restore.md#roll-back-the-first-install).
 - **Old state in `~/.claude`.** `~/.claude/.loadout`, and `loadout-<timestamp>` folders in `~/.claude/backups`, are old copies: they go by themselves about ten minutes after loadout copied them, unless both places changed, in which case `loadout check` names them. When you uninstall, delete them by hand. Leave the rest of `~/.claude/backups` alone: Claude Code keeps its own `.claude.json` copies there.
 - **Profiles applied to repos** stay: `.loadout.json` and the normal files in the repo's `.claude/settings.json` and `.mcp.json`, and for a Codex repo `.codex/config.toml` and `.agents/skills`. `loadout restore` can undo a recent run before you uninstall (the backup is in the state folder above).
 
