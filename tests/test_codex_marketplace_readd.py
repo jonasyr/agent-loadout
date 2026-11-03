@@ -104,6 +104,15 @@ def test_table_with_sparse_paths_is_not_readded(setup, fake_runner):
                and l.endswith("; loadout did not re-add it because your table sets sparse_paths") for l in lines)
 
 
+def test_table_with_a_pinned_ref_is_not_readded(setup, fake_runner):
+    cfg, _ = setup
+    cfg.write_text(cfg.read_text() + 'ref = "v2"\n')  # a re-add without @v2 would drop the pin
+    lines, _ = _run()
+    assert not _calls(fake_runner, "codex", "plugin", "marketplace", "remove")
+    assert 'ref = "v2"' in cfg.read_text()
+    assert any(l.endswith("; loadout did not re-add it because your table sets ref") for l in lines)
+
+
 def test_failed_readd_rolls_back(setup, fake_runner, monkeypatch):
     cfg, snap = setup
     before = cfg.read_bytes()
@@ -173,11 +182,13 @@ def test_codex_timed_out_and_table_blockers_units(fake_home):
     cfg = fake_home / ".codex/config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     assert codex._table_blockers("impeccable", "pbakaus/impeccable") == []  # no file
-    cfg.write_text(TABLE + 'ref_name = "v2"\n')
-    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == ["ref_name"]
+    cfg.write_text(TABLE + 'ref = "v2"\n')  # the key Codex writes for `marketplace add <src>@v2` / `--ref v2`
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == ["ref"]
     assert codex._table_blockers("impeccable", "pbakaus/impeccable@v2") == []
-    cfg.write_text(TABLE + 'ref_name = "v2"\nsparse_paths = ["a"]\n')
-    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == ["ref_name", "sparse_paths"]
+    cfg.write_text(TABLE + 'ref = "v2"\nsparse_paths = ["a"]\n')
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == ["ref", "sparse_paths"]
+    cfg.write_text(TABLE + 'ref_name = "v2"\n')  # an older spelling still keeps the table
+    assert codex._table_blockers("impeccable", "pbakaus/impeccable") == ["ref_name"]
     cfg.write_text(TABLE + "sparse_paths = []\n")
     assert codex._table_blockers("impeccable", "pbakaus/impeccable") == []
     cfg.write_text("not = [toml")
