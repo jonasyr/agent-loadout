@@ -354,6 +354,16 @@ def dated_release(root: Path, now: float) -> str | None:
     return None
 
 
+def stable_target(root: Path, now: float) -> tuple[str | None, str | None]:
+    """The release a move from dev to stable goes to (`loadout channel stable`, `bootstrap --channel stable`): an
+    eligible one, else the one-time tagger-date fallback. (tag, None); (None, None) when none is ready; (None, why)
+    when the tags or the status could not be read."""
+    tag, why = find_offer(root, now, None)  # on main: any release may be the one to move to
+    if why:
+        return None, why
+    return tag or dated_release(root, now), None
+
+
 def recorded(tag: str) -> str | None:
     """The commit this machine recorded for a release tag."""
     entry = _tags(_load_releases()).get(tag) if parse_tag(tag) else None

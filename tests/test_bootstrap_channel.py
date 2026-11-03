@@ -36,9 +36,9 @@ def _releases():
 
 
 def test_bootstrap_writes_channel_and_seeds_releases(fake_home, fake_runner, tmp_path, monkeypatch):
-    kit = _kit(tmp_path, monkeypatch)
+    kit = _kit(tmp_path, monkeypatch)  # a fresh install: the script checked out a release
     fake_runner.responses[_git(kit, "ls-remote")] = runner.Result(0, LS, "")
-    fake_runner.responses[_git(kit, "describe")] = runner.Result(1, "", "")
+    fake_runner.responses[_git(kit, "describe")] = runner.Result(0, "v0.2.0\n", "")
     bk = Backup(description="bootstrap")
     bootstrap._channel_step("stable", bk)
     assert channels.get() == "stable"
@@ -58,8 +58,17 @@ def test_dev_channel_is_written_and_no_status_is_read(fake_home, fake_runner, tm
 def test_offline_remote_still_writes_the_channel(fake_home, fake_runner, tmp_path, monkeypatch):
     kit = _kit(tmp_path, monkeypatch)
     fake_runner.responses[_git(kit, "ls-remote")] = runner.Result(1, "", "offline")
+    fake_runner.responses[_git(kit, "describe")] = runner.Result(0, "v0.2.0\n", "")
     bootstrap._channel_step("stable", Backup(description="bootstrap"))
     assert channels.get() == "stable"
+
+
+def test_offline_explicit_stable_off_a_release_stays_dev(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    kit = _kit(tmp_path, monkeypatch)
+    fake_runner.responses[_git(kit, "ls-remote")] = runner.Result(1, "", "offline")
+    fake_runner.responses[_git(kit, "describe")] = runner.Result(128, "", "no tag")
+    bootstrap._channel_step("stable", Backup(description="bootstrap"))
+    assert "you stay on dev" in capsys.readouterr().out and channels.get() is None
 
 
 def test_bootstrap_moves_off_a_withdrawn_release(fake_home, fake_runner, tmp_path, monkeypatch):
@@ -139,3 +148,63 @@ def test_a_moved_tag_is_reported(fake_home, fake_runner, tmp_path, monkeypatch, 
     monkeypatch.setattr(channels.maintenance, "notify", notes.append)
     bootstrap._channel_step("stable", Backup(description="bootstrap"))
     assert any("v0.2.0" in n and "changed after it was released" in n for n in notes)
+
+
+# --- an explicit --channel stable on an existing dev install does what loadout channel stable does ---
+
+HEAD = "c" * 40
+
+
+def _dev_install(fake_runner, kit, when, status=""):
+    """A kit on main, on no release; the remote has v0.2.0 and v0.3.0, both with the tagger date `when`."""
+    fake_runner.responses[_git(kit, "ls-remote")] = runner.Result(0, LS, "")
+    fake_runner.responses[_git(kit, "describe")] = runner.Result(128, "", "no tag")
+    fake_runner.responses[_git(kit, "show")] = runner.Result(0, '{"urgent": [], "withdrawn": []}', "")
+    fmt = "--format=%(taggerdate:unix)"
+    for tag in ("v0.2.0", "v0.3.0"):
+        fake_runner.responses[_git(kit, "for-each-ref", fmt, f"refs/tags/{tag}")] = runner.Result(0, f"{when}\n", "")
+    fake_runner.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, HEAD + "\n", "")
+    fake_runner.responses[_git(kit, "rev-parse", "FETCH_HEAD^{commit}")] = runner.Result(0, NEW + "\n", "")
+    fake_runner.responses[_git(kit, "symbolic-ref")] = runner.Result(0, "main\n", "")
+    fake_runner.responses[_git(kit, "status")] = runner.Result(0, status, "")
+
+
+def test_explicit_stable_on_a_dev_install_moves_with_an_undo_and_continues(fake_home, fake_runner, tmp_path,
+                                                                            monkeypatch):
+    import sys
+    import time
+    kit = _kit(tmp_path, monkeypatch)
+    _dev_install(fake_runner, kit, int(time.time()) - 5 * 86400)
+    monkeypatch.setattr(sys, "argv", ["loadout", "bootstrap", "--channel", "stable"])
+    calls = []
+    monkeypatch.setattr(runner, "continue_in", lambda cmd, **k: calls.append(cmd) or (_ for _ in ()).throw(SystemExit(0)))
+    bk = Backup(description="bootstrap")
+    with pytest.raises(SystemExit):
+        bootstrap._channel_step("stable", bk)
+    assert [c for c in fake_runner.calls if c[3:4] == ["checkout"]] == [[*_git(kit), "checkout", "--detach", NEW]]
+    assert [*_git(kit), "fetch", "origin", "main"] in fake_runner.calls  # local commits measured against main
+    assert channels.get() == "stable"
+    steps = json.loads((bk.root / "manifest.json").read_text())["steps"]
+    assert {"run": [*_git(kit), "switch", "main"]} in [s.get("undo") for s in steps]
+    assert calls == [[sys.executable, str(kit / "bin" / "loadout"), "bootstrap", "--channel", "stable"]]
+
+
+def test_explicit_stable_with_no_release_ready_stays_dev(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    import time
+    kit = _kit(tmp_path, monkeypatch)
+    _dev_install(fake_runner, kit, int(time.time()) - 3600)
+    bootstrap._channel_step("stable", Backup(description="bootstrap"))
+    assert "no release is ready yet; you stay on dev" in capsys.readouterr().out
+    assert not (paths.state_dir() / "channel.json").exists()
+    assert not [c for c in fake_runner.calls if c[3:4] in (["checkout"], ["switch"])]
+
+
+def test_explicit_stable_refused_move_leaves_the_channel_as_it_was(fake_home, fake_runner, tmp_path, monkeypatch,
+                                                                     capsys):
+    import time
+    kit = _kit(tmp_path, monkeypatch)
+    channels.set_channel("dev")
+    _dev_install(fake_runner, kit, int(time.time()) - 5 * 86400, status=" M cli/loadout/x.py\n")
+    bootstrap._channel_step("stable", Backup(description="bootstrap"))
+    assert "cli/loadout/x.py" in capsys.readouterr().out and channels.get() == "dev"
+    assert not [c for c in fake_runner.calls if c[3:4] == ["checkout"]]

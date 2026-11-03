@@ -910,12 +910,10 @@ def _asked(item: PlanItem, target: str, yes: bool, ask: Callable[[str], str]) ->
 
 
 def _to_stable(root: Path, yes: bool, ask: Callable[[str], str]) -> tuple[str, Backup] | int:
-    now = time.time()
-    tag, why = channels.find_offer(root, now, None)  # on main: any release may be the one to move to
+    tag, why = channels.stable_target(root, time.time())
     if why:
         print(f"loadout channel: {why}; you stay on dev. Try again when online")
         return 1
-    tag = tag or channels.dated_release(root, now)
     if tag is None:
         print("no release is ready yet; you stay on dev")
         return 1

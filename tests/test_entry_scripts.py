@@ -408,15 +408,42 @@ def test_sh_loadout_ref_wins(env, tmp_path):
     assert (kit / "VERSION").read_text() == "main"
 
 
-def test_sh_reuse_moves_a_clone_without_local_commits_to_the_release(env, tmp_path):
+def test_sh_reuse_leaves_a_clone_where_it_is(env, tmp_path):
+    """A re-run never moves an existing clone by tag date: loadout channel stable / update do that, with an undo."""
     _stable_env(env, _release_repo(tmp_path, [("v0.1.0", False, 9), ("v0.2.0", True, 5)]))
     env["vars"]["LOADOUT_REF"] = "v0.1.0"
     p, kit = _piped(env, tmp_path)
     assert p.returncode == 0 and (kit / "VERSION").read_text() == "v0.1.0"
     del env["vars"]["LOADOUT_REF"]
+    env["log"].unlink()
     p, _ = _piped(env, tmp_path)
     assert p.returncode == 0, p.stderr
-    assert (kit / "VERSION").read_text() == "v0.2.0"
+    assert (kit / "VERSION").read_text() == "v0.1.0" and "release" not in p.stdout
+    assert "channel" not in env["log"].read_text()
+
+
+def test_sh_reuse_before_any_release_still_runs_bootstrap(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.3.0", True, 0)]))  # nothing has soaked yet
+    env["vars"]["LOADOUT_REF"] = "main"
+    _, kit = _piped(env, tmp_path)
+    del env["vars"]["LOADOUT_REF"]
+    env["log"].unlink()
+    p, _ = _piped(env, tmp_path, "--install")
+    assert p.returncode == 0, p.stderr
+    assert "no stable release" not in p.stderr and (kit / "VERSION").read_text() == "main"
+    assert "python bin/loadout bootstrap --install [tty=" in env["log"].read_text()
+
+
+def test_sh_reuse_with_explicit_stable_forwards_it_and_leaves_the_move_to_bootstrap(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.2.0", True, 5)]))
+    env["vars"]["LOADOUT_REF"] = "main"
+    _, kit = _piped(env, tmp_path)
+    del env["vars"]["LOADOUT_REF"]
+    env["log"].unlink()
+    p, _ = _piped(env, tmp_path, "--channel", "stable")
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "main"  # bootstrap moves it, with its undo in the run's backup
+    assert "python bin/loadout bootstrap --channel stable [tty=" in env["log"].read_text()
 
 
 def test_sh_reuse_leaves_a_clone_with_local_commits(env, tmp_path):
@@ -429,7 +456,15 @@ def test_sh_reuse_leaves_a_clone_with_local_commits(env, tmp_path):
     del env["vars"]["LOADOUT_REF"]
     p, _ = _piped(env, tmp_path)
     assert p.returncode == 0, p.stderr
-    assert (kit / "VERSION").read_text() == "mine" and "left as it is" in p.stdout
+    assert (kit / "VERSION").read_text() == "mine"
+
+
+def test_ps1_reuse_does_not_move_the_clone():
+    """No pwsh here: the reuse branches of bootstrap.ps1 must not pick or check out a tag (same rule as the sh)."""
+    text = (paths.kit_root() / "bootstrap.ps1").read_text()
+    assert "Move-ToRelease" not in text
+    reuse = text[text.index("using the clone in"):text.index("cloning agent-loadout into")]
+    assert "Get-ReleaseTag" not in reuse and "checkout" not in reuse and "Fail-NoRelease" not in reuse
 
 
 @pytest.mark.skipif(not shutil.which("pwsh"), reason="needs PowerShell")

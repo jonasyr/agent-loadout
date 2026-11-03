@@ -1049,13 +1049,17 @@ MOVED = "LOADOUT_BOOTSTRAP_MOVED"  # process-only marker: the run continued in a
 def _channel_step(channel: str | None, bk: Backup) -> None:
     """Record the channel, seed releases.json with the tags the remote has now (first seen now), and on stable leave
     a withdrawn release for the one its status names. Nothing here stops the run: offline, it only notes.
-    channel None (no --channel: a re-run) keeps the stored one; a machine without one stays as it is (dev)."""
+    channel None (no --channel: a re-run) keeps the stored one; a machine without one stays as it is (dev).
+    --channel stable on a kit that is not stable yet and on no release moves it as loadout channel stable does."""
     import time
     root = paths.kit_root()
     if channel is None:
         channel = channels.get()
         if channel is None:
             return
+    elif channel == "stable" and channels.get() != "stable" and channels.current_release(root) is None:
+        _join_stable(root, bk)
+        return
     elif channels.get() != channel:  # a re-run with the same channel makes no new backup
         channels.set_channel(channel, bk)
     tags = channels.remote_tags(root)
@@ -1084,10 +1088,40 @@ def _channel_step(channel: str | None, bk: Backup) -> None:
         out.problem(f"release {current} was withdrawn ({entry['reason']}); {problem}")
     else:
         out.problem(f"release {current} was withdrawn ({entry['reason']}); moved to v{use}")
-        if not os.environ.get(MOVED):  # the code that is running is the withdrawn release: continue in the new one
-            import sys
-            os.environ[MOVED] = "1"
-            runner.continue_in([sys.executable, str(root / "bin" / "loadout"), *sys.argv[1:]])
+        _continue_once(root)  # the code that is running is the withdrawn release: continue in the new one
+
+
+def _continue_once(root) -> None:
+    """After a kit move: continue this run in the code it moved to, once (MOVED stops a second re-exec)."""
+    if not os.environ.get(MOVED):
+        import sys
+        os.environ[MOVED] = "1"
+        runner.continue_in([sys.executable, str(root / "bin" / "loadout"), *sys.argv[1:]])
+
+
+def _join_stable(root, bk: Backup) -> None:
+    """An existing install asked for stable (the one-liner leaves a reused clone where it is): the move that
+    loadout channel stable makes, measured against main, with its undo in the run's backup. The channel is written
+    only after the move; without a ready release it stays as it was."""
+    import time
+    if not (root / ".git").exists():
+        out.problem(f"--channel stable: the kit at {out.printable(str(root))} is not a git checkout, so it cannot "
+                    "follow a channel; you stay on dev")
+        return
+    tag, why = channels.stable_target(root, time.time())
+    if why:
+        out.problem(f"--channel stable: {why}; you stay on dev. Run loadout channel stable when online")
+        return
+    if tag is None:
+        out.problem("no release is ready yet; you stay on dev")
+        return
+    refused = channels.move_to(root, tag, bk, base="origin/main")
+    if refused:
+        out.problem(f"--channel stable: not moved: {out.printable(refused)}; you stay on dev")
+        return
+    channels.set_channel("stable", bk)
+    out.status("Channel", f"stable; kit moved to {tag}")
+    _continue_once(root)
 
 
 def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: Ask, interactive: bool | None = None,

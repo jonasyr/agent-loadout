@@ -81,19 +81,8 @@ main() {
 
   case "$channel" in stable|dev) ;; *) echo "--channel: use stable or dev" >&2; exit 2 ;; esac
 
-  reuse_to_release() {  # an existing clone on stable moves to the release only when that loses no local commit
-    [ -z "${LOADOUT_REF:-}" ] && [ "$channel" = stable ] || return 0
-    git -C "$kit" fetch -q --tags origin 2>/dev/null || true
-    tag="$(pick_tag "$kit")" || no_release
-    [ "$(git -C "$kit" rev-parse HEAD 2>/dev/null)" = "$(git -C "$kit" rev-parse "refs/tags/$tag^{commit}" 2>/dev/null)" ] && return 0
-    if [ "$(git -C "$kit" rev-list --count "refs/tags/$tag..HEAD" 2>/dev/null || echo 1)" = 0 ] \
-       && git -C "$kit" checkout -q --detach "refs/tags/$tag" 2>/dev/null; then
-      echo "moved the clone to release $tag"
-    else
-      echo "the clone has changes of its own, so it is left as it is (release $tag was not checked out)"
-    fi
-  }
-
+  # Only a fresh clone picks a release here. An existing clone stays where it is: `loadout bootstrap --channel
+  # stable`, `loadout channel stable` and `loadout update` move it, with the undo in a backup.
   # run from a file, $0 is that file; piped, bash 5.2 sets BASH_SOURCE to "main" and 5.3 leaves it empty
   src="${BASH_SOURCE[0]:-}"
   if [ -n "$src" ] && [ "$src" = "$0" ] && [ -f "$src" ] && [ -f "$(dirname "$src")/bin/loadout" ]; then
@@ -110,11 +99,9 @@ main() {
     if [ -z "$dir" ] && is_clone "$PWD"; then
       kit="$PWD"
       echo "using the clone in $kit"
-      reuse_to_release
     elif [ -e "$kit" ]; then
       if is_clone "$kit"; then
         echo "using the existing clone in $kit"
-        reuse_to_release
       else
         echo "$kit exists and is not a clone of agent-loadout; choose another folder with --dir PATH" >&2
         exit 1

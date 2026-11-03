@@ -50,26 +50,6 @@ function Fail-NoRelease {
   Fail ("no stable release is ready yet; wait a few days, or install dev:`n" +
         "  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install --channel dev")
 }
-# An existing clone on stable moves to the release only when that loses no local commit.
-function Move-ToRelease($d) {
-  if ($env:LOADOUT_REF -or $channel -ne 'stable') { return $true }
-  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  try {
-    git -C $d fetch -q --tags origin 2>$null | Out-Null
-    $tag = Get-ReleaseTag $d
-    if (-not $tag) { Fail-NoRelease; return $false }
-    $head = "$(git -C $d rev-parse HEAD 2>$null)"
-    $want = "$(git -C $d rev-parse "refs/tags/$tag^{commit}" 2>$null)"
-    if ($head -eq $want) { return $true }
-    $ahead = "$(git -C $d rev-list --count "refs/tags/$tag..HEAD" 2>$null)"
-    if ($ahead -eq '0') {
-      git -C $d checkout -q --detach "refs/tags/$tag" 2>$null
-      if ($LASTEXITCODE -eq 0) { Write-Host "moved the clone to release $tag"; return $true }
-    }
-    Write-Host "the clone has changes of its own, so it is left as it is (release $tag was not checked out)"
-  } finally { $ErrorActionPreference = $prev }
-  return $true
-}
 function Normalize-Origin($o) { ("$o").Trim().TrimEnd('/') -replace '\.git$', '' -replace '/$', '' }
 function Test-Clone($d) {
   if (-not (Test-Path (Join-Path $d 'bin/loadout'))) { return $false }
@@ -83,7 +63,9 @@ function Test-Clone($d) {
   if (-not $top) { return $false }
   return ([IO.Path]::GetFullPath($top).TrimEnd('\', '/') -ieq [IO.Path]::GetFullPath((Resolve-Path $d).Path).TrimEnd('\', '/'))
 }
-# Run inside an existing clone, the one-liner uses that clone instead of cloning again.
+# Run inside an existing clone, the one-liner uses that clone instead of cloning again. Only a fresh clone picks a
+# release here; an existing one stays where it is (loadout bootstrap --channel stable, loadout channel stable and
+# loadout update move it, with the undo in a backup).
 if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
   $kit = $PSScriptRoot
 } else {
@@ -95,14 +77,12 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
   if (-not $dir -and (Test-Clone (Get-Location).Path)) {
     $kit = (Get-Location).Path
     Write-Host "using the clone in $kit"
-    if (-not (Move-ToRelease $kit)) { return }
   } elseif (Test-Path $kit) {
     if (-not (Test-Clone $kit)) {
       Fail "$kit exists and is not a clone of agent-loadout; choose another folder with --dir PATH"
       return
     }
     Write-Host "using the existing clone in $kit"
-    if (-not (Move-ToRelease $kit)) { return }
   } else {
     Write-Host "cloning agent-loadout into $kit"
     git clone -q $repoUrl $kit
