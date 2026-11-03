@@ -99,3 +99,16 @@ def test_a_listed_git_line_cannot_run_an_fsmonitor(tmp_path):
     subprocess.run(["git", "-C", str(repo), "config", "core.fsmonitor", hook], check=True)
     runner.run(["git", "-C", str(repo), "ls-files", "-s", "-z", "--", ".claude/skills", ".agents/skills"])
     assert not marker.exists()
+
+
+def test_run_interactive_of_a_real_program_fails_the_test():
+    outside = tempfile.mkdtemp(prefix="loadout-real-")
+    try:
+        with pytest.raises(pytest.fail.Exception, match="ran the real `vi`"):
+            runner.run_interactive([_stub(outside, "vi"), "notes"])
+    finally:
+        shutil.rmtree(outside)
+
+
+def test_run_interactive_of_a_stub_in_tmp_path_runs(tmp_path):
+    assert runner.run_interactive([_stub(str(tmp_path), "vi")]) == 0
