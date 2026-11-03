@@ -202,7 +202,8 @@ def test_restore_puts_files_back_and_moves_current_aside(fake_home):
     assert ok, lines
     assert settings.read_text() == "original" and login.read_text() == '{"login": 1}'
     assert bashrc.read_text() == "export A=1\n"
-    assert projects.read_text() == "transcript" and new.read_text() == "kept"  # not in the archive: untouched
+    assert projects.read_text() == "transcript"  # excluded folders are never touched
+    assert not new.exists()  # added since the snapshot: moved aside, not deleted
     assert pre is not None and pre.parent == paths.backups_root()
     moved = {p.read_text() for p in (pre / "files").iterdir()}
     assert {"changed by loadout", '{"login": 2}', "export A=1\n# loadout\n"} <= moved
@@ -340,3 +341,99 @@ def test_hard_links_in_the_source_are_stored_as_files(fake_home):
     os.link(a, fake_home / ".claude" / "b.md")
     with tarfile.open(snapshot.create(snapshot.roots(BOTH), BOTH)) as tar:
         assert tar.getmember(".claude/b.md").isreg()
+
+
+def test_restore_moves_aside_what_the_install_added(fake_home):
+    write(fake_home / ".claude" / "settings.json", "original")
+    write(fake_home / ".claude" / "projects" / "p" / "t.jsonl", "transcript")
+    write(fake_home / ".claude" / "plugins" / "cache" / "c.json", "cache")
+    archive = snapshot.create(snapshot.roots(BOTH), BOTH)
+    rule = write(fake_home / ".claude" / "rules" / "loadout.md", "rule")  # a whole folder added since
+    plugins = write(fake_home / ".claude" / "plugins" / "known.json", "m")  # inside a folder with excluded parts
+    zshrc = write(fake_home / ".zshrc", "# loadout")  # a root that did not exist
+    codex = write(fake_home / ".codex" / "config.toml", "x")  # Codex was on but had no folder
+    write(fake_home / ".codex" / "sessions" / "s.jsonl", "session")
+    assert set(snapshot.moved_aside(archive)) == {".claude/rules", ".claude/plugins/known.json", ".zshrc",
+                                                  ".codex/config.toml"}
+    lines, ok, pre = snapshot.restore(archive)
+    assert ok, lines
+    for gone in (rule, plugins, zshrc, codex):
+        assert not gone.exists()
+    assert (fake_home / ".claude" / "projects" / "p" / "t.jsonl").read_text() == "transcript"
+    assert (fake_home / ".claude" / "plugins" / "cache" / "c.json").read_text() == "cache"
+    assert (fake_home / ".codex" / "sessions" / "s.jsonl").read_text() == "session"
+    assert (fake_home / ".claude" / "settings.json").read_text() == "original"
+    kept = {p.name.split("-", 1)[1] for p in (pre / "files").iterdir()}
+    assert {"rules", "known.json", ".zshrc", "config.toml"} <= kept
+
+
+def test_added_since_is_undone_with_the_pre_restore_backup(fake_home):
+    from loadout import backup
+    write(fake_home / ".claude" / "settings.json", "original")
+    archive = snapshot.create(snapshot.roots(BOTH), BOTH)
+    rule = write(fake_home / ".claude" / "rules" / "r.md", "rule")
+    _, ok, pre = snapshot.restore(archive)
+    assert ok and not rule.exists()
+    lines, ok2, _ = backup.restore(pre)
+    assert ok2, lines
+    assert rule.read_text() == "rule"
+
+
+def test_codex_off_its_folder_is_not_touched_by_restore(fake_home):
+    write(fake_home / ".claude" / "settings.json", "original")
+    off = {"claude": True, "codex": False}
+    archive = snapshot.create(snapshot.roots(off), off)
+    mine = write(fake_home / ".codex" / "config.toml", "mine")
+    lines, ok, _ = snapshot.restore(archive)
+    assert ok, lines
+    assert mine.read_text() == "mine"
+
+
+def test_big_file_skipped_at_snapshot_is_not_moved_aside(fake_home, monkeypatch):
+    monkeypatch.setattr(snapshot, "MAX_FILE", 10)
+    write(fake_home / ".claude" / "settings.json", "small")
+    huge = write(fake_home / ".claude" / "huge.bin", "x" * 50)
+    archive = snapshot.create(snapshot.roots(BOTH), BOTH)
+    _, ok, _ = snapshot.restore(archive)
+    assert ok and huge.exists()
+
+
+@POSIX
+@pytest.mark.parametrize("use_filter", [True, False])
+def test_restore_through_a_symlinked_config_folder(fake_home, tmp_path, monkeypatch, use_filter):
+    if not use_filter:
+        monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    dotfiles = tmp_path / "dotfiles" / "config"
+    fish = write(dotfiles / "fish" / "config.fish", "original")
+    os.symlink(dotfiles, fake_home / ".config")
+    archive = snapshot.create(snapshot.roots(BOTH), BOTH)
+    fish.write_text("changed")
+    lines, ok, pre = snapshot.restore(archive)
+    assert ok, lines
+    assert fish.read_text() == "original"
+    assert pre is not None
+
+
+@POSIX
+def test_a_failed_extract_leaves_the_current_file_in_place(fake_home, monkeypatch):
+    settings = write(fake_home / ".claude" / "settings.json", "original")
+    archive = snapshot.create(snapshot.roots(BOTH), BOTH)
+    settings.write_text("current")
+
+    def boom(*a, **k):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(snapshot, "_extract", boom)
+    lines, ok, _ = snapshot.restore(archive)
+    assert not ok and settings.read_text() == "current"
+    assert not [p for p in settings.parent.iterdir() if p.name.startswith(".loadout-restore-")]
+
+
+@POSIX
+def test_a_refused_member_leaves_the_current_file_in_place(fake_home, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    os.symlink(elsewhere, fake_home / ".claude")  # the root itself is a link out of HOME
+    target = write(elsewhere / "f.txt", "mine")
+    archive = forged(tmp_path, [member(".claude/f.txt", b"new")])
+    lines, ok, _ = snapshot.restore(archive)
+    assert not ok and target.read_text() == "mine"

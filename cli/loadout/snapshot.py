@@ -16,6 +16,7 @@ import stat
 import sys
 import tarfile
 import time
+import uuid
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,7 +112,7 @@ def _entries(root: Path, skipped: list[str], strict: bool = True):
                         yield from visit(path / name, child)
             elif stat.S_ISREG(st.st_mode):
                 if st.st_size > MAX_FILE:
-                    skipped.append(f"skipped (over {MAX_FILE // (1024 * 1024)} MB): {_rel(path) or path}")
+                    skipped.append(_rel(path) or str(path))
                 else:
                     yield path, st
         except FileNotFoundError:
@@ -171,9 +172,13 @@ def create(roots: list[Path], agents: dict[str, bool]) -> Path:
                 continue
             archive = candidate
             break
-        meta = json.dumps({"roots": [name for name in (_rel(r) for r in roots) if name], "agents": dict(agents),
-                           "created": time.time(), "version": _version(), "skipped": skipped},
-                          indent=2).encode("utf-8")
+        chosen = {_rel(r) for r in roots}
+        absent = [name for agent, path in _candidates() for name in [_rel(path)]
+                  if name and name not in chosen and (agent is None or agents.get(agent)) and not _exists(path)]
+        lines = [f"skipped (over {MAX_FILE // (1024 * 1024)} MB): {name}" for name in skipped]
+        meta = json.dumps({"roots": [name for name in (_rel(r) for r in roots) if name], "absent": absent,
+                           "agents": dict(agents), "created": time.time(), "version": _version(),
+                           "skipped": lines, "skipped_names": skipped}, indent=2).encode("utf-8")
         with os.fdopen(fd, "wb") as raw, tarfile.open(fileobj=raw, mode="w:gz") as tar:
             info = tarfile.TarInfo(META)
             info.size, info.mode, info.mtime = len(meta), 0o600, int(time.time())
@@ -208,6 +213,9 @@ class _Plan:
     meta: dict
     safe: list[tuple[tarfile.TarInfo, tuple[str, ...], int]]  # member, its name parts, length of the root it is under
     refused: list[str]
+    roots: list[tuple[str, ...]]  # the places the snapshot covered and found
+    absent: list[tuple[str, ...]]  # the places it covered that did not exist yet
+    skipped: set[tuple[str, ...]]  # files left out for size: not "added since"
 
 
 def _parts(name) -> tuple[str, ...] | None:
@@ -236,13 +244,19 @@ def _plan(tar: tarfile.TarFile) -> _Plan:
     agents = meta.get("agents") if isinstance(meta.get("agents"), dict) else {}
     allowed = {_rel(path): agent for agent, path in _candidates() if _rel(path)}
     refused: list[str] = []
-    root_parts: list[tuple[str, ...]] = []
-    for root in meta["roots"]:
-        parts = _parts(root)
-        if parts is None or root not in allowed or (allowed[root] is not None and not agents.get(allowed[root])):
-            refused.append(f"refused: root {printable(str(root))!r} is not a place a snapshot covers")
-        else:
-            root_parts.append(parts)
+
+    def valid(listed) -> list[tuple[str, ...]]:
+        out = []
+        for root in listed if isinstance(listed, list) else []:
+            parts = _parts(root)
+            if parts is None or root not in allowed or (allowed[root] is not None and not agents.get(allowed[root])):
+                refused.append(f"refused: root {printable(str(root))!r} is not a place a snapshot covers")
+            else:
+                out.append(parts)
+        return out
+    root_parts, absent_parts = valid(meta["roots"]), valid(meta.get("absent"))
+    names = meta.get("skipped_names")
+    skipped_parts = {p for p in (_parts(n) for n in names if isinstance(n, str)) if p} if isinstance(names, list) else set()
     safe, links = [], set()
     for info in members:
         if info.name == META:
@@ -269,7 +283,7 @@ def _plan(tar: tarfile.TarFile) -> _Plan:
         if info.issym():
             links.add(parts)
         safe.append((info, parts, under))
-    return _Plan(meta, safe, refused)
+    return _Plan(meta, safe, refused, root_parts, absent_parts, skipped_parts)
 
 
 def _open(archive: Path) -> tarfile.TarFile:
@@ -307,20 +321,68 @@ def _mode(info: tarfile.TarInfo) -> int:
     return mode if mode & 0o100 else mode & ~0o111
 
 
-def _extract(tar: tarfile.TarFile, info: tarfile.TarInfo, dest: Path) -> None:
-    """One regular file or folder, already checked. The data filter does the work where Python has it (3.12+);
-    the same rules are applied by hand otherwise."""
-    if hasattr(tarfile, "data_filter"):
-        tar.extract(info, path=paths.home(), set_attrs=True, filter="data")
+def _extract(tar: tarfile.TarFile, info: tarfile.TarInfo, tmp: Path) -> None:
+    """One regular file or folder, already checked, written to the temporary path `tmp`. The data filter does the
+    work where Python has it; the same rules are applied by hand otherwise."""
+    if hasattr(tarfile, "data_filter"):  # judged against tmp's own folder, so the user's symlinked ~/.config is fine
+        tar.extract(info.replace(name=tmp.name), path=tmp.parent, set_attrs=True, filter="data")
         return
     if info.isdir():
-        dest.mkdir(exist_ok=True)
+        tmp.mkdir()
     else:
-        with tar.extractfile(info) as src, open(dest, "xb") as out:
+        with tar.extractfile(info) as src, open(tmp, "xb") as out:
             shutil.copyfileobj(src, out)
-        os.utime(dest, (info.mtime, info.mtime))
+        os.utime(tmp, (info.mtime, info.mtime))
     if os.name != "nt":
-        os.chmod(dest, _mode(info))
+        os.chmod(tmp, _mode(info))
+
+
+def _extras(plan: _Plan) -> list[Path]:
+    """What exists now inside a place the snapshot covered but is not in the archive (added since): the top-most
+    paths only. Excluded folders are never entered, and files left out for size stay."""
+    home = paths.home()
+    covered = {parts[:i] for _, parts, _ in plan.safe for i in range(1, len(parts) + 1)}
+    members = {parts for info, parts, _ in plan.safe if not info.isdir()}
+    out: list[Path] = []
+
+    def visit(path: Path, parts: tuple[str, ...], rel: str, excluded: frozenset[str], root: bool) -> None:
+        try:
+            st = os.lstat(path)
+        except OSError:
+            return
+        isdir = stat.S_ISDIR(st.st_mode)
+        if not isdir:
+            if parts not in members and parts not in plan.skipped and (stat.S_ISREG(st.st_mode)
+                                                                       or stat.S_ISLNK(st.st_mode)):
+                out.append(path)
+            return
+        nested = any(e.startswith(f"{rel}/") for e in excluded) if rel else bool(excluded)
+        if not root and parts not in covered and not nested:
+            out.append(path)  # a folder added since, nothing excluded inside: one move
+            return
+        try:
+            with os.scandir(path) as it:
+                children = sorted(e.name for e in it)
+        except OSError:
+            return
+        for name in children:
+            child = f"{rel}/{name}" if rel else name
+            if child not in excluded:
+                visit(path / name, (*parts, name), child, excluded, False)
+
+    for parts in plan.roots + plan.absent:
+        path = home.joinpath(*parts)
+        visit(path, parts, "", _excluded(path), parts in plan.absent)
+    return list(dict.fromkeys(out))
+
+
+def moved_aside(archive: Path) -> list[str]:
+    """HOME-relative names a restore would move into the pre-restore backup because they were added since."""
+    try:
+        with _open(archive) as tar:
+            return [_rel(p) or str(p) for p in _extras(_plan(tar))]
+    except _Damaged:
+        return []
 
 
 def _parent_link(home: Path, parts: tuple[str, ...], under: int) -> Path | None:
@@ -357,29 +419,50 @@ def restore(archive: Path) -> tuple[list[str], bool, Path | None]:
         lines, failed, done = list(plan.refused), len(plan.refused), 0
         for info, parts, under in plan.safe:
             dest, name = home.joinpath(*parts), printable("/".join(parts))
+            tmp = dest.parent / f".loadout-restore-{uuid.uuid4().hex}"
             try:
                 link = _parent_link(home, parts, under)
                 if link is not None:
                     lines.append(f"refused: {name}: {printable(str(link))} is a symlink")
                     failed += 1
                     continue
-                if _exists(dest) and not (info.isdir() and dest.is_dir() and not dest.is_symlink()):
-                    pre.move(dest, f"{dest} before restore", replace=True)
+                keep_dir = info.isdir() and dest.is_dir() and not dest.is_symlink()
+                if keep_dir:
+                    done += 1
+                    continue
                 dest.parent.mkdir(parents=True, exist_ok=True)
+                # everything that can fail happens on a temporary file next to the target; the current file is
+                # moved aside only once the new one is ready, so a failure never leaves the target missing
                 if info.issym():
-                    os.symlink(info.linkname, dest)
-                    pre.record_created(dest, f"{dest} (from the snapshot)")
-                elif info.isdir():
-                    if not dest.is_dir():
-                        _extract(tar, info, dest)
-                        pre.record_created_dir(dest, f"{dest} (from the snapshot)")
+                    os.symlink(info.linkname, tmp)
                 else:
-                    _extract(tar, info, dest)
-                    pre.record_created(dest, f"{dest} (from the snapshot)")
+                    _extract(tar, info, tmp)
+                moved = pre.move(dest, f"{dest} before restore", replace=True) if _exists(dest) else None
+                try:
+                    os.rename(tmp, dest)
+                except OSError:
+                    if moved is not None:
+                        shutil.move(str(moved), str(dest))
+                    raise
+                label = f"{dest} (from the snapshot)"
+                (pre.record_created_dir if info.isdir() else pre.record_created)(dest, label)
                 done += 1
             except (tarfile.TarError, OSError) as exc:
                 lines.append(f"failed: {name}: {printable(str(exc))}")
                 failed += 1
+            finally:
+                if os.path.lexists(tmp):
+                    shutil.rmtree(tmp) if tmp.is_dir() and not tmp.is_symlink() else tmp.unlink()
+        extra = 0
+        for path in _extras(plan):
+            try:
+                pre.move(path, f"{path} (added since the snapshot)", replace=True)
+                extra += 1
+            except OSError as exc:
+                lines.append(f"failed: {printable(str(path))}: {printable(str(exc))}")
+                failed += 1
+        if extra:
+            lines.append(f"moved {extra} item(s) added since the snapshot into the pre-restore backup")
         lines.append(f"restored {done} item(s) from {archive}")
         if not pre.empty:
             lines.append("what was there before is in the pre-restore backup")
