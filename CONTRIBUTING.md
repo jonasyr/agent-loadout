@@ -108,7 +108,7 @@ loadout release X.Y.Z [--urgent] [--edit | --notes FILE | --draft-notes FILE] [-
 
 The easy way is the skill: say "release 0.3.0" to Claude Code (`/loadout:release`) or Codex (`$loadout:release`). It drafts the notes from the merged PRs, rewrites them for people who use loadout, and runs the release only after you answer yes to the notes.
 
-By hand: `loadout release X.Y.Z --draft-notes <file>` writes the draft and stops, you edit the file, then `loadout release X.Y.Z --notes <file>` releases with that text. `--edit` opens the generated section in `$EDITOR` before the plan instead.
+By hand: `loadout release X.Y.Z --draft-notes <file>` (a path outside the checkout, e.g. `/tmp/notes.md`) writes the draft and stops, you edit the file, then `loadout release X.Y.Z --notes <file>` releases with that text. `--edit` opens the generated section in `$EDITOR` before the plan instead.
 
 Run it from the kit checkout, on a clean `main` that equals `origin/main`. It refuses unless `X.Y.Z` is newer than every tag and at least 0.2.0, `gh` is signed in, and the newest `ci.yml` run for `HEAD` succeeded. It shows the plan (the changelog section built from the merged PRs since the last tag; the format is in [the CLI reference](docs/reference/cli.md#loadout-release)) and asks. After your yes it sets `version` in `pyproject.toml`, prepends the section to `CHANGELOG.md`, adds the version to `release-status.json` with `--urgent`, commits `chore(release): vX.Y.Z`, tags it (annotated), pushes `main` and the tag together, and runs `gh release create` with `bootstrap.sh` and `bootstrap.ps1` attached. The release commit may change only those three files. `--urgent` skips the 3-day wait for the notice; people still run `loadout update` themselves.
 
