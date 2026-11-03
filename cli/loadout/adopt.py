@@ -661,6 +661,11 @@ def run(apply_changes: bool, groups: set | None, skip: set, yes: bool, ask: Ask,
     if keep_own:  # a Serena of the user's stays, even where adopt would call it a duplicate
         verdicts = [v for v in verdicts if not (v.item.kind == "mcp" and isinstance(v.item.extra.get("config"), dict)
                                                  and _is_serena_cfg(v.item.extra["config"]))]
+    from . import cbm_installer
+    if not cbm_installer.claude_plugin_on():  # nothing of loadout's would replace a removed Claude Code Serena
+        verdicts = [v for v in verdicts if not (v.action == "migrate" and v.item.kind == "mcp" and not own.is_codex(v.item)
+                                                 and isinstance(v.item.extra.get("config"), dict)
+                                                 and _is_serena_cfg(v.item.extra["config"]))]
     from . import targets
     # each agent's own files only while it is on; the personal layer's mcp.json belongs to neither
     findings = (secrets.scan_all() if targets.claude_enabled() else secrets.scan_personal()) \

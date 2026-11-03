@@ -81,7 +81,7 @@ How recorded hooks are merged into `settings.json` (identity, deleted hooks, hoo
 
 ## Serena of your own
 
-loadout's catalog provides Serena, so a Serena of yours is a duplicate. Only a plain copy of loadout's (same command and arguments) is replaced with loadout's, through adopt's migrate group or `--use-loadout`. Both Claude Code's and Codex's Serena follow this. A Serena with settings of its own (another `--context`, `env` values, extra arguments, a path to a fork) is kept, also on `--yes`, and only `loadout adopt --apply --own NAME=remove` removes it. The rule is in [ADR 0045](../adr/0045-a-tuned-serena-is-kept.md); the flags and the rollback are in [Your own Serena](cli.md#your-own-serena).
+loadout's catalog provides Serena, so a Serena of yours is a duplicate. Only a plain copy of loadout's (same command and arguments) is replaced with loadout's, through adopt's migrate group or `--use-loadout`. Both Claude Code's and Codex's Serena follow this. A Serena with settings of its own (another `--context`, `env` values, extra arguments, a path to a fork) is kept, also on `--yes`, and only `loadout adopt --apply --own NAME=remove` removes it. A plain Claude Code copy also stays while loadout's plugin is not installed, since nothing would replace it. The rule is in [ADR 0045](../adr/0045-a-tuned-serena-is-kept.md); the flags and the rollback are in [Your own Serena](cli.md#your-own-serena).
 
 ## Known limits
 

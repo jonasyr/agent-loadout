@@ -209,6 +209,14 @@ def test_failed_claude_removal_fails_the_run(both_on, monkeypatch):
     assert adopt.run(True, None, set(), True, lambda q: "", with_versions=False, use_loadout=True) == 1
 
 
+def test_yes_keeps_a_claude_serena_while_loadouts_plugin_is_missing(both_on, monkeypatch):
+    _claude_json({"serena": CLAUDE_PLAIN})
+    monkeypatch.setattr(cbm_installer, "claude_plugin_on", lambda: False)
+    adopt.run(True, None, set(), True, lambda q: "", with_versions=False, use_loadout=True)
+    adopt.run(True, None, set(), True, lambda q: "", with_versions=False)
+    assert [c for c in _removes(both_on) if c[0] == "claude"] == []
+
+
 def test_own_remove_names_a_tuned_codex_serena(codex_on, capsys):
     _config(TUNED)
     rc = adopt.run(True, None, set(), False, lambda q: "", with_versions=False, interactive=False,
