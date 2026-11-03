@@ -196,7 +196,20 @@ def eligible(current: tuple[int, int, int] | None, now: float, status: Status) -
     return best[1] if best else None
 
 
+def _record_current(tag: str, sha: str) -> None:
+    data = _load_releases()
+    data["current"] = {"tag": tag, "sha": sha}
+    save_json(_releases_path(), data)
+
+
 def current_release(root: Path) -> str | None:
+    """The release the kit is on: the one move_to recorded while HEAD is still its commit (no local tag ref needed),
+    else the tag git describe finds exactly at HEAD."""
+    rec = _load_releases().get("current")
+    if isinstance(rec, dict) and parse_tag(rec.get("tag")) and _SHA.fullmatch(str(rec.get("sha"))):
+        head = runner.run(["git", "-C", str(root), "rev-parse", "HEAD"], timeout=30)
+        if head.ok and head.stdout.strip() == rec["sha"]:
+            return rec["tag"]
     res = runner.run(["git", "-C", str(root), "describe", "--tags", "--exact-match", "HEAD"], timeout=30)
     if not res.ok:
         return None
@@ -482,7 +495,10 @@ def move_to(root: Path, tag: str, bk: Backup, base: str = "--tags") -> str | Non
     if problem:
         return problem
     res = runner.run([*git, "checkout", "--detach", expected], timeout=120, env=env)
-    return None if res.ok else _failed(res, f"checking out {tag}")
+    if not res.ok:
+        return _failed(res, f"checking out {tag}")
+    _record_current(tag, expected)  # the release identity, whether or not a local tag ref exists
+    return None
 
 
 def move_to_dev(root: Path, bk: Backup) -> str | None:

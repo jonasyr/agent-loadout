@@ -207,3 +207,35 @@ def test_move_to_dev_refuses_local_changes(fake_home, fake_runner, tmp_path, mon
     fake_runner.responses[_git(kit, "status")] = runner.Result(0, " M a.py\n", "")
     assert "a.py" in channels.move_to_dev(kit, bk)
     assert not bk.recorded and "switch" not in _verbs(fake_runner)
+
+
+def _moved_without_a_local_tag(fake, kit):
+    """A stable move whose changelog fetch (the only one that creates refs/tags/X) failed: git describe cannot
+    name the release afterwards, whatever HEAD is."""
+    channels.set_channel("stable")
+    _ready(fake, kit)
+    fake.responses[_git(kit, "fetch", "origin", "tag")] = runner.Result(1, "", "would clobber existing tag")
+    fake.responses[_git(kit, "describe")] = runner.Result(128, "", "fatal: no tag exactly matches")
+    assert channels.changelog_lines(kit, "v0.3.0") == []
+    assert channels.move_to(kit, "v0.3.0", RecordingBackup(fake)) is None
+    fake.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, TAG_SHA + "\n", "")  # checked out
+
+
+def test_a_move_names_its_release_without_a_local_tag(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    _moved_without_a_local_tag(fake_runner, kit)
+    assert channels.current_release(kit) == "v0.3.0"
+    assert channels.pin() == "v0.3.0"
+    assert channels.claude_origin(channels.DEFAULT_SLUG) == channels.DEFAULT_SLUG + "#v0.3.0"
+    assert channels.codex_source(channels.DEFAULT_SLUG) == channels.DEFAULT_SLUG + "@v0.3.0"
+
+
+def test_after_a_restore_the_recorded_release_no_longer_counts(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    _moved_without_a_local_tag(fake_runner, kit)
+    fake_runner.responses[_git(kit, "rev-parse", "HEAD")] = runner.Result(0, SHA + "\n", "")  # the undo ran
+    assert channels.current_release(kit) is None and channels.pin() is None
+    fake_runner.responses[_git(kit, "describe")] = runner.Result(0, "v0.2.0\n", "")  # back on an older release
+    assert channels.current_release(kit) == "v0.2.0"
+    fake_runner.responses[_git(kit, "describe")] = runner.Result(0, "v0.2.0-rc1\n", "")
+    assert channels.current_release(kit) is None
