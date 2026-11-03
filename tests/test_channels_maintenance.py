@@ -173,6 +173,29 @@ def test_migration_notice_once(fake_home):
                           "For tested releases only: loadout channel stable"]
 
 
+def test_failed_status_fetch_keeps_the_old_status_and_offers_nothing(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    channels.set_channel("stable")
+    channels.record_seen({"v0.3.0": SHA_A}, T - 10 * m.DAY)
+    status = {"withdrawn": [{"version": "0.3.0", "reason": "bad"}]}
+    _remote(fake_runner, kit, {"v0.3.0": SHA_A}, current="v0.2.0", status=status)
+    channels.check_releases(T)
+    assert _notices() == []  # 0.3.0 is withdrawn: not offered
+    fake_runner.responses[_git(kit, "fetch", "origin", "main")] = runner.Result(1, "", "unable to access")
+    channels.check_releases(T + m.DAY)
+    assert _notices() == []
+    assert "0.3.0" in channels.last_status().withdrawn
+
+
+def test_withdrawal_reason_is_capped_in_the_notice(fake_home, fake_runner, tmp_path, monkeypatch):
+    kit = _kit(tmp_path, monkeypatch)
+    channels.set_channel("stable")
+    status = {"withdrawn": [{"version": "0.2.0", "reason": "y" * 500}]}
+    _remote(fake_runner, kit, {"v0.2.0": SHA_A}, current="v0.2.0", status=status)
+    channels.check_releases(T)
+    assert "y" * 200 in _notices()[0] and "y" * 201 not in _notices()[0]
+
+
 def test_migration_notice_not_when_channel_set(fake_home):
     channels.set_channel("dev")
     channels.migration_notice()

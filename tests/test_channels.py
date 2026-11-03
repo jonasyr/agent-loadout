@@ -137,8 +137,6 @@ def test_release_status_reads_the_file(fake_runner, tmp_path):
 
 
 @pytest.mark.parametrize("body,urgent,withdrawn", [
-    ("{nope", set(), {}),
-    ("[]", set(), {}),
     (json.dumps({"urgent": "x", "withdrawn": [{"version": "0.3.0", "reason": "r"}]}), set(),
      {"0.3.0": {"reason": "r", "use": None}}),
     (json.dumps({"urgent": ["0.3.0"], "withdrawn": [{"version": "0.3.0"}]}), {"0.3.0"}, {}),
@@ -149,11 +147,22 @@ def test_release_status_bad_shapes_are_empty(fake_runner, tmp_path, body, urgent
     assert (st.urgent, st.withdrawn) == (urgent, withdrawn)
 
 
-def test_release_status_git_failure_is_empty(fake_runner, tmp_path):
+@pytest.mark.parametrize("body", ["{nope", "[]"])
+def test_release_status_unreadable_json_is_unknown(fake_runner, tmp_path, body):
+    _status_run(fake_runner, tmp_path, body)
+    assert channels.release_status(tmp_path) is None
+
+
+def test_release_status_failures_are_unknown_but_a_missing_file_is_empty(fake_runner, tmp_path):
     _status_run(fake_runner, tmp_path, "{}", fetch_ok=False)
-    assert channels.release_status(tmp_path) == Status()
+    assert channels.release_status(tmp_path) is None
     _status_run(fake_runner, tmp_path, "{}", show_ok=False)
-    assert channels.release_status(tmp_path) == Status()
+    assert channels.release_status(tmp_path) is None
+    key = ("git", "-C", str(tmp_path), "show", "FETCH_HEAD:release-status.json")
+    for err in ("fatal: path 'release-status.json' does not exist in 'FETCH_HEAD'",
+                "fatal: path 'release-status.json' exists on disk, but not in 'FETCH_HEAD'"):
+        fake_runner.responses[key] = runner.Result(128, "", err)
+        assert channels.release_status(tmp_path) == Status()
 
 
 def test_current_release(fake_runner, tmp_path):

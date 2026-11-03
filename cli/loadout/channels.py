@@ -144,21 +144,24 @@ def _version(text) -> str | None:
     return text if isinstance(text, str) and parse_tag("v" + text) is not None else None
 
 
-def release_status(root: Path) -> Status:
+def release_status(root: Path) -> Status | None:
+    """The status file on origin/main; an empty Status when the file does not exist there; None when it could not
+    be read (offline, a git failure, invalid JSON): the caller keeps what it knew and offers nothing."""
     import json
     env = _git_env()
     git = ["git", "-C", str(root)]
     if not runner.run([*git, "fetch", "origin", "main"], timeout=60, env=env).ok:
-        return Status()
+        return None
     res = runner.run([*git, "show", "FETCH_HEAD:release-status.json"], timeout=60, env=env)
     if not res.ok:
-        return Status()
+        missing = "does not exist" in res.stderr or "exists on disk, but not in" in res.stderr
+        return Status() if missing else None
     try:
         data = json.loads(res.stdout)
     except ValueError:
-        return Status()
+        return None
     if not isinstance(data, dict):
-        return Status()
+        return None
     status = Status()
     urgent = data.get("urgent")
     if isinstance(urgent, list):
@@ -247,7 +250,7 @@ def changelog_lines(root: Path, tag: str, limit: int = 3) -> list[str]:
                 break
             inside = line == heading or line.startswith(heading + " ")
         elif inside and line.lstrip().startswith(("- ", "* ")):
-            text = printable(line.lstrip()[2:].strip())[:120]
+            text = printable(line.lstrip()[2:].strip()[:120])
             if text:
                 out.append(text)
                 if len(out) >= limit:
@@ -277,6 +280,8 @@ def check_releases(now: float) -> None:
     if effective() != "stable":
         return
     status = release_status(root)
+    if status is None:  # unknown: keep the stored status, offer nothing
+        return
     _store_status(status)
     tag = current_release(root)
     current = parse_tag(tag) if tag else None
@@ -289,7 +294,7 @@ def check_releases(now: float) -> None:
             info = status.withdrawn[text]
             fix = f"run loadout update (to {info['use']})" if info.get("use") else "run loadout restore"
             maintenance.notify(f"loadout: the release you run ({tag}) was withdrawn: "
-                               f"{printable(info['reason'])}; {fix}")
+                               f"{printable(info['reason'][:200])}; {fix}")
             data["withdrawn_notified"] = [*done, text]
             save_json(_releases_path(), data)
         return
