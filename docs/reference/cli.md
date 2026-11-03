@@ -4,7 +4,7 @@
 
 The commands are `bootstrap`, `adopt`, `configure`, `init`, `profile`, `check`, `apply-settings`, `update`, `restore`, `usage`, `explain` and `kit-path`. Three more exist and are internal: `hook-session-start` and `maintenance` are called by the plugin's session hook and its background job, `advisor-mark` is called by the `/loadout:execution-advisor` skill. They are not listed in `loadout --help` and are not meant to be run by hand.
 
-`loadout --version` prints the release and the kit's commit, for example `loadout 0.1.0 (54af5b7)`; the commit is left out when the kit is not a git clone. Bug reports ask for it.
+`loadout --version` prints the release and the channel, for example `loadout 0.2.0 (stable, v0.2.0)` on a release or `loadout 0.2.0 (dev, 54af5b7)` on `main` with the kit's commit; both are left out when the kit is not a git clone. Bug reports ask for it.
 
 ## Exit codes
 
@@ -31,12 +31,14 @@ Some commands return their own codes. They are listed per command and add to the
 | `XDG_CONFIG_HOME` | Where loadout looks for VS Code's user settings on Linux (`$XDG_CONFIG_HOME/Code/User` instead of `~/.config/Code/User`), for rtk's config, and where bootstrap writes fish's PATH file (`$XDG_CONFIG_HOME/fish/conf.d/loadout.fish`). The personal layer and `secrets.env` under `~/.config/loadout` do not follow it. |
 | `APPDATA`, `LOCALAPPDATA` | Windows only: where loadout looks for VS Code's user settings (`%APPDATA%\Code\User`) and for the tool folders it puts on `PATH` (mise shims, WinGet links, npm globals). Without them, the default folders under your home. |
 | `VSCODE_EXTENSIONS` | The local VS Code extensions folder that `check` and bootstrap search for the agents' extensions, instead of `~/.vscode/extensions`. |
-| `LOADOUT_NO_AUTO_PULL=1` | Turns off the daily pull and what follows it ([The daily sync](state-and-sync.md#the-daily-sync)), and the pull at the start of [`loadout update`](#loadout-update), which then prints `Pull  skipped (LOADOUT_NO_AUTO_PULL=1)` and works with the checkouts as they are. |
+| `LOADOUT_NO_AUTO_PULL=1` | Turns off the daily pull of the personal layer (and of the kit on dev) and what follows it ([The daily sync](state-and-sync.md#the-daily-sync)), and the pull at the start of [`loadout update`](#loadout-update), which then prints `Pull  skipped (LOADOUT_NO_AUTO_PULL=1)` and works with the checkouts as they are. |
 | `NO_COLOR` (any non-empty value), `TERM=dumb` | No colour in the output. |
-| `LOADOUT_REPO_URL`, `LOADOUT_REF` | Read by the one-liner scripts `bootstrap.sh` and `bootstrap.ps1`, not by `loadout`: the repo and the branch or tag to clone (default: this repo's `main`). For forks and tests. |
+| `LOADOUT_REPO_URL`, `LOADOUT_REF` | Read by the one-liner scripts `bootstrap.sh` and `bootstrap.ps1`, not by `loadout`: the repo and the branch or tag to clone (default: this repo's `main`). For forks and tests. With `LOADOUT_REF` set the script checks out that ref and does not pick a release. |
 | `LOADOUT_PROPERTY_SEEDS`, `LOADOUT_PROPERTY_FIRST_SEED` | Tests only: how many seeds the hook-merge property test tries (default 2000), and the first one (default 0). |
 
-loadout sets a few variables for itself; do not set them by hand: `LOADOUT_REEXEC` (the launcher restarted itself under a newer Python, so it does not try again), `LOADOUT_UPDATE_PULLED` (`loadout update` pulled new kit commits and restarted itself into them, so the new process neither pulls nor restarts again) and `LOADOUT_PATH_ADD`, `LOADOUT_PATH_BACKUP` (passed to the PowerShell step that edits the Windows user `PATH`), `LOADOUT_PATH_REFRESH` (a user variable that step clears, so Windows tells running programs that `PATH` changed) and `LOADOUT_PY` (the Python that the Windows `loadout.cmd` launcher found; it lives only inside that launcher).
+The release check is not turned off by `LOADOUT_NO_AUTO_PULL=1`: it pulls no code ([The daily sync](state-and-sync.md#the-daily-sync)).
+
+loadout sets a few variables for itself; do not set them by hand: `LOADOUT_REEXEC` (the launcher restarted itself under a newer Python, so it does not try again), `LOADOUT_UPDATE_PULLED` (`loadout update` pulled new kit commits, or moved the kit to a release, and restarted itself into them, so the new process neither pulls nor restarts again), `LOADOUT_UPDATE_BACKUP` (the restarted process reopens the backup of the move, so the move and the re-apply are one restore point) and `LOADOUT_PATH_ADD`, `LOADOUT_PATH_BACKUP` (passed to the PowerShell step that edits the Windows user `PATH`), `LOADOUT_PATH_REFRESH` (a user variable that step clears, so Windows tells running programs that `PATH` changed) and `LOADOUT_PY` (the Python that the Windows `loadout.cmd` launcher found; it lives only inside that launcher).
 
 loadout also reads two VS Code settings, never writes them: `chatgpt.cliExecutable` (when it names a codex that runs, VS Code's Codex extension runs that codex, so loadout checks its version and, without a Codex CLI, uses it) and `claudeCode.claudeProcessWrapper` (the claude the Claude Code extension starts). `check` warns when either names a file that cannot run. See [Use loadout with VS Code](../how-to/vscode.md).
 
@@ -49,7 +51,7 @@ Set up or repair this machine. Safe to re-run.
 ```
 loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--use-loadout] [--keep-own] [--verbose] [--agents LIST]
                   [--codex-side wsl|windows] [--vscode-wsl] [--vscode-path] [--without-codex-cli] [--without-claude-cli]
-                  [--personal new|URL] [--answers FILE]
+                  [--personal new|URL] [--answers FILE] [--channel stable|dev]
 ```
 
 | Flag | Meaning |
@@ -68,6 +70,7 @@ loadout bootstrap [--install] [--yes] [--no-plugins] [--no-adopt] [--use-loadout
 | `--without-claude-cli` | With VS Code's Claude Code extension and no `claude` on `PATH`: do not install the optional Claude Code CLI. loadout then runs the extension's own `claude`. Without the flag, `--install` in a terminal asks `Install the Claude Code CLI too (optional, for claude in a terminal)? [y/N]` (Enter means no); without a terminal, or with `--yes`, it installs the CLI. Where the flag does not apply (a `claude` is on `PATH`), bootstrap prints `--without-claude-cli: not used; …`. [Claude Code in VS Code without the CLI](../how-to/vscode.md#claude-code-in-vs-code-without-the-cli). |
 | `--personal new\|URL` | The personal layer without asking: `new` creates a starter layer, a git URL is cloned. Used only when no personal layer exists yet; otherwise bootstrap says so and keeps the one there. |
 | `--answers FILE` | A JSON file with the starter layer's answers: `about` (`name`, `role`, `languages`, `preferences`) and `preferences` (ids and values as in [Preferences format](preferences-format.md), free text as `other:<text>`). Give an absolute path: `bootstrap.sh` and `bootstrap.ps1` run bootstrap from the kit's folder. Every value is text. Checked before anything changes: an unknown key or value, a value that is not text, a value that looks like a secret, or a preference that needs a terminal (one that shows a draft to confirm, such as the auto mode preference: `--answers: <id> needs a terminal; run loadout configure prefs after setup`) stops bootstrap. Used only for a new personal layer; otherwise bootstrap says the flag was not used. Format and example: [Set loadout up from inside an agent](../how-to/install-with-an-agent.md#3-show-the-answers-file). |
+| `--channel stable\|dev` | The release channel to record ([`loadout channel`](#loadout-channel)). Without it a new install is stable (the scripts check out the newest release that is 3 days old and stop when there is none), a re-run keeps the stored channel, and a machine with no setting stays dev. `stable` seeds `releases.json` with the current tags as first seen now and moves a withdrawn checkout to its `use` release; `dev` follows `main`. |
 | `--verbose` | Print every detail of every step (links, commands, the full check list, the backup path). |
 
 By default bootstrap prints one status line per step (`✓`, `!` for a warning, `✗` for a failure), the adopt questions, and at the end the health-check count, `Undo any time: loadout restore --list` when it made a backup, and the next step. Problem lines (a failed install or plugin, a check that failed) are always printed in full. Without a terminal, colour is off (also with `NO_COLOR` or `TERM=dumb`, see [Environment variables](#environment-variables)); where the console cannot show `✓`, ASCII stands in.
@@ -339,6 +342,7 @@ The rows, in the order they are printed:
 | Row | What it checks | Severity |
 |---|---|---|
 | `Setup` | This machine's cell in the [setup matrix](setup-matrix.md): the platform (native Windows marked experimental), the agents that are on, the surfaces found for them (the CLI on PATH, VS Code's extension and its window type) and, in WSL with Codex on Windows, the Codex side; then the matrix section with the recommended flags. Always `ok`, and printed with its text in both outputs; it repeats none of the warnings below. | — |
+| `Channel` | `stable, v0.2.0` or `dev, main`, from local state only (no network). Warns when a release is waiting (`stable, v0.2.0: v0.3.0 is available`, fix `loadout update`), when the release you run was withdrawn (with the reason; fix `loadout update` or `loadout restore`) and when a release tag was changed after its release (tell the maintainer; loadout never offers it). | warn |
 | `Python 3.x` | The Python that runs loadout. Always `ok`: loadout needs 3.11 or newer and stops before this on older versions. | — |
 | `WSL <version>`, `WSL` | Inside WSL only: the version (an `ok` line), then one `WSL` row per problem from [WSL 2](../how-to/wsl.md): WSL 1 (with Claude Code on), the kit, the personal layer or the current folder on the Windows filesystem, a tool that resolves to a Windows program, missing sandbox packages. The `claude`, WSL 1 and sandbox rows only with Claude Code on. | warn |
 | `Codex home` | Inside WSL with Codex on: `CODEX_HOME` points into Windows. | warn |
@@ -484,6 +488,42 @@ The run, in order:
 An agent that is off is not read, planned or named.
 
 Exit codes: 0 when finished (a failed item is listed under What changed but does not change the code); 1 when another loadout run still holds the lock after the wait (on a terminal `update` waits until it is free; without one it waits 10 minutes). Run it again when that run has finished.
+
+### `update` on stable
+
+On stable the kit is not pulled. Step 2 instead reads the release tags and, when a release is eligible ([the release check](state-and-sync.md#the-daily-sync)), item 1 of the plan reads `kit: v0.2.0 → v0.3.0` and moves the kit there after the yes. It refuses when the kit checkout has tracked edits or commits that are not in a release tag (it names them). It records `git checkout --detach <old sha>` in the backup first, fetches the tag, checks that it is the commit this machine recorded, checks it out detached (never `checkout -f`, stash or reset), restarts into the release's code (step 3) and re-applies. The Claude Code `agent-loadout` marketplace entry then gets `ref: vX.Y.Z` and the Codex marketplace is re-added at that tag. A kit on a release tag is not listed as a failed pull. Without an eligible release `update` does the rest as usual and says `kit: stays on …` when a newer one is waiting for its 3 days. Offline it lists `kit: not refreshed (the release tags could not be read)`.
+
+## loadout channel
+
+Show or switch the release channel ([ADR 0046](../adr/0046-release-channels.md)).
+
+```
+loadout channel [stable|dev] [--yes] [--verbose]
+```
+
+Without an argument it prints the channel and where the kit is (`stable, v0.2.0` or `dev, main`). With one it shows the move and asks (`--yes` skips the question; without a terminal and without `--yes` it exits 1).
+
+- **`stable`** (from dev): refuses when the kit has tracked edits or commits that are not on `origin/main`, naming them. Otherwise it moves to the newest eligible release. When none has been seen for 3 days yet, it takes the newest one whose tag is 3 days old by its own date (the trust a first install has). With no release at all it refuses with `no release is ready yet`.
+- **`dev`** (from stable): `git switch main` (created tracking `origin/main` when missing), `git pull --ff-only`, re-apply, and the plugin pins are removed. It refuses on tracked edits and on commits not reachable from `origin/main`.
+
+The setting is written only after the move worked. The move, the setting (`channel.json`) and the plugin pins are one restore point: `loadout restore` returns to the old checkout, channel and settings (a stable to dev switch leaves the created `main` branch in place; it is harmless). After the move the command restarts into the new code and re-applies the setup and the plugin items, not the tool updates. On a machine with no setting, `loadout channel dev` only writes the setting.
+
+## loadout release
+
+For the maintainer; it is not in `loadout --help`. How and when: [CONTRIBUTING](../../CONTRIBUTING.md#releasing).
+
+```
+loadout release X.Y.Z [--urgent] [--edit] [--yes]
+loadout release withdraw X.Y.Z --reason TEXT [--use A.B.C] [--yes]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--urgent` | List the version as urgent in `release-status.json`: stable offers it without the 3-day wait. The person still has to run `loadout update`. |
+| `--edit` | Open the changelog section in `$EDITOR` (run on the terminal) before the plan. |
+| `--yes` | Skip the question. |
+| `--reason TEXT` | `withdraw` only, needed: shown to people who run the withdrawn release. |
+| `--use A.B.C` | `withdraw` only: the release to move to. It must be an existing tag newer than the withdrawn one. Without it people are told to run `loadout restore`. |
 
 ## loadout restore
 

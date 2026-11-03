@@ -21,8 +21,10 @@ On Linux, macOS and WSL 2, run the one-liner. It clones the kit into `./agent-lo
 
 ```bash
 cd ~
-curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install
+curl -fsSL https://github.com/jonasyr/agent-loadout/releases/latest/download/bootstrap.sh | bash -s -- --install
 ```
+
+This installs the stable channel: the newest release that has been out for 3 days. Until the first channels release (0.2.0) has been out 3 days, a stable install stops and says so; wait, or follow `main` with `--channel dev` and the script from `main` (`https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh`). On stable, loadout tells you when a release is available and changes nothing until you run `loadout update` ([release channels](../reference/cli.md#loadout-channel)).
 
 The `cd ~` matters because the clone stays where you run this (in WSL, a shell started from Windows opens in `/mnt/c`).
 
@@ -47,7 +49,7 @@ Native Windows is experimental and not recommended. Use WSL 2 if you can.
 
    ```powershell
    cd $HOME
-   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install
+   & ([scriptblock]::Create((irm https://github.com/jonasyr/agent-loadout/releases/latest/download/bootstrap.ps1))) --install
    ```
 
    Or clone and run the script, bypassing the execution policy for this one command:

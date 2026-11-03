@@ -8,7 +8,7 @@ loadout keeps itself current for Claude Code and Codex, so you should know what 
 |---|---|---|
 | Plugin and marketplace updates, Claude Code | Whenever Claude Code decides: it updates plugins from `claude-plugins-official` (on by default) and from the marketplaces `settings.base.json` sets to `autoUpdate: true` (listed under [Marketplaces](../reference/included-tools.md#marketplaces)) | Claude Code |
 | Plugin refresh, Codex | After a daily pull that brought new commits, if Codex is on and a usable codex exists (the Codex CLI, or VS Code's Codex extension's own) | `maintenance._maintain`, through that codex |
-| Pull of the kit and the personal layer; weekly version check of tool binaries | At most once a day (the check once a week), in a detached background process started by the session hook | `maintenance._maintain` ([The daily sync](../reference/state-and-sync.md#the-daily-sync)) |
+| Release check; pull of the personal layer (on dev also the kit); weekly version check of tool binaries | At most once a day (the check once a week), in a detached background process started by the session hook | `maintenance._maintain` ([The daily sync](../reference/state-and-sync.md#the-daily-sync)) |
 | The session hook (`loadout hook-session-start`) | Start of every Claude Code session; start of every Codex session (the CLI or VS Code's Codex extension) once you approved the plugin's hooks | The agent runs it from the plugin's `hooks/hooks.json` or `hooks/codex.json` ([At each session start](../reference/state-and-sync.md#at-each-session-start)) |
 | Hooks that can block | Serena's `remind` denies a repeated grep or code-file read once, and the next call goes through (through the plugin's guard in both agents; harmless searches in config, docs, piped output and files outside the project never reach it). Serena's `plan-guard` (Codex) blocks edit-capable Serena tools in plan mode. loadout's `advisor.py stop` blocks a Stop once to ask for `/loadout:execution-advisor`. | The agent runs them; `remind` (both agents) and the other Serena hooks in Claude Code go through the plugin's `hooks/mcp_guard.py` ([Hooks](../reference/hooks.md#serenas-reminder)) |
 | Work in the background | After edits, shell commands and at the end of a turn, the code-graph refresh starts a detached child that re-indexes a repo codebase-memory already indexes; the hook never waits and uses no network | The plugin's `hooks/refresh.py` ([Hooks](../reference/hooks.md#the-code-graph-refresh)) |
@@ -95,11 +95,29 @@ Your personal layer is meant to be a private git repo. The commit offer after `l
 
 Your personal layer can run code on every machine you sync it to. It can hold hooks, skills and MCP server commands, and the daily pull brings changes in without a prompt. Treat the personal repo like a dotfiles repo: private, with a strong login on the host. The same holds for the kit repo. Whoever can push to it reaches every machine that follows it.
 
+**Channels.** On dev the kit follows `main` and a bad commit there reaches the machine within a day. On stable ([ADR 0046](../adr/0046-release-channels.md)) the kit moves only to a release tag, only after this machine has known the tag for 3 days (or the release is marked urgent), and only when you run `loadout update`. The Claude Code and Codex plugins of the kit are pinned to the same tag. The personal layer keeps its daily pull on both channels.
+
+Stable protects against:
+
+- a bad or malicious commit on `main`, which stable never runs;
+- a bad release that is noticed within 3 days, because it can be withdrawn before stable machines see it (`release-status.json` on `main`);
+- a tag backdated to skip the wait, because the wait counts from when this machine first saw the tag, and a tag that later points at another commit is never offered.
+
+Stable does not protect against:
+
+- someone with push access to the kit who cuts a release and stays unnoticed for 3 days;
+- a machine whose clock is set far ahead;
+- the install script of a fresh release (the install command fetches the scripts of the newest GitHub Release at once) and the first install's choice of tag, which trusts the tag's own date;
+- `--urgent` set by an attacker, which only shortens the wait for the notice: you still apply the release yourself.
+
+Tag signatures would close part of this; they are not built yet. dev keeps today's daily pull of `main`.
+
 For a team, use a fork of the kit that you control and point your clone (or `LOADOUT_ROOT`) at it. Changes then reach colleagues only after you review them.
 
 ## Opting out
 
 - **Marketplace auto-update.** Set `"autoUpdate": false` for a marketplace in your personal `settings.json`, for example `{"extraKnownMarketplaces": {"impeccable": {"autoUpdate": false}}}`. Codex's automatic plugin refresh after a pull honours it too: it leaves that marketplace as it is (no upgrade, and installed plugins are not re-installed; a missing plugin is still installed). `loadout update` is the explicit command and updates every marketplace. `LOADOUT_NO_AUTO_PULL=1` turns off the whole daily pull.
+- **The channel.** `loadout channel stable` stops the kit's daily pull; `loadout channel dev` brings it back ([`loadout channel`](../reference/cli.md#loadout-channel)).
 - **The daily pull.** Set `LOADOUT_NO_AUTO_PULL=1`. Details: [The daily sync](../reference/state-and-sync.md#the-daily-sync).
 - **Binary updates.** Nothing to turn off: they only happen when you run `loadout update`.
 

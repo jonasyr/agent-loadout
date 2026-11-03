@@ -38,6 +38,8 @@ Python 3.11+, standard library only. `bin/loadout` starts it; `__init__.py` hold
 | Module | What it does |
 |---|---|
 | `maintenance.py` | The session hook (`hook-session-start`), the background daily and weekly run (`maintenance`), the pull both it and `loadout update` use (`pull`, with the pause record `sync-paused.json`) and the tool-update helpers; `update` there only hands over to `update.py` ([The daily sync](state-and-sync.md#the-daily-sync)). |
+| `channels.py` | Release channels: the stable or dev setting (`channel.json`), the release tags this machine has seen (`releases.json`), which release to offer, the daily release check, the kit's move to a release or back to `main`, and the plugin pins ([ADR 0046](../adr/0046-release-channels.md)). |
+| `release.py` | `loadout release X.Y.Z` and `release withdraw`: the maintainer's checks, the release commit and tag, the GitHub Release ([Releasing](../../CONTRIBUTING.md#releasing)). |
 | `update.py` | `loadout update`: takes the lock, pulls, restarts into the pulled code, builds and shows the numbered plan, asks once, applies it and prints What changed and Now do this ([ADR 0035](../adr/0035-loadout-update-brings-a-machine-current.md); [`loadout update`](cli.md#loadout-update)). |
 | `apply.py` | The apply steps bootstrap, configure and update share (links, settings merge, Claude Code plugins, the Codex step). Each returns its status text and the facts of what it changed; with `dry=True` it changes nothing. |
 | `steps.py` | "Now do this": derives each agent's open steps from what a run changed, saves them in `open-steps.json`, shows them at that agent's session start and clears them when done ([state-and-sync](state-and-sync.md#at-each-session-start)). |

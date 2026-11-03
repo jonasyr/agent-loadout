@@ -49,7 +49,7 @@ Template:
 | [0021](0021-diagrams-as-code-rendered-to-svg.md) | Diagrams as code, rendered to committed SVGs | Accepted |
 | [0022](0022-codex-as-a-second-target.md) | Codex as a second target | Accepted; amended by 0036 |
 | [0023](0023-python-3-11-minimum.md) | Python 3.11 minimum | Accepted |
-| [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted; amended by 0033 and 0035 |
+| [0024](0024-codex-parity-update-model.md) | Codex parity: loadout updates Codex plugins, forwards secrets by name and type-checks by hook | Accepted; amended by 0033, 0035 and 0046 |
 | [0025](0025-state-in-xdg-state-home.md) | loadout's own files live in XDG state, not in `~/.claude` | Accepted |
 | [0026](0026-tool-hints-never-block.md) | Tool hints add context, never block | Accepted; superseded for code searches by 0039 |
 | [0027](0027-repo-files-follow-the-agents.md) | Repo files follow the agents that are on | Accepted; decision line superseded by 0030 |
@@ -60,7 +60,7 @@ Template:
 | [0032](0032-vscode-extensions-are-a-surface-of-an-agent.md) | VS Code extensions are a surface of an agent | Accepted; amended by 0034 |
 | [0033](0033-codex-for-the-vscode-extension-without-its-cli.md) | Codex set up for VS Code's Codex extension without its CLI | Accepted; plugins and hooks parts superseded by 0038 |
 | [0034](0034-vscode-extension-binaries-and-vscode-fixes.md) | The extensions' own binaries as runners, and VS Code fixes as asked-for plans | Accepted |
-| [0035](0035-loadout-update-brings-a-machine-current.md) | `loadout update` brings a machine current | Accepted |
+| [0035](0035-loadout-update-brings-a-machine-current.md) | `loadout update` brings a machine current | Accepted; amended by 0046 |
 | [0036](0036-codex-tool-approvals-and-serena-approval.md) | Codex tool approvals stay yours, and Codex asks once about Serena's | Accepted |
 | [0037](0037-marketplaces-only-when-a-plugin-uses-them.md) | Marketplaces only when a plugin uses them | Accepted |
 | [0038](0038-codex-extension-loads-plugins-and-reviews-hooks.md) | VS Code's Codex extension loads plugins and reviews hooks itself | Accepted |
@@ -71,3 +71,4 @@ Template:
 | [0043](0043-silence-rtk-missing-hook-warning.md) | Silence rtk's "No hook installed" warning where loadout's plugin provides the hook | Accepted |
 | [0044](0044-codex-reviewer-as-opt-in-plugin.md) | codex-reviewer as an opt-in plugin | Accepted |
 | [0045](0045-a-tuned-serena-is-kept.md) | A Serena with settings of its own is kept on `--yes` | Accepted |
+| [0046](0046-release-channels.md) | Release channels: stable follows tested releases, dev follows main | Accepted |

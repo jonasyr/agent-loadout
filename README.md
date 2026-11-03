@@ -43,7 +43,7 @@ Both ways put the kit in an `agent-loadout` folder and run its setup.
 
 ```bash
 cd ~
-curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install
+curl -fsSL https://github.com/jonasyr/agent-loadout/releases/latest/download/bootstrap.sh | bash -s -- --install
 ```
 
 **Or clone it yourself** (you choose the folder and can read the code first)
@@ -55,6 +55,8 @@ cd agent-loadout
 ```
 
 Keep the folder where it is: the installed links point into it.
+
+The command installs the newest release that has been out for 3 days (the stable channel; [release channels](docs/reference/cli.md#loadout-channel)). Until the first channels release, 0.2.0, has been out 3 days, a stable install stops and says so. For `main`, the maintainer's way: add `--channel dev` and use the script from `main` (`https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh`).
 
 **Or let your agent do it.** If you already use Claude Code or Codex, paste this into it. It asks a few questions, shows the command and runs it after your yes ([how](docs/how-to/install-with-an-agent.md)):
 
@@ -78,7 +80,7 @@ With Claude Code on, it then reviews the setup you already have and asks about e
 
 ```powershell
 cd $HOME
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.ps1))) --install
+& ([scriptblock]::Create((irm https://github.com/jonasyr/agent-loadout/releases/latest/download/bootstrap.ps1))) --install
 ```
 
 Git for Windows is required (Git Bash runs the hooks of both agents). Details: [Native Windows](docs/tutorials/getting-started.md#experimental-native-windows).
