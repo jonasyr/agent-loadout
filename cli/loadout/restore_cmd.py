@@ -118,3 +118,44 @@ def run(path, list_only: bool, last: bool, repo, force: bool, ask, interactive: 
         print("nothing restored")
         return 0
     return _restore(pick.path, force)
+
+
+SHOWN = 20
+
+
+def _names(title: str, names: list[str]) -> None:
+    if not names:
+        return
+    print(f"{title} ({len(names)} {'file' if len(names) == 1 else 'files'}):")
+    for name in names[:SHOWN]:
+        print(printable(f"  {name}"))
+    if len(names) > SHOWN:
+        print(f"  ... and {len(names) - SHOWN} more")
+
+
+def run_first_install(yes: bool, ask, interactive: bool) -> int:
+    """Put the first-install snapshot back: show what returns and what is moved aside, ask, restore."""
+    from . import snapshot
+    archive = snapshot.latest()
+    if archive is None:
+        print("no snapshot of your setup (loadout takes one at the first install; see loadout restore --list)")
+        return 1
+    stamp = archive.name[len("first-install-"):].split(".")[0]
+    when = f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]} {stamp[9:11]}:{stamp[11:13]}" if stamp[:8].isdigit() else archive.name
+    _names(f"The snapshot from {when} puts back", snapshot.contents(archive))
+    _names("Moved aside first (added since; kept in the pre-restore backup)", snapshot.moved_aside(archive))
+    for line in snapshot.skipped(archive):
+        print(printable(line))
+    if not yes:
+        if not interactive:
+            print("no terminal: nothing restored. Run `loadout restore --first-install --yes` to put it back")
+            return 1
+        if not ui.confirm(ask, f"Put your setup from {when} back? [y/N] "):
+            print("nothing restored")
+            return 0
+    lines, ok, pre = snapshot.restore(archive)
+    for line in lines:
+        print(printable(line))
+    if pre is not None:
+        print(f"\nthe state this restore replaced is in {pre}  (undo this restore: loadout restore {pre})")
+    return 0 if ok else 1

@@ -14,10 +14,15 @@ def _register_restore(sub):
     p.add_argument("--repo", metavar="PATH", help="only the backups made for this repo")
     p.add_argument("--show", action="store_true", help="print what the backup at BACKUP_DIR puts back; change nothing")
     p.add_argument("--force", action="store_true", help="replay a backup that was already restored")
+    p.add_argument("--first-install", action="store_true",
+                   help="put back the snapshot of your setup that bootstrap took before the first install")
+    p.add_argument("--yes", action="store_true", help="with --first-install: do not ask")
 
     def run(args):
         from . import restore_cmd, ui
         from .__main__ import _ask
+        if args.first_install:
+            return restore_cmd.run_first_install(args.yes, _ask, ui.is_interactive())
         return restore_cmd.run(args.backup_dir, args.list, args.last, args.repo, args.force, _ask, ui.is_interactive(),
                                show=args.show)
 
@@ -256,6 +261,10 @@ def _register_bootstrap(sub):
     p.add_argument("--keep-own", action="store_true", help="keep your own Serena and ask nothing about it")
     p.add_argument("--channel", choices=("stable", "dev"), default=None,
                    help="stable follows tested releases (the default for a new install); dev follows main")
+    p.add_argument("--snapshot", dest="snapshot", action="store_true", default=None,
+                   help="save a snapshot of your agent setup first, even on a re-run, without asking")
+    p.add_argument("--no-snapshot", dest="snapshot", action="store_false",
+                   help="do not save a snapshot of your agent setup first (a first install asks otherwise)")
     p.add_argument("--without-claude-cli", action="store_true",
                    help="with VS Code's Claude Code extension: skip the optional Claude Code CLI (loadout sets Claude "
                         "Code up for the extension; the CLI is optional, the extension runs its own claude)")
@@ -277,7 +286,7 @@ def _register_bootstrap(sub):
                                    personal=a.personal, answers=a.answers, vscode_wsl=a.vscode_wsl,
                                    codex_cli=not a.without_codex_cli, vscode_path=a.vscode_path,
                                    claude_cli=not a.without_claude_cli, use_loadout=a.use_loadout,
-                                   keep_own=a.keep_own, channel=a.channel)
+                                   keep_own=a.keep_own, channel=a.channel, snapshot=a.snapshot)
 
     p.set_defaults(func=run)
 
