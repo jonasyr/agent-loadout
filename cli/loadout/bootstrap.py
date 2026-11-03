@@ -6,10 +6,12 @@ import json
 import locale
 import os
 import re
+import time
 from pathlib import Path
 from typing import Callable
 
 from . import adopt, apply, catalog, channels, check, out, paths, runner, secrets, settings_merge, ui, vscode, wsl
+from . import snapshot as snap
 from .backup import Backup
 from .jsonio import get_dict, load_json
 from .secrets import redact
@@ -1023,6 +1025,78 @@ def _choose_agents(ask, interactive: bool, flag, existing: bool | None = None) -
     return dict(_ANSWERS[answer]), True
 
 
+SNAPSHOT_QUESTION = "\nSave a snapshot of your current setup first ({size}, into {where})? [Y/n] "
+
+
+def _decision_file() -> Path:
+    return paths.state_dir() / "first-install.json"
+
+
+def _first_install() -> bool:
+    """No answer to the snapshot question yet and no recorded setup. The state folder itself is no sign (main()
+    creates it before any command runs), and neither is a bootstrap backup (a run that stopped at the snapshot
+    step has written one already); the decision file is. So are the signs of an earlier install: the Claude Code
+    record, the Codex record (a Codex-only machine has no managed-settings.json) and loadout's launcher."""
+    state = paths.state_dir()
+    signs = [_decision_file(), state / "managed-settings.json", state / "codex-config.json",
+             paths.bin_dir() / "loadout", paths.bin_dir() / "loadout.cmd"]
+    return not any(p.exists() or p.is_symlink() for p in signs)
+
+
+def _record_decision(decided: str, archive: Path | None = None) -> None:
+    """Remember that the snapshot question is answered (taken or declined), so a re-run does not ask again."""
+    try:
+        target = _decision_file()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"decided": decided, "at": time.time(), "archive": str(archive) if archive else None},
+                                     indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass  # the question is asked again at worst
+
+
+def _size(n: int) -> str:
+    return f"{n / (1024 * 1024):.1f} MB" if n >= 1024 * 1024 else f"{max(1, round(n / 1024))} KB"
+
+
+def _snapshot_step(chosen: dict, ask: Ask, may_ask: bool, first: bool = True,
+                   record: bool = False) -> tuple[str | None, bool]:
+    """Archive the setup of the chosen agents (spec: first-install snapshot). Returns (the line saying where, whether
+    to go on). Without a terminal, with --yes, or with --snapshot the question is not asked and the answer is yes."""
+    found = snap.roots(chosen)
+    if not found:
+        if record:
+            _record_decision("declined")
+        return None, True
+    linked = snap.links(found)
+    if linked:
+        names = ", ".join(_tilde(p) for p, _ in linked[:3]) + (", ..." if len(linked) > 3 else "")
+        print(f"note: {len(linked)} of these are links ({names}); a rollback puts the links back but not what loadout "
+              "writes into their targets: keep those in your dotfiles' git")
+    if may_ask and ask is not _no_question:
+        where = _tilde(paths.backups_root())
+        if not ui.confirm(lambda q: ask(q) or "y", SNAPSHOT_QUESTION.format(size=_size(snap.estimate(found)), where=where)):
+            if record:
+                _record_decision("declined")
+            return None, True
+    try:
+        archive = snap.create(found, chosen, first=first)
+    except OSError as exc:
+        print(f"snapshot failed: {exc}")
+        if ask is not _no_question and ui.confirm(ask, "Go on without a snapshot? [y/N] "):
+            if record:
+                _record_decision("declined")
+            return None, True
+        print("stopped before changing your agent setup; fix the problem or run again with --no-snapshot")
+        return None, False
+    if record:
+        _record_decision("taken", archive)
+    line = f"snapshot: {archive} (undo everything: loadout restore --first-install)"
+    print(line)
+    for skipped in snap.skipped(archive):
+        out.problem(skipped)
+    return line, True
+
+
 def _no_question(question: str) -> str:
     """bootstrap without a terminal, or with --yes: every question takes its default, unasked."""
     return ""
@@ -1127,14 +1201,14 @@ def bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: As
               agents: str | None = None, codex_side: str | None = None, personal: str | None = None,
               answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
               vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
-              keep_own: bool = False, channel: str | None = None) -> int:
+              keep_own: bool = False, channel: str | None = None, snapshot: bool | None = None) -> int:
     from . import targets
     if use_loadout and keep_own:
         print("--use-loadout and --keep-own exclude each other")
         return 2
     try:
         return _bootstrap(install, yes, plugins, adopt_step, ask, interactive, agents, codex_side, personal, answers,
-                          vscode_wsl, codex_cli, vscode_path, claude_cli, use_loadout, keep_own, channel)
+                          vscode_wsl, codex_cli, vscode_path, claude_cli, use_loadout, keep_own, channel, snapshot)
     finally:
         targets.OVERRIDE = None
 
@@ -1143,8 +1217,9 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                agents: str | None, codex_side: str | None = None, personal: str | None = None,
                answers: str | None = None, vscode_wsl: bool = False, codex_cli: bool = True,
                vscode_path: bool = False, claude_cli: bool = True, use_loadout: bool = False,
-               keep_own: bool = False, channel: str | None = None) -> int:
+               keep_own: bool = False, channel: str | None = None, snapshot: bool | None = None) -> int:
     from . import codex, targets
+    first_install = _first_install()  # before this run writes anything
     if interactive is None:
         interactive = ui.is_interactive()
     if agents is not None:
@@ -1200,6 +1275,14 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
                                                  ("Codex", decided["choice"][0]["codex"])) if on)
             print(f"using your personal layer's agents: {names}")
     chosen, store = decided["choice"]
+    snapshot_line = None
+    if snapshot is not False and (snapshot or first_install):  # before the first write to an agent folder or startup file
+        snapshot_line, proceed = _snapshot_step(chosen, ask, snapshot is None, first=snap.first() is None,
+                                                record=first_install)
+        if not proceed:
+            return 1
+    elif snapshot is False and first_install:
+        _record_decision("declined")  # --no-snapshot is an answer too
     if personal_ok and store:
         targets.set_agents(chosen)
     # in WSL the Codex side is settled first: a Windows-side choice installs no Linux Codex (ADR 0029)
@@ -1369,6 +1452,8 @@ def _bootstrap(install: bool, yes: bool, plugins: bool, adopt_step: bool, ask: A
         pass
     if not out.VERBOSE and (not bk.empty or adopt.LAST_BACKUP is not None or not pass_bk.empty):
         print(f"\n{adopt.UNDO_LINE}")
+    if snapshot_line:
+        print(snapshot_line)
     if path_changed and out.VERBOSE:
         print("\nOpen a new terminal so the new PATH applies.")
     try:  # steps an earlier run left open (the hooks one is in still_to_do's own items)

@@ -84,7 +84,7 @@ An MCP server from `~/.claude/.mcp.json` can only be left or removed. Before any
 | `cbm-auto-index.json` | `{"set": "true"}` while loadout's change of codebase-memory's `auto_index` stands, so a value you set yourself stays yours. See [the preference](preferences-format.md#codebase-memorys-auto_index). |
 | `migrated.json`, `migrate.lock` | The move out of `~/.claude`: what was copied, with signatures of the old entry and its copy, and the lock that lets one run move at a time ([The move out of ~/.claude](state-and-sync.md#the-move-out-of-claude)). |
 | `user-PATH-before-<pid>.txt` | Windows only, transient: bootstrap saves your user `PATH` here before it adds loadout's tool folders. Afterwards bootstrap moves it into that run's backup (`loadout restore` puts the old value back) or, when nothing changed or the step failed, deletes it. A file left here means bootstrap was killed mid-step; it is safe to delete. |
-| `backups/` | One `loadout-<timestamp>` folder per backup, with its manifest. See [State folders](state-and-sync.md#state-folders) and [Undo](../how-to/undo-and-restore.md). |
+| `backups/` | One `loadout-<timestamp>` folder per backup, with its manifest, and the snapshot archives `first-install-<timestamp>.tar.gz` and `snapshot-<timestamp>.tar.gz` (login data inside). See [State folders](state-and-sync.md#state-folders), [Undo](../how-to/undo-and-restore.md) and [Roll back the first install](../how-to/undo-and-restore.md#roll-back-the-first-install). |
 
 `~/.config/loadout/secrets.env` holds secrets in the form `NAME='value'`. It lives next to, not inside, the personal layer and is never committed. Backups and this state folder are described in [State folders](state-and-sync.md#state-folders).
 
