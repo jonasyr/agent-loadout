@@ -292,6 +292,56 @@ def migration_notice() -> None:
                        "For tested releases only: loadout channel stable")
 
 
+def _alarm(moved: list[str]) -> None:
+    for name in moved:
+        maintenance.notify(f"loadout: release {printable(name)} was changed after it was released; it is not "
+                           "offered. Tell the maintainer.")
+
+
+def find_offer(root: Path, now: float, current: tuple[int, int, int] | None) -> tuple[str | None, str | None]:
+    """The release to move to now (`loadout update` on stable, `loadout channel stable`), after recording the
+    remote's tags and storing the fetched status (move_to checks against it): (tag, None); (None, None) when none is
+    eligible; (None, why) when the tags or the status could not be read (offer nothing)."""
+    tags = remote_tags(root)
+    if tags is None:
+        return None, "the release tags could not be read"
+    _alarm(record_seen(tags, now))
+    status = release_status(root)
+    if status is None:
+        return None, "the release status could not be read"
+    _store_status(status)
+    return eligible(current, now, status), None
+
+
+def dated_release(root: Path, now: float) -> str | None:
+    """dev -> stable before any release has soaked on this machine: the newest recorded, unmoved, not withdrawn
+    release whose tagger date is SOAK old (the same one-time trust as a first install). Never used by update."""
+    withdrawn = last_status().withdrawn
+    names = sorted((n for n, e in _tags(_load_releases()).items()
+                    if parse_tag(n) and isinstance(e, dict) and not e.get("moved") and n[1:] not in withdrawn),
+                   key=parse_tag, reverse=True)
+    git, env = ["git", "-C", str(root)], _git_env()
+    for name in names:
+        ref = f"refs/tags/{name}"
+        if not runner.run([*git, "fetch", "origin", f"{ref}:{ref}", "--no-tags"], timeout=120, env=env).ok:
+            continue  # unreachable, or a local tag of that name elsewhere: not this one
+        res = runner.run([*git, "for-each-ref", "--format=%(taggerdate:unix)", ref], timeout=30, env=env)
+        try:
+            when = int(res.stdout.strip()) if res.ok else None
+        except ValueError:
+            when = None  # a lightweight tag has no tagger date
+        if when is not None and when <= now - SOAK:
+            return name
+    return None
+
+
+def recorded(tag: str) -> str | None:
+    """The commit this machine recorded for a release tag."""
+    entry = _tags(_load_releases()).get(tag) if parse_tag(tag) else None
+    sha = entry.get("sha") if isinstance(entry, dict) else None
+    return sha if isinstance(sha, str) and _SHA.fullmatch(sha) else None
+
+
 def check_releases(now: float) -> None:
     """The daily step: remember the release tags on origin, queue alarms for moved ones and, on stable only, one
     notice per withdrawn current release or newly offered release. Offline: nothing recorded or said."""
@@ -299,9 +349,7 @@ def check_releases(now: float) -> None:
     tags = remote_tags(root)
     if tags is None:
         return
-    for name in record_seen(tags, now):
-        maintenance.notify(f"loadout: release {printable(name)} was changed after it was released; it is not "
-                           "offered. Tell the maintainer.")
+    _alarm(record_seen(tags, now))
     if effective() != "stable":
         return
     status = release_status(root)

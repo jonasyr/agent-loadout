@@ -37,6 +37,32 @@ class Backup:
         self.repo = repo
         self.steps: list[dict] = []
 
+    @classmethod
+    def reopen(cls, root: Path) -> "Backup | None":
+        """A backup the first process of this run started (a kit move before its restart): what the restarted run
+        backs up joins the same restore point. None for anything that is not one of loadout's unrestored backups."""
+        try:
+            base = paths.backups_root().resolve()
+            if Path(root).is_symlink():
+                return None
+            real = Path(root).resolve()
+            if real == base or not real.is_relative_to(base):
+                return None
+            data = load_json(real / "manifest.json")
+        except Exception:
+            return None
+        steps = data.get("steps")
+        if not isinstance(steps, list) or data.get("restored_at"):
+            return None
+        repo = data.get("repo")
+        bk = cls(root=real, description=str(data.get("description") or ""),
+                 repo=Path(repo) if isinstance(repo, str) else None)
+        bk.steps = [s for s in steps if isinstance(s, dict)]
+        created = data.get("created_at")
+        if isinstance(created, (int, float)) and not isinstance(created, bool):
+            bk._created_at = created
+        return bk
+
     @property
     def root(self) -> Path:
         return self._root

@@ -172,6 +172,29 @@ def _register_maintenance(sub):
 
     p.set_defaults(func=update_cmd)
 
+    p = sub.add_parser("channel", help="show or switch the release channel: stable (tested releases) or dev (main)",
+                       description="Without an argument: the channel and the release the kit is on. stable: move the "
+                                   "kit to a release that has been out 3 days; dev: back to main. Shows the move and "
+                                   "asks; loadout restore undoes it.")
+    p.add_argument("target", nargs="?", choices=("stable", "dev"), help="the channel to switch to")
+    p.add_argument("--yes", action="store_true", help="switch without asking (the move is still printed)")
+    p.add_argument("--verbose", action="store_true", help="full detail of the re-apply that follows")
+
+    def channel_cmd(a):
+        if a.verbose:
+            out.VERBOSE = True
+        return channel(a.target, yes=a.yes, verbose=a.verbose)
+
+    p.set_defaults(func=channel_cmd)
+
+
+def channel(target: str | None, yes: bool = False, ask=None, verbose: bool = False) -> int:
+    """`loadout channel [stable|dev]` (update.channel: the move, the setting, the re-apply in the new code)."""
+    from . import update
+    if ask is None:
+        from .__main__ import _ask as ask
+    return update.channel(target, yes, ask, verbose=verbose)
+
 
 EXTRA_COMMANDS.append(_register_maintenance)
 

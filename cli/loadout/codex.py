@@ -1495,8 +1495,9 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
         market = entry.get("name") if isinstance(entry, dict) else None
         if not url or not isinstance(market, str) or market not in listed or not _same_source(listed[market], url):
             continue  # a marketplace of that name from another source is refreshed as before
-        head = remote_head(url, channels.pin() if channels.codex_source(src) != src else None)
-        if head is None or head != entry.get("head"):
+        tag = channels.pin() if channels.codex_source(src) != src else None
+        head = remote_head(url, tag)
+        if head is None or head != entry.get("head") or entry.get("ref") != tag:  # a channel switch moves the pin
             continue
         pids = [f"{n}@{market}" for n in names]
         if any(pid not in installed for pid in pids):
@@ -1520,16 +1521,18 @@ def unchanged_routes(routes: dict[str, list[str]], installed: set[str] | None = 
     return skip_m, skip_p
 
 
-def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str, str, str | None, str | None] | None = None):
-    """Record (after a success) that loadout refreshed marketplace src at head, or plugin (pid, url, ref, head)."""
+def _remember(src: str, market: str, head: str | None = None, plugin: tuple[str, str, str | None, str | None] | None = None,
+              ref: str | None = None):
+    """Record (after a success) that loadout refreshed marketplace src at head (of ref: the kit's release on stable,
+    else the default branch), or plugin (pid, url, ref, head)."""
     try:
         import time
         record = _load_record()
         entry = record.get(src) if isinstance(record.get(src), dict) else {}
         entry = {"name": market, "url": _src_url(src), "head": entry.get("head"), "at": entry.get("at", 0),
-                 "plugins": get_dict(entry, "plugins")}
+                 "ref": entry.get("ref"), "plugins": get_dict(entry, "plugins")}
         if head:
-            entry.update(head=head, at=int(time.time()))
+            entry.update(head=head, at=int(time.time()), ref=ref)
         if plugin and plugin[3]:
             entry["plugins"][plugin[0]] = {"url": plugin[1], "ref": plugin[2], "head": plugin[3]}
         if entry["head"]:
@@ -1812,7 +1815,7 @@ def _install_routes(routes: dict[str, list[str]], bk, refresh: bool, say, listed
             elif not info.get("alreadyAdded"):
                 refreshed = True
             if refreshed:
-                _remember(src, market, head)
+                _remember(src, market, head, ref=tag)
         own = None
         for name in plugins:
             pid = f"{name}@{market}"
