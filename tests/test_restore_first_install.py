@@ -186,3 +186,34 @@ def test_restore_leaves_an_unreadable_file_alone(fake_home):
         locked.chmod(0o600)
     assert locked.read_text() == "mine"
     assert (fake_home / ".claude" / "settings.json").read_text() == "old"
+
+
+def _locked_folder_snapshot(fake_home, mode):
+    import os
+    import pytest
+    if os.name == "nt" or os.geteuid() == 0:
+        pytest.skip("needs POSIX modes and a non-root user")
+    (fake_home / ".claude" / "private").mkdir(parents=True)
+    (fake_home / ".claude" / "settings.json").write_text("old")
+    inside = fake_home / ".claude" / "private" / "inside.json"
+    inside.write_text("mine")
+    inside.parent.chmod(mode)
+    try:
+        snapshot.create(snapshot.roots(AGENTS), AGENTS)
+    finally:
+        inside.parent.chmod(0o700)
+    (fake_home / ".claude" / "settings.json").write_text("new")
+    return inside
+
+
+def test_restore_leaves_a_folder_that_was_unreadable_alone(fake_home):
+    inside = _locked_folder_snapshot(fake_home, 0)  # readable again by restore time
+    assert restore_cmd.run_first_install(True, lambda q: "y", False) == 0
+    assert inside.read_text() == "mine"
+    assert (fake_home / ".claude" / "settings.json").read_text() == "old"
+
+
+def test_snapshot_and_restore_with_a_folder_that_cannot_be_entered(fake_home):
+    inside = _locked_folder_snapshot(fake_home, 0o444)  # listable, not searchable
+    assert restore_cmd.run_first_install(True, lambda q: "y", False) == 0
+    assert inside.read_text() == "mine"

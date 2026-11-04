@@ -493,3 +493,17 @@ def test_unreadable_folder_is_kept_as_an_entry(fake_home):
         folder.chmod(0o700)
     assert ".claude/private" in names(archive) and ".claude/private/inside.json" not in names(archive)
     assert "skipped (unreadable): .claude/private" in snapshot.skipped(archive)
+
+
+@NOROOT
+def test_a_file_that_turns_unreadable_while_adding_is_still_listed(fake_home, monkeypatch):
+    write(fake_home / ".claude" / "settings.json")
+    locked = write(fake_home / ".claude" / "locked.json")
+    locked.chmod(0)
+    monkeypatch.setattr(snapshot, "_readable", lambda path, name, unreadable: True)  # the check ran before the chmod
+    try:
+        archive = snapshot.create(snapshot.roots(BOTH), BOTH)
+    finally:
+        locked.chmod(0o600)
+    assert ".claude/locked.json" not in names(archive)
+    assert "skipped (unreadable): .claude/locked.json" in snapshot.skipped(archive)
