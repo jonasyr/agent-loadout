@@ -546,5 +546,6 @@ def test_ps1_reuse_pulls_main_only():
     fn = fn[:fn.index("\n}\n")]
     assert "pull -q --ff-only" in fn and "symbolic-ref" in fn and "LOADOUT_NO_AUTO_PULL" in fn
     assert "checkout" not in fn and "Get-ReleaseTag" not in fn
+    assert "Remove-Item Env:GIT_TERMINAL_PROMPT" not in fn  # a value the user set stays theirs
     reuse = text[text.index("using the clone in"):text.index("cloning agent-loadout into")]
     assert reuse.count("Update-Clone") == 2

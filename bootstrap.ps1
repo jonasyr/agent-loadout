@@ -71,13 +71,14 @@ function Update-Clone($d) {
     if ("$(git -C $d symbolic-ref -q --short HEAD 2>$null)" -cne 'main') { return }
     if ("$(git -C $d status --porcelain --untracked-files=no 2>$null)") { return }
     Write-Host 'updating the clone (git pull --ff-only)'
+    $prompt = $env:GIT_TERMINAL_PROMPT  # the one-liner runs in the user's session: put their value back
     $env:GIT_TERMINAL_PROMPT = '0'
-    git -C $d pull -q --ff-only
+    try { git -C $d pull -q --ff-only } finally { $env:GIT_TERMINAL_PROMPT = $prompt }
     if ($LASTEXITCODE -ne 0) {
       $host.UI.WriteErrorLine("could not update the clone in $d; going on with the code it has (loadout update tries again)")
       $global:LASTEXITCODE = 0
     }
-  } finally { $ErrorActionPreference = $prev; Remove-Item Env:GIT_TERMINAL_PROMPT -ErrorAction SilentlyContinue }
+  } finally { $ErrorActionPreference = $prev }
 }
 # Run inside an existing clone, the one-liner uses that clone instead of cloning again. Only a fresh clone picks a
 # release here; an existing one stays where it is (loadout bootstrap --channel stable, loadout channel stable and
