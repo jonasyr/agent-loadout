@@ -388,3 +388,20 @@ def test_update_on_stable_follows_releases_with_no_auto_pull(fake_home, fake_run
     assert "Pull skipped (LOADOUT_NO_AUTO_PULL=1)" in " ".join(text.split()) and pulled == []  # the personal layer
     assert [c for c in fake_runner.calls if c[3:4] == ["checkout"]] == [[*_g(kit), "checkout", "--detach", SHA3]]
     assert len(seen) == 1 and seen[0][1] == "release:v0.3.0"
+
+
+def test_channel_stable_off_a_release_points_to_update(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    kit = _kit(tmp_path, monkeypatch)
+    channels.set_channel("stable")
+    _git(fake_runner, kit, current="")
+    assert update.channel("stable", True, lambda q: "") == 0
+    assert ("channel: stable, but the kit is not on a release; run loadout update to move it to the newest one"
+            in capsys.readouterr().out)
+
+
+def test_channel_stable_on_a_release_says_already(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    kit = _kit(tmp_path, monkeypatch)
+    channels.set_channel("stable")
+    _git(fake_runner, kit)
+    assert update.channel("stable", True, lambda q: "") == 0
+    assert "channel: stable, v0.2.0 (already)" in capsys.readouterr().out
