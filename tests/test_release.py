@@ -444,7 +444,9 @@ def test_notes_file_must_exist(repo, capsys):
 
 
 def test_notes_file_is_used_for_changelog_and_release_body(repo, monkeypatch):
-    section = ("## [0.3.0] - 2026-11-03\n\nWhat is new.\n\n### Added\n\n- thing (#1)\n\n"
+    import datetime
+    # dated today: the release dates the section the day it is released, whatever date the file had
+    section = (f"## [0.3.0] - {datetime.date.today().isoformat()}\n\nWhat is new.\n\n### Added\n\n- thing (#1)\n\n"
                "[0.3.0]: https://github.com/o/r/compare/v0.2.0...v0.3.0\n")
     seen = {}
     fake = runner.run
