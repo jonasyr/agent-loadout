@@ -166,3 +166,23 @@ def test_existing_launcher_is_restored(fake_home):
     launcher.write_text("new")
     assert snapshot.restore(archive)[1]
     assert launcher.read_text() == "old"
+
+
+def test_restore_leaves_an_unreadable_file_alone(fake_home):
+    import os
+    import pytest
+    if os.name == "nt" or os.geteuid() == 0:
+        pytest.skip("needs POSIX modes and a non-root user")
+    (fake_home / ".claude").mkdir()
+    (fake_home / ".claude" / "settings.json").write_text("old")
+    locked = fake_home / ".claude" / "locked.json"
+    locked.write_text("mine")
+    locked.chmod(0)
+    try:
+        snapshot.create(snapshot.roots(AGENTS), AGENTS)
+        (fake_home / ".claude" / "settings.json").write_text("new")
+        assert restore_cmd.run_first_install(True, lambda q: "y", False) == 0
+    finally:
+        locked.chmod(0o600)
+    assert locked.read_text() == "mine"
+    assert (fake_home / ".claude" / "settings.json").read_text() == "old"

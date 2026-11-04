@@ -463,3 +463,33 @@ def test_archived_link_targets_are_shown_without_the_windows_prefix(fake_home, m
     archive = snapshot.create([fake_home / ".bashrc"], {"claude": True, "codex": False})
     monkeypatch.setattr(os, "readlink", real)
     assert [t for _, t in snapshot.links_in(archive)] == ["C:\\me\\bashrc"]
+
+
+NOROOT = pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX modes and a non-root user")
+
+
+@NOROOT
+def test_unreadable_file_is_skipped_and_listed(fake_home):
+    write(fake_home / ".claude" / "settings.json")
+    locked = write(fake_home / ".claude" / "locked.json")
+    locked.chmod(0)
+    try:
+        archive = snapshot.create(snapshot.roots(BOTH), BOTH)
+    finally:
+        locked.chmod(0o600)
+    assert ".claude/settings.json" in names(archive) and ".claude/locked.json" not in names(archive)
+    assert "skipped (unreadable): .claude/locked.json" in snapshot.skipped(archive)
+
+
+@NOROOT
+def test_unreadable_folder_is_kept_as_an_entry(fake_home):
+    write(fake_home / ".claude" / "settings.json")
+    folder = fake_home / ".claude" / "private"
+    write(folder / "inside.json")
+    folder.chmod(0)
+    try:
+        archive = snapshot.create(snapshot.roots(BOTH), BOTH)
+    finally:
+        folder.chmod(0o700)
+    assert ".claude/private" in names(archive) and ".claude/private/inside.json" not in names(archive)
+    assert "skipped (unreadable): .claude/private" in snapshot.skipped(archive)
