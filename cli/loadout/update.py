@@ -898,8 +898,12 @@ def channel(target: str | None, yes: bool, ask: Callable[[str], str], verbose: b
             print("channel: dev, main (already)")
             return 0
         if target == "stable" and channels.get() == "stable":
-            print(f"channel: stable, {channels.current_release(root) or 'not on a release'} (already); "
-                  "loadout update moves to newer releases")
+            current = channels.current_release(root)
+            if current is None:
+                print("channel: stable, but the kit is not on a release; run loadout update to move it to the newest "
+                      "one")
+            else:
+                print(f"channel: stable, {current} (already); loadout update moves to newer releases")
             return 0
         moved = _to_stable(root, yes, ask) if target == "stable" else _to_dev(root, yes, ask)
         if isinstance(moved, int):

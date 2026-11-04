@@ -63,6 +63,23 @@ function Test-Clone($d) {
   if (-not $top) { return $false }
   return ([IO.Path]::GetFullPath($top).TrimEnd('\', '/') -ieq [IO.Path]::GetFullPath((Resolve-Path $d).Path).TrimEnd('\', '/'))
 }
+# A reused clone on main with a clean tree gets the commits pushed since; a release clone stays put.
+function Update-Clone($d) {
+  if ($env:LOADOUT_NO_AUTO_PULL -eq '1' -or $env:LOADOUT_REF) { return }
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try {
+    if ("$(git -C $d symbolic-ref -q --short HEAD 2>$null)" -cne 'main') { return }
+    if ("$(git -C $d status --porcelain --untracked-files=no 2>$null)") { return }
+    Write-Host 'updating the clone (git pull --ff-only)'
+    $prompt = $env:GIT_TERMINAL_PROMPT  # the one-liner runs in the user's session: put their value back
+    $env:GIT_TERMINAL_PROMPT = '0'
+    try { git -C $d pull -q --ff-only } finally { $env:GIT_TERMINAL_PROMPT = $prompt }
+    if ($LASTEXITCODE -ne 0) {
+      $host.UI.WriteErrorLine("could not update the clone in $d; going on with the code it has (loadout update tries again)")
+      $global:LASTEXITCODE = 0
+    }
+  } finally { $ErrorActionPreference = $prev }
+}
 # Run inside an existing clone, the one-liner uses that clone instead of cloning again. Only a fresh clone picks a
 # release here; an existing one stays where it is (loadout bootstrap --channel stable, loadout channel stable and
 # loadout update move it, with the undo in a backup).
@@ -77,12 +94,14 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'bin/loadout'))) {
   if (-not $dir -and (Test-Clone (Get-Location).Path)) {
     $kit = (Get-Location).Path
     Write-Host "using the clone in $kit"
+    Update-Clone $kit
   } elseif (Test-Path $kit) {
     if (-not (Test-Clone $kit)) {
       Fail "$kit exists and is not a clone of agent-loadout; choose another folder with --dir PATH"
       return
     }
     Write-Host "using the existing clone in $kit"
+    Update-Clone $kit
   } else {
     Write-Host "cloning agent-loadout into $kit"
     git clone -q $repoUrl $kit

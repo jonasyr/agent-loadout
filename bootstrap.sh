@@ -57,6 +57,16 @@ pick_tag() {  # the newest annotated vX.Y.Z tag at or above 0.2.0 whose tagger d
   return 1
 }
 
+refresh_clone() {  # a reused clone on main with a clean tree gets the commits pushed since; a release clone stays put
+  local dir="$1"
+  if [ "${LOADOUT_NO_AUTO_PULL:-}" = 1 ] || [ -n "${LOADOUT_REF:-}" ]; then return 0; fi
+  [ "$(git -C "$dir" symbolic-ref -q --short HEAD 2>/dev/null)" = main ] || return 0
+  [ -z "$(git -C "$dir" status --porcelain --untracked-files=no 2>/dev/null)" ] || return 0
+  echo "updating the clone (git pull --ff-only)"
+  GIT_TERMINAL_PROMPT=0 git -C "$dir" pull -q --ff-only ||
+    echo "could not update the clone in $dir; going on with the code it has (loadout update tries again)" >&2
+}
+
 no_release() {
   echo "no stable release is ready yet; wait a few days, or install dev:" >&2
   echo "  curl -fsSL https://raw.githubusercontent.com/jonasyr/agent-loadout/main/bootstrap.sh | bash -s -- --install --channel dev" >&2
@@ -99,9 +109,11 @@ main() {
     if [ -z "$dir" ] && is_clone "$PWD"; then
       kit="$PWD"
       echo "using the clone in $kit"
+      refresh_clone "$kit"
     elif [ -e "$kit" ]; then
       if is_clone "$kit"; then
         echo "using the existing clone in $kit"
+        refresh_clone "$kit"
       else
         echo "$kit exists and is not a clone of agent-loadout; choose another folder with --dir PATH" >&2
         exit 1
@@ -113,10 +125,7 @@ main() {
         exit 1
       }
       if [ -n "${LOADOUT_REF:-}" ] || [ "$channel" = dev ]; then
-        git -C "$kit" checkout -q "$ref" || {
-          echo "could not download agent-loadout from $repo_url (offline?). Check your connection and run this again." >&2
-          exit 1
-        }
+        git -C "$kit" checkout -q "$ref" || { echo "could not check out $ref in $kit" >&2; exit 1; }
       elif tag="$(pick_tag "$kit")"; then
         git -C "$kit" checkout -q --detach "refs/tags/$tag" || { echo "could not check out $tag in $kit" >&2; exit 1; }
         echo "using release $tag"

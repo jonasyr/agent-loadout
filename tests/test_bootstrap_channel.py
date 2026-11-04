@@ -199,3 +199,30 @@ def test_explicit_stable_refused_move_leaves_the_channel_as_it_was(fake_home, fa
     bootstrap._channel_step("stable", Backup(description="bootstrap"))
     assert "cli/loadout/x.py" in capsys.readouterr().out and channels.get() == "dev"
     assert not [c for c in fake_runner.calls if c[3:4] == ["checkout"]]
+
+
+def _seen_long_ago(kit, fake_runner, current):
+    import time
+    old = time.time() - 4 * 86400
+    paths.state_dir().mkdir(parents=True, exist_ok=True)
+    (paths.state_dir() / "releases.json").write_text(json.dumps(
+        {"tags": {"v0.2.0": {"sha": OLD, "first_seen": old}, "v0.3.0": {"sha": NEW, "first_seen": old}}}))
+    channels.set_channel("stable")
+    fake_runner.responses[_git(kit, "ls-remote")] = runner.Result(0, LS, "")
+    fake_runner.responses[_git(kit, "describe")] = runner.Result(0, f"{current}\n", "")
+    fake_runner.responses[_git(kit, "show")] = runner.Result(0, "{}", "")
+
+
+def test_a_rerun_on_stable_names_a_newer_release(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    kit = _kit(tmp_path, monkeypatch)
+    _seen_long_ago(kit, fake_runner, "v0.2.0")
+    bootstrap._channel_step(None, Backup(description="bootstrap"))
+    assert "release v0.3.0 is ready (you run v0.2.0): loadout update moves this kit there" in capsys.readouterr().out
+    assert not [c for c in fake_runner.calls if c[3:4] == ["checkout"]]
+
+
+def test_a_rerun_on_the_newest_release_says_nothing(fake_home, fake_runner, tmp_path, monkeypatch, capsys):
+    kit = _kit(tmp_path, monkeypatch)
+    _seen_long_ago(kit, fake_runner, "v0.3.0")
+    bootstrap._channel_step(None, Backup(description="bootstrap"))
+    assert "is ready" not in capsys.readouterr().out

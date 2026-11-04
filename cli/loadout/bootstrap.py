@@ -6,6 +6,7 @@ import json
 import locale
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Callable
@@ -193,13 +194,14 @@ NPM_PREFIX_FIX = ("fix: npm cannot write its global folder (a system Node's npm)
                   "then run this again")
 NPM_MISSING_FIX = ("fix: {name} needs npm, which this Node came without: sudo apt install npm (Fedora: sudo dnf "
                    "install npm; Arch: sudo pacman -S npm), then run this again")
+NPM_MISSING_FIX_MAC = "fix: {name} needs npm: brew install node (or the installer from nodejs.org), then run this again"
 
 
 def _npm_fix(name: str, cmd: list[str], res: runner.Result) -> str:
     if cmd[0] != "npm" or paths.platform_key() == "windows":
         return ""
     if res.returncode == 127:
-        return NPM_MISSING_FIX.format(name=name)
+        return (NPM_MISSING_FIX_MAC if sys.platform == "darwin" else NPM_MISSING_FIX).format(name=name)
     return NPM_PREFIX_FIX if "EACCES" in res.stderr + res.stdout else ""
 
 
@@ -1159,6 +1161,9 @@ def _channel_step(channel: str | None, bk: Backup) -> None:
         return
     entry = status.withdrawn.get(current[1:])
     if entry is None:
+        offer = channels.eligible(channels.parse_tag(current), time.time(), status)
+        if offer:  # never moved here either: loadout update shows the plan and asks
+            out.problem(f"release {offer} is ready (you run {current}): loadout update moves this kit there")
         return
     channels.store_status(status)
     out.problem(channels.withdrawn_notice(current, entry))  # never moved here: loadout update plans it and asks

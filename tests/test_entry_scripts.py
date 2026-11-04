@@ -476,3 +476,76 @@ def test_ps1_tag_pick_matches_sh(env, tmp_path):
     p = subprocess.run(["pwsh", "-NoProfile", "-Command", text[start:end] + f"\nGet-ReleaseTag '{repo}'"],
                        capture_output=True, text=True, timeout=60)
     assert p.stdout.strip() == "v0.10.0", p.stderr
+
+
+def _reused_main(env, tmp_path):
+    """A clone made on main (LOADOUT_REF), then a second run without it."""
+    repo = _release_repo(tmp_path, [("v0.2.0", True, 5)])
+    _stable_env(env, repo)
+    env["vars"]["LOADOUT_REF"] = "main"
+    p, kit = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    del env["vars"]["LOADOUT_REF"]
+    env["log"].unlink()
+    return repo, kit
+
+
+def _upstream_commit(repo, text):
+    (repo / "VERSION").write_text(text)
+    _git(repo, "commit", "-q", "-am", text)
+
+
+def test_sh_reuse_on_main_pulls_new_commits(env, tmp_path):
+    repo, kit = _reused_main(env, tmp_path)
+    _upstream_commit(repo, "newer")
+    p, _ = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "newer"
+    assert "updating the clone" in p.stdout
+
+
+def test_sh_reuse_dirty_main_is_not_pulled(env, tmp_path):
+    repo, kit = _reused_main(env, tmp_path)
+    _upstream_commit(repo, "newer")
+    (kit / "bin/loadout").write_text("edited")
+    p, _ = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "main" and "updating the clone" not in p.stdout
+
+
+def test_sh_reuse_failed_pull_goes_on(env, tmp_path):
+    repo, kit = _reused_main(env, tmp_path)
+    _git(repo, "commit", "-q", "--amend", "-m", "rewritten")  # main no longer fast-forwards
+    p, _ = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert "could not update the clone" in p.stderr
+    assert "bin/loadout bootstrap" in env["log"].read_text()
+
+
+def test_sh_reuse_no_auto_pull_skips(env, tmp_path):
+    repo, kit = _reused_main(env, tmp_path)
+    _upstream_commit(repo, "newer")
+    env["vars"]["LOADOUT_NO_AUTO_PULL"] = "1"
+    p, _ = _piped(env, tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert (kit / "VERSION").read_text() == "main"
+
+
+def test_sh_dev_checkout_failure_names_checkout(env, tmp_path):
+    _stable_env(env, _release_repo(tmp_path, [("v0.2.0", True, 5)]))
+    env["vars"]["LOADOUT_REF"] = "nope"
+    p, _ = _piped(env, tmp_path)
+    assert p.returncode == 1
+    assert "could not check out nope" in p.stderr and "offline?" not in p.stderr
+
+
+def test_ps1_reuse_pulls_main_only():
+    """No pwsh here: the reuse branches update a clone on main and never move it to a release."""
+    text = (paths.kit_root() / "bootstrap.ps1").read_text()
+    fn = text[text.index("function Update-Clone"):]
+    fn = fn[:fn.index("\n}\n")]
+    assert "pull -q --ff-only" in fn and "symbolic-ref" in fn and "LOADOUT_NO_AUTO_PULL" in fn
+    assert "checkout" not in fn and "Get-ReleaseTag" not in fn
+    assert "Remove-Item Env:GIT_TERMINAL_PROMPT" not in fn  # a value the user set stays theirs
+    reuse = text[text.index("using the clone in"):text.index("cloning agent-loadout into")]
+    assert reuse.count("Update-Clone") == 2

@@ -95,20 +95,34 @@ def _excluded(root: Path) -> frozenset[str]:
     return frozenset()
 
 
-def _entries(root: Path, skipped: list[str], strict: bool = True):
+def _entries(root: Path, skipped: list[str], strict: bool = True, unreadable: list[str] | None = None):
     """(path, lstat) of the root and everything below it that goes into the archive. Excluded folders are never
-    entered; a symlink is one entry, never followed; sockets, devices and fifos are left out."""
+    entered; a symlink is one entry, never followed; sockets, devices and fifos are left out. With `unreadable`, a
+    folder that cannot be listed stays one entry, and it or a path that cannot be looked at goes there, instead of
+    failing."""
     excluded = _excluded(root)
 
     def visit(path: Path, rel: str):
         try:
-            st = os.lstat(path)
+            try:
+                st = os.lstat(path)
+            except PermissionError:  # a parent folder that can be listed but not entered
+                if unreadable is None:
+                    raise
+                unreadable.append(_rel(path) or str(path))
+                return
             if stat.S_ISLNK(st.st_mode):
                 yield path, st
             elif stat.S_ISDIR(st.st_mode):
                 yield path, st
-                with os.scandir(path) as it:
-                    children = sorted(e.name for e in it)
+                try:
+                    with os.scandir(path) as it:
+                        children = sorted(e.name for e in it)
+                except PermissionError:
+                    if unreadable is None:
+                        raise
+                    unreadable.append(_rel(path) or str(path))
+                    return
                 for name in children:
                     child = f"{rel}/{name}" if rel else name
                     if child not in excluded:
@@ -164,15 +178,30 @@ def _anonymous(info: tarfile.TarInfo) -> tarfile.TarInfo:
     return info
 
 
+def _readable(path: Path, name: str, unreadable: list[str]) -> bool:
+    """False, with the name noted, for a regular file this user cannot open (a folder was checked while walking)."""
+    try:
+        if not stat.S_ISREG(os.lstat(path).st_mode):
+            return True
+        with open(path, "rb"):
+            return True
+    except PermissionError:
+        unreadable.append(name)
+        return False
+    except FileNotFoundError:
+        return False  # gone since the walk
+
+
 def create(roots: list[Path], agents: dict[str, bool], first: bool = True) -> Path:
     """Write the archive into the backups folder and return it (`first`: the first-install one, else a later `snapshot-`). Any failure removes the partial file and raises
     OSError."""
     folder = paths.backups_root()
     skipped: list[str] = []
+    unreadable: list[str] = []
     archive: Path | None = None
     try:
-        entries = [(path, _rel(path)) for root in roots for path, _ in _entries(root, skipped)]
-        entries = [(p, name) for p, name in entries if name]
+        entries = [(path, _rel(path)) for root in roots for path, _ in _entries(root, skipped, unreadable=unreadable)]
+        entries = [(p, name) for p, name in entries if name and _readable(p, name, unreadable)]
         folder.mkdir(parents=True, exist_ok=True)
         if os.name != "nt":
             os.chmod(folder, backup.PRIVATE_DIR)  # the archive holds login data
@@ -191,17 +220,24 @@ def create(roots: list[Path], agents: dict[str, bool], first: bool = True) -> Pa
         chosen = {_rel(r) for r in roots}
         absent = [name for agent, path in _candidates() for name in [_rel(path)]
                   if name and name not in chosen and (agent is None or agents.get(agent)) and not _exists(path)]
-        lines = [f"skipped (over {MAX_FILE // (1024 * 1024)} MB): {name}" for name in skipped]
-        meta = json.dumps({"roots": [name for name in (_rel(r) for r in roots) if name], "absent": absent,
-                           "agents": dict(agents), "created": time.time(), "version": _version(),
-                           "skipped": lines, "skipped_names": skipped}, indent=2).encode("utf-8")
         with os.fdopen(fd, "wb") as raw, tarfile.open(fileobj=raw, mode="w:gz") as tar:
+            for path, name in entries:
+                tar.inodes.clear()  # a second link to one file is stored as a file, never as a hard-link member
+                try:
+                    tar.add(path, arcname=name, recursive=False, filter=_anonymous)
+                except PermissionError:  # changed since the check; tarfile opens a file before it writes the header
+                    unreadable.append(name)
+                except FileNotFoundError:
+                    continue  # gone: nothing there for a restore to move aside
+            # written last, so it also names what turned unreadable while the files were added
+            lines = [f"skipped (over {MAX_FILE // (1024 * 1024)} MB): {name}" for name in skipped]
+            lines += [f"skipped (unreadable): {name}" for name in unreadable]
+            meta = json.dumps({"roots": [name for name in (_rel(r) for r in roots) if name], "absent": absent,
+                               "agents": dict(agents), "created": time.time(), "version": _version(),
+                               "skipped": lines, "skipped_names": skipped + unreadable}, indent=2).encode("utf-8")
             info = tarfile.TarInfo(META)
             info.size, info.mode, info.mtime = len(meta), 0o600, int(time.time())
             tar.addfile(info, io.BytesIO(meta))
-            for path, name in entries:
-                tar.inodes.clear()  # a second link to one file is stored as a file, never as a hard-link member
-                tar.add(path, arcname=name, recursive=False, filter=_anonymous)
         if os.name != "nt":
             os.chmod(archive, backup.PRIVATE_FILE)
         return archive
@@ -237,7 +273,7 @@ class _Plan:
     refused: list[str]
     roots: list[tuple[str, ...]]  # the places the snapshot covered and found
     absent: list[tuple[str, ...]]  # the places it covered that did not exist yet
-    skipped: set[tuple[str, ...]]  # files left out for size: not "added since"
+    skipped: set[tuple[str, ...]]  # left out (too big, unreadable): not "added since"
 
 
 def _parts(name) -> tuple[str, ...] | None:
@@ -337,7 +373,7 @@ def links_in(archive: Path) -> list[tuple[str, str]]:
 
 
 def skipped(archive: Path) -> list[str]:
-    """The lines about files left out of this snapshot (too big)."""
+    """The lines about what was left out of this snapshot (too big, unreadable)."""
     try:
         with _open(archive) as tar:
             lines = _plan(tar).meta.get("skipped")
@@ -371,7 +407,7 @@ def _extract(tar: tarfile.TarFile, info: tarfile.TarInfo, tmp: Path) -> None:
 
 def _extras(plan: _Plan) -> list[Path]:
     """What exists now inside a place the snapshot covered but is not in the archive (added since): the top-most
-    paths only. Excluded folders are never entered, and files left out for size stay."""
+    paths only. Excluded folders are never entered, and what was left out (too big, unreadable) stays."""
     home = paths.home()
     covered = {parts[:i] for _, parts, _ in plan.safe for i in range(1, len(parts) + 1)}
     members = {parts for info, parts, _ in plan.safe if not info.isdir()}
@@ -382,9 +418,11 @@ def _extras(plan: _Plan) -> list[Path]:
             st = os.lstat(path)
         except OSError:
             return
+        if parts in plan.skipped:
+            return  # left out (too big, unreadable): a folder's contents were never looked at, so none is "added"
         isdir = stat.S_ISDIR(st.st_mode)
         if not isdir:
-            if parts not in members and parts not in plan.skipped and (stat.S_ISREG(st.st_mode)
+            if parts not in members and (stat.S_ISREG(st.st_mode)
                                                                        or stat.S_ISLNK(st.st_mode)):
                 out.append(path)
             return
