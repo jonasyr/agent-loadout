@@ -1159,6 +1159,9 @@ def _channel_step(channel: str | None, bk: Backup) -> None:
         return
     entry = status.withdrawn.get(current[1:])
     if entry is None:
+        offer = channels.eligible(channels.parse_tag(current), time.time(), status)
+        if offer:  # never moved here either: loadout update shows the plan and asks
+            out.problem(f"release {offer} is ready (you run {current}): loadout update moves this kit there")
         return
     channels.store_status(status)
     out.problem(channels.withdrawn_notice(current, entry))  # never moved here: loadout update plans it and asks
