@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0] - 2026-11-04
+
+A safer first install: before it changes anything, setup offers to save your current Claude Code and Codex setup, and one command puts it all back. Re-running the installer also picks up fixes pushed since your first try.
+
+### Added
+
+- Snapshot before the first install: setup asks once (default yes) to save your agent config, including logins, to a private archive; `loadout restore --first-install` puts it back and moves aside what the install added (#83)
+- A re-run of setup on stable names a newer release when one is ready and points to `loadout update` (#84)
+
+### Fixed
+
+- Re-running the one-liner on an existing clone on `main` updates it first (`git pull --ff-only`, only without local edits; `LOADOUT_NO_AUTO_PULL=1` turns it off); a failed dev checkout says so instead of "offline?" (#84)
+- The snapshot skips files and folders it cannot read and lists them, instead of stopping; a rollback leaves those places alone (#84)
+- `loadout channel stable` on a kit that is not on a release now points to `loadout update`, and the missing-npm fix line on macOS says `brew install node` (#84)
+
+[0.3.0]: https://github.com/jonasyr/agent-loadout/compare/v0.2.0...v0.3.0
+
 ## [0.2.0] - 2026-11-03
 
 The first release with release channels: a stable machine now gets only tested releases, three days after they come out and only when you run `loadout update`; dev keeps following main. Since 0.1.0, loadout also sets up Codex next to Claude Code (CLI, VS Code extension, Windows and WSL), shows every change to a repo as a plan you can undo, and brings a machine current with one command.
