@@ -260,6 +260,7 @@ def test_npm_eacces_names_the_prefix_fix(fake_home, fake_runner, monkeypatch):
 
 def test_missing_npm_says_install_npm(fake_home, fake_runner, monkeypatch):
     monkeypatch.setattr(b.paths, "platform_key", lambda: "linux")
+    monkeypatch.setattr(b.sys, "platform", "linux")
     fake_runner.missing.update({"playwright-cli", "npm"})
     fake_runner.responses[("npm",)] = runner.Result(127, "", "npm: not found")  # runner.run for a missing program
     _, lines = b.install_tool(_bin("playwright-cli"), NPM_PLAYWRIGHT)
@@ -370,6 +371,7 @@ def test_a_footer_only_stderr_keeps_the_error_on_stdout(fake_home, fake_runner):
 
 
 def test_missing_npm_on_macos_names_brew(fake_home, fake_runner, monkeypatch):
+    monkeypatch.setattr(b.paths, "platform_key", lambda: "posix")
     monkeypatch.setattr(b.sys, "platform", "darwin")
     fake_runner.missing.update({"playwright-cli", "npm"})
     fake_runner.responses[("npm",)] = runner.Result(127, "", "npm: not found")
